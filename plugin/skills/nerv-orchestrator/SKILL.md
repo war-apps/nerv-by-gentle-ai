@@ -80,40 +80,65 @@ Inject only the configuration each agent needs, never the full document:
 |---|---|
 | every agent | its `skills.<category>` stack (resolved to paths, see Delegation) |
 | pilots, Aoba | `git` block, `commit_ref`, delivery-budget state |
-| Hyuga (Phase 4+) | `tasks` block, `git` block |
+| Hyuga | `tasks` block, `git` block |
 | Fuyutsuki, Hyuga | `critical_paths` |
 
-## Preflight (Phase 1 scope)
+## Preflight
 
 Before any intel or code, on the first implementation request of the
-session, Ikari checks whether work may proceed without asking:
+session, Ikari resolves configuration and checks whether work may proceed
+without asking:
 
-1. Is there a running local timer in `~/.claude/work/timers.json` scoped to
-   this session, or a task ref already given by the user in this
-   conversation?
-2. Is `.nerv/nerv.yaml` (merged with the user file) resolvable — no missing
-   required key?
+1. **Resolve `nerv.yaml`.** Merge `~/.claude/nerv/nerv.yaml` (user scope)
+   and `<repo>/.nerv/nerv.yaml` (project scope) per `## Configuration
+   resolution` above.
+2. **Detect an active task.** Is there a running local timer in
+   `~/.claude/work/timers.json` scoped to this session, or a task ref
+   already given by the user in this conversation?
+3. **Check `tasks.provider`.** Resolved (one of `teamwork` |
+   `github-projects` | `jira` | `none`), or absent with
+   `ask_when_missing: true`?
 
-If both hold, preflight is **silent** — proceed straight to classification.
+If step 2 finds an active task and step 3 resolves, preflight is
+**silent** — proceed straight to classification. `tasks.provider: none`
+counts as resolved: no tracker ops run and no timer is expected, but the
+worktree and branch groups below still apply.
 
-If either is missing, ask **one grouped blocking prompt** (native
-`AskUserQuestion` when representable, plain-text fallback otherwise, per the
-Lossless Blocking Prompts contract) with these groups, in this order:
+If either check fails, ask **one grouped blocking prompt** (native
+`AskUserQuestion` when the groups fit representably — up to four —
+plain-text fallback otherwise, per the Lossless Blocking Prompts
+contract) with these groups, in this order:
 
-1. **Task** — existing task id, or none. Task *creation* through a
-   configured provider (Teamwork, GitHub Projects, Jira) arrives in Phase 4;
-   say so plainly when a provider is configured but creation is requested.
+1. **Task** — one of:
+   - create a new task with the minimal data: title, provider/source
+     (one of the configured `tasks.providers` or `none`), project/list
+     (only when the chosen provider needs one — e.g. Teamwork's
+     `project_id`/`tasklist_id`), priority (`high`|`medium`|`low`);
+   - use an existing task, by id;
+   - work without a task.
 2. **Worktree** — create a new git worktree, or work in place. Skip this
    group entirely when `git.worktree` is `always` or `never` (act on that
    value instead of asking).
-3. **Branch name** — proposed from `git.branch_pattern` filled with the
-   task ref (or a request-derived slug when there is no task), editable.
+3. **Branch name** — proposed from `git.branch_pattern` filled with
+   `{prefix}` (lowercase `task_ref_prefix` of the chosen provider, e.g.
+   `tw`), `{id}`, and `{slug}`; editable. With no task (`none`, or
+   `tasks.provider: none`), `{prefix}-{id}` is omitted and the slug comes
+   from the request text.
 4. **Base branch** — proposed from `git.base_branch`, editable.
 
-After the answers, offer once to persist the resolved provider and base
-branch into the project `.nerv/nerv.yaml` so the next run does not ask
-again; write only on explicit "yes". Aoba executes worktree creation and
-branch creation from the confirmed names — Ikari never runs `git` itself.
+After the answers:
+
+- `nerv:hyuga` runs `DISPATCH: tracker` (`createTask` if requested, then
+  `start`) through the port (`nerv-tasks/SKILL.md`); skipped when the
+  provider is `none` or the user chose to work without a task.
+- `nerv:aoba` creates the worktree and branch from the confirmed names.
+- Ikari offers **once** to persist the resolved provider and base branch
+  into the project `.nerv/nerv.yaml`; writes only on explicit "yes".
+
+`commit_ref` is `git.commit_ref_pattern` filled with the task ref (e.g.
+`(TW-49132010)`) and is injected into every Aoba launch that commits;
+with no task, `commit_ref` is empty and Aoba's commit subject carries no
+tracker suffix.
 
 Once per change (not per request), also resolve and cache: **pace**
 (interactive | fast-forward), **artifact store** (default `openspec`;
@@ -124,8 +149,8 @@ Once per change (not per request), also resolve and cache: **pace**
 task ref when there is one (`tw-49132010-short-slug`), otherwise from the
 request (`short-slug`), unique under `openspec/changes/`. Ikari then creates
 `openspec/changes/{change}/state.yaml` (`dependsOn: []` plus the `nerv`
-block defined in `nerv-artifacts.md`) and the empty `nerv/` folder before
-the first launch.
+block defined in `nerv-artifacts.md`, including `task_ref`) and the empty
+`nerv/` folder before the first launch.
 
 ## Classification: LIGHT vs FULL
 
@@ -167,7 +192,7 @@ same change.
 
 | Step | Actor | Launch prompt carries | Expected envelope | Gate |
 |---|---|---|---|---|
-| 1. Preflight | Ikari, Aoba | — | worktree/branch state | user HARD if asked |
+| 1. Preflight | Ikari, Hyuga (d), Aoba | — | tracker start via Hyuga `DISPATCH: tracker` (`createTask` if requested, then `start`); worktree/branch state | user HARD if asked |
 | 2. Classify | Ikari | — | LIGHT decision recorded in log | none |
 | 3. Micro-intel (optional) | Ritsuko | touched-file locators, skills | envelope carrying exploration-light.md; Ikari writes it to its locator; downstream steps read it when present | gatekeeper |
 | 4. RED | Kaworu | change/task locators, skills, TDD mode+runner, commit_ref | failing test(s), commit | user validates commit |
@@ -177,7 +202,7 @@ same change.
 | 8. RDD hook | native engine (via Ikari) | see RDD section | receipt or `review_due: false` | per RDD section |
 | — repeat 4-8 per work unit — | | | | |
 | 9. Run summary | Aoba | usage table from Ikari | `nerv/run-summary.md` | none |
-| 10. Close | Ikari (Hyuga in Phase 4) | — | change closed / tracker updated | none |
+| 10. Close | Ikari, Hyuga (d) | — | change closed, tracker `close`/`done`/`block` run | none |
 
 When micro-intel is skipped, steps 4-6 receive the request text in
 `## Change` instead, and pilots must not report the missing
@@ -203,6 +228,7 @@ the table below or downgrade FULL to LIGHT mid-run.
 
 | Step | Actor | Launch prompt carries | Expected envelope | Gate |
 |---|---|---|---|---|
+| 0. Preflight | Ikari, Hyuga (d), Aoba | — | tracker start via Hyuga `DISPATCH: tracker` (`createTask` if requested, then `start`); worktree/branch state | user HARD if asked |
 | 1. Intel | `nerv:ritsuko` (MODE: intel) | change scope, skills | `exploration.md` (Ikari writes it to its locator) | gatekeeper |
 | 2. Spec + test plan | `nerv:ritsuko` (MODE: test-plan) | `exploration.md` locator, skills | `specs/{domain}/spec.md`, `nerv/test-plan.md` with `## Corner-case questions` | **user HARD** — Ikari relays the questions as one grouped blocking prompt; the answers are written into `## Answers` and gate the plan |
 | 3. Plan | `nerv:misato` | `exploration.md`, `spec.md`, `test-plan.md` (with answers), skills | `proposal.md`, `design.md` (must contain `## New skills, scripts and commands`), `tasks.md` (ids `T1`, `T2`, ... with `pilot` and `depends_on`) | gatekeeper — verifies the `## New skills, scripts and commands` section exists in `design.md` |
@@ -221,7 +247,29 @@ the table below or downgrade FULL to LIGHT mid-run.
 | 16. Ranking + issue gate | `nerv:hyuga` (dispatch c) | `audit-report.md` (post-refuter) | `nerv/issue-ranking.md` | **user HARD** — Ikari relays the ranked NOW/DEFER list as one blocking prompt: approve the NOW set / edit it / accept residual and close |
 | 17. Fix routing + re-audit loop | owning pilot per approved issue (LIGHT work-unit cycle: Kaworu RED when behavioral, Aoba commit, pilot fix, Aoba commit, RDD hook), `nerv:aoba` (fix-delta patch), audit passes, `nerv:kaji` | fixes committed; `nerv/audit/diff-round-N+1.patch` scoped to the fix delta only; updated `audit-report.md` carrying forward unresolved items | cap 2 re-audits (loop back to step 14 over the fix-delta patch); at the cap the user accepts the residual (`residual_accepted` in `issue-ranking.md`) or declines the remainder; deviations → Misato ruling |
 | 18. Docs + archive + curate | `nerv:ritsuko` (MODE: docs), `nerv:aoba` (Archive duty), `nerv:fuyutsuki` (MODE: curate) | `issue-ranking.md`, fix commits, `tasks.md`, docs deltas | `nerv/issue-resolutions.md`, `nerv/agent-config.md`, repo doc deltas (Ikari writes them at Ritsuko-named locators), change archived to `openspec/changes/archive/YYYY-MM-DD-{change}/` via `gentle-ai sdd-archive-compose` + `git mv`, `## Summary` appended to `nerv/deliberation-log.md` | gatekeeper |
-| 19. Run summary + close | `nerv:aoba`; tracker close arrives in Phase 4 | usage table from Ikari | `nerv/run-summary.md`, change closed | none |
+| 19. Run summary + close | `nerv:aoba`; `nerv:hyuga` `DISPATCH: tracker` (`close`, or `done` when the user prefers the task stay open) | usage table from Ikari | `nerv/run-summary.md`, change closed, tracker updated (see `### Tracker dispatch (Phase 4)` below) | none — the user already validated at gates 16 and 18 |
+
+### Tracker dispatch (Phase 4)
+
+`nerv:hyuga` `DISPATCH: tracker` runs at four points in FULL (Preflight
+and Close only in LIGHT):
+
+- **Preflight (step 0).** `createTask` if requested, then `start`
+  (assign, `inDev` stage, local timer). Skipped when the provider is
+  `none` or the user chose to work without a task.
+- **Maya's full gate start (before step 12).** `moveStage(testing)`.
+- **Issue gate (around step 16).** `comment` with the ranked audit
+  summary; `createTask` for every accepted `DEFER` issue, so deferred
+  findings become tracked follow-up work.
+- **Close (step 19).** `close` (`stop` with real start/end +
+  `moveStage(implemented)` + `complete`), or `done` (same without
+  `complete`) when the user prefers the task stay open.
+
+A halted run routes to `block(reason)` instead — Ikari asks the user for
+the mandatory cause first, then Hyuga runs `block` with it. Every tracker
+op is logged by Ikari as one `tracker_event` entry in
+`nerv/deliberation-log.md` (`{op, taskRef, result}`); see the port
+contract in `plugin/agents/hyuga.md`.
 
 ### Plan gatekeeper
 
@@ -590,7 +638,10 @@ Ikari's own mechanical write, never delegated) as
 also defined in `nerv-artifacts.md`: `patch_frozen`, `audit_pass`,
 `dedupe_merge`, `refuter_result`, `ranking_issued`, `issue_gate_relayed`,
 `issue_gate_decision`, `fix_routed`, `reaudit`, `residual_accepted`,
-`docs_written`, `archived`, `log_curated`.
+`docs_written`, `archived`, `log_curated`. Phase 4 adds `tracker_event`
+(payload `{op, taskRef, result}`, defined in `nerv-artifacts.md`), logged
+once per Hyuga tracker op — Preflight, Maya's full-gate start, the issue
+gate, and Close.
 
 ## Resume
 
@@ -609,14 +660,20 @@ If the user says `nerv ping`, launch `nerv:aoba` with the exact prompt
 
 ## Phase note
 
-This is the Phase 3 build: NERV's governance surface is complete except
-the task-tracking layer and the single config file. LIGHT is unchanged
-from Phase 1 (Ritsuko micro-intel, Kaworu, one domain-matched pilot, Maya
-reduced gate, Aoba). FULL ships Misato's plan authorship and rulings, MAGI
-(Balthasar, Melchor, Casper), Fuyutsuki's governance veto, Hyuga's
-criticality, waves, and ranking dispatches, all five pilots (`rei`,
-`shinji`, `asuka`, `toji`, `kaworu`), and the full audit-and-closure stage
-(Kaji, `kaji-security`, `kaji-coverage`, `kaji-refuter`, the ranked issue
-gate, fix routing, the bounded re-audit loop, and Aoba's mechanical Archive
-duty). Phase 4 adds the task tracker (Hyuga's tracker dispatch) and the
-single `nerv.yaml` config file; Phase 5 is hardening.
+This is the Phase 4 build: NERV's governance surface (Phase 3) is complete,
+plus the task-tracking layer and the single config file. LIGHT keeps the
+same pipeline shape as Phase 1 (Ritsuko micro-intel, Kaworu, one
+domain-matched pilot, Maya reduced gate, Aoba), with Preflight and Close
+now also running Hyuga's tracker dispatch. FULL ships Misato's plan
+authorship and rulings, MAGI (Balthasar, Melchor, Casper), Fuyutsuki's
+governance veto, Hyuga's criticality, waves, ranking, and tracker
+dispatches, all five pilots (`rei`, `shinji`, `asuka`, `toji`, `kaworu`),
+and the full audit-and-closure stage (Kaji, `kaji-security`,
+`kaji-coverage`, `kaji-refuter`, the ranked issue gate, fix routing, the
+bounded re-audit loop, and Aoba's mechanical Archive duty). The task
+tracker (`nerv-tasks/SKILL.md`, the Teamwork adapter delegating to
+`~/.claude/commands/task/*.md`, the `github-projects`/`jira` stubs, and
+Hyuga's `DISPATCH: tracker`) and the single `nerv.yaml` config file
+(two scopes, one schema, project overrides user) are wired into Preflight,
+Maya's full-gate start, the issue gate, and Close in both pipelines.
+Phase 5 hardening is pending.

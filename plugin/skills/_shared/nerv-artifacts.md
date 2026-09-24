@@ -19,6 +19,11 @@ one NERV-owned key). Engram topic key for every artifact:
   gentle-ai's own and is never hand-edited by NERV agents).
 - Location: `openspec/changes/{change}/state.yaml`.
 - Engram key: `nerv/{change}/state` (mirror of the `nerv:` block only).
+- `task_ref` holds `{PREFIX}-{id}` — the resolved provider's
+  `task_ref_prefix` uppercased plus the task id, e.g. `TW-49132010` —
+  when a task is active, or `null` when the change has no task
+  (`tasks.provider: none`, or the user chose to work without one at
+  Preflight).
 
 ```yaml
 dependsOn: []
@@ -670,3 +675,15 @@ The audit-and-closure stage adds these event types to
   `{archive_path, composed_specs[]}`).
 - `log_curated` — Fuyutsuki appended the `## Summary` block to
   `nerv/deliberation-log.md` (MODE: curate).
+
+### Phase 4 event types
+
+The task-tracking layer adds one event type to the same append-only log,
+same shape (`{ts, phase, actor, event_type, payload_ref}`):
+
+- `tracker_event` — one task-tracking port operation completed (payload:
+  `{op, taskRef, result}`, taken verbatim from `nerv:hyuga`'s
+  `DISPATCH: tracker` envelope). Logged by Ikari after every tracker
+  dispatch: Preflight's `createTask`/`start`, Maya's full-gate
+  `moveStage(testing)`, the issue gate's `comment`/`createTask` for
+  accepted `DEFER` issues, and Close's `close`/`done`/`block`.
