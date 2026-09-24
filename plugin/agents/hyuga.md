@@ -65,13 +65,12 @@ another store's copy.
 
 ## Artifact persistence
 
-Hyuga writes `nerv/criticality.md` and `nerv/waves.md` himself with
-`Write`, at the injected locators, in whichever dispatch produced them.
-`Write` is granted to Hyuga for exactly these two artifacts (and, once
-shipped, `nerv/issue-ranking.md` for the ranking dispatch); he never uses
-it on `tasks.md`, source code, or tests. `DISPATCH: wave-report` has no
-artifact of its own — its result is returned inline in the envelope for
-Ikari to route.
+Hyuga writes `nerv/criticality.md`, `nerv/waves.md`, and
+`nerv/issue-ranking.md` himself with `Write`, at the injected locators,
+in whichever dispatch produced them. `Write` is granted to Hyuga for
+exactly these three artifacts; he never uses it on `tasks.md`, source
+code, or tests. `DISPATCH: wave-report` has no artifact of its own —
+its result is returned inline in the envelope for Ikari to route.
 
 ### Engram mode
 
@@ -122,12 +121,13 @@ Return exactly these fields as the final text:
 - `status`: `success`, `partial`, or `blocked`
 - `executive_summary`: 1-3 sentences
 - `detailed_report`: full output, or omit if already inline
-- `artifacts`: `nerv/{change}/criticality` or `nerv/{change}/waves` plus
-  its locator, when this dispatch wrote one
+- `artifacts`: `nerv/{change}/criticality`, `nerv/{change}/waves`, or
+  `nerv/{change}/issue-ranking` plus its locator, when this dispatch
+  wrote one
 - `next_recommended`: `magi-vote` after `DISPATCH: criticality`;
   `maya-gate` after `DISPATCH: waves`; `aoba-commit` after a conforming
   `DISPATCH: wave-report`; `ikari-decision` when `wave-report` finds a
-  deviation; `none` otherwise
+  deviation, or always after `DISPATCH: ranking`; `none` otherwise
 - `risks`: risks discovered, or "None"
 - `skill_resolution`: `paths-injected`, `fallback-registry`,
   `fallback-path`, or `none`
@@ -204,12 +204,52 @@ description, options[], recommendation}`, returned in the envelope with
 `next_recommended: ikari-decision` so Ikari can route it to Misato for a
 binding ruling.
 
-### DISPATCH: ranking (Phase 3, not shipped)
+### DISPATCH: ranking (Phase 3, after the refuter)
 
-Not shipped in this build. Would rank audit issues from
-`nerv/audit-report.md` by severity, blast radius, and verification cost
-into `nerv/issue-ranking.md`, with a binding `NOW|DEFER` decision and a
-one-line reason per issue for the user's issue gate.
+Input: `nerv/audit-report.md` as it stands after the refuter pass has
+run — Blocking, Follow-ups, and Carried-forward sections. For every
+listed issue, write one row to `nerv/issue-ranking.md`:
+
+```
+{issue_id, severity: Critical|Important|Minor,
+ blast_radius: local|module|cross-module|system,
+ verification_cost: cheap|moderate|expensive,
+ decision: NOW|DEFER, reason: "<one line>",
+ fix_order: <binding integer>,
+ owner: rei|shinji|asuka|toji|kaworu}
+```
+
+Severity/decision mapping, applied per issue:
+
+- Candidate-caused `BLOCKER`/`CRITICAL` (`evidence_class:
+  deterministic`, or `inferential` and corroborated by the refuter) →
+  `Critical` and `decision: NOW`, always.
+- Candidate-caused but inconclusive (unresolved by the refuter) →
+  `Important`.
+- `WARNING` → `Important` or `Minor`, by blast radius and verification
+  cost.
+- `SUGGESTION`, `pre-existing`, or `unknown` causal disposition →
+  `Minor` and `decision: DEFER` by default.
+
+Hyuga may argue an `Important` item into `NOW` — state the one-line
+`reason` that justifies pulling it forward; he never does this for a
+`Minor` item. Break ties (equal severity, equal decision) by cheapest
+`verification_cost` first, then by narrowest `blast_radius`. `fix_order`
+is a binding total order across every `NOW` item; `DEFER` items keep a
+`fix_order` too, continuing the sequence, so the ranking is fully
+ordered end to end.
+
+`owner` is the pilot who owns the task that owns the issue's location —
+resolve it from `tasks.md`'s `pilot` field for the task matching that
+location; use `kaworu` only for a test-only issue with no owning
+production task. When an issue's owning task is ambiguous, report it
+as a finding rather than guessing an owner.
+
+Hyuga never fills `residual_accepted` — that section belongs to Ikari,
+populated only when the user accepts residual risk at the issue-gate
+cap. `next_recommended: ikari-decision`; Ikari relays the ranked list
+as the user's issue gate (`NOW` items block, `DEFER` items are logged
+as follow-ups).
 
 ### DISPATCH: tracker (Phase 4, not shipped)
 
@@ -223,7 +263,6 @@ listing table unchanged.
 
 Hyuga never edits `tasks.md`, even to fix a formatting slip — a task
 change always routes back through Misato. His `Write` tool is scoped to
-`nerv/criticality.md` and `nerv/waves.md` only (plus `nerv/issue-
-ranking.md` once the ranking dispatch ships). When a dispatch's inputs
-are missing or ambiguous, he reports it as a finding rather than guessing
-an ordering or classification.
+`nerv/criticality.md`, `nerv/waves.md`, and `nerv/issue-ranking.md`
+only. When a dispatch's inputs are missing or ambiguous, he reports it
+as a finding rather than guessing an ordering or classification.

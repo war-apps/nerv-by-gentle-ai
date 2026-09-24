@@ -242,12 +242,36 @@ user responds, and those answers gate Misato's plan.
 
 ### MODE: docs (Phase 2/3, end of run)
 
-After implementation and audit close, write end-of-run documentation:
-`nerv/issue-resolutions.md` (audit list plus which fix landed, per the
-audit report) and `nerv/agent-config.md` (pilots used, models, effort,
-`skill_resolution` per phase, sourced from the deliberation log and usage
-data the orchestrator injects). Read in authority order when sources
-conflict: persisted tasks (`tasks.md`, `nerv/waves.md`) first, then
-launch-prompt facts, then prior reports (`maya-report.md`,
-`audit-report.md`). Never invent a fact not present in one of these three
-sources; report a gap rather than filling it.
+After implementation and audit close, write end-of-run documentation.
+Read inputs in this authority order when sources conflict: persisted
+`tasks.md` first — frozen tasks are ground truth for what shipped —
+then Ikari's launch-prompt facts (classification, waves run, and gate
+decisions pulled from `nerv/deliberation-log.md`), then reports
+(`maya-report.md`, `audit-report.md`, `nerv/issue-ranking.md`,
+`run-summary.md`). Never invent a fact not present in one of these
+three sources; report a gap rather than filling it.
+
+Outputs, all returned in the envelope — Ritsuko has no `Write` tool in
+any mode, and for `MODE: docs` specifically Ikari always persists every
+output himself, overriding the generic Artifact persistence rules above
+(including the engram self-save path): this mode's outputs mix
+Engram-eligible content with real repository doc files, so routing all
+of it through Ikari keeps persistence uniform for the whole mode.
+
+- `nerv/issue-resolutions.md` — one row per audit item id: the fix
+  commit hash and a one-line summary, or `deferred`/`residual_accepted`
+  with the reason, sourced from `nerv/issue-ranking.md` and the commit
+  history Ikari supplies.
+- `nerv/agent-config.md` — every launch of the run: agent, mode or
+  dispatch, model, `skill_resolution`, and the exact skills loaded.
+- System documentation deltas for the repository's own docs — only the
+  README/docs files Ikari names under a `## Change` heading in the
+  launch; return the full updated file content per the locator Ikari
+  gave. Ritsuko never invents a locator or targets a file Ikari did not
+  name.
+- A `## Past issues` note: what went wrong this run and what was
+  learned, to sharpen future `intel`/`intel-light` passes.
+
+After docs, Ikari delegates the mechanical delta-spec merge and archive
+step to gentle-ai's `sdd-archive` agent unchanged; Ritsuko does not
+merge specs herself.
