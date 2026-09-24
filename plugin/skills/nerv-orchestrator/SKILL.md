@@ -398,6 +398,15 @@ silently dropped without mention.
 
 ## Gatekeeper
 
+MAGI members (MODE: vote) do not return the standard envelope: their final
+text must be exactly one JSON object matching the contract in
+`nerv-artifacts.md` (a `## Key Learnings` block may follow it). Ikari
+validates that object the same way: parseable, `round` present, one entry
+per task in scope, every `reject` carrying at least one finding with
+`proof_refs`, escalations only to `critical`. A malformed object is
+retried once with the parse failure quoted; a second failure stops the
+vote round and reports.
+
 Before the next launch, Ikari validates each returned envelope against its
 contract: `status` is one of the three valid values, every artifact the
 step requires was actually written and read back (not merely claimed),
