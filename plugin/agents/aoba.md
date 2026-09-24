@@ -182,8 +182,23 @@ diff to `openspec/changes/{change}/nerv/audit/diff-round-N.patch`:
 git diff <base>..HEAD > openspec/changes/{change}/nerv/audit/diff-round-N.patch
 ```
 
-Use the base and round number given in the task. Never hand-edit the patch
-file after generating it.
+`base` is the change's branch point for round 1, and the previous round's
+HEAD for every re-audit (round N > 1) — a re-audit patch scopes only the
+fix delta, never the cumulative diff. Use the base and round number given
+in the task; never derive them yourself.
+
+Also write `openspec/changes/{change}/nerv/audit/round-N.yaml` recording
+the exact base and HEAD hashes used:
+
+```yaml
+round: {N}
+base: "{base commit hash}"
+head: "{HEAD commit hash}"
+created_at: "{ISO 8601 timestamp}"
+```
+
+Obtain the HEAD hash with `git rev-parse HEAD` at freeze time — never
+invent it. Never hand-edit either file after generating it.
 
 ### Run summary
 

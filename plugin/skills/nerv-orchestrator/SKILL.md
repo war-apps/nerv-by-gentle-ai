@@ -141,14 +141,13 @@ Anything else is **LIGHT**.
 backend, asuka → frontend, toji → ci-cd/docker/k8s/infra, kaworu → tests
 (RED writer, every work unit under strict TDD, not a domain owner).
 
-**Unshipped roles.** Kaji and its audit passes (`kaji-security`,
-`kaji-coverage`) are not shipped until Phase 3 — see the audit placeholder
-step in the FULL pipeline below. Every other role in this build is
-installed: `rei`, `asuka`, and `toji` ship as pilots alongside `shinji` and
-`kaworu`; `misato`, `hyuga`, `balthasar`, `melchor`, `casper`, and
-`fuyutsuki` ship for the FULL pipeline. Never launch an agent that is not
-installed; a launch failure for a missing agent type is a stop, not a
-retry.
+**All roles installed.** Every NERV role in this build is installed and may
+be launched: `rei`, `asuka`, and `toji` ship as pilots alongside `shinji`
+and `kaworu`; `misato`, `hyuga`, `balthasar`, `melchor`, `casper`, and
+`fuyutsuki` ship for the FULL pipeline; `kaji`, `kaji-security`,
+`kaji-coverage`, and `kaji-refuter` ship for the audit stage (see the FULL
+pipeline below). Never launch an agent that is not installed; a launch
+failure for a missing agent type is a stop, not a retry.
 
 **Ratchet (one-way).** If any actor mid-LIGHT discovers a FULL criterion
 (a second domain appears, a critical path is touched, a skill/script/command
@@ -183,17 +182,18 @@ user may override it when validating the step-7 commit. Maya's reduced mode
 (step 6) runs only the tests and lint/build touching the changed files —
 never the full suite — per the `b`/`c` phases of her report schema.
 
-## FULL pipeline (Phase 2)
+## FULL pipeline (Phase 3)
 
-FULL adds MAGI vote, governance veto, waves, and quality-gated
-implementation on top of the LIGHT primitives (RED/GREEN/REFACTOR, Aoba
-commits, the RDD hook, usage collection, the deliberation log — all reused
-unchanged, see the LIGHT pipeline above). Kaji's 5-pass audit, issue
-ranking, and the fix-routing loop are **not shipped in this build**; once
-every wave is closed and Maya's full gate is green, the run goes straight
-to Aoba's run summary and close, and Ikari states plainly that the audit stage is not shipped yet
-(Phase 3). Never silently skip a step in the table below or downgrade FULL
-to LIGHT mid-run.
+FULL adds MAGI vote, governance veto, waves, quality-gated implementation,
+and a full audit-and-closure stage on top of the LIGHT primitives
+(RED/GREEN/REFACTOR, Aoba commits, the RDD hook, usage collection, the
+deliberation log — all reused unchanged, see the LIGHT pipeline above).
+Once every wave is closed and Maya's full gate is green, the run proceeds
+into the audit stage (steps 13-19 below): a frozen patch, five blind audit
+passes, Kaji's compilation and the refuter batch, Hyuga's ranking behind a
+user HARD issue gate, fix routing with a bounded re-audit loop, then
+documentation, archive, and the run summary. Never silently skip a step in
+the table below or downgrade FULL to LIGHT mid-run.
 
 | Step | Actor | Launch prompt carries | Expected envelope | Gate |
 |---|---|---|---|---|
@@ -209,9 +209,13 @@ to LIGHT mid-run.
 | 10. Baseline | `nerv:maya` (MODE: full, phase 0) | change scope | `nerv/maya-report.md` baseline | gatekeeper |
 | 11. Implementation wave N | `nerv:kaworu` (RED) → `nerv:aoba` (commit, user validates) → assigned pilot (GREEN/TRIANGULATE/REFACTOR) → `nerv:aoba` (commit, user validates) → RDD hook | wave task, skills, TDD mode+runner, `commit_ref` | code + TDD evidence rows | repeat for every wave in `waves.md` in dependency order; a wave starts only when every wave it depends on is closed with a `wave_report`; the loop terminates when the last wave is closed; pilots in a wave may run in one parallel batch when their tasks are independent; deviations → `nerv:hyuga` deviation → `nerv:misato` ruling |
 | 12. Maya full gate a→b→c→d | `nerv:maya` (MODE: full) | full change diff (base..HEAD), gathered once after the last wave closes — never per wave | `nerv/maya-report.md` phases a-d, each green before the next starts | `impl-wrong` → owning pilot; `spec-wrong` → Misato as a binding ruling (`MODE: ruling`, source `maya`); `ambiguous` → one Misato ruling → user only if a product decision is needed |
-| 13. Audit placeholder | Ikari | — | plain statement to the user: the audit stage (Kaji, 5 passes, ranking, issue gate) is not shipped in this build (Phase 3) | none |
-| 14. Run summary | `nerv:aoba` | usage table from Ikari | `nerv/run-summary.md` | none |
-| 15. Close | Ikari (`nerv:hyuga` dispatch d in Phase 4) | — | change closed | none |
+| 13. Freeze patch | `nerv:aoba` | base (branch point for round 1, previous round's HEAD for re-audits), round number, change locator | `nerv/audit/diff-round-N.patch`, `nerv/audit/round-N.yaml` (`{round, base, head, created_at}`) | gatekeeper |
+| 14. Audit passes, 5 in parallel, blind | `nerv:melchor`, `nerv:balthasar`, `nerv:casper` (MODE: audit), `nerv:kaji-security`, `nerv:kaji-coverage` | `diff-round-N.patch` + proposal/design/tasks/specs/test-plan locators, skills; RDD-narrowed scope for melchor/balthasar/kaji-security when RDD is on | one JSON pass object each per the contract in `nerv-artifacts.md`; Ikari writes each to `nerv/audit/pass-<name>-round-N.json` | gatekeeper — JSON validation, one retry |
+| 15. Compile + refute | `nerv:kaji` (compile), `nerv:kaji-refuter` (one batch over that round's inferential BLOCKER/CRITICAL) | the five pass objects/files | `nerv/audit-report.md` with refuter outcomes merged (`refuted` → dropped to a `## Refuted` appendix, `inconclusive` → WARNING, kept) | none |
+| 16. Ranking + issue gate | `nerv:hyuga` (dispatch c) | `audit-report.md` (post-refuter) | `nerv/issue-ranking.md` | **user HARD** — Ikari relays the ranked NOW/DEFER list as one blocking prompt: approve the NOW set / edit it / accept residual and close |
+| 17. Fix routing + re-audit loop | owning pilot per approved issue (LIGHT work-unit cycle: Kaworu RED when behavioral, Aoba commit, pilot fix, Aoba commit, RDD hook), `nerv:aoba` (fix-delta patch), audit passes, `nerv:kaji` | fixes committed; `nerv/audit/diff-round-N+1.patch` scoped to the fix delta only; updated `audit-report.md` carrying forward unresolved items | cap 2 re-audits (loop back to step 14 over the fix-delta patch); at the cap the user accepts the residual (`residual_accepted` in `issue-ranking.md`) or declines the remainder; deviations → Misato ruling |
+| 18. Docs + archive + curate | `nerv:ritsuko` (MODE: docs), `sdd-archive` (gentle-ai agent, unchanged), `nerv:fuyutsuki` (MODE: curate) | `issue-ranking.md`, fix commits, `tasks.md`, docs deltas | `nerv/issue-resolutions.md`, `nerv/agent-config.md`, repo doc deltas (Ikari writes them at Ritsuko-named locators), change archived to `openspec/changes/archive/YYYY-MM-DD-{change}/`, `## Summary` appended to `nerv/deliberation-log.md` | gatekeeper |
+| 19. Run summary + close | `nerv:aoba`; tracker close arrives in Phase 4 | usage table from Ikari | `nerv/run-summary.md`, change closed | none |
 
 ### Plan gatekeeper
 
@@ -236,22 +240,92 @@ decision MAGI can vote on and Hyuga can re-confirm in `waves.md`'s
 at step 9 — `waves.md` must match `tasks.md` exactly, it never overrides
 it.
 
-### Audit placeholder rationale
+### Audit stage mechanics
 
-Kaji's 5-pass audit is the last unshipped piece of NERV's governance
-surface (Phase 3). Stating this plainly in the run itself — not only in
-documentation the user might not read — matters because a user reading a
-FULL run's transcript could otherwise assume the audit ran and found
-nothing. Step 13 exists specifically to prevent that silent gap between
-"the pipeline completed" and "every governance stage the design promises
-actually ran."
+**Freeze rule.** Aoba freezes the patch the audit passes read, never
+hand-edited: `git diff <base>..HEAD` written to
+`nerv/audit/diff-round-N.patch`, plus `nerv/audit/round-N.yaml`
+(`{round, base, head, created_at}`) recording the exact base and HEAD
+hashes. `base` is the change's branch point for round 1 and the previous
+round's HEAD for every re-audit (step 17) — a re-audit patch scopes only
+the fix delta, never the cumulative diff.
 
-**Ratchet handling.** The diff already produced while a change was still
-LIGHT becomes the wave-1 candidate once Ikari reclassifies to FULL.
-Misato's `tasks.md` MUST include that diff as its own task, carrying
-`status: implemented-pre-plan` in addition to its `id`/`pilot`/
-`depends_on` fields, and MAGI votes on it exactly like any other task —
-there is no free pass for pre-plan work.
+**Pass batch and JSON gatekeeping.** Ikari launches all five audit passes
+— `nerv:melchor`, `nerv:balthasar`, `nerv:casper` (MODE: audit),
+`nerv:kaji-security`, `nerv:kaji-coverage` — in one parallel batch, blind
+to each other, each reading only the frozen patch plus the plan artifacts
+(`proposal.md`, `design.md`, `tasks.md`, `specs/`, `nerv/test-plan.md`).
+Each pass returns exactly one JSON object as its final text — the same
+gatekeeping MAGI JSON gets: parseable, `pass` and `round` present, every
+BLOCKER/CRITICAL finding carrying `location`, `severity`, `claim`,
+`evidence_class`, `causal_disposition`, and `proof_refs`. A malformed
+object is retried once with the parse failure quoted; a second failure
+stops the audit round and reports. Ikari writes each validated object to
+`nerv/audit/pass-<name>-round-N.json`.
+
+**Kaji dedupe and compile.** `nerv:kaji` reads the five pass objects (from
+the launch prompt or the written files) and writes `nerv/audit-report.md`:
+same file:line (or overlapping range) plus the same defect signature
+merges into one item, `credited_sources[]` listing every pass that found
+it; severity is the max across sources; candidate-causal admission applies
+(BLOCKER/CRITICAL need proof the candidate introduced, activated, or
+worsened the behavior — unproven causality is `unknown` and ranks as
+WARNING at most; `pre-existing` findings are follow-ups and never block).
+Deterministic BLOCKER/CRITICAL need no refuter; every inferential
+BLOCKER/CRITICAL becomes the refuter batch. Kaji contacts nobody —
+clarifications route through Ikari.
+
+**Refuter batch.** `nerv:kaji-refuter` runs once per audit round over that
+round's inferential BLOCKER/CRITICAL items, reading the frozen patch and
+repo history read-only, returning `{"round": N, "results": [{finding_id,
+outcome: corroborated|refuted|inconclusive, proof_refs}]}`; it never adds
+findings. Ikari merges outcomes into `audit-report.md`: `refuted` items
+move to a `## Refuted` appendix and drop from the active list;
+`inconclusive` items are kept and ranked as WARNING.
+
+**Ranking and the issue gate.** `nerv:hyuga` (dispatch c) ranks the
+post-refuter report into `nerv/issue-ranking.md`: per item `severity`
+(Critical/Important/Minor), `blast_radius`, `verification_cost`, a binding
+`decision` (NOW/DEFER) with a one-line reason, a binding `fix_order`, and
+an `owner` pilot — ties broken cheapest-verification-first. The NOW set is
+every candidate-caused BLOCKER/CRITICAL plus whatever Hyuga argues in.
+Ikari relays the ranked list as one **user HARD** blocking prompt, lossless
+per the Lossless Blocking Prompts contract: every NOW item with severity,
+owner, and reason; the DEFER list; and exactly three options — approve the
+NOW set as is, edit the set (free text naming ids to add or drop), or
+accept the residual and close.
+
+**Fix routing.** For each approved issue, in `fix_order`, the owning pilot
+fixes it through the LIGHT work-unit cycle: `nerv:kaworu` writes a RED
+regression test when the issue is behavioral, `nerv:aoba` commits it (user
+validates), the pilot fixes it, `nerv:aoba` commits the fix (user
+validates), then the RDD hook runs as usual. Any deviation from the
+approved fix routes to `nerv:misato` for a binding ruling, same mechanics
+as a wave deviation.
+
+**Re-audit loop.** Once every approved fix lands, Aoba freezes
+`diff-round-N+1.patch` scoped to the fix delta only (base = the previous
+round's HEAD), the same five passes run over it, Kaji compiles round N+1
+carrying forward unresolved items, the refuter batch runs again, ranking
+runs again, and the issue gate is relayed again. Capped at 2 re-audits; at
+the cap the user either accepts the residual (recorded in
+`issue-ranking.md` as `residual_accepted`) or declines the remainder.
+
+**RDD narrowing.** When the RDD switch is on for the repo, `melchor`,
+`balthasar`, and `kaji-security` narrow to cross-commit and integration
+concerns — per-commit defects were already reviewed natively by RDD; Ikari
+states which scope applies in each pass launch. `casper` and
+`kaji-coverage` always keep full NERV scope (plan conformance and commit
+hygiene for Casper; test-plan coverage for kaji-coverage), regardless of
+the RDD switch.
+
+### Ratchet handling
+
+The diff already produced while a change was still LIGHT becomes the
+wave-1 candidate once Ikari reclassifies to FULL. Misato's `tasks.md` MUST
+include that diff as its own task, carrying `status: implemented-pre-plan`
+in addition to its `id`/`pilot`/`depends_on` fields, and MAGI votes on it
+exactly like any other task — there is no free pass for pre-plan work.
 
 ### MAGI vote mechanics
 
@@ -341,7 +415,7 @@ no separate FULL-only commit or budget mechanism.
 |---|---|---|
 | MAGI re-vote per task | 2 | user: override-approve / kill task / Misato ruling |
 | Fuyutsuki veto revision | 2 | user: drop item or abandon task |
-| Kaji re-audit (fix delta only, Phase 3) | 2 | user accepts residual or declines remainder |
+| Kaji re-audit (fix delta only) | 2 | user accepts residual or declines remainder |
 | Gatekeeper phase validation | 1 retry | Ikari stops and reports |
 | Maya ambiguous failure | 1 Misato ruling before user | ruling binding |
 
@@ -415,7 +489,10 @@ validates that object the same way: parseable, `round` present, one entry
 per task in scope, every `reject` carrying at least one finding with
 `proof_refs`, escalations only to `critical`. A malformed object is
 retried once with the parse failure quoted; a second failure stops the
-vote round and reports.
+vote round and reports. Audit passes (`nerv:melchor`/`nerv:balthasar`/
+`nerv:casper` MODE: audit, `nerv:kaji-security`, `nerv:kaji-coverage`)
+follow the same JSON-only rule and the same one-retry-then-stop mechanics,
+per `## Audit stage mechanics` above.
 
 Before the next launch, Ikari validates each returned envelope against its
 contract: `status` is one of the three valid values, every artifact the
@@ -494,7 +571,11 @@ Ikari's own mechanical write, never delegated) as
 `nerv-artifacts.md` (`corner_case_relayed`, `corner_case_answer`,
 `vote_cast`, `escalation_criticality`, `vote_result`, `veto_evaluated`,
 `plan_gate_relayed`, `plan_gate_decision`, `wave_plan`, `wave_report`,
-`deviation`, `ruling_issued`).
+`deviation`, `ruling_issued`), plus the Phase 3 audit-stage event types,
+also defined in `nerv-artifacts.md`: `patch_frozen`, `audit_pass`,
+`dedupe_merge`, `refuter_result`, `ranking_issued`, `issue_gate_relayed`,
+`issue_gate_decision`, `fix_routed`, `reaudit`, `residual_accepted`,
+`docs_written`, `archived`, `log_curated`.
 
 ## Resume
 
@@ -513,11 +594,14 @@ If the user says `nerv ping`, launch `nerv:aoba` with the exact prompt
 
 ## Phase note
 
-This is the Phase 2 build: LIGHT and FULL both ship. LIGHT is unchanged
+This is the Phase 3 build: NERV's governance surface is complete except
+the task-tracking layer and the single config file. LIGHT is unchanged
 from Phase 1 (Ritsuko micro-intel, Kaworu, one domain-matched pilot, Maya
-reduced gate, Aoba). FULL ships Misato's plan authorship and rulings,
-MAGI (Balthasar, Melchor, Casper), Fuyutsuki's governance veto, Hyuga's
-criticality and waves dispatches, and all five pilots (`rei`, `shinji`,
-`asuka`, `toji`, `kaworu`). Kaji's audit compilation (5-pass audit, issue
-ranking, fix-routing loop) and Hyuga's ranking/tracker dispatches arrive in
-Phase 3-4.
+reduced gate, Aoba). FULL ships Misato's plan authorship and rulings, MAGI
+(Balthasar, Melchor, Casper), Fuyutsuki's governance veto, Hyuga's
+criticality, waves, and ranking dispatches, all five pilots (`rei`,
+`shinji`, `asuka`, `toji`, `kaworu`), and the full audit-and-closure stage
+(Kaji, `kaji-security`, `kaji-coverage`, `kaji-refuter`, the ranked issue
+gate, fix routing, the bounded re-audit loop, and `sdd-archive`-mechanized
+archival). Phase 4 adds the task tracker (Hyuga's tracker dispatch) and the
+single `nerv.yaml` config file; Phase 5 is hardening.

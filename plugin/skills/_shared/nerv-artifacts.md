@@ -401,13 +401,271 @@ decides: drop the item, or abandon the task.
 Tasks in the same wave with no dependency between them may be launched in
 one parallel batch during implementation (FULL pipeline step 11).
 
-## FULL-path artifacts (Phase 3)
+## Audit and closure artifacts (Phase 3)
 
-Named here only — schemas ship with Phase 3, when Kaji and its audit
-passes are installed:
+### audit/diff-round-N.patch, audit/round-N.yaml (Aoba)
 
-- `nerv/audit-report.md` (Kaji)
-- `nerv/issue-ranking.md` (Hyuga)
-- `nerv/audit/diff-round-N.patch` (Aoba)
-- `nerv/issue-resolutions.md` (Ritsuko)
-- `nerv/agent-config.md` (Ritsuko)
+- Purpose: the frozen `BASE..HEAD` diff every audit pass reads, plus the
+  exact base/HEAD hashes so a resumed session or a re-audit never
+  re-derives the boundary by guesswork.
+- Author: Aoba. Never hand-edited after generation.
+- Location: `nerv/audit/diff-round-N.patch`, `nerv/audit/round-N.yaml`.
+- Engram key: `nerv/{change}/audit-diff-round-N`,
+  `nerv/{change}/audit-round-N`.
+
+```
+git diff <base>..HEAD > openspec/changes/{change}/nerv/audit/diff-round-N.patch
+```
+
+```yaml
+round: 1
+base: "a1b2c3d"          # the change's branch point for round 1,
+                          # the previous round's HEAD for round N>1
+head: "e4f5g6h"
+created_at: "2026-09-24T15:10:00Z"
+```
+
+### audit/pass-<name>-round-N.json (Ikari, from each pass envelope)
+
+- Purpose: the validated JSON object returned by one audit pass, persisted
+  so Kaji's compile step and a resumed session can read it without
+  re-running the pass.
+- Author: Ikari (mechanical write of a pass's own final-text JSON, never
+  edited).
+- Location: `nerv/audit/pass-<name>-round-N.json`, `<name>` one of
+  `melchor`, `balthasar`, `casper`, `kaji-security`, `kaji-coverage`.
+- Engram key: `nerv/{change}/audit-pass-<name>-round-N`.
+
+#### Audit pass JSON output contract
+
+Each of `nerv:melchor`, `nerv:balthasar`, `nerv:casper` (MODE: audit),
+`nerv:kaji-security`, `nerv:kaji-coverage` is launched in one parallel
+batch, blind to the other four, over the frozen `diff-round-N.patch` plus
+the plan artifacts (`proposal.md`, `design.md`, `tasks.md`, `specs/`,
+`nerv/test-plan.md`). Its final text is exactly one JSON object, no prose
+before or after it (a `## Key Learnings` block may follow):
+
+```json
+{
+  "pass": "kaji-coverage",
+  "round": 1,
+  "findings": [
+    {
+      "id": "kaji-coverage-divide-by-zero",
+      "location": "src/Calc/Calculator.cs:42",
+      "severity": "CRITICAL",
+      "claim": "Divide has no test for a zero divisor",
+      "evidence_class": "deterministic",
+      "causal_disposition": "introduced",
+      "proof_refs": ["diff-round-1.patch:Calculator.cs hunk", "nerv/test-plan.md"]
+    }
+  ],
+  "evidence": ["diff-round-1.patch read in full", "nerv/test-plan.md read"]
+}
+```
+
+Severity scale and candidate-causal admission are the same rule used
+everywhere in NERV (mirrors gentle-ai's native review lenses):
+
+- `BLOCKER` — catastrophic impact or no viable recovery.
+- `CRITICAL` — material user, security, data, or correctness failure.
+- `WARNING` — non-blocking follow-up.
+- `SUGGESTION` — optional improvement.
+- **Candidate-causal admission**: `BLOCKER`/`CRITICAL` require proof
+  (changed hunk, created path, before/after) that the candidate
+  introduced, activated, or worsened the behavior. Unproven causality is
+  `unknown` and ranks as `WARNING` at most. `pre-existing` findings are
+  follow-ups and never block closure. Only candidate-caused
+  `BLOCKER`/`CRITICAL` block closure.
+
+Lens assignment for AUDIT mode mirrors VOTE mode's lenses, applied to the
+frozen patch instead of the plan: Melchor — architecture, design, dead
+code, duplication; Balthasar — SOLID, KISS, YAGNI, DRY, pattern fit;
+Casper — plan conformance (every task in `tasks.md` delivered as
+specified and nothing extra, BASE..HEAD), commit hygiene (atomic,
+conventional, correct scopes), and TDD commit order (the RED commit
+precedes the GREEN commit for every task, checked in git history);
+`kaji-security` — security across all layers; `kaji-coverage` —
+implemented tests vs `nerv/test-plan.md` (missing cases, weakened
+assertions). Passes never edit files and never persist their own output —
+Ikari writes the validated object to its locator.
+
+## audit-report.md (Kaji)
+
+- Purpose: the merged, deduplicated audit findings for one round, ranked
+  candidate-causal admission applied, refuter outcomes folded in.
+- Author: `nerv:kaji` (compile), refuter outcomes merged in by Ikari after
+  `nerv:kaji-refuter` runs.
+- Location: `nerv/audit-report.md` (one file, reused and extended each
+  round — round N's compile carries forward unresolved items from N-1).
+- Engram key: `nerv/{change}/audit-report`.
+
+```markdown
+# Audit report — {change}
+
+## Round {n}
+
+| id | location | severity | claim | evidence_class | causal_disposition | credited_sources | refuter |
+|---|---|---|---|---|---|---|---|
+| kaji-coverage-divide-by-zero | src/Calc/Calculator.cs:42 | CRITICAL | Divide has no test for a zero divisor | deterministic | introduced | [kaji-coverage] | n/a |
+| balthasar-unchecked-divisor | src/Calc/Calculator.cs:42 | WARNING | Divisor not validated before use | inferential | introduced | [balthasar, kaji-security] | corroborated |
+
+## Refuted
+
+| id | location | severity | claim | outcome | proof_refs |
+|---|---|---|---|---|---|
+```
+
+Dedupe rule: same `file:line` (or overlapping range) plus the same defect
+signature is one item; `credited_sources[]` lists every pass that found
+it. Severity is the max across sources. Candidate-causal admission (above)
+applies before ranking. Deterministic `BLOCKER`/`CRITICAL` need no
+refuter (`refuter: n/a`); every inferential `BLOCKER`/`CRITICAL` is listed
+in that round's refuter batch (`refuter: pending` until the batch
+returns).
+
+#### Refuter batch contract
+
+`nerv:kaji-refuter` runs once per audit round, reading only the frozen
+patch and repo history (read-only), over exactly that round's inferential
+`BLOCKER`/`CRITICAL` items. Its final text is exactly one JSON object:
+
+```json
+{
+  "round": 1,
+  "results": [
+    {
+      "finding_id": "balthasar-unchecked-divisor",
+      "outcome": "corroborated",
+      "proof_refs": ["src/Calc/Calculator.cs:42", "git log -p src/Calc/Calculator.cs"]
+    }
+  ]
+}
+```
+
+`outcome` is one of `corroborated`, `refuted`, `inconclusive`. The refuter
+never adds findings — only judges the ones it is given. Ikari merges
+outcomes into `audit-report.md`: `refuted` → the item moves to the
+`## Refuted` appendix and drops from the active ranking; `inconclusive` →
+kept in the active table, ranked as `WARNING` for Hyuga's purposes
+regardless of its original severity.
+
+## issue-ranking.md (Hyuga)
+
+- Purpose: the ranked, binding fix order Ikari relays as the user HARD
+  issue gate, and the record of that gate's decision including any
+  residual accepted at the re-audit cap.
+- Author: `nerv:hyuga` (dispatch c).
+- Location: `nerv/issue-ranking.md`.
+- Engram key: `nerv/{change}/issue-ranking`.
+
+```markdown
+# Issue ranking — {change}
+
+## Round {n}
+
+| issue_id | severity | blast_radius | verification_cost | decision | reason | fix_order | owner |
+|---|---|---|---|---|---|---|---|
+| kaji-coverage-divide-by-zero | Critical | local | cheap | NOW | candidate-caused, unguarded divide | 1 | shinji |
+| balthasar-unchecked-divisor | Important | local | cheap | DEFER | same root cause as #1, covered by the guard fix | - | shinji |
+
+## Gate decision
+
+decision: approved-as-ranked | edited | residual-accepted
+edited_ids: []             # ids the user added or dropped, when decision is "edited"
+
+## residual_accepted
+
+{present only at the re-audit cap, when the user accepts the residual
+instead of a further re-audit round}
+round_at_cap: {n}
+accepted_findings: [{issue_id}, ...]
+reason: "{user's stated reason, recorded verbatim}"
+```
+
+`severity` is `Critical | Important | Minor`; `blast_radius` is
+`local | module | cross-module | system`; `verification_cost` is
+`cheap | moderate | expensive`, ties broken cheapest-verification-first.
+The NOW set is every candidate-caused `BLOCKER`/`CRITICAL` plus whatever
+Hyuga argues in; every `DEFER` item carries a one-line `reason`. The gate
+Ikari relays offers exactly three options: approve the NOW set as ranked,
+edit it (free text naming ids to add or drop), or accept the residual and
+close — the last option is available only when the round is at the
+re-audit cap (2).
+
+## issue-resolutions.md (Ritsuko)
+
+- Purpose: closes the loop between every audit-report item and its fate —
+  the fix commit that resolved it, or the residual decision that left it
+  open.
+- Author: `nerv:ritsuko` (MODE: docs).
+- Location: `nerv/issue-resolutions.md`.
+- Engram key: `nerv/{change}/issue-resolutions`.
+
+```markdown
+# Issue resolutions — {change}
+
+| issue_id | severity | resolution | commit | notes |
+|---|---|---|---|---|
+| kaji-coverage-divide-by-zero | Critical | fixed | {hash} | DivideByZero guard added, regression test by kaworu |
+| balthasar-unchecked-divisor | Important | deferred | - | residual_accepted at re-audit cap round 2 |
+```
+
+Ritsuko reads in authority order — persisted `tasks.md` > Ikari's launch
+facts > `nerv/maya-report.md` — to resolve which commit closed which
+issue; a mismatch between sources is reported, never silently resolved by
+guessing.
+
+## agent-config.md (Ritsuko)
+
+- Purpose: the per-launch record of who ran the change — pilots used,
+  models, and skill resolution — for audit and reproducibility.
+- Author: `nerv:ritsuko` (MODE: docs).
+- Location: `nerv/agent-config.md`.
+- Engram key: `nerv/{change}/agent-config`.
+
+```markdown
+# Agent config — {change}
+
+| phase | agent | model | effort | skill_resolution |
+|---|---|---|---|---|
+| implementation W1/T1 | nerv:shinji | sonnet | medium | paths-injected |
+| audit round 1 | nerv:kaji-coverage | sonnet | medium | paths-injected |
+```
+
+One row per launch across the whole change, pilots and audit passes
+included; `skill_resolution` copies the value each agent's own return
+envelope reported (`paths-injected`, `fallback-registry`,
+`fallback-path`, or `none`).
+
+### Phase 3 event types
+
+The audit-and-closure stage adds these event types to
+`nerv/deliberation-log.md`, same shape as every other entry
+(`{ts, phase, actor, event_type, payload_ref}`):
+
+- `patch_frozen` — Aoba froze `diff-round-N.patch` (payload: round, base,
+  head).
+- `audit_pass` — one audit pass's validated JSON object was written to
+  `nerv/audit/pass-<name>-round-N.json` (one entry per pass per round).
+- `dedupe_merge` — Kaji merged two or more pass findings into one
+  `audit-report.md` item (payload: merged `id`, `credited_sources[]`).
+- `refuter_result` — one refuter verdict was merged into `audit-report.md`
+  (payload: `finding_id`, `outcome`).
+- `ranking_issued` — Hyuga produced or updated `issue-ranking.md`.
+- `issue_gate_relayed` — Ikari presented the ranked NOW/DEFER list to the
+  user as one blocking prompt.
+- `issue_gate_decision` — the user's issue-gate decision (approved /
+  edited / residual-accepted).
+- `fix_routed` — an approved issue was routed to its owning pilot's
+  LIGHT work-unit cycle (payload: `issue_id`, `owner`).
+- `reaudit` — a new audit round started over the fix-delta patch (payload:
+  round number).
+- `residual_accepted` — the user accepted the residual at the re-audit
+  cap instead of a further round (payload: round, accepted findings).
+- `docs_written` — Ritsuko wrote `issue-resolutions.md`, `agent-config.md`,
+  and any repo doc deltas.
+- `archived` — `sdd-archive` moved the change to
+  `openspec/changes/archive/YYYY-MM-DD-{change}/`.
+- `log_curated` — Fuyutsuki appended the `## Summary` block to
+  `nerv/deliberation-log.md` (MODE: curate).
