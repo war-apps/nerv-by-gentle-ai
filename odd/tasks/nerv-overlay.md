@@ -43,11 +43,13 @@ NERV existed only as a text spec. gentle-ai has the infrastructure NERV lacks (S
   - Successor closure: `correction_required` again, 2 CRITICAL reliability findings: `R3-plugin-root-unset-path-unproved` (hook prints the header without body when `CLAUDE_PLUGIN_ROOT` is unset or the skill file is missing) and `R3-test-harness-swallows-hook-failures` (suite never exercises an error path, so "always exit 0" is asserted, not proved). Correction plan captured: 60 lines. Second bounded writer delegated: plugin-root default from the script location, no header without body, stderr diagnostic; test with pipefail, honest exit capture, error-path cases.
 
 ### Phase 1: LIGHT path end to end
-- [ ] T1.1 `nerv-orchestrator/SKILL.md` full protocol (classification, delegation triggers, lossless prompts, RDD relay, usage collection, resume).
-- [ ] T1.2 `_shared/nerv-phase-common.md`, `_shared/nerv-artifacts.md` (light subset).
-- [ ] T1.3 Agents `ritsuko`, `shinji`, `kaworu`, `maya`.
-- [ ] T1.4 `commands/nerv-init.md` (writes `.nerv/nerv.yaml`, delegates `sdd-init`).
-- [ ] T1.5 Verify LIGHT journey in a scratch repo (see plan Phase 1).
+Branch `feature/phase-1-light-path`, stacked on `feature/phase-0-overlay` (Phase 0 not merged into `develop` yet; chained PRs later). Started 2026-09-24.
+- [x] T1.1 `nerv-orchestrator/SKILL.md` full protocol (config resolution, preflight, classification LIGHT/FULL + ratchet, delegation triggers, lossless prompts, RDD relay, usage collection, resume). Route: delegated writer A (with T1.2 and T1.4: 4 non-trivial files). Parent readback of the full protocol; three additions inline (change-name rule, usage collection section, TDD mode label `strict|standard`). Hook test suite still 11 pass / 1 skip. Commit 020c219.
+- [x] T1.2 `_shared/nerv-phase-common.md` (140 lines), `_shared/nerv-artifacts.md` (175 lines). Route: writer A. Commit 020c219.
+- [x] T1.3 Agents `ritsuko` (239), `shinji` (204), `kaworu` (194), `maya` (251). Route: delegated writer B, template `plugin/agents/aoba.md`; parent readback of Kaworu's role contract. Zero `gentle-ai:` markers. Commit 8037dab.
+- [x] T1.4 `commands/nerv-init.md` (55 lines). Route: writer A. Commit 020c219. Not yet exercised end to end (its grouped question needs an interactive session); the journey pre-creates `.nerv/nerv.yaml` and `openspec/config.yaml` instead.
+- [x] T1.5 LIGHT journey J1 (`bench/journeys.md`) in `D:\projects\nerv-bench-repo` (.NET 10 `Calc` library + xUnit, RDD disabled for that clone by the user's choice, config pre-created instead of `/nerv:init`). OBSERVED 2026-09-24 (non-interactive `claude -p`, build 8037dab): classification LIGHT with reason in `state.yaml`; Ritsuko intel-light (opus) → Ikari wrote `exploration-light.md`; Kaworu RED (CS0117, test-only diff) → Aoba `test:` commit 40942b0; Shinji GREEN 2/2 → TRIANGULATE 3/3 → REFACTOR no-op; Maya reduced: phase a pass, b/c skipped with reason, d build 0 warnings + `no-lint-build-configured`, TDD evidence reproduced read-only from `git show`; Aoba `feat:` commit 0a04785; gatekeeper caught an Aoba envelope that misreported a trailer, retried once, readback proved the commit clean; RDD assess run twice following the native untracked-scope continuation → medium, `under_budget`, switch off; `run-summary.md` with 8 usage rows; `sdd-status subtract-method` OK with `nerv/`. All 10 J1 expectations met. Follow-ups: the Agent tool reports one token total per launch (schema column `tokens_out` unusable: switch to `tokens_total`); NERV artifacts stay untracked until the user commits them (decide a policy: commit with the change or at close); the assess command in the protocol should mention `--untracked-scope=exclude` when the change folder is untracked.
+- RDD for the Phase 1 range (base 390db21): medium, `slice_budget_reached`. Consent granted → lineage `review-7a79caea8663cefb`, 1 lens (reliability) → `correction_required` with 4 CRITICAL consistency findings (two pilot domain maps; `exploration-light.md` unwritable under openspec; pilots rei/asuka/toji referenced but unshipped, no failure path; two contradictory descriptions of Maya's RED reproduction). Bounded correction committed as b571732 (64 lines). The bound STATUS then failed 5/5 with `operation_timeout` (pre_native, 25 s budget `reviewFacadeOperationTimeout`, no env override); selectorless STATUS 3 s; STATUS with base-ref treats the corrected range as a fresh target. User chose "continue without reporting" and then **declined** the fresh review (`consent: declined_this_candidate`, lineage review-00bd2086a0485313). Phase 1 ships without a receipt under ordinary policy; lineage review-7a79caea8663cefb stays `correction_required` on disk (not abandoned).
 
 ### Phase 2: FULL path with MAGI
 - [ ] T2.1 Agents `misato`, `hyuga`, `balthasar`, `melchor`, `casper` (VOTE), `fuyutsuki`, `rei`, `asuka`, `toji`.
@@ -81,8 +83,9 @@ The approved receipt lists 37 informational findings (16 WARNING, 21 SUGGESTION)
 ## Progress log
 
 - 2026-09-24: plan approved; repo and remote created; Phase 0 started.
+- 2026-09-24: Phase 1 complete (LIGHT path, J1 green in the bench repo; review declined after a native STATUS timeout).
 - 2026-09-24: Phase 0 complete. Overlay proven end to end (protocol injected only with the marker, `nerv:aoba` listed and answering the ping on its declared model, `sdd-preflight-hook` passes NERV agents, `sdd-status` tolerates `nerv/`, sync never touches the plugin cache). RDD review granted, one provider-caused lens failure recovered, two bounded corrections, receipt acknowledged. Repo renamed to `war-apps/nerv-gentle-ai`.
 
 ## Next step
 
-User OK to push `feature/phase-0-overlay` to `origin`. Then Phase 1 (LIGHT path): T1.1 full orchestrator protocol.
+User OK to push `feature/phase-1-light-path` (stacked on phase 0). Then Phase 2 (FULL path with MAGI): rei/asuka/toji, misato, hyuga, MAGI, fuyutsuki, votes/waves/log artifacts.
