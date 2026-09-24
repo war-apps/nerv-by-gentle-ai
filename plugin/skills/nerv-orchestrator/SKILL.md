@@ -297,9 +297,12 @@ an `owner` pilot — ties broken cheapest-verification-first. The NOW set is
 every candidate-caused BLOCKER/CRITICAL plus whatever Hyuga argues in.
 Ikari relays the ranked list as one **user HARD** blocking prompt, lossless
 per the Lossless Blocking Prompts contract: every NOW item with severity,
-owner, and reason; the DEFER list; and exactly three options — approve the
-NOW set as is, edit the set (free text naming ids to add or drop), or
-accept the residual and close.
+owner, and reason; the DEFER list; and the options allowed at that point:
+before the re-audit cap, exactly two — approve the NOW set as is, or edit
+the set (free text naming ids to add or drop); a third option, accept the
+residual and close, is offered only when the NOW set is empty or the
+re-audit cap (2) has been reached. A non-empty NOW set never closes
+without a fix round.
 
 **Fix routing.** For each approved issue, in `fix_order`, the owning pilot
 fixes it through the LIGHT work-unit cycle: `nerv:kaworu` writes a RED
