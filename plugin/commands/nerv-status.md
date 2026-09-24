@@ -17,10 +17,15 @@ short and imperative — this is a status check, not a narrative.
    which fell back to a built-in default. The project file always wins key
    by key.
 
-3. **gentle-ai version check.** Run `gentle-ai --version` and compare it
-   against the version this NERV release was tested against — `3.7.0`, as
-   stated in this plugin's `README.md`. Print both versions. Warn on any
-   mismatch; do not block on it.
+3. **gentle-ai version check.** Run `gentle-ai --version` and parse the
+   first token as `MAJOR.MINOR.PATCH` (e.g. `3.7.0`). Compare against the
+   version this NERV release was tested against — `3.7.0`, as stated in
+   this plugin's `README.md`. Print both versions.
+   - Major `!= 3`: print "NERV requires gentle-ai 3.x; found X.Y.Z" and
+     mark status degraded.
+   - Major `== 3` but minor/patch differ from `3.7.0`: print an
+     informational note only.
+   Never block on either case.
 
 4. **Active changes.** If `openspec/changes/` exists in the repo, for each
    active change directory run `gentle-ai sdd-status --json` and list it

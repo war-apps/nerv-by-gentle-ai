@@ -24,11 +24,21 @@
     Remove extraKnownMarketplaces.nerv and enabledPlugins["nerv@nerv"]
     instead of adding them.
 
+.PARAMETER RequireGentleAi
+    Fail the install (exit 1) when gentle-ai is missing from PATH, or when
+    it is present but not major version 3. Without this switch, both cases
+    only print a warning and installation continues — NERV requires
+    gentle-ai 3.x (tested against 3.7.0) but the installer does not enforce
+    it unless asked to.
+
 .EXAMPLE
     pwsh tools/install.ps1
 
 .EXAMPLE
     pwsh tools/install.ps1 -Uninstall
+
+.EXAMPLE
+    pwsh tools/install.ps1 -RequireGentleAi
 #>
 
 [CmdletBinding()]
@@ -37,8 +47,49 @@ param(
 
     [string]$RepoPath = (Split-Path -Parent $PSScriptRoot),
 
-    [switch]$Uninstall
+    [switch]$Uninstall,
+
+    [switch]$RequireGentleAi
 )
+
+# --- gentle-ai version preflight (informational unless -RequireGentleAi) ---
+# NERV requires gentle-ai 3.x (major version 3; tested against 3.7.0).
+$gentleAiVersionOutput = $null
+try {
+    $gentleAiVersionOutput = (gentle-ai --version 2>&1 | Select-Object -First 1) -as [string]
+}
+catch {
+    $gentleAiVersionOutput = $null
+}
+
+if ([string]::IsNullOrWhiteSpace($gentleAiVersionOutput)) {
+    Write-Warning "gentle-ai not found on PATH; NERV requires gentle-ai 3.x (https://github.com/Gentleman-Programming/gentle-ai)"
+    if ($RequireGentleAi) {
+        exit 1
+    }
+}
+else {
+    $versionMatch = [regex]::Match($gentleAiVersionOutput, '(\d+)\.(\d+)\.(\d+)')
+    if ($versionMatch.Success) {
+        $gentleAiVersion = $versionMatch.Value
+        $gentleAiMajor = [int]$versionMatch.Groups[1].Value
+        if ($gentleAiMajor -ne 3) {
+            Write-Warning "NERV requires gentle-ai 3.x; found $gentleAiVersion"
+            if ($RequireGentleAi) {
+                exit 1
+            }
+        }
+        else {
+            Write-Host "gentle-ai version : $gentleAiVersion (tested against 3.7.0)"
+        }
+    }
+    else {
+        Write-Warning "gentle-ai --version returned an unparseable value: $gentleAiVersionOutput"
+        if ($RequireGentleAi) {
+            exit 1
+        }
+    }
+}
 
 $ErrorActionPreference = "Stop"
 
