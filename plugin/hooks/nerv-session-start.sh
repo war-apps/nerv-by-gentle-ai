@@ -19,11 +19,16 @@ main() {
   # Strip CRLF line endings before matching, then check for an "enabled: true"
   # key (allowing surrounding whitespace) on its own line.
   if tr -d '\r' < "$config_file" | grep -Eq '^[[:space:]]*enabled:[[:space:]]*true[[:space:]]*(#.*)?$'; then
-    local skill_file="${CLAUDE_PLUGIN_ROOT}/skills/nerv-orchestrator/SKILL.md"
-    echo "# NERV orchestrator protocol (active: .nerv/nerv.yaml enabled)"
-    if [ -f "$skill_file" ]; then
-      cat "$skill_file"
+    local plugin_root="${CLAUDE_PLUGIN_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
+    local skill_file="${plugin_root}/skills/nerv-orchestrator/SKILL.md"
+
+    if [ ! -r "$skill_file" ]; then
+      echo "nerv-session-start: protocol skill not found at ${skill_file}; injecting nothing" >&2
+      return 0
     fi
+
+    echo "# NERV orchestrator protocol (active: .nerv/nerv.yaml enabled)"
+    cat "$skill_file"
   fi
 
   return 0
