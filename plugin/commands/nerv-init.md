@@ -21,6 +21,15 @@ overwrites silently, and delegates gentle-ai's own bootstrap unchanged.
    resolved from either file. Candidate groups:
    - **Task provider**: `teamwork` | `github-projects` | `jira` | `none`.
      Omit this group entirely if `tasks.provider` already resolves.
+   - **Teamwork project/tasklist** (only when the chosen or already-
+     resolved provider is `teamwork` and `tasks.providers.teamwork.
+     project_id` or `.tasklist_id` is still missing from the project
+     file): project and tasklist, each by id or name. When the Teamwork
+     MCP is reachable, offer to list candidates first
+     (`teamwork_list_projects`, `teamwork_list_tasklists`) so the user
+     picks rather than types raw ids; fall back to free text otherwise.
+     Omit this group when the provider is not `teamwork`, or when both
+     ids already resolve.
    - **Base branch**: free text, defaulting to the current branch's upstream
      default if detectable, else `main`. Omit if `git.base_branch` already
      resolves.
@@ -29,15 +38,22 @@ overwrites silently, and delegates gentle-ai's own bootstrap unchanged.
      them now; mention once that they can be added to `.nerv/nerv.yaml`
      later.
 
+   User-scope-only keys — `tasks.providers.teamwork.assignee_id` and
+   `.stages` — are read from `~/.claude/nerv/nerv.yaml` and are never
+   asked here.
+
    If every required key already resolves, skip the prompt entirely and
    proceed silently to step 4.
 
 4. **Write `.nerv/nerv.yaml`.** Compose the project file with `enabled: true`
    plus the resolved answers, following the schema in the approved NERV
    config (see `skills/nerv-orchestrator/SKILL.md` → Configuration
-   resolution). If `.nerv/nerv.yaml` already exists, do **not** overwrite it
-   without confirmation — show the diff between the existing file and the
-   proposed one, and ask a single yes/no confirmation before writing.
+   resolution) — never the user-scope-only keys
+   (`tasks.providers.teamwork.assignee_id`, `.stages`), which stay in
+   `~/.claude/nerv/nerv.yaml` alone. If `.nerv/nerv.yaml` already exists,
+   do **not** overwrite it without confirmation — show the diff between
+   the existing file and the proposed one, and ask a single yes/no
+   confirmation before writing.
 
 5. **Bootstrap gentle-ai if needed.** If `openspec/config.yaml` or
    `.atl/skill-registry.md` is missing, delegate to the `sdd-init` agent
