@@ -219,7 +219,146 @@ any implementation), and a commit-validation stop per commit in step 12 —
 RDD consent envelopes also apply per commit when the clone-local switch is
 not disabled, same as J1.
 
-## J4: audit and closure (Phase 3), J5: task tracker and single config
-(Phase 4), J6: resume after interruption (Phase 5)
+## J4: audit and closure (Phase 3)
+
+Setup: fresh branch `feature/divide-audit` off the scratch repo's `main`,
+where `feature/multiply-and-ci` (J3's FULL change, `multiply-and-ci`) is
+merged first — so J4 starts from a real `BASE..HEAD` with `Add`,
+`Subtract`, and `Multiply` already present and CI already wired. The
+request seeds a defect deliberately: it asks for a
+`Divide(int a, int b)` method whose task is specified in `tasks.md` as
+"returns `a / b`" with a test plan that omits the division-by-zero case,
+so the audit stage has a real, candidate-caused finding to catch rather
+than a synthetic one.
+
+`gentle-ai review mode disable --scope clone --cwd <repo>` (RDD off in the
+bench clone, as in J1/J3). `.nerv/nerv.yaml` as in Common setup plus
+`critical_paths: [src/Calc/]`: the audit stage lives only in the FULL
+pipeline, and a single-domain `Divide` change would classify LIGHT, so the
+critical-path rule is what forces FULL here.
+
+Prompt (piped to `claude -p --max-turns 250 --allowedTools 'Agent,Bash(git
+*),Bash(dotnet *),Bash(gentle-ai *),Read,Write,Edit,Glob,Grep'`):
+
+> NERV FULL journey — audit and closure (non-interactive harness run).
+> Context the user gives you up front so every gate stays silent: task
+> ref: none; work in place on the current branch feature/divide-audit (no
+> worktree); pace: fast-forward; artifact store: openspec; PR strategy:
+> single-pr; change name: divide-audit; for any corner-case question,
+> choose the most conservative option and record it as the answer; plan
+> approval is pre-granted — proceed past the plan-approval gate once
+> tasks, criticality, votes, and veto rulings are all recorded; the user
+> pre-validates every commit Aoba shows in this run (commit without
+> asking); at the audit issue gate, approve the NOW set exactly as ranked;
+> if a re-audit round reaches the cap of 2, accept the residual and close.
+> Request: add a `Divide(int a, int b)` method to `Calculator` in
+> src/Calc/Calculator.cs that returns `a / b`, with a unit test in
+> tests/Calc.Tests. Follow the NERV orchestrator protocol injected in this
+> session end to end, including the audit and closure stage.
+
+Expected, in order:
+
+1. Classification `FULL`, recorded in `nerv/deliberation-log.md` with the
+   critical-path signal (`src/Calc/` from `critical_paths`); a LIGHT
+   classification here is a regression because the audit stage would never
+   run.
+2. `openspec/changes/divide-audit/state.yaml`, `nerv/test-plan.md` with
+   the `Divide` case present and **no** division-by-zero case (the seeded
+   gap), `tasks.md` with the `Divide` task specified as "returns `a / b`".
+3. Implementation lands `Divide` exactly as specified — no defensive
+   divisor check, since nothing in the plan asked for one — via
+   Kaworu RED → Aoba commit → pilot GREEN → Aoba commit.
+4. `nerv:maya` full gate a→b→c→d green.
+5. Audit stage, round 1:
+   - `nerv:aoba` freezes `nerv/audit/diff-round-1.patch` and
+     `nerv/audit/round-1.yaml` (base = branch point, head = current HEAD).
+   - Five passes launch in one parallel batch, blind:
+     `nerv:melchor`, `nerv:balthasar` (MODE: audit), `nerv:casper`
+     (MODE: audit), `nerv:kaji-security`, `nerv:kaji-coverage`. Each
+     writes its validated JSON to
+     `nerv/audit/pass-<name>-round-1.json`.
+   - Expected finding: `nerv:kaji-coverage` flags the missing
+     division-by-zero case as `CRITICAL`, `evidence_class: deterministic`,
+     `causal_disposition: introduced` (the task specified `a / b` with no
+     guard and the test plan never asked for the zero case — both
+     candidate-caused). `nerv:kaji-security` or `nerv:balthasar` may
+     additionally flag the unchecked divisor (accept either or both;
+     record whichever actually fired).
+   - `nerv:kaji` compiles `nerv/audit-report.md`: the coverage finding
+     listed with `refuter: n/a` (deterministic, no refuter needed); if a
+     second pass also flagged the divisor as an inferential finding, it is
+     listed with `refuter: pending` and included in the round's refuter
+     batch.
+   - If a refuter batch ran, `nerv:kaji-refuter` returns its verdict and
+     Ikari merges the outcome into `audit-report.md`.
+6. `nerv:hyuga` (dispatch c) writes `nerv/issue-ranking.md`: the
+   division-by-zero finding ranked `NOW` (`severity: Critical`,
+   `blast_radius: local`, `verification_cost: cheap`, `owner: shinji` or
+   whichever pilot owns `Calculator`); any WARNING-level companion finding
+   may be `NOW` or `DEFER` per Hyuga's judgment, with a one-line reason
+   either way.
+7. Issue gate: Ikari relays the ranked list as one blocking prompt; the
+   harness pre-approves the NOW set exactly as ranked (`decision:
+   approved-as-ranked` in `issue-ranking.md`'s `## Gate decision`).
+8. Fix routing: the owning pilot fixes the NOW issue through the LIGHT
+   work-unit cycle — `nerv:kaworu` writes a RED test named `DivideByZero`
+   (asserting the documented guard behavior, e.g. a thrown
+   `DivideByZeroException` or a caller-visible error), `nerv:aoba` commits
+   the RED test, the pilot adds the guard, `nerv:aoba` commits the fix,
+   RDD hook runs (no-op, RDD disabled in this bench clone).
+9. Re-audit round 2: `nerv:aoba` freezes
+   `nerv/audit/diff-round-2.patch` scoped to the fix delta only (base =
+   round 1's HEAD); the same five passes run again over that delta; Kaji
+   compiles round 2, carrying forward any round-1 item still unresolved.
+   Expected: no candidate-caused `BLOCKER`/`CRITICAL` remains in round 2
+   — the guard is in place and tested — so the loop ends here, under the
+   cap of 2, without needing `residual_accepted`.
+10. `nerv:ritsuko` (MODE: docs) writes `nerv/issue-resolutions.md` (the
+    division-by-zero item marked `fixed` with the guard commit hash) and
+    `nerv/agent-config.md` (every launch across the whole run, audit
+    passes included).
+11. `sdd-archive` (gentle-ai agent, unchanged) moves the change to
+    `openspec/changes/archive/YYYY-MM-DD-divide-audit/`, `nerv/` folder
+    included.
+12. `nerv:fuyutsuki` (MODE: curate) appends a `## Summary` block to the
+    top of `nerv/deliberation-log.md`.
+13. `nerv:aoba` writes `nerv/run-summary.md` (agents table including every
+    audit-pass and refuter launch, commits including the RED/fix pair,
+    no PR slices since the strategy is `single-pr`).
+14. Close.
+
+Expected artifacts, in creation order: `state.yaml`, `exploration*.md`,
+`specs/`, `nerv/test-plan.md`, `proposal.md`, `design.md`, `tasks.md`,
+(FULL-only: `nerv/criticality.md`, `nerv/votes.md`, `nerv/veto-ruling.md`,
+`nerv/waves.md`), `nerv/maya-report.md`, `nerv/audit/diff-round-1.patch`,
+`nerv/audit/round-1.yaml`, `nerv/audit/pass-<name>-round-1.json` ×5,
+`nerv/audit-report.md`, `nerv/issue-ranking.md`,
+`nerv/audit/diff-round-2.patch`, `nerv/audit/round-2.yaml`,
+`nerv/audit/pass-<name>-round-2.json` ×5 (updated `audit-report.md`),
+`nerv/issue-resolutions.md`, `nerv/agent-config.md`,
+`nerv/run-summary.md`.
+
+Expected log events, in order (Phase 1/2 event types included where the
+run's own classification exercises them, plus every Phase 3 event type):
+`classification`, `launch`, `envelope`, ..., `patch_frozen` (round 1),
+`audit_pass` ×5 (round 1), `dedupe_merge` (if any), `refuter_result` (if
+any), `ranking_issued`, `issue_gate_relayed`, `issue_gate_decision`,
+`fix_routed`, `commit_recorded` (RED and fix), `reaudit` (round 2),
+`patch_frozen` (round 2), `audit_pass` ×5 (round 2), `ranking_issued`
+(round 2, empty NOW set) or its equivalent closure signal, `docs_written`,
+`archived`, `log_curated`, `stop`/close. No `residual_accepted` entry is
+expected in this journey since round 2 resolves clean under the cap.
+
+Non-interactive prompt gates pre-answered, matching J3's list plus two
+audit-stage additions: task/worktree/branch/base (J1), corner-case
+questions answered conservatively (J3), plan approval pre-granted (J3),
+every Aoba commit pre-validated (J1/J3), **issue gate: approve the NOW set
+exactly as ranked**, and **at the re-audit cap: accept the residual and
+close** (not exercised in the expected happy path above, but must be
+present in the harness prompt so the run does not stall if round 2 finds
+something new).
+
+## J5: task tracker and single config (Phase 4), J6: resume after
+interruption (Phase 5)
 
 To be written with their phases.
