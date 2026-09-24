@@ -104,11 +104,18 @@ The schema above is mode-agnostic; in `full` mode (FULL pipeline, step 12
 of `nerv-orchestrator/SKILL.md`) phases gate each other strictly:
 `b` does not start until `a` is green, `c` until `b` is green, `d` until
 `c` is green. A failure at any phase stops the gate there — it never
-continues to the next phase on a red result. Each failure in the
-`## Failures` table routes `impl-wrong` back to the owning pilot or
-`spec-wrong` back to Misato (`misato-revise`); a failure Maya cannot
-classify is reported `ambiguous` and resolved by exactly one Misato ruling
-before any user escalation, per the Bounded loops table.
+continues to the next phase on a red result. The full gate (mode `full`)
+runs once, after the last wave closes, over the whole change diff
+(base..HEAD) — never per wave. Each failure in the `## Failures` table
+routes `impl-wrong` back to the owning pilot (code, not plan — no
+unfreeze needed) or `spec-wrong` to Misato as a binding ruling (`MODE:
+ruling`, source `maya`), which applies the unfreeze design rule: unfreeze
+the owning task (`unfrozen_by_ruling`), a scoped revision of its
+tests/spec via Kaworu, a re-vote of that task alone, then re-freeze; a
+failure Maya cannot classify is reported `ambiguous` and resolved by
+exactly one Misato ruling (also `MODE: ruling`, no unfreeze unless the
+ruling names one) before any user escalation, per the Bounded loops
+table.
 
 ## run-summary.md (Aoba)
 
@@ -201,7 +208,9 @@ FULL adds these event types to the same append-only log, same shape
 - `deviation` — a pilot or Hyuga signaled a wave deviation
   (`scope|dependency|blocked`) requiring a Misato ruling.
 - `ruling_issued` — Misato recorded a binding ruling (from a Hyuga
-  deviation or a Maya `ambiguous` failure).
+  deviation, a Maya `spec-wrong` failure, or a Maya `ambiguous` failure).
+  Payload carries `unfreezes: task_ids[]` — the frozen task(s), if any,
+  the ruling reopened via `unfrozen_by_ruling`.
 
 ## gentle-ai-owned artifacts authored by NERV roles
 
@@ -307,6 +316,8 @@ result: approved\|rejected
 rule: unanimous\|majority-2:1
 round: {n}
 frozen: true\|false
+unfrozen_by_ruling: {ruling_id}   # optional, per task — present only when a
+                                  # binding Misato ruling reopened this task
 ```
 
 Repeat the `### {task_id}` block per task in scope for the round; repeat

@@ -190,8 +190,8 @@ implementation on top of the LIGHT primitives (RED/GREEN/REFACTOR, Aoba
 commits, the RDD hook, usage collection, the deliberation log — all reused
 unchanged, see the LIGHT pipeline above). Kaji's 5-pass audit, issue
 ranking, and the fix-routing loop are **not shipped in this build**; once
-Maya's full gate is green, the run goes straight to Aoba's run summary and
-close, and Ikari states plainly that the audit stage is not shipped yet
+every wave is closed and Maya's full gate is green, the run goes straight
+to Aoba's run summary and close, and Ikari states plainly that the audit stage is not shipped yet
 (Phase 3). Never silently skip a step in the table below or downgrade FULL
 to LIGHT mid-run.
 
@@ -207,8 +207,8 @@ to LIGHT mid-run.
 | 8. Plan approval | Ikari relays | tasks with criticality, vote results, veto rulings, test-plan summary | user decision logged | **user HARD** — no implementation before this gate |
 | 9. Waves | `nerv:hyuga` (dispatch b) | frozen `tasks.md`, `votes.md` | `nerv/waves.md` (`tasks.md` is never mutated) | gatekeeper |
 | 10. Baseline | `nerv:maya` (MODE: full, phase 0) | change scope | `nerv/maya-report.md` baseline | gatekeeper |
-| 11. Implementation wave N | `nerv:kaworu` (RED) → `nerv:aoba` (commit, user validates) → assigned pilot (GREEN/TRIANGULATE/REFACTOR) → `nerv:aoba` (commit, user validates) → RDD hook | wave task, skills, TDD mode+runner, `commit_ref` | code + TDD evidence rows | pilots in a wave may run in one parallel batch when their tasks are independent; deviations → `nerv:hyuga` deviation → `nerv:misato` ruling |
-| 12. Maya full gate a→b→c→d | `nerv:maya` (MODE: full) | wave diff | `nerv/maya-report.md` phases a-d, each green before the next starts | obvious failures routed `impl-wrong`/`spec-wrong`; a failure Maya cannot classify is `ambiguous` → one Misato ruling → user only if a product decision is needed |
+| 11. Implementation wave N | `nerv:kaworu` (RED) → `nerv:aoba` (commit, user validates) → assigned pilot (GREEN/TRIANGULATE/REFACTOR) → `nerv:aoba` (commit, user validates) → RDD hook | wave task, skills, TDD mode+runner, `commit_ref` | code + TDD evidence rows | repeat for every wave in `waves.md` in dependency order; a wave starts only when every wave it depends on is closed with a `wave_report`; the loop terminates when the last wave is closed; pilots in a wave may run in one parallel batch when their tasks are independent; deviations → `nerv:hyuga` deviation → `nerv:misato` ruling |
+| 12. Maya full gate a→b→c→d | `nerv:maya` (MODE: full) | full change diff (base..HEAD), gathered once after the last wave closes — never per wave | `nerv/maya-report.md` phases a-d, each green before the next starts | `impl-wrong` → owning pilot; `spec-wrong` → Misato as a binding ruling (`MODE: ruling`, source `maya`); `ambiguous` → one Misato ruling → user only if a product decision is needed |
 | 13. Audit placeholder | Ikari | — | plain statement to the user: the audit stage (Kaji, 5 passes, ranking, issue gate) is not shipped in this build (Phase 3) | none |
 | 14. Run summary | `nerv:aoba` | usage table from Ikari | `nerv/run-summary.md` | none |
 | 15. Close | Ikari (`nerv:hyuga` dispatch d in Phase 4) | — | change closed | none |
@@ -319,8 +319,18 @@ a task with an unmet dependency waits for its dependency wave to close
 first. If a pilot or Hyuga discovers mid-wave that a task's scope,
 dependency, or execution does not match what `waves.md` assumed, it
 signals a `deviation` (`scope|dependency|blocked`) instead of guessing —
-routed to Misato for a binding `ruling_issued`; only non-frozen tasks may
-change as a result of that ruling. The RDD per-commit relay (see
+routed to Misato for a binding ruling (`MODE: ruling`). A binding Misato
+ruling is the only legal way to reopen a frozen task: it may mark the
+affected task `unfrozen_by_ruling: <ruling_id>`, which returns that task
+alone to Misato for a scoped revision (`MODE: revise`) limited to what the
+ruling names; the revised task is re-voted alone at the MAGI vote step
+(the re-vote counts toward that task's cap of 2) and is re-frozen once
+approved. Every other frozen task, in this wave or any other, stays
+frozen and untouched. The wave containing the unfrozen task pauses until
+it is re-frozen, and Hyuga re-emits `waves.md` if the ruling changed the
+task's dependencies. The unfreeze is logged as a `ruling_issued` event
+(carrying `unfreezes: [task_id]`) plus the resulting `vote_result` event.
+The RDD per-commit relay (see
 `## RDD relay` above) and the delivery-budget tracking (see `## Delivery`
 above) apply identically inside FULL waves as they do in LIGHT — there is
 no separate FULL-only commit or budget mechanism.
