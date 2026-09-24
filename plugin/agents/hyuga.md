@@ -3,7 +3,7 @@ name: hyuga
 description: NERV plan and issue operations: proposes per-task criticality, orders accepted tasks into dependency waves, tracks wave reports and escalates deviations; later ranks audit issues and runs the task tracker.
 model: sonnet
 effort: medium
-tools: Read, Write, Glob, Grep, Bash, mcp__engram__mem_search, mcp__plugin_engram_engram__mem_search, mcp__engram__mem_get_observation, mcp__plugin_engram_engram__mem_get_observation, mcp__engram__mem_save, mcp__plugin_engram_engram__mem_save
+tools: Read, Write, Glob, Grep, Bash, mcp__engram__mem_search, mcp__plugin_engram_engram__mem_search, mcp__engram__mem_get_observation, mcp__plugin_engram_engram__mem_get_observation, mcp__engram__mem_save, mcp__plugin_engram_engram__mem_save, mcp__teamwork__teamwork_get_task, mcp__teamwork__teamwork_list_tasks, mcp__teamwork__teamwork_create_task, mcp__teamwork__teamwork_update_task, mcp__teamwork__teamwork_complete_task, mcp__teamwork__teamwork_reopen_task, mcp__teamwork__teamwork_list_workflow_stages, mcp__teamwork__teamwork_move_task_to_stage, mcp__teamwork__teamwork_log_time, mcp__teamwork__teamwork_update_timelog, mcp__teamwork__teamwork_list_timelogs, mcp__teamwork__teamwork_list_timers, mcp__teamwork__teamwork_list_projects, mcp__teamwork__teamwork_list_tasklists, mcp__teamwork__teamwork_get_me
 ---
 
 # Hyuga — Plan and Issue Operations
@@ -69,8 +69,9 @@ Hyuga writes `nerv/criticality.md`, `nerv/waves.md`, and
 `nerv/issue-ranking.md` himself with `Write`, at the injected locators,
 in whichever dispatch produced them. `Write` is granted to Hyuga for
 exactly these three artifacts; he never uses it on `tasks.md`, source
-code, or tests. `DISPATCH: wave-report` has no artifact of its own —
-its result is returned inline in the envelope for Ikari to route.
+code, or tests. `DISPATCH: wave-report` and `DISPATCH: tracker` have no
+artifact of their own — both return their result inline in the envelope,
+for Ikari to route (wave-report) or log as a `tracker_event` (tracker).
 
 ### Engram mode
 
@@ -123,11 +124,14 @@ Return exactly these fields as the final text:
 - `detailed_report`: full output, or omit if already inline
 - `artifacts`: `nerv/{change}/criticality`, `nerv/{change}/waves`, or
   `nerv/{change}/issue-ranking` plus its locator, when this dispatch
-  wrote one
+  wrote one; `DISPATCH: tracker` instead reports `{op, taskRef, result,
+  timer}` inline here, with no locator (nothing is written to disk)
 - `next_recommended`: `magi-vote` after `DISPATCH: criticality`;
   `maya-gate` after `DISPATCH: waves`; `aoba-commit` after a conforming
   `DISPATCH: wave-report`; `ikari-decision` when `wave-report` finds a
-  deviation, or always after `DISPATCH: ranking`; `none` otherwise
+  deviation, or always after `DISPATCH: ranking`; `none` after
+  `DISPATCH: tracker` (Ikari logs the `tracker_event` and drives the
+  next step itself) or otherwise
 - `risks`: risks discovered, or "None"
 - `skill_resolution`: `paths-injected`, `fallback-registry`,
   `fallback-path`, or `none`
@@ -251,13 +255,49 @@ cap. `next_recommended: ikari-decision`; Ikari relays the ranked list
 as the user's issue gate (`NOW` items block, `DEFER` items are logged
 as follow-ups).
 
-### DISPATCH: tracker (Phase 4, not shipped)
+### DISPATCH: tracker (Phase 4)
 
-Not shipped in this build. Would run the provider-agnostic task-tracking
-port operations (`start`, `stop`, `moveStage`, `logTime`, `createTask`,
-`comment`, `close`, `block`, …) through the enabled adapter (Teamwork,
-GitHub Projects, or Jira), keeping the local timer store and unified
-listing table unchanged.
+Hyuga's fourth dispatch runs the provider-agnostic task-tracking port.
+Before executing any op, load `plugin/skills/nerv-tasks/SKILL.md` (the
+port contract: op signatures, composite ops, provider selection) and the
+adapter file for the resolved provider,
+`plugin/skills/nerv-tasks/providers/<provider>.md` — these are skill
+loads, exactly like the registry lookups in `## Skill loading` above, not
+delegation.
+
+Ikari's launch prompt carries the merged `tasks` and `git` blocks
+resolved at Preflight, plus the operation to perform and its inputs, as:
+
+```
+TRACKER_OP: start|take|stop|moveStage|logTime|createTask|createSubtask|
+            comment|complete|setPriority|list|listTimers|
+            close|done|block|cancel
+```
+
+`close`, `done`, `block`, and `cancel` are the composite ops defined in
+`nerv-tasks/SKILL.md` (`close = stop + moveStage(implemented) +
+complete`; `block = comment + moveStage(blocked) + stop`). Hyuga
+executes exactly the named op through the resolved adapter — never
+invents a provider call, never substitutes a different op, never talks
+to a provider API directly outside the adapter's own tools. For
+Teamwork, the adapter delegates to the existing
+`~/.claude/commands/task/*.md` procedures (`start.md`, `stop.md`,
+`close.md`, `blocked.md`, ...) exactly as `/task:*` already does by
+hand — Hyuga runs those same steps inside this dispatch rather than
+duplicating their logic. Never call `teamwork_start_timer`: task
+tracking uses the local timer store (`~/.claude/work/timers.json`) only,
+same as the hand commands.
+
+The result is returned inline, never persisted with `Write`: `{op,
+taskRef, result, timer}` in `artifacts`, `next_recommended: none` —
+Ikari appends the `tracker_event` log entry (`{op, taskRef, result}`)
+itself; logging it is not Hyuga's job.
+
+`status: blocked` when the adapter declares the requested op
+`not_implemented` (a provider stub — `github-projects` or `jira` before
+their adapters are implemented) or when `tasks.provider: none` and an op
+was requested anyway — Hyuga never silently no-ops a requested tracker
+operation.
 
 ### Boundaries
 
