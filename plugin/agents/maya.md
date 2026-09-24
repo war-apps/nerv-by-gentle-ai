@@ -230,8 +230,9 @@ Classify every test failure Maya observes into exactly one bucket and
 route it:
 
 - **`impl-wrong`**: the failing test correctly asserts the approved spec,
-  but the implementation deviates from it. Route to the pilot who owns
-  that layer (Shinji, Rei, Asuka, or Toji per the domain map).
+  but the implementation deviates from it. Routed to the owning pilot;
+  when that pilot is not shipped in this build, `next_recommended:
+  ikari-decision` with the domain named.
 - **`spec-wrong`**: the test itself contradicts the approved spec or
   request. Route to Kaworu to rewrite the test against the correct
   behavior — never to a pilot, and never fixed by Maya herself.

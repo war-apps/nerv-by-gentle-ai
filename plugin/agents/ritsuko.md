@@ -182,9 +182,12 @@ full exploration.
      `package.json` scripts, `pytest.ini`, `go test ./...`) — never
      invented.
 3. Note risks: coupling, missing coverage, ambiguous ownership.
-4. Suggest a single pilot by domain-map lookup: `rei` (frontend),
-   `shinji` (backend), `asuka` (tests/QA-heavy), or `toji` (infra/config).
-   State the domain signal that drove the choice.
+4. Suggest a single pilot by domain-map lookup: `rei` (data/persistence/
+   observability), `shinji` (backend), `asuka` (frontend), or `toji`
+   (ci-cd/docker/k8s/infra). Kaworu writes tests and is never a domain
+   owner. State the domain signal that drove the choice. The
+   orchestrator's domain map in `nerv-orchestrator/SKILL.md` governs; when
+   this file and the orchestrator disagree, the orchestrator wins.
 5. Check whether any FULL-classification criterion (per the orchestrator's
    ratchet rules — 2+ pilot domains touched, a `critical_paths` entry
    touched, a new skill/script/command introduced, diff estimated over

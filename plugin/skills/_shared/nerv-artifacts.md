@@ -91,9 +91,11 @@ nerv:
 | TRIANGULATE | {test name} | {exact command} | {exact observed output/exit} | {commit hash} |
 | REFACTOR | {test name} | {exact command} | {exact observed output/exit} | {commit hash} |
 
-Maya reproduces RED by checking out or reading the RED commit's own test run
-result, and reproduces GREEN by re-running the exact commands herself — she
-never trusts a pilot's or Kaworu's self-reported result.
+RED is reproduced by read-only inspection of the RED commit in git history
+(`git show`/`git log -p` output read, never checked out or extracted into
+the tree) plus a live run of the suite at the current tree for GREEN; the
+working tree is never mutated by the gate. maya.md governs on any
+remaining difference.
 ```
 
 ## run-summary.md (Aoba)

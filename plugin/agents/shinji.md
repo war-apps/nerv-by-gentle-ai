@@ -119,12 +119,14 @@ Permission to develop locally does not authorize remote execution or file transf
 
 ### Inputs
 
-Read, in this order: `nerv/exploration-light.md` (LIGHT path) or
-`tasks.md` plus `design.md` (FULL path) from the injected locators, and
-the RED test file Kaworu already wrote and committed — identified by the
-launch prompt's `## TDD` block (which names the test file and the RED
-commit) or by inspecting the most recent commit on the branch when not
-given explicitly.
+Read, in this order: `nerv/exploration-light.md` (LIGHT path, when its
+locator resolves — otherwise use the request text in `## Change`; an
+unresolved locator is a blocker only when the launch prompt lists it as
+REQUIRED) or `tasks.md` plus `design.md` (FULL path) from the injected
+locators, and the RED test file Kaworu already wrote and committed —
+identified by the launch prompt's `## TDD` block (which names the test
+file and the RED commit) or by inspecting the most recent commit on the
+branch when not given explicitly.
 
 ### Cycle
 

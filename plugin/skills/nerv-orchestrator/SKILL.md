@@ -45,8 +45,10 @@ carries "Do NOT delegate" in its own file and has no Agent tool access.
   never through Ikari's own tool calls.
 - Ikari's own writes are limited to mechanical bookkeeping: `.nerv/nerv.yaml`
   (only when the user asks to persist preflight answers), the change's
-  `state.yaml`, and appending to `nerv/deliberation-log.md`. NERV does not
-  use `odd/`-style task tracking — the NERV change folder under
+  `state.yaml`, appending to `nerv/deliberation-log.md`, and any artifact
+  returned in the envelope of a read-only agent (Ritsuko), written verbatim
+  to its resolved locator when the store is openspec or hybrid. NERV does
+  not use `odd/`-style task tracking — the NERV change folder under
   `openspec/changes/{change}/` is the tracking surface.
 - Ikari relays every user-facing gate verbatim — consent envelopes, blocking
   prompts, ranked issue gates. It never answers one on the user's behalf,
@@ -141,6 +143,14 @@ Anything else is **LIGHT**.
 backend, asuka → frontend, toji → ci-cd/docker/k8s/infra, kaworu → tests
 (RED writer, every work unit under strict TDD, not a domain owner).
 
+**Unshipped pilots.** In this build only `nerv:shinji` and `nerv:kaworu`
+exist as pilots. When classification maps the work to rei, asuka or toji,
+Ikari stops with one blocking prompt offering exactly two choices: proceed
+with `nerv:shinji` as the pilot with explicit acknowledgement that the
+domain owner is not shipped yet, or stop. Never launch an agent that is
+not installed; a launch failure for a missing agent type is a stop, not a
+retry.
+
 **Ratchet (one-way).** If any actor mid-LIGHT discovers a FULL criterion
 (a second domain appears, a critical path is touched, a skill/script/command
 turns out to be needed, the diff balloons), that actor halts further
@@ -155,7 +165,7 @@ same change.
 |---|---|---|---|---|
 | 1. Preflight | Ikari, Aoba | — | worktree/branch state | user HARD if asked |
 | 2. Classify | Ikari | — | LIGHT decision recorded in log | none |
-| 3. Micro-intel (optional) | Ritsuko | touched-file locators, skills | short findings, no persisted artifact required | gatekeeper |
+| 3. Micro-intel (optional) | Ritsuko | touched-file locators, skills | envelope carrying exploration-light.md; Ikari writes it to its locator; downstream steps read it when present | gatekeeper |
 | 4. RED | Kaworu | change/task locators, skills, TDD mode+runner, commit_ref | failing test(s), commit | user validates commit |
 | 5. GREEN/REFACTOR | one pilot (domain-matched) | same + RED commit ref | passing code, TDD evidence rows | gatekeeper |
 | 6. Reduced quality gate | Maya | touched test/lint/build scope only | `maya-report.md` (reduced-mode note) | obvious fail → back to pilot; ambiguous → Ikari asks user |
@@ -164,6 +174,10 @@ same change.
 | — repeat 4-8 per work unit — | | | | |
 | 9. Run summary | Aoba | usage table from Ikari | `nerv/run-summary.md` | none |
 | 10. Close | Ikari (Hyuga in Phase 4) | — | change closed / tracker updated | none |
+
+When micro-intel is skipped, steps 4-6 receive the request text in
+`## Change` instead, and pilots must not report the missing
+exploration-light.md as a blocker.
 
 Pilot selection for step 5 is automatic from the touched-file domain; the
 user may override it when validating the step-7 commit. Maya's reduced mode
@@ -339,6 +353,8 @@ If the user says `nerv ping`, launch `nerv:aoba` with the exact prompt
 ## Phase note
 
 This is the Phase 1 build: LIGHT path only (Ritsuko micro-intel, Kaworu,
-one pilot, Maya reduced gate, Aoba). MAGI (Balthasar, Melchor, Casper),
-Fuyutsuki's governance veto, Kaji's audit compilation, and Hyuga's
-criticality/waves/ranking/tracker dispatches arrive in Phases 2-4.
+one pilot — only `nerv:shinji` ships — Maya reduced gate, Aoba). Rei,
+Asuka and Toji (the remaining pilot domains), MAGI (Balthasar,
+Melchor, Casper), Fuyutsuki's governance veto, Kaji's audit compilation,
+and Hyuga's criticality/waves/ranking/tracker dispatches arrive in
+Phase 2-4.
