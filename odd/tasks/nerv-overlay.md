@@ -33,7 +33,7 @@ NERV existed only as a text spec. gentle-ai has the infrastructure NERV lacks (S
   - (5) OBSERVED: `gentle-ai sync --dry-run` lists managed components engram, sdd, skills, context7, permissions, gga, claude-theme, opencode-gentle-logo, persona; no `plugins/` path. Combined with the embedded asset tree in `internal/assets/assets.go` (mapped earlier), the plugin cache is outside sync's reach. PASS by construction (no live sync run against the user's config).
   - (1)/(2) FIRST ATTEMPT FAILED, root cause found: two fresh `claude -p` sessions (bench repo with marker, scratch repo without) both answered "NO / none". `installed_plugins.json` shows `nerv@nerv` cached from `gitCommitSha` 4afa8e0 (the empty initial commit) into `cache/nerv/nerv/0.1.0`, which does not exist. Claude Code snapshots directory marketplaces from the committed HEAD, not the working tree. Fix: commit the scaffold, then `claude plugin update nerv@nerv`, then re-run (1)/(2)/(4). Documented in README "Updating after local changes".
   - `settings.json` after `tools/install.ps1`: semantically identical to the backup plus the two NERV keys (PowerShell object comparison, 57102 chars both). Installer re-run after the folder rename updated the marketplace path idempotently. T0.3 PASS.
-- [ ] T0.5 Work-unit commits on `feature/phase-0-overlay`; push only after user OK.
+- [x] T0.5 Work-unit commits on `feature/phase-0-overlay` (1d74db9 feat, 15b9b76 fix, 2d2e402 docs, 390db21 fix, plus the closing docs commit). RDD receipt: successor lineage `review-60bd7d4e4202af9e-r1` validated by the provider targeted validator → `approved`; acknowledged with the exact token → `gentle-ai.review-acknowledged/v1`, `authority: burned` (2026-09-24). Push pending user OK.
   - Commit 1d74db9 `feat: bootstrap NERV plugin overlay (phase 0)` (773 lines, 11 files).
   - RDD (switch on globally): `review assess --base-ref develop --committed-only` → risk **high** (shell script in the hook), `review_due: high_risk`. Consent envelope relayed; user chose **granted**. Lineage `review-60bd7d4e4202af9e`, 4 lenses, correction budget 200.
   - Lenses: risk, resilience, readability admitted. reliability failed twice (attempt 1: reviewer result rejected by schema, finding without proof reference; attempt 2 and relaunch: model provider safeguards refused the reviewer message: provider issue, not gentle-ai). Declared `unachievable_lens_slot` (`provider_safeguard_refusal`); user chose to retry once; withdrew the declaration; third launch admitted.
@@ -67,10 +67,22 @@ NERV existed only as a text spec. gentle-ai has the infrastructure NERV lacks (S
 ### Phase 5: hardening
 - [ ] T5.1 `bench/journeys.md` complete, README, installer parity, memory note.
 
+## Follow-ups from the Phase 0 review (advisory, non-blocking, 37 items)
+
+The approved receipt lists 37 informational findings (16 WARNING, 21 SUGGESTION). None reopens the review. Worth scheduling in Phase 1 or Phase 5:
+
+- Hook: activation regex ignores YAML structure (indented `enabled: true` under another key activates); no end marker after the injected protocol; silent-on-missing-skill only on stderr (`R1-activation-regex-ignores-yaml-structure`, `R4-injection-has-no-end-marker`, `R2-hook-silent-missing-skill`, `R3-indented-activation-pinned-not-fixed`).
+- Installer: settings round-trip through ConvertFrom/ConvertTo-Json verified for syntax, not fidelity; backups unbounded and plaintext; lost-update window between read and swap; uninstall of the marketplace not idempotent; `-Uninstall` untested by the suite (`R1-lossy-settings-roundtrip-verified-as-clean`, `R1-unbounded-plaintext-settings-backups`, `R4-installer-lost-update-and-restore-clobber`, `R3-installer-untested`, `R4-verify-checks-syntax-not-fidelity`, `R2-ensure-property-always-true`, `R2-changed-flag-overreports`, `R2-powershell-unapproved-verb`).
+- Aoba: unrestricted Bash on a globally visible agent; frozen-patch base interpolation unvalidated; ping mode buried at the end; `next_recommended` tokens not yet backed by a consumer; "400 lines" unexplained (`R1-global-agent-unrestricted-bash`, `R1-frozen-patch-unvalidated-base-interpolation`, `R2-aoba-ping-mode-buried`, `R2-aoba-next-recommended-unbacked`, `R2-magic-400-lines-unexplained`).
+- Docs and metadata: absolute Windows paths and account details in this task file; internal Teamwork ids in README; marketplace description duplicated; version string duplicated in `nerv-status`; protocol stub has two Phase 0 sources; `/nerv:status` failure path undefined (`R1-committed-local-path-account-disclosure`, `R2-task-file-absolute-windows-path`, `R1-internal-tracker-ids-in-readme`, `R2-marketplace-description-duplicated`, `R2-nerv-status-version-duplication`, `R2-phase0-stub-two-sources`, `R4-status-command-undefined-failure-path`, `R2-orchestrator-skill-supersedes-claude-md`, `R2-readme-*`).
+- Tests: exit capture judged fragile, `set -u` without `-e`, only the happy plugin root pinned (`R2-test-exit-capture-fragile`, `R2-test-set-u-without-e`, `R4-tests-pin-only-the-happy-plugin-root`, `R2-test-case7-pins-surprising-behavior`).
+- `.gitignore` should cover installer backups (`R2-gitignore-omits-installer-backups`).
+
 ## Progress log
 
 - 2026-09-24: plan approved; repo and remote created; Phase 0 started.
+- 2026-09-24: Phase 0 complete. Overlay proven end to end (protocol injected only with the marker, `nerv:aoba` listed and answering the ping on its declared model, `sdd-preflight-hook` passes NERV agents, `sdd-status` tolerates `nerv/`, sync never touches the plugin cache). RDD review granted, one provider-caused lens failure recovered, two bounded corrections, receipt acknowledged. Repo renamed to `war-apps/nerv-gentle-ai`.
 
 ## Next step
 
-T0.2 scaffold via delegated writer.
+User OK to push `feature/phase-0-overlay` to `origin`. Then Phase 1 (LIGHT path): T1.1 full orchestrator protocol.
