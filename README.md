@@ -47,8 +47,11 @@ Claude Code snapshots a directory marketplace from the repository's
 edits are invisible to sessions. After changing plugin files:
 
 1. Commit the change.
-2. Run `claude plugin update nerv@nerv` (or bump `version` in
-   `plugin/.claude-plugin/plugin.json` and reinstall).
+2. Refresh the cache. `claude plugin update nerv@nerv` only re-snapshots
+   when `version` in `plugin/.claude-plugin/plugin.json` changed; with the
+   same version run `claude plugin uninstall nerv@nerv` followed by
+   `claude plugin install nerv@nerv` (settings.json keeps `nerv@nerv`
+   enabled, so nothing else changes).
 3. Restart Claude Code.
 
 ## Phase 0 status
