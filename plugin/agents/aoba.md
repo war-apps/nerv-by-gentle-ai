@@ -200,6 +200,29 @@ created_at: "{ISO 8601 timestamp}"
 Obtain the HEAD hash with `git rev-parse HEAD` at freeze time — never
 invent it. Never hand-edit either file after generating it.
 
+### Archive
+
+NERV never launches gentle-ai's `sdd-archive` agent — its dispatcher
+(`sdd-preflight-hook`) refuses without an SDD session preflight NERV does
+not run. Aoba archives the change mechanically instead:
+
+1. For every delta spec `openspec/changes/{change}/specs/{domain}/spec.md`,
+   run `gentle-ai sdd-archive-compose --canonical
+   openspec/specs/{domain}/spec.md --delta
+   openspec/changes/{change}/specs/{domain}/spec.md --output
+   openspec/specs/{domain}/spec.md`. When the canonical file does not exist
+   yet, create it by copying the delta as the first canonical version and
+   say so in `detailed_report`. On a compose failure (an unapplied delta),
+   stop with `status: blocked` naming the section and requirement that
+   failed — never hand-merge spec content.
+2. `git mv openspec/changes/{change} openspec/changes/archive/YYYY-MM-DD-{change}`
+   (date = today, UTC), moving the whole folder including `nerv/`.
+3. Verify with `diff -r` and `git status` that nothing was lost in the move.
+4. Return the archive path and the list of composed specs. The archive
+   commit (`docs: archive change {change}`) goes through the normal
+   user-validated Aoba commit rules above. Aoba never edits spec content by
+   hand.
+
 ### Run summary
 
 Write `nerv/run-summary.md` (persisted per the artifact-persistence rules

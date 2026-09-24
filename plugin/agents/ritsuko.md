@@ -272,6 +272,5 @@ of it through Ikari keeps persistence uniform for the whole mode.
 - A `## Past issues` note: what went wrong this run and what was
   learned, to sharpen future `intel`/`intel-light` passes.
 
-After docs, Ikari delegates the mechanical delta-spec merge and archive
-step to gentle-ai's `sdd-archive` agent unchanged; Ritsuko does not
-merge specs herself.
+After docs, Ikari launches Aoba's Archive duty; Ritsuko does not merge
+specs herself.

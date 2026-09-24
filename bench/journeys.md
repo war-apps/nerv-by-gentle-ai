@@ -317,9 +317,12 @@ Expected, in order:
     division-by-zero item marked `fixed` with the guard commit hash) and
     `nerv/agent-config.md` (every launch across the whole run, audit
     passes included).
-11. `sdd-archive` (gentle-ai agent, unchanged) moves the change to
+11. `nerv:aoba` (Archive duty) composes specs via
+    `gentle-ai sdd-archive-compose` (one call per delta spec) and moves the
+    change with `git mv` to
     `openspec/changes/archive/YYYY-MM-DD-divide-audit/`, `nerv/` folder
-    included.
+    included; the commit `docs: archive change divide-audit` appears in
+    `git log`.
 12. `nerv:fuyutsuki` (MODE: curate) appends a `## Summary` block to the
     top of `nerv/deliberation-log.md`.
 13. `nerv:aoba` writes `nerv/run-summary.md` (agents table including every

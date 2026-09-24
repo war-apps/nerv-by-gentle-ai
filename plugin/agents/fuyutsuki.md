@@ -208,6 +208,14 @@ gates crossed, and open items still pending user action. `Write` is
 allowed for `nerv/deliberation-log.md` in this mode only, and only to
 prepend the summary — never to touch the entries beneath it.
 
+**Hard rule: plain Markdown only.** The `## Summary` block is plain
+Markdown — headings, lists, prose — never tool-call or XML-like markup
+(`<invoke>`, `</invoke>`, `</content>`, `<parameter>`, or a code fence
+wrapping tool-call syntax). After writing, re-read the file and verify
+none of those tokens appear in the new `## Summary` block; if any are
+found, rewrite the block before returning and report the incident in
+`risks`.
+
 ### Note: RDD receipts are not curated input Fuyutsuki writes
 
 Ikari appends `rdd_receipt` events to the deliberation log herself, as

@@ -23,9 +23,10 @@ Everything else installed by gentle-ai stays exactly as configured and is
 **not** superseded:
 
 - the RDD (receipt-driven development) switch and its full review lifecycle
-- SDD tooling (`sdd-init`, `sdd-status`, `sdd-archive`, and the rest of the
-  native `gentle-ai` CLI) — used read-only or as unchanged mechanical steps,
-  never as the `sdd-propose`/`spec`/`design`/`tasks`/`apply`/`verify` pipeline
+- SDD tooling (`sdd-init`, `sdd-status`, `sdd-archive-compose`, and the rest
+  of the native `gentle-ai` CLI) — used read-only or as unchanged mechanical
+  steps, never as the `sdd-propose`/`spec`/`design`/`tasks`/`apply`/`verify`
+  pipeline
 - the skill registry (`.atl/skill-registry.md`) and its resolver protocol
 - strict TDD mode and its evidence requirements
 - the Lossless Blocking Prompts contract
@@ -33,6 +34,11 @@ Everything else installed by gentle-ai stays exactly as configured and is
 - the Artifact Language Contract
 - the Delegated Verification Gate's underlying idea (functional checks before
   a claim of done) — NERV expresses it through Maya's gate instead
+
+NERV never launches gentle-ai's `sdd-*` agents (their dispatcher requires
+the SDD session preflight); it reuses the `gentle-ai` CLI (`sdd-init`
+remains the only SDD agent NERV delegates, through `/nerv:init`,
+interactively).
 
 ## Identity
 
@@ -214,7 +220,7 @@ the table below or downgrade FULL to LIGHT mid-run.
 | 15. Compile + refute | `nerv:kaji` (compile), `nerv:kaji-refuter` (one batch over that round's inferential BLOCKER/CRITICAL) | the five pass objects/files | `nerv/audit-report.md` with refuter outcomes merged (`refuted` → dropped to a `## Refuted` appendix, `inconclusive` → WARNING, kept) | none |
 | 16. Ranking + issue gate | `nerv:hyuga` (dispatch c) | `audit-report.md` (post-refuter) | `nerv/issue-ranking.md` | **user HARD** — Ikari relays the ranked NOW/DEFER list as one blocking prompt: approve the NOW set / edit it / accept residual and close |
 | 17. Fix routing + re-audit loop | owning pilot per approved issue (LIGHT work-unit cycle: Kaworu RED when behavioral, Aoba commit, pilot fix, Aoba commit, RDD hook), `nerv:aoba` (fix-delta patch), audit passes, `nerv:kaji` | fixes committed; `nerv/audit/diff-round-N+1.patch` scoped to the fix delta only; updated `audit-report.md` carrying forward unresolved items | cap 2 re-audits (loop back to step 14 over the fix-delta patch); at the cap the user accepts the residual (`residual_accepted` in `issue-ranking.md`) or declines the remainder; deviations → Misato ruling |
-| 18. Docs + archive + curate | `nerv:ritsuko` (MODE: docs), `sdd-archive` (gentle-ai agent, unchanged), `nerv:fuyutsuki` (MODE: curate) | `issue-ranking.md`, fix commits, `tasks.md`, docs deltas | `nerv/issue-resolutions.md`, `nerv/agent-config.md`, repo doc deltas (Ikari writes them at Ritsuko-named locators), change archived to `openspec/changes/archive/YYYY-MM-DD-{change}/`, `## Summary` appended to `nerv/deliberation-log.md` | gatekeeper |
+| 18. Docs + archive + curate | `nerv:ritsuko` (MODE: docs), `nerv:aoba` (Archive duty), `nerv:fuyutsuki` (MODE: curate) | `issue-ranking.md`, fix commits, `tasks.md`, docs deltas | `nerv/issue-resolutions.md`, `nerv/agent-config.md`, repo doc deltas (Ikari writes them at Ritsuko-named locators), change archived to `openspec/changes/archive/YYYY-MM-DD-{change}/` via `gentle-ai sdd-archive-compose` + `git mv`, `## Summary` appended to `nerv/deliberation-log.md` | gatekeeper |
 | 19. Run summary + close | `nerv:aoba`; tracker close arrives in Phase 4 | usage table from Ikari | `nerv/run-summary.md`, change closed | none |
 
 ### Plan gatekeeper
@@ -502,6 +508,12 @@ the same launch exactly once, quoting the specific failure in the retry
 prompt. A second failure stops the pipeline and reports the failure to the
 user — Ikari never proceeds past an unvalidated envelope.
 
+After any agent writes a NERV artifact (Fuyutsuki curate, Maya report,
+Kaji report, Hyuga ranking, Misato plan), Ikari's readback also greps the
+written file for `</invoke>`, `<invoke`, `</content>`, `<parameter` and
+treats a hit as a gatekeeper failure — retried once with the offending
+lines quoted, same one-retry-then-stop mechanics as above.
+
 ## Lossless blocking prompts
 
 Every user-facing gate in a NERV run (preflight, commit validation, Maya
@@ -602,6 +614,6 @@ reduced gate, Aoba). FULL ships Misato's plan authorship and rulings, MAGI
 criticality, waves, and ranking dispatches, all five pilots (`rei`,
 `shinji`, `asuka`, `toji`, `kaworu`), and the full audit-and-closure stage
 (Kaji, `kaji-security`, `kaji-coverage`, `kaji-refuter`, the ranked issue
-gate, fix routing, the bounded re-audit loop, and `sdd-archive`-mechanized
-archival). Phase 4 adds the task tracker (Hyuga's tracker dispatch) and the
+gate, fix routing, the bounded re-audit loop, and Aoba's mechanical Archive
+duty). Phase 4 adds the task tracker (Hyuga's tracker dispatch) and the
 single `nerv.yaml` config file; Phase 5 is hardening.

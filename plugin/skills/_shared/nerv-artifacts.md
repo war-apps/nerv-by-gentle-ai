@@ -665,7 +665,8 @@ The audit-and-closure stage adds these event types to
   cap instead of a further round (payload: round, accepted findings).
 - `docs_written` — Ritsuko wrote `issue-resolutions.md`, `agent-config.md`,
   and any repo doc deltas.
-- `archived` — `sdd-archive` moved the change to
-  `openspec/changes/archive/YYYY-MM-DD-{change}/`.
+- `archived` — Aoba's Archive duty moved the change to
+  `openspec/changes/archive/YYYY-MM-DD-{change}/` (payload:
+  `{archive_path, composed_specs[]}`).
 - `log_curated` — Fuyutsuki appended the `## Summary` block to
   `nerv/deliberation-log.md` (MODE: curate).
