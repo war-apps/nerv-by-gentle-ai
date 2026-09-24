@@ -109,7 +109,8 @@ Return exactly these fields as your final text:
 - `detailed_report`: full output, or omit if already inline
 - `artifacts`: list of artifact keys/paths written
 - `next_recommended`: one of `none`, `next-pilot`, `maya-gate`,
-  `aoba-commit`, `tracker-close`, `magi-vote`, `ikari-decision`
+  `aoba-commit`, `tracker-close`, `magi-vote`, `ikari-decision`,
+  `misato-revise`, `plan-gate`, `waves`
 - `risks`: risks discovered, or "None"
 - `skill_resolution`: `paths-injected`, `fallback-registry`,
   `fallback-path`, or `none`

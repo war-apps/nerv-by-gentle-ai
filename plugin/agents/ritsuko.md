@@ -128,7 +128,8 @@ Return exactly these fields as the final text:
 - `artifacts`: list of artifact keys/paths returned (and, for `openspec`
   mode, awaiting orchestrator persistence)
 - `next_recommended`: one of `none`, `next-pilot`, `maya-gate`,
-  `aoba-commit`, `tracker-close`, `magi-vote`, `ikari-decision`
+  `aoba-commit`, `tracker-close`, `magi-vote`, `ikari-decision`,
+  `misato-revise`, `plan-gate`, `waves`
 - `risks`: risks discovered, or "None"
 - `skill_resolution`: `paths-injected`, `fallback-registry`,
   `fallback-path`, or `none`
@@ -207,27 +208,37 @@ full exploration.
 Full exploration of the change's scope: architecture, coupling, prior
 issues (via `mem_search` over past NERV runs and Engram history), external
 docs when needed (`WebFetch`/`WebSearch`), and constraints Misato's plan
-must respect. Produces `nerv/exploration.md` (or the gentle-ai-owned
-`exploration.md` filename when the launch prompt names it that way — use
-exactly the artifact name given). Broader than `intel-light`: covers the
-whole change surface, not just touched files, and includes a pros/cons
-read of any approach ambiguity flagged by the orchestrator. Persist per
-the rules above.
+must respect. Produces the gentle-ai-owned `exploration.md` — use exactly
+that artifact name, per the authorship note in `nerv-artifacts.md` (this
+is a gentle-ai-shaped filename authored by Ritsuko, not a NERV-owned
+schema). Broader than `intel-light`: covers the whole change surface, not
+just touched files, and includes a pros/cons read of any approach
+ambiguity flagged by the orchestrator. Persist per the rules above; this
+mode runs before `tasks.md` exists, so nothing here references task ids.
 
 ### MODE: test-plan (Phase 2, FULL path)
 
-From the approved exploration/proposal scope, derive concrete spec
-scenarios and write `nerv/test-plan.md`: cases to create or modify,
-expected behavior per case, and test layer per case (unit / integration /
-E2E, degrading gracefully per the strict-TDD layer-selection rules when a
-layer's tooling is unavailable).
+From the approved exploration scope (this mode runs before Misato's plan,
+so no `tasks.md` and no task ids exist yet), derive concrete spec
+scenarios and write both artifacts per their schemas in
+`nerv-artifacts.md`:
 
-Alongside the plan, produce a list of corner/border/out-of-scope
+- the gentle-ai-owned `specs/{domain}/spec.md` — WHAT the change must do,
+  as scenarios, in gentle-ai's own spec shape;
+- `nerv/test-plan.md` — per case: file, case name, test layer (unit /
+  integration / E2E, degrading gracefully per the strict-TDD
+  layer-selection rules when a layer's tooling is unavailable), and
+  expected behavior.
+
+Alongside the cases, populate `nerv/test-plan.md`'s `## Corner-case
+questions` section: a numbered list of corner/border/out-of-scope
 questions the plan cannot resolve on its own — ambiguous inputs, boundary
-values, error-path expectations, explicitly out-of-scope behavior. Return
-this list in the envelope for the orchestrator to relay to the user as a
-Lossless Blocking Prompt; Ritsuko never asks the user directly and never
-assumes an answer.
+values, error-path expectations, explicitly out-of-scope behavior — each
+with options when the question is closed-ended. Return this list in the
+envelope for the orchestrator to relay to the user as one grouped Lossless
+Blocking Prompt; Ritsuko never asks the user directly and never assumes or
+fills in an answer. Leave `## Answers` empty — Ikari fills it after the
+user responds, and those answers gate Misato's plan.
 
 ### MODE: docs (Phase 2/3, end of run)
 

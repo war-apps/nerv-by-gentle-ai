@@ -129,9 +129,7 @@ first agent launch. The change is **FULL** if any of these hold:
 - touches 2 or more pilot domains (see the domain map below)
 - touches a `critical_paths` entry from the merged config
 - introduces or modifies a skill, script, or command (Fuyutsuki's
-  jurisdiction — Fuyutsuki does not exist yet in Phase 1; treat this
-  criterion as a hard FULL signal and tell the user FULL is not built yet,
-  per the FULL pipeline note below)
+  jurisdiction — the governance veto gate in the FULL pipeline below)
 - estimated diff exceeds roughly 400 authored lines, or spans more than one
   coherent work unit
 - the scope would materially change under a corner-case interview (Ritsuko
@@ -143,12 +141,13 @@ Anything else is **LIGHT**.
 backend, asuka → frontend, toji → ci-cd/docker/k8s/infra, kaworu → tests
 (RED writer, every work unit under strict TDD, not a domain owner).
 
-**Unshipped pilots.** In this build only `nerv:shinji` and `nerv:kaworu`
-exist as pilots. When classification maps the work to rei, asuka or toji,
-Ikari stops with one blocking prompt offering exactly two choices: proceed
-with `nerv:shinji` as the pilot with explicit acknowledgement that the
-domain owner is not shipped yet, or stop. Never launch an agent that is
-not installed; a launch failure for a missing agent type is a stop, not a
+**Unshipped roles.** Kaji and its audit passes (`kaji-security`,
+`kaji-coverage`) are not shipped until Phase 3 — see the audit placeholder
+step in the FULL pipeline below. Every other role in this build is
+installed: `rei`, `asuka`, and `toji` ship as pilots alongside `shinji` and
+`kaworu`; `misato`, `hyuga`, `balthasar`, `melchor`, `casper`, and
+`fuyutsuki` ship for the FULL pipeline. Never launch an agent that is not
+installed; a launch failure for a missing agent type is a stop, not a
 retry.
 
 **Ratchet (one-way).** If any actor mid-LIGHT discovers a FULL criterion
@@ -184,20 +183,157 @@ user may override it when validating the step-7 commit. Maya's reduced mode
 (step 6) runs only the tests and lint/build touching the changed files —
 never the full suite — per the `b`/`c` phases of her report schema.
 
-## FULL pipeline (not yet built)
+## FULL pipeline (Phase 2)
 
-FULL is defined in the approved plan (MAGI vote, governance veto, waves,
-5-pass audit) but its agents (Misato, Hyuga, Balthasar, Melchor, Casper,
-Fuyutsuki, Kaji, kaji-security, kaji-coverage) and artifacts
-(`votes.md`, `veto-ruling.md`, `waves.md`, `criticality.md`,
-`audit-report.md`, `issue-ranking.md`) ship in Phases 2-3 of the NERV
-build, not in this Phase 1 install.
+FULL adds MAGI vote, governance veto, waves, and quality-gated
+implementation on top of the LIGHT primitives (RED/GREEN/REFACTOR, Aoba
+commits, the RDD hook, usage collection, the deliberation log — all reused
+unchanged, see the LIGHT pipeline above). Kaji's 5-pass audit, issue
+ranking, and the fix-routing loop are **not shipped in this build**; once
+Maya's full gate is green, the run goes straight to Aoba's run summary and
+close, and Ikari states plainly that the audit stage is not shipped yet
+(Phase 3). Never silently skip a step in the table below or downgrade FULL
+to LIGHT mid-run.
 
-If classification resolves to FULL, Ikari tells the user plainly that FULL
-is not implemented in this build and offers exactly two choices as one
-blocking prompt: proceed as LIGHT with explicit acknowledgement that MAGI
-vote, governance veto, and audit are skipped for this change, or stop here.
-Never silently downgrade FULL to LIGHT.
+| Step | Actor | Launch prompt carries | Expected envelope | Gate |
+|---|---|---|---|---|
+| 1. Intel | `nerv:ritsuko` (MODE: intel) | change scope, skills | `exploration.md` (Ikari writes it to its locator) | gatekeeper |
+| 2. Spec + test plan | `nerv:ritsuko` (MODE: test-plan) | `exploration.md` locator, skills | `specs/{domain}/spec.md`, `nerv/test-plan.md` with `## Corner-case questions` | **user HARD** — Ikari relays the questions as one grouped blocking prompt; the answers are written into `## Answers` and gate the plan |
+| 3. Plan | `nerv:misato` | `exploration.md`, `spec.md`, `test-plan.md` (with answers), skills | `proposal.md`, `design.md` (must contain `## New skills, scripts and commands`), `tasks.md` (ids `T1`, `T2`, ... with `pilot` and `depends_on`) | gatekeeper — verifies the `## New skills, scripts and commands` section exists in `design.md` |
+| 4. Criticality | `nerv:hyuga` (dispatch a) | `tasks.md`, `critical_paths` | `nerv/criticality.md` | none |
+| 5. MAGI vote round | `nerv:balthasar`, `nerv:melchor`, `nerv:casper` (MODE: vote), one parallel batch, blind | Balthasar: `design.md`+`tasks.md`; Melchor: `design.md`; Casper: `spec.md`+`tasks.md`+`proposal.md` | one JSON object each per the contract in `nerv-artifacts.md`, merged by Ikari into `nerv/votes.md` | critical task = unanimous approve; standard = 2-of-3; rejected tasks → step 6 |
+| 6. Revise loop | `nerv:misato` (`misato-revise`) | rejected tasks + their findings | revised tasks only, re-voted at step 5 (revised tasks only; approved tasks stay `frozen`) | cap 2 re-votes per task; at cap, user: override-approve / kill task / Misato ruling |
+| 7. Governance veto | `nerv:fuyutsuki` | `design.md`'s `## New skills, scripts and commands` | `nerv/veto-ruling.md` | a veto reopens only the owning task (frozen siblings stay frozen); cap 2 revision rounds; at cap, user: drop the item or abandon the task |
+| 8. Plan approval | Ikari relays | tasks with criticality, vote results, veto rulings, test-plan summary | user decision logged | **user HARD** — no implementation before this gate |
+| 9. Waves | `nerv:hyuga` (dispatch b) | frozen `tasks.md`, `votes.md` | `nerv/waves.md` (`tasks.md` is never mutated) | gatekeeper |
+| 10. Baseline | `nerv:maya` (MODE: full, phase 0) | change scope | `nerv/maya-report.md` baseline | gatekeeper |
+| 11. Implementation wave N | `nerv:kaworu` (RED) → `nerv:aoba` (commit, user validates) → assigned pilot (GREEN/TRIANGULATE/REFACTOR) → `nerv:aoba` (commit, user validates) → RDD hook | wave task, skills, TDD mode+runner, `commit_ref` | code + TDD evidence rows | pilots in a wave may run in one parallel batch when their tasks are independent; deviations → `nerv:hyuga` deviation → `nerv:misato` ruling |
+| 12. Maya full gate a→b→c→d | `nerv:maya` (MODE: full) | wave diff | `nerv/maya-report.md` phases a-d, each green before the next starts | obvious failures routed `impl-wrong`/`spec-wrong`; a failure Maya cannot classify is `ambiguous` → one Misato ruling → user only if a product decision is needed |
+| 13. Audit placeholder | Ikari | — | plain statement to the user: the audit stage (Kaji, 5 passes, ranking, issue gate) is not shipped in this build (Phase 3) | none |
+| 14. Run summary | `nerv:aoba` | usage table from Ikari | `nerv/run-summary.md` | none |
+| 15. Close | Ikari (`nerv:hyuga` dispatch d in Phase 4) | — | change closed | none |
+
+### Plan gatekeeper
+
+Step 3's gatekeeper check is mechanical and specific: before criticality
+runs, Ikari re-reads `design.md` and confirms the `## New skills, scripts
+and commands` heading exists, verbatim, with content under it — either a
+list of items or the single word `none`. A `design.md` missing the
+heading fails the same retry-once-then-stop rule as any other gatekeeper
+check (see `## Gatekeeper` below); Misato does not proceed to criticality
+without it, because Fuyutsuki's veto step has nothing to rule on
+otherwise.
+
+### Pilot selection differs from LIGHT
+
+LIGHT auto-selects a pilot from the touched-file domain (Ritsuko's
+suggestion, user-overridable at commit validation). FULL never
+auto-selects: Misato assigns `pilot: rei|shinji|asuka|toji` explicitly per
+task in `tasks.md`, informed by the same domain map but as a plan
+decision MAGI can vote on and Hyuga can re-confirm in `waves.md`'s
+`pilot_assignments`. A disagreement between `tasks.md`'s `pilot` field and
+`waves.md`'s `pilot_assignments` for the same task is a gatekeeper failure
+at step 9 — `waves.md` must match `tasks.md` exactly, it never overrides
+it.
+
+### Audit placeholder rationale
+
+Kaji's 5-pass audit is the last unshipped piece of NERV's governance
+surface (Phase 3). Stating this plainly in the run itself — not only in
+documentation the user might not read — matters because a user reading a
+FULL run's transcript could otherwise assume the audit ran and found
+nothing. Step 13 exists specifically to prevent that silent gap between
+"the pipeline completed" and "every governance stage the design promises
+actually ran."
+
+**Ratchet handling.** The diff already produced while a change was still
+LIGHT becomes the wave-1 candidate once Ikari reclassifies to FULL.
+Misato's `tasks.md` MUST include that diff as its own task, carrying
+`status: implemented-pre-plan` in addition to its `id`/`pilot`/
+`depends_on` fields, and MAGI votes on it exactly like any other task —
+there is no free pass for pre-plan work.
+
+### MAGI vote mechanics
+
+`nerv:balthasar`, `nerv:melchor`, `nerv:casper` (MODE: vote) launch
+together in exactly one parallel batch, never sequentially and never with
+visibility into each other's output — a blind vote loses its meaning the
+moment one member sees another's findings first. Each receives only the
+locators its own lens needs (Balthasar: `design.md` + `tasks.md`;
+Melchor: `design.md`; Casper: `spec.md` + `tasks.md` + `proposal.md`) and
+returns exactly the JSON contract from `nerv-artifacts.md` as its final
+text — one object per launch, never a tool call as the last action.
+
+Ikari merges the three objects into `nerv/votes.md` and computes `result`
+per task from `nerv/criticality.md`: a task marked `critical` needs all
+three members to `approve`; a `standard` task needs 2 of 3. Any member's
+`escalation` to `critical` on a task applies for the rest of that round
+even if the standard rule would otherwise have passed it — escalation
+always tightens the requirement, never loosens it, and it never moves a
+task back down to `standard`. Tasks that pass their rule are marked
+`frozen: true`; Misato may not edit a frozen task again in this change,
+including during a later revise round for a sibling task.
+
+### Revise loop
+
+Rejected tasks return to Misato with that round's findings attached
+(`next_recommended: misato-revise`). Misato revises only the rejected
+tasks — every frozen task is untouched — and the revised subset alone is
+re-voted at step 5, same blind parallel-batch mechanics, `round`
+incremented in `votes.md`. This repeats up to 2 re-votes per task; at the
+cap Ikari stops and asks the user to choose exactly one of: override-
+approve the task despite the standing rejection, kill the task from the
+plan, or send it to Misato for a binding ruling instead of a third vote.
+
+### Governance veto
+
+Fuyutsuki reads only `design.md`'s `## New skills, scripts and commands`
+section and rules once per declared item — never on anything outside
+that section. When the section is the single word `none`, Fuyutsuki
+still records that in `veto-ruling.md` as a single `none` line; no
+per-item ruling is needed. A `veto` verdict reopens only the task that
+owns the vetoed item — every other frozen task, including tasks in the
+same wave, stays frozen. Misato revises the owning task alone and
+Fuyutsuki re-rules on the revised declaration, up to 2 revision rounds;
+at the cap the user decides: drop the vetoed item from the plan, or
+abandon the task that needs it.
+
+### Plan approval
+
+Before any implementation, Ikari presents one consolidated view: every
+task with its criticality, its final vote result and rule, any veto
+ruling touching it, and the test-plan summary (cases plus the recorded
+corner-case answers). This is a single **user HARD** gate — nothing from
+step 9 onward runs before the user's explicit approval, and a partial
+approval (approve some tasks, reject others) is not a supported shape:
+the gate is whole-plan or nothing.
+
+### Implementation wave execution
+
+Hyuga's `waves.md` groups frozen tasks by dependency, never by
+convenience — two tasks share a wave only when neither's `depends_on`
+names the other, directly or transitively. Within a wave, independent
+tasks' per-task cycles (Kaworu RED → Aoba commit → assigned pilot's
+GREEN/TRIANGULATE/REFACTOR → Aoba commit) may run as one parallel batch;
+a task with an unmet dependency waits for its dependency wave to close
+first. If a pilot or Hyuga discovers mid-wave that a task's scope,
+dependency, or execution does not match what `waves.md` assumed, it
+signals a `deviation` (`scope|dependency|blocked`) instead of guessing —
+routed to Misato for a binding `ruling_issued`; only non-frozen tasks may
+change as a result of that ruling. The RDD per-commit relay (see
+`## RDD relay` above) and the delivery-budget tracking (see `## Delivery`
+above) apply identically inside FULL waves as they do in LIGHT — there is
+no separate FULL-only commit or budget mechanism.
+
+## Bounded loops
+
+| Loop | Cap | At cap |
+|---|---|---|
+| MAGI re-vote per task | 2 | user: override-approve / kill task / Misato ruling |
+| Fuyutsuki veto revision | 2 | user: drop item or abandon task |
+| Kaji re-audit (fix delta only, Phase 3) | 2 | user accepts residual or declines remainder |
+| Gatekeeper phase validation | 1 retry | Ikari stops and reports |
+| Maya ambiguous failure | 1 Misato ruling before user | ruling binding |
 
 ## Delegation triggers
 
@@ -321,10 +457,12 @@ commands, never runs them.
 
 Every Agent tool result carries the launch's usage (tokens, tool uses,
 duration). After each launch Ikari records one row
-`{agent, model, tokens_in, tokens_out, duration_s}` from that result. The
-accumulated table is handed to Aoba in the run-summary launch; Aoba never
-estimates figures, and Ikari never omits a launch, including retries and
-failed ones (mark them in the row).
+`{agent, model, tokens_total, duration_s}` from that result —
+`tokens_total` because the Agent tool reports one combined usage figure per
+launch, not separate input/output counts. The accumulated table is handed
+to Aoba in the run-summary launch; Aoba never estimates figures, and Ikari
+never omits a launch, including retries and failed ones (mark them in the
+row).
 
 ## Deliberation log
 
@@ -333,7 +471,11 @@ Ikari's own mechanical write, never delegated) as
 `{ts, phase, actor, event_type, payload_ref}`. Event types used in Phase 1:
 `preflight_answer`, `classification`, `ratchet`, `launch`, `envelope`,
 `gate_relayed`, `gate_decision`, `commit_recorded`, `rdd_assess`,
-`rdd_receipt`, `stop`.
+`rdd_receipt`, `stop`. FULL adds the Phase 2 event types listed in
+`nerv-artifacts.md` (`corner_case_relayed`, `corner_case_answer`,
+`vote_cast`, `escalation_criticality`, `vote_result`, `veto_evaluated`,
+`plan_gate_relayed`, `plan_gate_decision`, `wave_plan`, `wave_report`,
+`deviation`, `ruling_issued`).
 
 ## Resume
 
@@ -352,9 +494,11 @@ If the user says `nerv ping`, launch `nerv:aoba` with the exact prompt
 
 ## Phase note
 
-This is the Phase 1 build: LIGHT path only (Ritsuko micro-intel, Kaworu,
-one pilot — only `nerv:shinji` ships — Maya reduced gate, Aoba). Rei,
-Asuka and Toji (the remaining pilot domains), MAGI (Balthasar,
-Melchor, Casper), Fuyutsuki's governance veto, Kaji's audit compilation,
-and Hyuga's criticality/waves/ranking/tracker dispatches arrive in
-Phase 2-4.
+This is the Phase 2 build: LIGHT and FULL both ship. LIGHT is unchanged
+from Phase 1 (Ritsuko micro-intel, Kaworu, one domain-matched pilot, Maya
+reduced gate, Aoba). FULL ships Misato's plan authorship and rulings,
+MAGI (Balthasar, Melchor, Casper), Fuyutsuki's governance veto, Hyuga's
+criticality and waves dispatches, and all five pilots (`rei`, `shinji`,
+`asuka`, `toji`, `kaworu`). Kaji's audit compilation (5-pass audit, issue
+ranking, fix-routing loop) and Hyuga's ranking/tracker dispatches arrive in
+Phase 3-4.
