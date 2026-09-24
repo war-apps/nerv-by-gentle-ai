@@ -85,14 +85,141 @@ extra gates: the grouped preflight question (task, worktree, branch, base),
 one commit-validation stop per commit, and the RDD consent envelope after the
 first commit when the clone-local switch is not disabled.
 
-## J2: ratchet LIGHT to FULL (Phase 2)
+## J2: classification FULL (Phase 2)
 
-Request touching backend and frontend, or a `critical_paths` entry. Expected:
-classification FULL; in a Phase 1 build the orchestrator offers "proceed as
-LIGHT with acknowledgement" or "stop", never a silent downgrade.
+Setup: same scratch repo as J1, fresh branch `feature/multiply-and-ci` off
+`main`, `Calculator` has only `Add`/`Subtract` (from J1). Prompt: "Add a
+`Multiply(int a, int b)` method to `Calculator` in src/Calc/Calculator.cs,
+and add a GitHub Actions workflow at `.github/workflows/ci.yml` that runs
+`dotnet test` on push. Follow the NERV orchestrator protocol injected in
+this session."
 
-## J3: FULL path with MAGI (Phase 2), J4: audit and closure (Phase 3), J5:
-task tracker and single config (Phase 4), J6: resume after interruption
-(Phase 5)
+Expected:
+
+1. Ikari's classification finds two pilot domains touched — backend
+   (`shinji`, the `Calculator.Multiply` change) and ci-cd/infra (`toji`,
+   the new workflow file) — and resolves `FULL`, recorded in
+   `nerv/deliberation-log.md` as a `classification` event naming both
+   domain signals.
+2. Because FULL ships in this Phase 2 build, the run proceeds exactly as
+   J3 describes below — Ikari does **not** offer the LIGHT-with-
+   acknowledgement-or-stop prompt that a Phase 1-only build would show.
+3. Regression check against the removed Phase 1 behavior: a Phase 1-only
+   build (FULL pipeline absent) would instead stop here with one blocking
+   prompt offering exactly two choices — proceed as LIGHT with explicit
+   acknowledgement that MAGI vote, governance veto, and audit are skipped,
+   or stop. This journey exists to confirm that path is gone now that
+   FULL ships; if the two-choice prompt appears in this Phase 2 build,
+   that is a regression.
+
+## J3: FULL path with MAGI (Phase 2)
+
+Non-interactive harness continuing directly from J2's request, with every
+gate pre-answered in the prompt so the run completes unattended. Change
+name: `multiply-and-ci`.
+
+Setup: same scratch repo, `gentle-ai review mode disable --scope clone --cwd
+<repo>` (RDD off in the bench clone — the global switch stays as the user
+set it), `.nerv/nerv.yaml` unchanged from the Common setup above
+(`tasks.provider: none`, `tasks.ask_when_missing: false`).
+
+Prompt (piped to `claude -p --max-turns 200 --allowedTools 'Agent,Bash(git
+*),Bash(dotnet *),Bash(gentle-ai *),Read,Write,Edit,Glob,Grep'`):
+
+> NERV FULL journey (non-interactive harness run). Context the user gives
+> you up front so every gate stays silent: task ref: none; work in place on
+> the current branch feature/multiply-and-ci (no worktree); pace:
+> fast-forward; artifact store: openspec; PR strategy: single-pr; change
+> name: multiply-and-ci; for any corner-case question, choose the most
+> conservative option and record it as the answer; plan approval is
+> pre-granted — proceed past the plan-approval gate once tasks, criticality,
+> votes, and veto rulings are all recorded; the user pre-validates every
+> commit Aoba shows in this run (commit without asking).
+> Request: add a `Multiply(int a, int b)` method to `Calculator` in
+> src/Calc/Calculator.cs, and add a GitHub Actions workflow at
+> `.github/workflows/ci.yml` that runs `dotnet test` on push. Follow the
+> NERV orchestrator protocol injected in this session end to end.
+
+Expected, in order:
+
+1. Classification `FULL` (per J2), recorded in `nerv/deliberation-log.md`.
+2. `openspec/changes/multiply-and-ci/state.yaml` with the `nerv` block
+   (`path: full`).
+3. `nerv:ritsuko` (MODE: intel) writes `exploration.md` covering both
+   `src/Calc/Calculator.cs` and the new `.github/workflows/` surface.
+4. `nerv:ritsuko` (MODE: test-plan) writes `specs/{domain}/spec.md` and
+   `nerv/test-plan.md` with cases for `Multiply` and for the workflow
+   file, plus a `## Corner-case questions` section (e.g. "should
+   `Multiply` overflow-check?", "should CI run on pull_request too or
+   push only?"). Ikari relays the questions as one grouped blocking
+   prompt; per the pre-answered context, the most conservative option is
+   chosen for each (no overflow-check scope creep beyond `int * int`; CI
+   on `push` only, as literally asked) and recorded verbatim in
+   `## Answers`.
+5. `nerv:misato` writes `proposal.md`, `design.md` (with `## New skills,
+   scripts and commands` — either `none`, or naming `.github/workflows/
+   ci.yml` as a new script if the design treats it as one, in which case
+   `nerv:fuyutsuki` evaluates it at step 9), and `tasks.md` with `T1`
+   (`Multiply`, `pilot: shinji`, `depends_on: []`) and `T2` (`ci.yml`,
+   `pilot: toji`, `depends_on: []`).
+6. `nerv:hyuga` (dispatch a) writes `nerv/criticality.md` for T1 and T2
+   (both `standard` unless a `critical_paths` entry matches).
+7. MAGI vote round 1: `nerv:balthasar`, `nerv:melchor`, `nerv:casper`
+   launched in one parallel batch, blind, each returning the JSON
+   contract from `nerv-artifacts.md`; Ikari merges into `nerv/votes.md`
+   with three member entries per task (T1, T2), `rule` applied per each
+   task's criticality, `result: approved`, `frozen: true` for both (a
+   rejection here would exercise the revise loop instead — not expected
+   on this simple change).
+8. `nerv:fuyutsuki` writes `nerv/veto-ruling.md` — one row per item from
+   `design.md`'s `## New skills, scripts and commands` (or a single
+   `none` line if that section was `none`).
+9. Plan approval gate: recorded as pre-granted per the harness context —
+   `nerv/deliberation-log.md` carries `plan_gate_relayed` followed
+   immediately by `plan_gate_decision` (pre-granted); no prompt actually
+   blocks execution.
+10. `nerv:hyuga` (dispatch b) writes `nerv/waves.md` — T1 and T2 in the
+    same wave (`W1`), `depends_on: []` for both since they are
+    independent; `pilot_assignments: {T1: shinji, T2: toji}`.
+11. `nerv:maya` (MODE: full, phase 0) writes the baseline into
+    `nerv/maya-report.md`.
+12. Per task in the wave (both may run in one parallel batch since they
+    are independent): `nerv:kaworu` RED commit, then `nerv:aoba` commit
+    shown and validated (pre-validated per harness context); then the
+    assigned pilot's GREEN/TRIANGULATE/REFACTOR, then `nerv:aoba` commit
+    shown and validated. `git log --oneline` shows, for each task, its RED
+    commit before its GREEN commit.
+13. `nerv:maya` (MODE: full) writes phases a→b→c→d into
+    `nerv/maya-report.md`, each green before the next starts.
+14. Ikari states plainly that the audit stage (Kaji, 5 passes, ranking,
+    issue gate) is not shipped in this build — no audit artifacts are
+    produced.
+15. `nerv:aoba` writes `nerv/run-summary.md` (agents table with
+    `tokens_total` per launch, commits, no PR slices since the strategy
+    is `single-pr` and the run stayed under the delivery budget).
+16. `nerv/deliberation-log.md` carries the Phase 2 event types exercised
+    by this run: `corner_case_relayed`, `corner_case_answer`, `vote_cast`
+    (per member per task), `vote_result` (per task), `veto_evaluated`,
+    `plan_gate_relayed`, `plan_gate_decision`, `wave_plan`, `wave_report`
+    — plus the Phase 1 types (`classification`, `launch`, `envelope`,
+    `commit_recorded`, `rdd_assess`, ...). No `escalation_criticality`,
+    `deviation`, or `ruling_issued` entries are expected on this
+    straightforward change (nothing escalates, nothing deviates, no
+    ruling is needed).
+17. `gentle-ai sdd-status multiply-and-ci --cwd <repo> --json` succeeds,
+    reporting the change with all gentle-ai-owned files present and the
+    `nerv/` folder alongside them.
+
+Interactive variant: same request without the pre-answered context.
+Expected extra gates beyond J1's interactive variant: the corner-case
+questions relayed as one grouped blocking prompt after step 4 (real user
+answers required before Misato's plan step), the plan-approval gate after
+step 9 (real HARD stop — tasks/criticality/votes/veto summary shown before
+any implementation), and a commit-validation stop per commit in step 12 —
+RDD consent envelopes also apply per commit when the clone-local switch is
+not disabled, same as J1.
+
+## J4: audit and closure (Phase 3), J5: task tracker and single config
+(Phase 4), J6: resume after interruption (Phase 5)
 
 To be written with their phases.
