@@ -18,7 +18,7 @@ main() {
 
   # Strip CRLF line endings before matching, then check for an "enabled: true"
   # key (allowing surrounding whitespace) on its own line.
-  if tr -d '\r' < "$config_file" | grep -Eq '^[[:space:]]*enabled:[[:space:]]*true[[:space:]]*$'; then
+  if tr -d '\r' < "$config_file" | grep -Eq '^[[:space:]]*enabled:[[:space:]]*true[[:space:]]*(#.*)?$'; then
     local skill_file="${CLAUDE_PLUGIN_ROOT}/skills/nerv-orchestrator/SKILL.md"
     echo "# NERV orchestrator protocol (active: .nerv/nerv.yaml enabled)"
     if [ -f "$skill_file" ]; then

@@ -153,10 +153,40 @@ Copy-Item -LiteralPath $SettingsPath -Destination $backupPath -Force
 Write-Host ""
 Write-Host "Backup written: $backupPath"
 
-# --- Write back as UTF-8 without BOM ---
-$json = $settings | ConvertTo-Json -Depth 50
-$utf8NoBom = New-Object System.Text.UTF8Encoding($false)
-[System.IO.File]::WriteAllText($SettingsPath, $json, $utf8NoBom)
+# --- Write to a temp file, verify it, then swap it in (never a truncating
+#     write to the live file) ---
+$tempPath = "$SettingsPath.tmp-nerv"
+
+try {
+    $json = $settings | ConvertTo-Json -Depth 50
+    $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+    [System.IO.File]::WriteAllText($tempPath, $json, $utf8NoBom)
+
+    # Parse-verify the temp file before it ever touches the target.
+    try {
+        Get-Content -LiteralPath $tempPath -Raw -Encoding UTF8 | ConvertFrom-Json -Depth 50 | Out-Null
+    }
+    catch {
+        Remove-Item -LiteralPath $tempPath -Force -ErrorAction SilentlyContinue
+        throw "Temp settings file failed to parse-verify: $_"
+    }
+
+    Move-Item -LiteralPath $tempPath -Destination $SettingsPath -Force
+
+    # Re-read and parse the final file once more to confirm the swap landed cleanly.
+    Get-Content -LiteralPath $SettingsPath -Raw -Encoding UTF8 | ConvertFrom-Json -Depth 50 | Out-Null
+    Write-Host "settings.json verified."
+}
+catch {
+    if (Test-Path -LiteralPath $backupPath) {
+        Copy-Item -LiteralPath $backupPath -Destination $SettingsPath -Force
+        Write-Host "settings.json restored from backup $backupPath"
+    }
+    if (Test-Path -LiteralPath $tempPath) {
+        Remove-Item -LiteralPath $tempPath -Force -ErrorAction SilentlyContinue
+    }
+    throw
+}
 
 Write-Host "settings.json updated."
 Write-Host ""
