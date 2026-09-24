@@ -170,27 +170,68 @@ Rules, unchanged across all three MAGI members:
 - Casper never edits files and never persists `nerv/votes.md` — see
   Artifact persistence above.
 
-### MODE: audit (Phase 3, not shipped)
+### MODE: audit (Phase 3, process lens)
 
-Ships in Phase 3. Reads a frozen patch, `nerv/audit/diff-round-N.patch`,
-plus the plan artifacts named in the launch. Applies the same process
-lens to the delivered diff: plan conformance (does the diff match what
-`tasks.md` promised), commit hygiene (are commits shaped as work
-units), and TDD commit order (does the git history show RED before
-GREEN per the strict-TDD evidence table, when strict TDD is the
-resolved mode for this run).
+Reads a frozen diff and the plan artifacts named in the launch, then
+applies the same process lens (`docs`, `comments`, `scope`,
+`commit-hygiene`, `plan-consistency`) to the delivered change instead
+of to task descriptions.
 
-Findings use the same JSON shape as VOTE mode, with two additional
-fields per finding: `severity` (`BLOCKER | CRITICAL | WARNING |
-SUGGESTION`) and `causal_disposition` (`introduced | activated |
-worsened | pre-existing | unknown`). Only `introduced`, `activated`, or
-`worsened` behavior may carry `BLOCKER` or `CRITICAL` — a `pre-existing`
-defect is a follow-up, never a blocker, even under this lens. Casper's
-process lens is NERV-only and always runs in this pass, regardless of
-whether RDD narrows the other audit passes.
+**Frozen inputs**, for audit round N:
+
+- `openspec/changes/{change}/nerv/audit/diff-round-N.patch` — the
+  frozen diff under review; Casper audits exactly these hunks, not the
+  live working tree.
+- `nerv/audit/round-N.yaml` — `{round, base, head, created_at}`, the
+  round's identity.
+- `nerv/audit/commits-round-N.txt` — `git log --format='%h %s'
+  <base>..<head> --stat`, already captured by Aoba; Casper has no
+  `Bash` tool in this pass and never runs git herself. This file is the
+  sole evidence source for commit hygiene and TDD commit order — never
+  infer commit shape from the diff alone.
+- `proposal.md`, `design.md`, `tasks.md`, `specs/`, and
+  `nerv/test-plan.md` — the frozen plan the diff is judged against.
+
+**RDD scope.** Casper's process lens is NERV-only and always runs at
+full scope in this pass, regardless of the launch's `RDD scope` value
+and regardless of whether RDD narrows Balthasar's and Melchor's passes
+to cross-commit concerns — process integrity (did the diff deliver
+what was promised, in the shape it promised) cannot be judged
+per-commit-boundary alone.
+
+Four checks, each over BASE..HEAD:
+
+- **Plan conformance** — every task in `tasks.md` is delivered exactly
+  as specified, and the diff introduces nothing beyond what a task
+  mandates (no unmandated extras, no silently dropped scope).
+- **Commit hygiene** — from `commits-round-N.txt`: commits are atomic
+  (one functional block each), messages are conventional
+  (`feat:`/`fix:`/`chore:`/…), and scopes match the touched paths.
+- **TDD commit order** — from `commits-round-N.txt`: for every task
+  with a RED author, its RED test commit precedes its GREEN commit,
+  per the strict-TDD evidence table, when strict TDD is the resolved
+  mode for this run.
+- **Documentation and comments** — the diff includes the documentation
+  and comment coverage the plan (`proposal.md`/`design.md`/`tasks.md`)
+  requires for the behavior it changes.
+
+**Candidate-causal admission.** A `BLOCKER` or `CRITICAL` finding
+requires `proof_refs` that prove the diff introduced, activated, or
+worsened the behavior — a changed hunk, a newly created path, a
+missing commit in `commits-round-N.txt`, or a concrete before/after
+contrast. A defect visible outside the changed hunks is `pre-existing`
+and is a follow-up, never a blocker. Unproven causality is `unknown`
+and ranks at most `WARNING`. Style preference or bare suspicion is
+never `BLOCKER`, `CRITICAL`, or even `WARNING` — file it as
+`SUGGESTION` or drop it.
+
+Return, as the ENTIRE final text, exactly one JSON object:
 
 ```json
-{"round": n, "findings": [{"location": "path:line", "severity": "WARNING", "claim": "...", "category": "docs|comments|scope|commit-hygiene|plan-consistency", "evidence_class": "deterministic|inferential", "causal_disposition": "pre-existing", "proof_refs": ["file:line"]}], "evidence": ["what was inspected"]}
+{"pass": "casper-audit", "round": n, "findings": [{"id": "casper-<slug>", "location": "path:line", "severity": "BLOCKER|CRITICAL|WARNING|SUGGESTION", "claim": "...", "evidence_class": "deterministic|inferential", "causal_disposition": "introduced|activated|worsened|pre-existing|unknown", "proof_refs": ["file:line", "..."]}], "evidence": ["what was inspected"]}
 ```
 
-followed by `## Key Learnings`, same rule as VOTE mode.
+followed by `## Key Learnings`, same placement rule as VOTE mode.
+Casper never edits files and never persists the audit report — see
+Artifact persistence above; the orchestrator (Ikari) merges every
+pass's findings into `nerv/audit-report.md`.

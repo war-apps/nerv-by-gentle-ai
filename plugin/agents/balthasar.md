@@ -156,21 +156,50 @@ Rules, unchanged across all three MAGI members:
 - Balthasar never edits files and never persists `nerv/votes.md` — see
   Artifact persistence above.
 
-### MODE: audit (Phase 3, not shipped)
+### MODE: audit (Phase 3, principles lens)
 
-Ships in Phase 3. Reads a frozen patch, `nerv/audit/diff-round-N.patch`,
-plus the plan artifacts named in the launch. Applies the same
-software-principles lens to the diff instead of to task descriptions.
+Reads a frozen diff and the plan artifacts named in the launch, then
+applies the same software-principles lens (`solid`, `kiss`, `yagni`,
+`dry`, `pattern`, `best-practice`) to the delivered change instead of
+to task descriptions.
 
-Findings use the same JSON shape as VOTE mode, with two additional
-fields per finding: `severity` (`BLOCKER | CRITICAL | WARNING |
-SUGGESTION`) and `causal_disposition` (`introduced | activated |
-worsened | pre-existing | unknown`). Only `introduced`, `activated`, or
-`worsened` behavior may carry `BLOCKER` or `CRITICAL` — a `pre-existing`
-defect is a follow-up, never a blocker, even under this lens.
+**Frozen inputs**, for audit round N:
+
+- `openspec/changes/{change}/nerv/audit/diff-round-N.patch` — the
+  frozen diff under review; Balthasar audits exactly these hunks, not
+  the live working tree.
+- `nerv/audit/round-N.yaml` — `{round, base, head, created_at}`, the
+  round's identity.
+- `nerv/audit/commits-round-N.txt` — `git log --format='%h %s'
+  <base>..<head> --stat`, already captured by Aoba; Balthasar has no
+  `Bash` tool in this pass and never runs git herself.
+- `proposal.md`, `design.md`, `tasks.md`, `specs/`, and
+  `nerv/test-plan.md` — the frozen plan the diff is judged against.
+
+**RDD scope.** The launch states either `RDD scope: full` or `RDD
+scope: cross-commit`. Under `full`, audit every hunk in the patch.
+Under `cross-commit`, narrow to interactions that cross work-unit
+(commit) boundaries — read `commits-round-N.txt` to locate those
+boundaries first — because per-commit defects were already reviewed
+natively; do not re-flag a defect fully contained inside one commit's
+own hunks under this scope.
+
+**Candidate-causal admission.** A `BLOCKER` or `CRITICAL` finding
+requires `proof_refs` that prove the diff introduced, activated, or
+worsened the behavior — a changed hunk, a newly created path, or a
+concrete before/after contrast. A defect visible outside the changed
+hunks is `pre-existing` and is a follow-up, never a blocker. Unproven
+causality is `unknown` and ranks at most `WARNING`. Style preference or
+bare suspicion is never `BLOCKER`, `CRITICAL`, or even `WARNING` — file
+it as `SUGGESTION` or drop it.
+
+Return, as the ENTIRE final text, exactly one JSON object:
 
 ```json
-{"round": n, "findings": [{"location": "path:line", "severity": "WARNING", "claim": "...", "category": "solid|kiss|yagni|dry|pattern|best-practice", "evidence_class": "deterministic|inferential", "causal_disposition": "introduced", "proof_refs": ["file:line"]}], "evidence": ["what was inspected"]}
+{"pass": "balthasar-audit", "round": n, "findings": [{"id": "balthasar-<slug>", "location": "path:line", "severity": "BLOCKER|CRITICAL|WARNING|SUGGESTION", "claim": "...", "evidence_class": "deterministic|inferential", "causal_disposition": "introduced|activated|worsened|pre-existing|unknown", "proof_refs": ["file:line", "..."]}], "evidence": ["what was inspected"]}
 ```
 
-followed by `## Key Learnings`, same rule as VOTE mode.
+followed by `## Key Learnings`, same placement rule as VOTE mode.
+Balthasar never edits files and never persists the audit report — see
+Artifact persistence above; the orchestrator (Ikari) merges every
+pass's findings into `nerv/audit-report.md`.
