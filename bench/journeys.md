@@ -361,7 +361,100 @@ close** (not exercised in the expected happy path above, but must be
 present in the harness prompt so the run does not stall if round 2 finds
 something new).
 
-## J5: task tracker and single config (Phase 4), J6: resume after
-interruption (Phase 5)
+## J5: task tracker and single config (Phase 4)
 
-To be written with their phases.
+Interactive-first journey: the grouped preflight question needs a human
+answer (task/worktree/branch/base), so this journey runs interactively by
+default; a non-interactive variant follows with the same question
+pre-answered in the prompt, matching J1/J3's harness-context style.
+
+Setup:
+
+- Bench repo `.nerv/nerv.yaml`:
+  ```yaml
+  enabled: true
+  tasks:
+    provider: teamwork
+    ask_when_missing: true
+    providers:
+      teamwork:
+        project_id: <TEST_PROJECT_ID>     # a TEST project the user names —
+        tasklist_id: <TEST_TASKLIST_ID>   # NEVER the production ERP project
+                                           # (1271726 / tasklist 3951970)
+  git:
+    worktree: never
+    base_branch: main
+  ```
+- User-scope `~/.claude/nerv/nerv.yaml`:
+  ```yaml
+  tasks:
+    providers:
+      teamwork:
+        assignee_id: 686035
+        stages: { inDev: DESARROLLO, testing: TESTING, implemented: IMPLEMENTA, blocked: BLOQUEA, canceled: CANCEL, pending: PENDIENTE, analysis: ANALISIS }
+  ```
+- No local timer for this session in `~/.claude/work/timers.json` at start.
+
+Prompt (interactive): "Add a `Modulo(int a, int b)` method to `Calculator`
+in src/Calc/Calculator.cs that returns `a % b`, with a unit test in
+tests/Calc.Tests. Follow the NERV orchestrator protocol injected in this
+session."
+
+Expected, in order:
+
+1. With no active timer, the run opens with **one grouped question**:
+   Task (create with title/source/list/priority, existing id, or none),
+   Worktree (skipped — `git.worktree: never`), Branch name, Base branch
+   (`main`). Answer: create a task titled "Add Calculator.Modulo", source
+   `teamwork`, list = the configured TEST tasklist, priority `medium`.
+2. After "create": the task exists in Teamwork, assigned to the user
+   (`assignee_id` from the user-scope file), in the `inDev` stage
+   (`DESARROLLO`); a local timer keyed by `{taskId, sessionId}` exists in
+   `~/.claude/work/timers.json`; the branch carries `tw-{id}` (from
+   `git.branch_pattern` with `{prefix}` = `tw`); commits carry `(TW-{id})`
+   (`commit_ref` from `git.commit_ref_pattern`).
+3. `openspec/changes/{change}/state.yaml`'s `nerv` block has
+   `task_ref: "TW-{id}"`.
+4. Second run (same session, same task): preflight is **silent** — the
+   timer is active and `tasks.provider` resolves, so no question is asked.
+5. Maya's full gate start (FULL) or reduced gate (LIGHT) triggers
+   `nerv:hyuga` `DISPATCH: tracker` (`moveStage`, stage `testing`) — the
+   task moves to `TESTING` in Teamwork.
+6. Close: `nerv:hyuga` `DISPATCH: tracker` (`close`) produces exactly one
+   Teamwork timelog with real start and end (from the local timer's
+   `startedAt` to now), rounded to 30 minutes per the existing
+   `/task:stop` rule; the task lands in `IMPLEMENTA` (Implementado) and is
+   completed. With `done` instead, the task is only moved to `IMPLEMENTA`
+   and left open (not completed).
+7. `nerv/deliberation-log.md` carries one `tracker_event` entry
+   (`{op, taskRef, result}`) per tracker op executed in this run
+   (`createTask`, `start`, `moveStage`, `close` or `done`).
+8. `/task:me` run by hand afterward renders the same unified table as
+   before this migration — same columns, same stage/priority emoji — with
+   sheet sources from `tasks.sources` included alongside the Teamwork
+   rows.
+9. `tasks.provider: none` variant (separate run, `.nerv/nerv.yaml`
+   overridden to `tasks.provider: none`): no tracker call is made at all
+   (`nerv:hyuga` is never launched with `DISPATCH: tracker`), but the
+   grouped preflight question still asks Worktree and Branch name (the
+   Task group offers only "work without a task").
+10. Halted-run variant: a pilot signals a block mid-run (e.g. an
+    unresolvable dependency). Ikari asks the user for the mandatory cause
+    first — the run never blocks silently or invents one — then
+    `nerv:hyuga` `DISPATCH: tracker` (`block`) runs with it; the resulting
+    comment on the task reads `BLOQUEADA: <cause>`, matching
+    `/task:blocked`'s own comment format, and the local timer is stopped
+    and logged same as `close`/`done`.
+
+Non-interactive variant: same setup, with the grouped question
+pre-answered in the prompt (task: create with title/source/list/priority
+given up front; worktree: skipped since `git.worktree: never`; branch and
+base pre-stated), piped like J1
+(`claude -p --max-turns 60 --allowedTools 'Agent,Bash(git *),Bash(dotnet
+*),Bash(gentle-ai *),Read,Write,Edit,Glob,Grep,mcp__teamwork__*'`).
+Expected outcomes 1-10 above hold identically, except step 1 is silent
+(pre-answered, not asked) and no interactive prompt is shown.
+
+## J6: resume after interruption (Phase 5)
+
+To be written with its phase.
