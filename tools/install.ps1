@@ -41,7 +41,24 @@
     marketplace from committed HEAD (see README "Updating after local
     changes"), so uncommitted edits stay invisible without this. Can be
     combined with the normal marketplace/plugin registration in the same
-    call — registration runs first, the cache refresh runs after.
+    call — registration runs first, the cache refresh runs after. Also runs
+    the same model/effort apply step as -ApplyModels, at the end, once the
+    cache readback confirms the refreshed sha.
+
+.PARAMETER ApplyModels
+    Applies the `models:` block from the user-scope `~/.claude/nerv/nerv.yaml`
+    (never the project-scope file — effort is a local-cache concern) to the
+    cached agent frontmatter under
+    `~/.claude/plugins/cache/nerv/nerv/<version>/agents/` (version read from
+    `plugin/.claude-plugin/plugin.json`). For each role in `models:`, rewrites
+    that agent's `model:`/`effort:` frontmatter keys (adding `effort:` when
+    absent), resolving `from: <gentle-ai-phase>` entries against
+    `~/.gentle-ai/state.json`'s `claude_phase_assignments`. Idempotent, and
+    safe to run any time after the plugin cache exists — a missing
+    `models:` block or a missing cache directory is informational, not an
+    error. `-RefreshCache` runs this same step automatically; use
+    `-ApplyModels` on its own after only editing `models:` in
+    `~/.claude/nerv/nerv.yaml`, with no code change to refresh.
 
 .EXAMPLE
     pwsh tools/install.ps1
@@ -57,6 +74,9 @@
 
 .EXAMPLE
     pwsh tools/install.ps1 -RefreshCache -RequireGentleAi
+
+.EXAMPLE
+    pwsh tools/install.ps1 -ApplyModels
 #>
 
 [CmdletBinding()]
@@ -69,8 +89,389 @@ param(
 
     [switch]$RequireGentleAi,
 
-    [switch]$RefreshCache
+    [switch]$RefreshCache,
+
+    [switch]$ApplyModels
 )
+
+# =============================================================================
+# Function definitions — dot-sourceable, no side effects of their own.
+#
+# Everything below this block up to the closing brace of the
+# `if ($MyInvocation.InvocationName -ne '.')` guard is this script's main
+# execution body. Dot-sourcing this file (`. tools/install.ps1 ...`, as
+# tests/install-apply-models.test.ps1 does) sets $MyInvocation.InvocationName
+# to '.', so the guard skips the whole body — including the gentle-ai
+# preflight, the settings.json mutation, and the Engram/RefreshCache calls —
+# and only these functions get defined in the caller's scope.
+# =============================================================================
+
+function Get-NervHomeDir {
+    <#
+    .SYNOPSIS
+        Resolves the user's home directory: $env:HOME first, then
+        $env:USERPROFILE. Matches the fallback already used elsewhere in
+        this script for `~/.claude/plugins/installed_plugins.json`.
+    #>
+    if ($env:HOME) { return $env:HOME }
+    return $env:USERPROFILE
+}
+
+function Resolve-NervModelAssignments {
+    <#
+    .SYNOPSIS
+        Parses the `models:` block (inline-map syntax) out of a NERV
+        user-scope nerv.yaml and returns a hashtable of
+        role -> @{ Model = '...'; Effort = '...' } (only the keys that
+        actually resolved are present per role).
+
+    .DESCRIPTION
+        Only the `models:` top-level key is parsed — this is not a general
+        YAML parser. Each entry line inside the block must look like:
+          <role>: { model: <value>, effort: <value> }
+        or
+          <role>: { from: <gentle-ai-phase> }
+        with any mix of `model`, `effort`, `from`, spaces, quoted or bare
+        values, and a trailing `# comment` tolerated. `from:` resolves
+        against StatePath's `claude_phase_assignments[<phase>]`; an explicit
+        `model`/`effort` on the same line wins over the one inherited via
+        `from:`. Invalid `model`/`effort` values, and `from:` phases missing
+        from the state file, are warned about and the whole role entry is
+        skipped (never partially applied).
+    #>
+    [CmdletBinding()]
+    param(
+        [string]$ConfigPath = (Join-Path (Get-NervHomeDir) ".claude/nerv/nerv.yaml"),
+        [string]$StatePath = (Join-Path (Get-NervHomeDir) ".gentle-ai/state.json")
+    )
+
+    $assignments = @{}
+
+    if (-not (Test-Path -LiteralPath $ConfigPath)) {
+        Write-Host "No NERV models: overrides configured ($ConfigPath not found); plugin defaults apply."
+        return $assignments
+    }
+
+    $raw = Get-Content -LiteralPath $ConfigPath -Raw -Encoding UTF8
+    $lines = ($raw -replace "`r`n", "`n") -split "`n"
+
+    # Locate the top-level "models:" key (column 0) and collect the indented
+    # lines that follow it, stopping at the next de-indented (or EOF) line.
+    $blockLines = [System.Collections.Generic.List[string]]::new()
+    $inBlock = $false
+    foreach ($line in $lines) {
+        if (-not $inBlock) {
+            if ($line -match '^models:\s*(#.*)?$') {
+                $inBlock = $true
+            }
+            continue
+        }
+        if ($line.Trim().Length -eq 0) {
+            continue
+        }
+        if ($line -match '^\s') {
+            $blockLines.Add($line)
+        }
+        else {
+            break
+        }
+    }
+
+    if (-not $inBlock) {
+        Write-Host "No 'models:' section found in $ConfigPath; plugin defaults apply."
+        return $assignments
+    }
+
+    $statePhaseAssignments = $null
+    $stateLoadAttempted = $false
+
+    $validModelPattern = '^(sonnet|opus|haiku|fable|inherit)$|^claude-.+$'
+    $validEffortPattern = '^(low|medium|high|xhigh|max)$'
+
+    foreach ($line in $blockLines) {
+        $entryMatch = [regex]::Match($line, '^\s*(?<role>[A-Za-z0-9_-]+):\s*\{(?<body>[^}]*)\}\s*(#.*)?$')
+        if (-not $entryMatch.Success) {
+            Write-Warning "Could not parse models: entry, skipping line: $($line.Trim())"
+            continue
+        }
+
+        $role = $entryMatch.Groups['role'].Value
+        $body = $entryMatch.Groups['body'].Value
+
+        $fields = @{}
+        foreach ($pair in ($body -split ',')) {
+            if ($pair.Trim().Length -eq 0) { continue }
+            $kv = $pair -split ':', 2
+            if ($kv.Count -ne 2) { continue }
+            $key = $kv[0].Trim()
+            $value = $kv[1].Trim().Trim('"').Trim("'")
+            $fields[$key] = $value
+        }
+
+        $model = $null
+        $effort = $null
+        $hasModel = $false
+        $hasEffort = $false
+        $skipRole = $false
+
+        if ($fields.ContainsKey('from')) {
+            if (-not $stateLoadAttempted) {
+                $stateLoadAttempted = $true
+                if (Test-Path -LiteralPath $StatePath) {
+                    try {
+                        $state = Get-Content -LiteralPath $StatePath -Raw -Encoding UTF8 | ConvertFrom-Json -Depth 50
+                        $statePhaseAssignments = $state.claude_phase_assignments
+                    }
+                    catch {
+                        Write-Warning "Could not parse $StatePath : $_"
+                        $statePhaseAssignments = $null
+                    }
+                }
+                else {
+                    Write-Warning "gentle-ai state file not found at $StatePath; 'from:' entries cannot be resolved."
+                }
+            }
+
+            $phase = $fields['from']
+            $phaseEntry = $null
+            if ($statePhaseAssignments -and $statePhaseAssignments.PSObject.Properties[$phase]) {
+                $phaseEntry = $statePhaseAssignments.$phase
+            }
+
+            if (-not $phaseEntry) {
+                Write-Warning "role '$role': from: $phase not found in $StatePath; skipping."
+                $skipRole = $true
+            }
+            else {
+                if ($phaseEntry.PSObject.Properties['model']) {
+                    $model = [string]$phaseEntry.model
+                    $hasModel = $true
+                }
+                if ($phaseEntry.PSObject.Properties['effort']) {
+                    $effort = [string]$phaseEntry.effort
+                    $hasEffort = $true
+                }
+            }
+        }
+
+        if ($skipRole) { continue }
+
+        if ($fields.ContainsKey('model')) {
+            $model = $fields['model']
+            $hasModel = $true
+        }
+        if ($fields.ContainsKey('effort')) {
+            $effort = $fields['effort']
+            $hasEffort = $true
+        }
+
+        if ($hasModel -and ($model -notmatch $validModelPattern)) {
+            Write-Warning "role '$role': invalid model '$model'; skipping."
+            continue
+        }
+        if ($hasEffort -and ($effort -notmatch $validEffortPattern)) {
+            Write-Warning "role '$role': invalid effort '$effort'; skipping."
+            continue
+        }
+        if (-not $hasModel -and -not $hasEffort) {
+            Write-Warning "role '$role': models: entry resolved neither model nor effort; skipping."
+            continue
+        }
+
+        $entry = @{}
+        if ($hasModel) { $entry['Model'] = $model }
+        if ($hasEffort) { $entry['Effort'] = $effort }
+        $assignments[$role] = $entry
+    }
+
+    return $assignments
+}
+
+function Set-NervAgentFrontmatter {
+    <#
+    .SYNOPSIS
+        Rewrites the `model:`/`effort:` frontmatter keys of each role's
+        cached agent file according to $Assignments (as returned by
+        Resolve-NervModelAssignments).
+
+    .DESCRIPTION
+        For each role: opens <AgentsDir>/<role>.md (warns and skips when
+        missing), locates the YAML frontmatter between the first two `---`
+        lines (warns and skips when malformed), and replaces the value
+        token on the `model:` line and, when present, the `effort:` line —
+        preserving any trailing `# comment` on either line verbatim. When an
+        Effort assignment is present but the file has no `effort:` line
+        yet, one is inserted immediately after `model:`. The body (anything
+        after the closing `---`) is never touched. Detects and preserves
+        the file's own line-ending style (CRLF or LF) and always writes
+        UTF-8 without a BOM. Prints one line per role whose frontmatter
+        actually changed, plus a one-line summary.
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][string]$AgentsDir,
+        [Parameter(Mandatory)][hashtable]$Assignments
+    )
+
+    $changedCount = 0
+    $unchangedCount = 0
+    $skippedCount = 0
+
+    foreach ($role in ($Assignments.Keys | Sort-Object)) {
+        $assignment = $Assignments[$role]
+        $agentFile = Join-Path $AgentsDir "$role.md"
+
+        if (-not (Test-Path -LiteralPath $agentFile)) {
+            Write-Warning "Agent file not found, skipping: $agentFile"
+            $skippedCount++
+            continue
+        }
+
+        $content = [System.IO.File]::ReadAllText($agentFile)
+        $eol = if ($content -match "`r`n") { "`r`n" } else { "`n" }
+        $lines = [System.Collections.Generic.List[string]]::new()
+        $lines.AddRange([string[]]($content -split "`r`n|`n"))
+
+        if ($lines.Count -lt 2 -or $lines[0].Trim() -ne '---') {
+            Write-Warning "Malformed frontmatter (missing opening ---), skipping: $agentFile"
+            $skippedCount++
+            continue
+        }
+
+        $closeIdx = -1
+        for ($i = 1; $i -lt $lines.Count; $i++) {
+            if ($lines[$i].Trim() -eq '---') { $closeIdx = $i; break }
+        }
+        if ($closeIdx -lt 0) {
+            Write-Warning "Malformed frontmatter (missing closing ---), skipping: $agentFile"
+            $skippedCount++
+            continue
+        }
+
+        $modelLineIdx = -1
+        $effortLineIdx = -1
+        for ($i = 1; $i -lt $closeIdx; $i++) {
+            if ($lines[$i] -match '^model:\s') { $modelLineIdx = $i }
+            elseif ($lines[$i] -match '^effort:\s') { $effortLineIdx = $i }
+        }
+
+        if ($modelLineIdx -lt 0) {
+            Write-Warning "No 'model:' key in frontmatter, skipping: $agentFile"
+            $skippedCount++
+            continue
+        }
+
+        $oldModel = $null
+        $oldEffort = $null
+        $modelChanged = $false
+        $effortChanged = $false
+
+        if ($assignment.ContainsKey('Model')) {
+            $m = [regex]::Match($lines[$modelLineIdx], '^model:(\s*)(\S+)(.*)$')
+            if ($m.Success) {
+                $oldModel = $m.Groups[2].Value
+                $newModel = $assignment['Model']
+                if ($oldModel -ne $newModel) {
+                    $lines[$modelLineIdx] = "model:$($m.Groups[1].Value)$newModel$($m.Groups[3].Value)"
+                    $modelChanged = $true
+                }
+            }
+        }
+
+        if ($assignment.ContainsKey('Effort')) {
+            $newEffort = $assignment['Effort']
+            if ($effortLineIdx -ge 0) {
+                $m = [regex]::Match($lines[$effortLineIdx], '^effort:(\s*)(\S+)(.*)$')
+                if ($m.Success) {
+                    $oldEffort = $m.Groups[2].Value
+                    if ($oldEffort -ne $newEffort) {
+                        $lines[$effortLineIdx] = "effort:$($m.Groups[1].Value)$newEffort$($m.Groups[3].Value)"
+                        $effortChanged = $true
+                    }
+                }
+            }
+            else {
+                $oldEffort = '(absent)'
+                $lines.Insert($modelLineIdx + 1, "effort: $newEffort")
+                $effortChanged = $true
+            }
+        }
+
+        $anyChange = $modelChanged -or $effortChanged
+
+        if ($anyChange) {
+            $newContent = ($lines -join $eol)
+            $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+            [System.IO.File]::WriteAllText($agentFile, $newContent, $utf8NoBom)
+
+            $parts = @()
+            if ($modelChanged) {
+                $parts += "model $oldModel→$($assignment['Model'])"
+            }
+            if ($effortChanged) {
+                $parts += "effort $oldEffort→$($assignment['Effort'])"
+            }
+            Write-Host "$role`: $($parts -join ', ')"
+            $changedCount++
+        }
+        else {
+            $unchangedCount++
+        }
+    }
+
+    Write-Host "Model/effort apply summary: $changedCount changed, $unchangedCount already up to date, $skippedCount skipped."
+}
+
+function Invoke-NervApplyModels {
+    <#
+    .SYNOPSIS
+        Resolves the user-scope models: block and applies it to the plugin
+        cache's agent frontmatter. Shared by -ApplyModels and -RefreshCache.
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][string]$RepoPath
+    )
+
+    $pluginJsonPath = Join-Path $RepoPath "plugin/.claude-plugin/plugin.json"
+    if (-not (Test-Path -LiteralPath $pluginJsonPath)) {
+        Write-Warning "plugin.json not found at $pluginJsonPath; cannot resolve the plugin cache version. Skipping model/effort apply."
+        return
+    }
+
+    $version = $null
+    try {
+        $pluginJson = Get-Content -LiteralPath $pluginJsonPath -Raw -Encoding UTF8 | ConvertFrom-Json -Depth 10
+        $version = $pluginJson.version
+    }
+    catch {
+        Write-Warning "Could not parse $pluginJsonPath : $_. Skipping model/effort apply."
+        return
+    }
+    if (-not $version) {
+        Write-Warning "plugin.json at $pluginJsonPath has no 'version'; cannot resolve the plugin cache. Skipping model/effort apply."
+        return
+    }
+
+    $agentsDir = Join-Path (Get-NervHomeDir) ".claude/plugins/cache/nerv/nerv/$version/agents"
+
+    Write-Host ""
+    Write-Host "=== Applying model/effort assignments (nerv@nerv $version) ===" -ForegroundColor Cyan
+
+    if (-not (Test-Path -LiteralPath $agentsDir)) {
+        Write-Warning "Plugin cache agents directory not found: $agentsDir. Install/refresh the plugin first."
+        return
+    }
+
+    $assignments = Resolve-NervModelAssignments
+    if ($assignments.Count -eq 0) {
+        return
+    }
+
+    Set-NervAgentFrontmatter -AgentsDir $agentsDir -Assignments $assignments
+}
+
+if ($MyInvocation.InvocationName -ne '.') {
 
 # --- gentle-ai version preflight (informational unless -RequireGentleAi) ---
 # NERV requires gentle-ai 3.x (major version 3; tested against 3.7.0).
@@ -375,7 +776,14 @@ if ($RefreshCache) {
     }
     Write-Host "nerv@nerv gitCommitSha : $cachedSha (matches HEAD; installPath: $($nervEntry.installPath))"
     Write-Host "Cache refreshed from the repo's committed HEAD. Restart Claude Code."
+
+    Invoke-NervApplyModels -RepoPath $RepoPath
+}
+elseif ($ApplyModels) {
+    Invoke-NervApplyModels -RepoPath $RepoPath
 }
 
 Write-Host ""
 Write-Host "Restart Claude Code for the change to take effect."
+
+} # end of `if ($MyInvocation.InvocationName -ne '.')` main-execution guard
