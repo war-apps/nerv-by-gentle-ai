@@ -100,6 +100,17 @@ Branch `feature/model-assignments`, stacked on phase 6. Started 2026-09-25. Fact
 - [x] T7.3 DONE (writer A; commit 41eb188, 17 assertions RED→GREEN; parent follow-up: merged defaults so a removed override restores the plugin default, ASCII arrow, 22 assertions). Installer `-ApplyModels`: reads the user `nerv.yaml` `models:` block (and `state.json` for `from`), rewrites `model:`/`effort:` in the cached agents (`~/.claude/plugins/cache/nerv/nerv/<version>/agents/<role>.md`) and runs automatically at the end of `-RefreshCache`; `tests/install-apply-models.test.ps1` (fake cache + fake yaml, RED first). Route: writer A.
 - [x] T7.4 DONE (inline): all suites green (22 / 17 / 11+1 skip); user file with `models.aoba: { model: haiku, effort: low }` → `-ApplyModels` rewrote the cached aoba.md (haiku/low) → `nerv ping` in the bench reported `claude-haiku-4-5-20251001`, Ikari logged the resolved model from the user entry with no mismatch; override removed → apply restored sonnet/low in the cache. Verify: tests green; set `models.aoba: { model: haiku, effort: low }` in the user file, apply, `nerv ping` in the bench reports haiku; revert; cache refreshed. Route: inline.
 
+### Phase 8: model/effort wizard
+Branch `feature/models-wizard`, stacked on phase 7. Started 2026-09-25. User request: a script that works as a wizard so the user can configure per-role model and effort easily, instead of editing `nerv.yaml` by hand.
+- [x] T8.1 DONE (writer; commit b13fbe6, 20 assertions RED→GREEN; parent follow-up: the block writer now ends the file with a newline, test expectations updated, 22/22; commits b13fbe6 + 81b6899). `tools/configure-models.ps1`: interactive wizard (PowerShell 7) that shows the resolved 18-role table (model, effort, source), lets the user pick a role or a group (MAGI, pilots, Kaji passes, all), set model/effort from menus or inherit a gentle-ai phase (`from:`), clear an override, then writes the `models:` block into the chosen scope file (user by default, project optional with the effort caveat) with a backup, and offers to run `-ApplyModels`. Pure functions (render block, replace/append block in yaml text, build the table) dot-sourceable and covered by `tests/configure-models.test.ps1` (RED first). Route: writer (delegated).
+- [x] T8.2 DONE (writer; commit 8905acd). README: "Configuring models and effort" section pointing at the wizard, the manual YAML path and `from:`; `/nerv:status` line unchanged. Route: writer.
+- [x] T8.3 DONE (inline): both wizard suites green (22 / 22); real run against the user file with `-AnswersFile` (`aoba`,`3`,`1`,`done`,`Y`) wrote `aoba: { model: haiku, effort: low }` with a backup, a second run (`reset`,`aoba`,`done`,`Y`) removed the block; the user file ended byte-identical to before and the two backups were deleted. Verify: tests green; a scripted run of the wizard through stdin (`-NonInteractive`-style input file or piped answers) sets aoba to haiku/low in a temp yaml, and the real wizard run against the user file is exercised once and reverted. Route: inline.
+
+## RDD, Phase 8 (2026-09-25)
+
+Slice `6939dd0..98d1bff` (wizard, tests, docs) assessed `medium` / `slice_budget_reached` from the detached worktree `D:\projects
+erv-rdd-wt8`. Consent granted; START created lineage `review-a9cb24645619ff64` (one lens, review-reliability), but the bound STATUS right after START timed out twice (`operation_timeout`, 25 s budget — the same Gentle AI defect seen in phases 1–3 and 5; phases 6 and 7 answered in 13 s, so it is intermittent). The user chose "continue without reporting"; the exact captured decline invocation ran and validated (`action: declined`, `consent: declined_this_candidate`, same target); re-entry STATUS recorded. No receipt for this slice; delivery under ordinary policy. Reviewed boundary for this branch stays 6939dd0.
+
 ## RDD, Phase 7 (2026-09-25)
 
 Slice `1f444a6..c714de9` (models section, model gate, -ApplyModels, docs) assessed `medium` / `slice_budget_reached` from the detached worktree `D:\projects
@@ -133,6 +144,7 @@ The approved receipt lists 37 informational findings (16 WARNING, 21 SUGGESTION)
 
 ## Progress log
 
+- 2026-09-25: Phase 8 complete (interactive model/effort wizard with scripted-answers mode, tests, README).
 - 2026-09-25: Phase 7 complete (per-role model/effort in nerv.yaml, mandatory model gate, -ApplyModels with defaults restore, status table); verified with a real haiku override on Aoba; RDD review granted, one correction (814a09b), receipt acknowledged.
 - 2026-09-25: Phase 6 complete (Engram project hook, nerv knowledge base + fallback, installer seed, README); three work-unit commits on feature/engram-project-hook; RDD review granted, one correction (711e577), receipt acknowledged.
 - 2026-09-25: Phase 5 complete (orchestrator lock, safe resume, close bookkeeping, artifacts commit policy, README final, installer -RefreshCache, J6 green with two protocol fixes and the command-name fix; memory note updated; Engram mirror pending on ambiguous_project).
