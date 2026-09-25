@@ -182,6 +182,18 @@ $installLinesOnly = @($outputOnly | Where-Object { $_ -match 'npx skills add' })
 Report "dryrun-only-tdd-prints-exactly-one-line" ($installLinesOnly.Count -eq 1) "found $($installLinesOnly.Count)"
 Report "dryrun-only-tdd-exit-zero" ($exitOnly -eq 0) "exit $exitOnly"
 
+# --- -Only with a name absent from the manifest: clear message, exit 1, no binding error ---
+$outputOnlyBad = & pwsh -NoProfile -File $scriptPath -ManifestPath $realManifestPath -SkillsDir $skillsDirE -Only "no-such-skill" -DryRun 2>&1
+$exitOnlyBad = $LASTEXITCODE
+$joinedBad = ($outputOnlyBad | ForEach-Object { [string]$_ }) -join "`n"
+Report "only-unknown-name-exits-1" ($exitOnlyBad -eq 1) "exit $exitOnlyBad"
+Report "only-unknown-name-names-the-skill" ($joinedBad -match 'no-such-skill') "output: $($joinedBad.Substring(0, [Math]::Min(200, $joinedBad.Length)))"
+Report "only-unknown-name-no-binding-error" ($joinedBad -notmatch 'Cannot bind argument|ParameterBindingValidationException') "output: $($joinedBad.Substring(0, [Math]::Min(200, $joinedBad.Length)))"
+# --- -Json shape is always an array, even for one entry ---
+$jsonOne = (& pwsh -NoProfile -File $scriptPath -ManifestPath $realManifestPath -SkillsDir $skillsDirE -Only "tdd" -Json 2>&1 | Out-String)
+$jsonOneTrim = $jsonOne.Trim()
+Report "json-single-entry-is-array" ($jsonOneTrim.StartsWith('[')) "starts with: $($jsonOneTrim.Substring(0, [Math]::Min(20, $jsonOneTrim.Length)))"
+
 $outputJson = & pwsh -NoProfile -File $scriptPath -ManifestPath $realManifestPath -SkillsDir $skillsDirE -Json -DryRun 2>&1
 $jsonText = ($outputJson -join "`n")
 $parsedOk = $true

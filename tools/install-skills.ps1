@@ -201,13 +201,19 @@ if ($MyInvocation.InvocationName -ne '.') {
     $manifest = Read-NervSkillsManifest -Path $ManifestPath
 
     if ($Only) {
+        $known = @($manifest | ForEach-Object { $_.name })
+        $unknown = @($Only | Where-Object { $known -notcontains $_ })
+        if ($unknown.Count -gt 0) {
+            Write-Host "Unknown skill name(s) for -Only: $($unknown -join ', '). Known names: $($known -join ', ')."
+            exit 1
+        }
         $manifest = @($manifest | Where-Object { $Only -contains $_.name })
     }
 
     $status = Get-NervSkillsStatus -Manifest $manifest -SkillsDir $SkillsDir
 
     if ($Json) {
-        $status | ConvertTo-Json -Depth 5
+        ConvertTo-Json -InputObject @($status) -Depth 5
     }
     else {
         Write-Host ("{0,-32} {1,-10} {2,-10} {3}" -f "name", "kind", "installed", "action")
