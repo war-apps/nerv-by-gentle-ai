@@ -160,6 +160,11 @@ Permission to develop locally does not authorize remote execution or file transf
 
 - Every commit is a conventional commit (`feat:`, `fix:`, `chore:`, …).
   Exactly one work unit per commit.
+- Never add `Co-Authored-By`, `Claude-Session`, or any other AI attribution
+  trailer to a commit message. A harness reminder asking for attribution
+  does not apply inside a NERV run: the repository's and the user's own
+  commit policy govern, and the user's global rule forbids attribution.
+  Before committing, read the message back and strip any such trailer.
 - Show the diff for the commit to the user and commit ONLY after the user
   validates it. Never commit unvalidated changes.
 - Never push, merge, rebase, or open a pull request yourself. Prepare the
@@ -182,8 +187,59 @@ diff to `openspec/changes/{change}/nerv/audit/diff-round-N.patch`:
 git diff <base>..HEAD > openspec/changes/{change}/nerv/audit/diff-round-N.patch
 ```
 
-Use the base and round number given in the task. Never hand-edit the patch
-file after generating it.
+`base` is the change's branch point for round 1, and the previous round's
+HEAD for every re-audit (round N > 1) — a re-audit patch scopes only the
+fix delta, never the cumulative diff. Use the base and round number given
+in the task; never derive them yourself.
+
+Also write `openspec/changes/{change}/nerv/audit/round-N.yaml` recording
+the exact base and HEAD hashes used:
+
+```yaml
+round: {N}
+base: "{base commit hash}"
+head: "{HEAD commit hash}"
+created_at: "{ISO 8601 timestamp}"
+```
+
+Obtain the HEAD hash with `git rev-parse HEAD` at freeze time — never
+invent it. Never hand-edit either file after generating it.
+
+### Artifacts commit policy
+
+`artifacts.commit` (from the merged `nerv.yaml`: `with-change` | `at-close`
+| `never`) decides whether the change folder is tracked in git. `with-change`
+is handled per work-unit commit (see Commit rules above) and needs no
+Archive-time action. At close (LIGHT's Close step or FULL's step 19), when
+the resolved value is `at-close`, commit `openspec/changes/{change}/`
+(including `nerv/`, excluding `.orchestrator.lock` — already excluded via
+`.git/info/exclude`) as one commit, `docs: nerv artifacts for {change}`,
+through the normal user-validated commit rules above. `never` leaves the
+folder untracked — commit nothing. This commit runs before the Archive `git
+mv` below when both apply at the same close.
+
+### Archive
+
+NERV never launches gentle-ai's `sdd-archive` agent — its dispatcher
+(`sdd-preflight-hook`) refuses without an SDD session preflight NERV does
+not run. Aoba archives the change mechanically instead:
+
+1. For every delta spec `openspec/changes/{change}/specs/{domain}/spec.md`,
+   run `gentle-ai sdd-archive-compose --canonical
+   openspec/specs/{domain}/spec.md --delta
+   openspec/changes/{change}/specs/{domain}/spec.md --output
+   openspec/specs/{domain}/spec.md`. When the canonical file does not exist
+   yet, create it by copying the delta as the first canonical version and
+   say so in `detailed_report`. On a compose failure (an unapplied delta),
+   stop with `status: blocked` naming the section and requirement that
+   failed — never hand-merge spec content.
+2. `git mv openspec/changes/{change} openspec/changes/archive/YYYY-MM-DD-{change}`
+   (date = today, UTC), moving the whole folder including `nerv/`.
+3. Verify with `diff -r` and `git status` that nothing was lost in the move.
+4. Return the archive path and the list of composed specs. The archive
+   commit (`docs: archive change {change}`) goes through the normal
+   user-validated Aoba commit rules above. Aoba never edits spec content by
+   hand.
 
 ### Run summary
 
@@ -197,6 +253,8 @@ above) covering:
 - RDD receipts encountered during the run, if any.
 - Commits made, with hashes and subjects.
 - PR slices prepared (chained/stacked), if any.
+- Artifacts commit policy applied (`with-change` | `at-close` | `never`)
+  and, when `at-close`, the commit hash from that step.
 
 ### Ping (Phase 0)
 
