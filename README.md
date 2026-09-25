@@ -308,6 +308,12 @@ edits are invisible to sessions. After changing plugin files:
    one call.
 3. Restart Claude Code.
 
+`-RefreshCache` also applies the `models:` block's `effort` overrides to the
+refreshed cache (see "Configuration schema" → `models:`), so a code change
+and a pending effort override land together. If you only edited `models:`
+in `~/.claude/nerv/nerv.yaml` — no plugin file changed — skip the reinstall
+and run `pwsh tools/install.ps1 -ApplyModels` on its own instead.
+
 ## Operations
 
 **Activation.** A repo opts in by creating `.nerv/nerv.yaml` with
@@ -539,6 +545,10 @@ skills:                             # stacks per consuming role; names must exis
   best-practices: [best-practices, solid-principles, clean-code-guard]  # balthasar
   architecture: [hexagonal-architecture, c4-architecture]          # melchor
   audit: [security-review, clean-code-guard]                       # kaji passes
+models:                             # per-role model and effort; project overrides user, key by key
+  misato: { model: fable, effort: high }
+  melchor: { from: jd-judge-b }     # inherit gentle-ai's assignment for that phase (state.json)
+  aoba: { model: sonnet, effort: low }
 critical_paths: [auth/, payments/, migrations/, infra/]            # Hyuga auto-critical
 artifacts:
   commit: at-close                  # with-change | at-close | never (default: at-close)
@@ -563,3 +573,28 @@ tasks:
   sources:                          # extra work sources for listings (replaces ~/.claude/work/sources.md)
     - { name: erp-proveedores, type: google-sheets, ... }
 ```
+
+`models:` assigns a per-role `model` and `effort` override, with project
+overriding user key by key like every other section — each entry is an
+inline map, one role per line, with `model`, `effort`, or `from` keys;
+`from: <gentle-ai-phase>` inherits that phase's `model`/`effort` from
+`~/.gentle-ai/state.json`'s `claude_phase_assignments`, and an explicit
+`model`/`effort` on the same line wins over the inherited one. A role
+absent from both `models:` files keeps the plugin default (the table in
+"Roles" above). `model` and `effort` are applied differently, because
+Claude Code itself treats them differently: `model` is a per-call launch
+parameter, so Ikari reads the resolved `models:` map (both scopes merged)
+and passes it to every agent launch — it takes effect immediately, no
+reinstall needed. `effort` is honored only from the launched agent file's
+own frontmatter, so it can only be applied by rewriting the cached agent
+files themselves: `pwsh tools/install.ps1 -ApplyModels` reads `models:`
+from the **user-scope** file only (`~/.claude/nerv/nerv.yaml`) and
+rewrites `model:`/`effort:` in each affected `<role>.md` under the plugin
+cache. Project-scope `models:` therefore applies to `model` only —
+`effort` is not applicable at project scope, since project config cannot
+reach into a user's local plugin cache. `-RefreshCache` runs this same
+apply step automatically at the end of its own cache refresh.
+`/nerv:status` reports the resolved `models:` table (both scopes merged)
+and warns when the cached agent frontmatter has drifted from it, so a
+pending `-ApplyModels` run is visible without inspecting the cache by
+hand.

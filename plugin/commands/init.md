@@ -50,10 +50,41 @@ overwrites silently, and delegates gentle-ai's own bootstrap unchanged.
    config (see `skills/nerv-orchestrator/SKILL.md` → Configuration
    resolution) — never the user-scope-only keys
    (`tasks.providers.teamwork.assignee_id`, `.stages`), which stay in
-   `~/.claude/nerv/nerv.yaml` alone. If `.nerv/nerv.yaml` already exists,
-   do **not** overwrite it without confirmation — show the diff between
-   the existing file and the proposed one, and ask a single yes/no
-   confirmation before writing.
+   `~/.claude/nerv/nerv.yaml` alone. Append a fully commented-out `models:`
+   block showing the syntax and today's plugin defaults, so the user can see
+   how to override a role's model/effort without guessing a value:
+
+   ```yaml
+   # models:                           # per-role model and effort; project overrides user, key by key
+   #   aoba: { model: sonnet, effort: low }
+   #   asuka: { model: sonnet, effort: medium }
+   #   balthasar: { model: sonnet, effort: medium }
+   #   casper: { model: sonnet, effort: medium }
+   #   fuyutsuki: { model: sonnet, effort: medium }
+   #   hyuga: { model: sonnet, effort: medium }
+   #   kaji: { model: opus, effort: high }
+   #   kaji-coverage: { model: sonnet, effort: medium }
+   #   kaji-refuter: { model: sonnet, effort: medium }
+   #   kaji-security: { model: sonnet, effort: medium }
+   #   kaworu: { model: sonnet, effort: medium }
+   #   maya: { model: sonnet, effort: medium }
+   #   melchor: { model: fable, effort: high }
+   #   misato: { model: fable, effort: high }
+   #   rei: { model: sonnet, effort: medium }
+   #   ritsuko: { model: opus, effort: high }
+   #   shinji: { model: sonnet, effort: medium }
+   #   toji: { model: sonnet, effort: medium }
+   ```
+
+   Uncomment and edit only the roles the user wants to override — an absent
+   role keeps the plugin default shown above. Mention that `from:
+   <gentle-ai-phase>` is also accepted in place of an explicit `model`/
+   `effort` pair (see README → Configuration schema → `models:`), and that
+   `effort` overrides only take effect after `pwsh tools/install.ps1
+   -ApplyModels` (user scope only — project-scope `models:` applies `model`
+   only). If `.nerv/nerv.yaml` already exists, do **not** overwrite it
+   without confirmation — show the diff between the existing file and the
+   proposed one, and ask a single yes/no confirmation before writing.
 
 5. **Bootstrap gentle-ai if needed.** If `openspec/config.yaml` or
    `.atl/skill-registry.md` is missing, delegate to the `sdd-init` agent
