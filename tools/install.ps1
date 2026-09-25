@@ -284,9 +284,12 @@ if ($RefreshCache) {
     if (Test-Path -LiteralPath $installedPluginsPath) {
         try {
             $installedPlugins = Get-Content -LiteralPath $installedPluginsPath -Raw -Encoding UTF8 | ConvertFrom-Json -Depth 50
-            $nervEntry = $installedPlugins.'nerv@nerv'
+            # installed_plugins.json nests entries under "plugins" and stores an array per plugin id
+            $nervEntries = $installedPlugins.plugins.'nerv@nerv'
+            if (-not $nervEntries) { $nervEntries = $installedPlugins.'nerv@nerv' }
+            $nervEntry = @($nervEntries) | Select-Object -First 1
             if ($nervEntry -and $nervEntry.gitCommitSha) {
-                Write-Host "nerv@nerv gitCommitSha : $($nervEntry.gitCommitSha)"
+                Write-Host "nerv@nerv gitCommitSha : $($nervEntry.gitCommitSha) (installPath: $($nervEntry.installPath))"
             }
             else {
                 Write-Warning "nerv@nerv not found in $installedPluginsPath after refresh."
