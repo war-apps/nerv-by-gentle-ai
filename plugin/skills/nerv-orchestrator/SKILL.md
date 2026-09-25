@@ -663,7 +663,12 @@ commands, never runs them.
 `at-close` leaves it untracked until Aoba commits it once, whole, as
 `docs: nerv artifacts for {change}`, through the normal user-validated
 commit; `never` leaves it untracked permanently. `nerv/.orchestrator.lock`
-is excluded from every commit regardless of this setting.
+is excluded from every commit regardless of this setting, and when Aoba
+archives the change with `git mv` the exclude entry for the archive path
+(`openspec/changes/archive/YYYY-MM-DD-{change}/nerv/.orchestrator.lock`)
+is added before the move, because `git mv` on a directory renames the
+untracked lock along with it. The lock is deleted before the close commit,
+which is the run's last write (see `## Deliberation log`, close ordering).
 
 ## Usage collection
 
@@ -697,6 +702,27 @@ once per Hyuga tracker op — Preflight, Maya's full-gate start, the issue
 gate, and Close. Phase 5 adds `resume` (`{from_step, took_over_from}`) and
 `lock_refused`, also defined in `nerv-artifacts.md`, logged by the
 Orchestrator lock and Resume protocols.
+
+**Completeness rule.** The log is the run's only chronological record, so
+it never skips a step that happened: every launch gets its `launch` line
+and its `envelope` line (Ritsuko's docs launch and Hyuga's ranking
+envelope included), every artifact Hyuga ranks gets `ranking_issued`, and
+the issue gate always produces `issue_gate_relayed` and
+`issue_gate_decision`, even when the NOW set is empty and the answer was
+pre-granted in the launch context (payload: `approved-as-ranked`, the
+empty NOW set, the DEFER ids). Recording a decision only in
+`issue-ranking.md` or `issue-resolutions.md` is not a substitute: those
+files are the artifact, the log line is the event. A `tracker_event` is
+logged for the DEFER `createTask` ops as well (`result=skipped` when the
+provider is `none`).
+
+**Close ordering.** The close commit (`docs: close nerv run for {change}`)
+is the run's last write. Ikari appends the `stop` event before launching
+it, so the committed log is complete; the close commit's own hash is
+reported in the run's final message, never appended to the log
+afterwards. After close, `git status` must show nothing under the change
+(J4/J6 check): a `commit_recorded` or `stop` line appended after the close
+commit is a protocol violation, not a known limitation.
 
 ## Resume
 
