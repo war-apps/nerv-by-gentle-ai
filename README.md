@@ -201,9 +201,16 @@ flowchart TB
     P --> Q["RDD hook"]
     Q --> M
     Q --> R["Maya full gate a-d"]
-    R --> S["Audit placeholder — Phase 3, not shipped"]
-    S --> T["Run summary (aoba)"]
-    T --> U["Close"]
+    R --> S1["Freeze patch (aoba)"]
+    S1 --> S2["5 audit passes — parallel, blind: melchor, balthasar, casper, kaji-security, kaji-coverage"]
+    S2 --> S3["Kaji compile + dedupe; kaji-refuter on inferential severe items"]
+    S3 --> S4["Ranking (hyuga) [user issue gate]"]
+    S4 --> S5{"NOW set empty?"}
+    S5 -- no --> S6["Fix routing via the work-unit cycle, re-audit on the fix delta (cap 2)"]
+    S6 --> S1
+    S5 -- yes --> S7["Docs (ritsuko), archive (aoba + sdd-archive-compose), curate (fuyutsuki)"]
+    S7 --> T["Run summary (aoba)"]
+    T --> U["Close (hyuga tracker close)"]
 ```
 
 FULL adds MAGI governance on top of the same LIGHT primitives (RED/GREEN/
@@ -212,9 +219,13 @@ plan gated by a user corner-case interview; Misato's plan goes through
 criticality, a blind parallel MAGI vote (with a capped revise loop on
 rejection), and Fuyutsuki's governance veto before a single whole-plan user
 approval gate. Hyuga's waves then drive per-task implementation cycles
-identical to LIGHT's, Maya runs the full a-d gate, and — since Kaji's audit
-is not shipped yet — the run goes straight from the audit placeholder
-statement to the run summary and close.
+identical to LIGHT's, and Maya runs the full a-d gate. The audit stage then
+freezes the patch, runs five blind passes, compiles them through Kaji (with
+the refuter on inferential severe items), ranks the issues for a user gate,
+routes approved fixes through the work-unit cycle with a re-audit over the
+fix delta (capped at 2), and closes with Ritsuko's documentation, the
+mechanical archive, Fuyutsuki's log summary, the run summary and the
+tracker close.
 
 ### RDD per commit
 
@@ -289,35 +300,157 @@ edits are invisible to sessions. After changing plugin files:
    when `version` in `plugin/.claude-plugin/plugin.json` changed; with the
    same version run `claude plugin uninstall nerv@nerv` followed by
    `claude plugin install nerv@nerv` (settings.json keeps `nerv@nerv`
-   enabled, so nothing else changes).
+   enabled, so nothing else changes). `pwsh tools/install.ps1 -RefreshCache`
+   does exactly this (both commands, plus a printed `gitCommitSha` check and
+   a restart reminder) and can be combined with the normal registration in
+   one call.
 3. Restart Claude Code.
 
-## Phase 0 status
+## Operations
 
-This is the Phase 0 slice: the smallest proof that the overlay mechanism
-works. It ships one agent (`aoba`), one command (`/nerv:status`), one
-SessionStart hook that injects the NERV orchestrator protocol only in repos
-where `.nerv/nerv.yaml` has `enabled: true`, an installer, and this README.
-The full Ikari protocol (classification, MAGI vote, audit, waves) is not
-implemented yet — a NERV-enabled repo currently falls back to gentle-ai's
-ordinary organic flow for actual work.
+**Activation.** A repo opts in by creating `.nerv/nerv.yaml` with
+`enabled: true` — `/nerv:init` writes it interactively (base branch,
+worktree policy, skill stacks, task-tracker provider). Without the marker
+a session behaves like plain gentle-ai; with it, SessionStart injects the
+NERV orchestrator protocol and the session becomes Ikari.
+
+**LIGHT vs. FULL.** Ikari classifies each request LIGHT (one pilot domain,
+no new skills/scripts/commands) or FULL (multiple domains, a critical path,
+or governance-relevant surface); LIGHT runs a single RED/GREEN/REFACTOR
+cycle under a reduced Maya gate, while FULL adds Ritsuko's spec/test-plan,
+a blind MAGI vote per task, Fuyutsuki's governance veto, a plan-approval
+gate, wave-based implementation, and (once shipped) Kaji's audit.
+
+**Gates a human will see.** The grouped preflight question (task,
+worktree, branch, base) when no task/timer is active; a commit-validation
+stop before every Aoba commit; the corner-case questions relayed as one
+grouped prompt in FULL; the whole-plan approval HARD gate in FULL; the
+ranked issue gate after an audit; and the RDD consent envelope after a
+commit when review is due. Every one of these is a Lossless Blocking
+Prompt — relayed verbatim, never decided on the user's behalf.
+
+**Artifacts.** NERV writes only under `openspec/changes/{change}/nerv/`
+(deliberation log, exploration, test plan, votes, veto ruling, waves,
+Maya reports, audit rounds, run summary) plus the shared gentle-ai SDD
+files (`state.yaml`, `proposal.md`, `design.md`, `tasks.md`, `specs/`) at
+the change root. `.nerv/nerv.yaml` (project scope) and
+`~/.claude/nerv/nerv.yaml` (user scope) hold configuration; nothing is
+ever written under `~/.claude/agents` or `~/.claude/skills`.
+
+**Artifacts commit policy.** `artifacts.commit` controls when the `nerv/`
+folder is committed: `with-change` (each work-unit commit includes its own
+NERV artifacts), `at-close` (default — artifacts land in one
+`docs: nerv artifacts for {change}` commit when the run closes), or
+`never` (artifacts stay untracked; the user commits them manually, if
+ever).
+
+**Task tracker.** `tasks.provider` selects `teamwork` (implemented today),
+`github-projects` or `jira` (schema stubs only, not wired), or `none` (no
+tracker calls; the preflight still asks worktree/branch). Hyuga's
+`DISPATCH: tracker` drives create/start/moveStage/block/close/done against
+the configured provider. The 16 `/task:*` commands read the same single
+`nerv.yaml` config (user + project scope) instead of hardcoded values.
+
+**`/nerv:status`.** Reports gentle-ai major-version compatibility, the
+active config (merged user + project), and — while a run is in progress —
+the orchestrator lock state (`nerv/.orchestrator.lock`: holder, wave,
+heartbeat age); the lock line disappears once the run closes.
+
+## Troubleshooting
+
+- **Plugin cache still shows old files after an edit.** Claude Code
+  snapshots directory marketplaces from the repo's *committed* HEAD, not
+  the working tree (see "Updating after local changes" above). Commit,
+  then reinstall — `pwsh tools/install.ps1 -RefreshCache` — and restart
+  Claude Code.
+- **`gentle-ai review status` times out around 25 s on a bound lineage.**
+  Observed `operation_timeout` on the pre-native STATUS budget
+  (`reviewFacadeOperationTimeout`, no env override). Retry once; if it
+  keeps failing, continue without that review (ordinary policy) or reduce
+  the reviewed scope and try again.
+- **`lens_context_budget_exceeded` on a review.** The accumulated range is
+  too large for the reviewer context. Review commit by commit from a
+  detached review worktree (`git worktree add --detach`; lineages share
+  the same `.git`), and keep individual commits near the ~400-line
+  delivery-budget heuristic so each fits.
+- **The `sdd-archive` agent refuses to launch.** gentle-ai's SDD dispatcher
+  refuses `sdd-archive` outside a native SDD session (it wants an
+  interactive AskUserQuestion preflight NERV doesn't run). NERV archives
+  mechanically instead — Aoba runs `git mv` plus
+  `gentle-ai sdd-archive-compose` per delta spec.
+- **A launch dies under memory pressure.** The protocol retries the launch
+  once. If the session itself is interrupted, resuming is safe: the
+  orchestrator lock and its heartbeat let a resume session detect and take
+  over a genuinely dead run without re-voting frozen tasks or re-running
+  closed waves.
+- **Commits carry a stray `Co-Authored-By` trailer.** The harness
+  attribution reminder some environments inject is ignored by Aoba on
+  purpose — NERV commits never carry AI attribution trailers; a gatekeeper
+  check greps the commit message for this before it lands.
+- **`createTask` blocks with "tasklist not found."** A stale
+  `tasks.providers.teamwork.tasklist_id` (or `project_id`) in `nerv.yaml`.
+  Fix the config (project or user scope) and re-run; the preflight is
+  designed to stop and re-ask rather than silently create the task
+  elsewhere.
+- **Extra reviewer sessions appear on every tool use.** That's the
+  `security-guidance` plugin's own hook (installed independently — see
+  `install-claude-skills-global.ps1`), not NERV. NERV's own review relay
+  only runs after an Aoba work-unit commit.
+
+## Known limitations
+
+- **Audit coverage tracks the test plan.** Kaji's passes flag what the
+  test plan and code disagree on; a scenario the user explicitly declined
+  during the corner-case interview is a recorded decision, not a missing
+  case, and will not surface as a finding.
+- **GitHub Projects and Jira are schema stubs.** `tasks.providers.
+  github-projects` and `tasks.providers.jira` parse and validate, but no
+  adapter dispatches against either API yet — only `teamwork` is wired.
+- **Interactive gates can't be driven by `claude -p`.** Non-interactive
+  harness runs (`bench/journeys.md`'s default variant) pre-answer every
+  blocking prompt in the launch context; the interactive variants exist
+  precisely because a batch session cannot answer an
+  `AskUserQuestion`-shaped prompt itself.
+- **RDD advisory findings aren't a separate backlog.** Non-blocking
+  findings from an acknowledged review receipt are recorded inline in the
+  feature document (`odd/tasks/<feature>.md`), not tracked in a dedicated
+  issue list.
+- **Reviewed-boundary bookkeeping is per branch.** The "last reviewed
+  commit" that RDD assessment walks forward from is tracked per branch,
+  not per change or per worktree; rebasing or cherry-picking across
+  branches can make that boundary stale.
+
+## Status
+
+Phases 0 through 5 are complete (2026-09-24 through 2026-09-25): the
+overlay mechanism, the LIGHT path, the FULL path with MAGI governance, the
+audit and closure stage, the task-tracking layer with the single config
+file, and Phase 5 hardening (orchestrator lock/heartbeat, safe resume,
+artifacts commit policy, installer and README parity). 18 agents ship;
+journeys J0 through J5 are green in the bench repo. `bench/journeys.md`
+is the source of truth for what was actually observed at each phase.
 
 ## Roadmap
 
-- **Phase 1 (done)** — LIGHT path end to end: the Ikari protocol
-  (classification, delegation triggers, RDD relay, usage collection),
-  `ritsuko`, `shinji`, `kaworu`, `maya`, and `/nerv:init`.
-- **Phase 2 (in progress)** — FULL path with MAGI: `misato`, `hyuga`,
+- **Phase 0 (done, 2026-09-24)** — Overlay mechanism proven: `aoba`,
+  `/nerv:status`, the SessionStart hook, the installer.
+- **Phase 1 (done, 2026-09-24)** — LIGHT path end to end: the Ikari
+  protocol (classification, delegation triggers, RDD relay, usage
+  collection), `ritsuko`, `shinji`, `kaworu`, `maya`, and `/nerv:init`.
+- **Phase 2 (done, 2026-09-24)** — FULL path with MAGI: `misato`, `hyuga`,
   `balthasar`, `melchor`, `casper`, `fuyutsuki`, the vote/veto/waves
   artifacts, and the plan-approval HARD gate.
-- **Phase 3** — Audit and closure: `kaji`, `kaji-security`, `kaji-coverage`,
-  the frozen-patch audit passes, ranked issue gate, fix routing, and
-  archive.
-- **Phase 4** — Task-tracking layer (Hyuga) and single config file: the
-  provider-agnostic task port, the Teamwork adapter, and the preflight
-  question for task/worktree/branch/base.
-- **Phase 5** — Hardening: the full `bench/journeys.md` suite, README
-  parity, and the resume protocol.
+- **Phase 3 (done, 2026-09-24)** — Audit and closure: `kaji`,
+  `kaji-security`, `kaji-coverage`, `kaji-refuter`, the frozen-patch audit
+  passes, ranked issue gate, fix routing, and archive.
+- **Phase 4 (done, 2026-09-25)** — Task-tracking layer (Hyuga) and single
+  config file: the provider-agnostic task port, the Teamwork adapter, the
+  preflight question for task/worktree/branch/base, and the `/task:*`
+  command migration.
+- **Phase 5 (done, 2026-09-25)** — Hardening: the orchestrator lock and
+  safe resume protocol, the artifacts commit policy, the full
+  `bench/journeys.md` suite (J0-J5, plus J6's non-interactive and
+  interactive design), README parity, and installer `-RefreshCache`.
 
 ## Roles
 
@@ -337,6 +470,7 @@ ordinary organic flow for actual work.
 | `kaji` | Compiles and dedupes the multi-pass audit into `audit-report.md`. |
 | `kaji-security` | Audit pass focused on security. |
 | `kaji-coverage` | Audit pass focused on test coverage. |
+| `kaji-refuter` | Detached read-only refuter for the audit's inferential findings batch. |
 | `maya` | Quality gate — runs tests, lint, and build across phases a-d. |
 | `hyuga` | Criticality, waves, issue ranking, and task-tracker dispatch. |
 | `aoba` | Git operations and run telemetry — commits, delivery prep, and the run summary. |
@@ -362,6 +496,8 @@ skills:                             # stacks per consuming role; names must exis
   architecture: [hexagonal-architecture, c4-architecture]          # melchor
   audit: [security-review, clean-code-guard]                       # kaji passes
 critical_paths: [auth/, payments/, migrations/, infra/]            # Hyuga auto-critical
+artifacts:
+  commit: at-close                  # with-change | at-close | never (default: at-close)
 git:
   base_branch: develop              # default base for the worktree offer
   worktree: ask                     # ask | always | never
@@ -373,12 +509,13 @@ tasks:
   subtasks_per_wave: false
   providers:                        # one block per provider, only the enabled one is required
     teamwork:
+      task_ref_prefix: tw           # {prefix} in branch_pattern / commit_ref_pattern
       assignee_id: 686035           # user scope
       project_id: 1271726           # project scope
       tasklist_id: 3951970          # project scope
       stages: { inDev: DESARROLLO, testing: TESTING, implemented: IMPLEMENTA, blocked: BLOQUEA, canceled: CANCEL, pending: PENDIENTE, analysis: ANALISIS }
-    github-projects: { owner: "", project_number: 0 }    # later
-    jira: { site: "", project_key: "" }                  # later
+    github-projects: { task_ref_prefix: gh, owner: "", project_number: 0 }    # later
+    jira: { task_ref_prefix: jira, site: "", project_key: "" }               # later
   sources:                          # extra work sources for listings (replaces ~/.claude/work/sources.md)
     - { name: erp-proveedores, type: google-sheets, ... }
 ```
