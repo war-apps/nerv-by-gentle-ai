@@ -106,6 +106,11 @@ Branch `feature/models-wizard`, stacked on phase 7. Started 2026-09-25. User req
 - [x] T8.2 DONE (writer; commit 8905acd). README: "Configuring models and effort" section pointing at the wizard, the manual YAML path and `from:`; `/nerv:status` line unchanged. Route: writer.
 - [x] T8.3 DONE (inline): both wizard suites green (22 / 22); real run against the user file with `-AnswersFile` (`aoba`,`3`,`1`,`done`,`Y`) wrote `aoba: { model: haiku, effort: low }` with a backup, a second run (`reset`,`aoba`,`done`,`Y`) removed the block; the user file ended byte-identical to before and the two backups were deleted. Verify: tests green; a scripted run of the wizard through stdin (`-NonInteractive`-style input file or piped answers) sets aoba to haiku/low in a temp yaml, and the real wizard run against the user file is exercised once and reverted. Route: inline.
 
+## RDD, Phase 8 (2026-09-25)
+
+Slice `6939dd0..98d1bff` (wizard, tests, docs) assessed `medium` / `slice_budget_reached` from the detached worktree `D:\projects
+erv-rdd-wt8`. Consent granted; START created lineage `review-a9cb24645619ff64` (one lens, review-reliability), but the bound STATUS right after START timed out twice (`operation_timeout`, 25 s budget — the same Gentle AI defect seen in phases 1–3 and 5; phases 6 and 7 answered in 13 s, so it is intermittent). The user chose "continue without reporting"; the exact captured decline invocation ran and validated (`action: declined`, `consent: declined_this_candidate`, same target); re-entry STATUS recorded. No receipt for this slice; delivery under ordinary policy. Reviewed boundary for this branch stays 6939dd0.
+
 ## RDD, Phase 7 (2026-09-25)
 
 Slice `1f444a6..c714de9` (models section, model gate, -ApplyModels, docs) assessed `medium` / `slice_budget_reached` from the detached worktree `D:\projects
