@@ -1,5 +1,24 @@
 # NERV
 
+<p align="center">
+  <a href="https://github.com/Gentleman-Programming/gentle-ai"><img alt="gentle-ai 3.x" src="https://img.shields.io/badge/gentle--ai-3.x-6f42c1?style=for-the-badge"></a>
+  <a href="https://code.claude.com/docs"><img alt="Claude Code plugin" src="https://img.shields.io/badge/Claude_Code-plugin-d97757?style=for-the-badge&logo=anthropic&logoColor=white"></a>
+  <a href="https://github.com/PowerShell/PowerShell"><img alt="PowerShell 7" src="https://img.shields.io/badge/PowerShell-7-5391FE?style=for-the-badge&logo=powershell&logoColor=white"></a>
+  <a href="https://www.gnu.org/software/bash/"><img alt="Bash hooks" src="https://img.shields.io/badge/Bash-hooks-4EAA25?style=for-the-badge&logo=gnubash&logoColor=white"></a>
+  <a href="https://www.markdownguide.org/"><img alt="Markdown agents and skills" src="https://img.shields.io/badge/Markdown-agents_%26_skills-000000?style=for-the-badge&logo=markdown&logoColor=white"></a>
+  <a href="https://mermaid.js.org/"><img alt="Mermaid diagrams" src="https://img.shields.io/badge/Mermaid-diagrams-FF3670?style=for-the-badge&logo=mermaid&logoColor=white"></a>
+  <a href="https://yaml.org/"><img alt="YAML config" src="https://img.shields.io/badge/YAML-nerv.yaml-CB171E?style=for-the-badge&logo=yaml&logoColor=white"></a>
+  <a href="https://github.com/Gentleman-Programming/gentle-ai"><img alt="OpenSpec SDD" src="https://img.shields.io/badge/OpenSpec-SDD_%2B_RDD-0aa?style=for-the-badge"></a>
+  <a href="https://github.com/Gentleman-Programming/engram"><img alt="Engram memory" src="https://img.shields.io/badge/Engram-memory-2d3748?style=for-the-badge"></a>
+  <a href="https://www.teamwork.com/"><img alt="Teamwork MCP" src="https://img.shields.io/badge/Teamwork-MCP_adapter-FF22B1?style=for-the-badge&logo=teamwork&logoColor=white"></a>
+  <a href="https://skills.sh/"><img alt="skills.sh" src="https://img.shields.io/badge/skills.sh-manifest-333?style=for-the-badge"></a>
+  <a href="https://git-scm.com/"><img alt="git" src="https://img.shields.io/badge/git-gitflow-F05032?style=for-the-badge&logo=git&logoColor=white"></a>
+</p>
+
+<p align="center">
+  <a href="https://github.com/Gentleman-Programming/gentle-ai"><img alt="Built with Gentle-AI" src="https://raw.githubusercontent.com/Gentleman-Programming/gentle-ai/main/docs/assets/brand/built-with-gentle-ai.png"></a>
+</p>
+
 NERV is a Claude Code plugin implementing an Evangelion-named multi-agent
 governance workflow: Ikari orchestrates, Fuyutsuki holds governance veto,
 Misato authors the plan, MAGI (Balthasar / Melchor / Casper) vote per task,
