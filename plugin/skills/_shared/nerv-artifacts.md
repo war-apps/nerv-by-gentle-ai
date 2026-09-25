@@ -27,6 +27,10 @@ one NERV-owned key). Engram topic key for every artifact:
 - `closed_at` is `null` until the change closes, then set once by Ikari at
   Close (LIGHT's Close step or FULL's step 19), the same write that deletes
   `nerv/.orchestrator.lock`.
+- The merged `nerv.yaml`'s `models` section (per-role `model`/`effort`,
+  resolved as described in `nerv-orchestrator/SKILL.md`'s Configuration
+  resolution) is not mirrored into `state.yaml`; it is resolved fresh each
+  session.
 
 ```yaml
 dependsOn: []
@@ -210,7 +214,9 @@ estimated.
 - {ts} | {phase} | {actor} | classification | {payload_ref}
 - {ts} | {phase} | {actor} | ratchet | {payload_ref}
 - {ts} | {phase} | {actor} | launch | {payload_ref}
+- {ts} | {phase} | {actor} | effort_drift | {payload_ref}
 - {ts} | {phase} | {actor} | envelope | {payload_ref}
+- {ts} | {phase} | {actor} | model_mismatch | {payload_ref}
 - {ts} | {phase} | {actor} | gate_relayed | {payload_ref}
 - {ts} | {phase} | {actor} | gate_decision | {payload_ref}
 - {ts} | {phase} | {actor} | commit_recorded | {payload_ref}
@@ -220,7 +226,14 @@ estimated.
 ```
 
 `payload_ref` is a short pointer (commit hash, envelope field, file path) —
-never the full payload inline; keep the log scannable.
+never the full payload inline; keep the log scannable. Two exceptions carry
+their payload shape here rather than by pointer, since it is already
+short: `model_mismatch` (payload: `{role, resolved, reported}`) — logged
+by the Mandatory model gate when an envelope readback's reported model
+differs from the resolved one; a warning, never a stop. `effort_drift`
+(payload: `{role, resolved, cached}`) — logged once per role per session
+when the resolved effort differs from that role's cached agent frontmatter
+effort; the pipeline continues either way.
 
 ### Phase 2 event types
 

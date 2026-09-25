@@ -47,7 +47,29 @@ short and imperative — this is a status check, not a narrative.
    minutes old and `waiting_on` is not `user` (see the Orchestrator lock
    section of `nerv-orchestrator/SKILL.md`).
 
-5. **Phase note.** Always print, verbatim: "Phase 5 adds the orchestrator
+5. **Model/effort table.** Resolve each of the 18 `nerv:<role>` launches'
+   model and effort per `nerv-orchestrator/SKILL.md`'s Configuration
+   resolution → **Model and effort per role** (project `models.<role>` >
+   user `models.<role>` > `from` phase in `~/.gentle-ai/state.json` >
+   plugin default). Locate the installed cache at
+   `~/.claude/plugins/cache/nerv/nerv/<version>/` (the `installPath` of
+   `nerv@nerv` in `~/.claude/plugins/installed_plugins.json`, or the single
+   version directory present there) and look up each role's cached
+   frontmatter effort at `<installPath>/agents/<role>.md`; if that cache
+   directory is missing, print `cache: not found` once and leave `cached
+   effort` blank for every row. Print one table:
+
+   | role | model | effort | source | cached effort |
+   |---|---|---|---|---|
+   | ... | ... | ... | project\|user\|gentle-ai:\<phase\>\|default | ... |
+
+   Then print a closing line: `models: in sync` when every role's resolved
+   effort matches its cached frontmatter effort, or `models: N role(s)
+   drift — run pwsh tools/install.ps1 -ApplyModels` otherwise (`N` = the
+   count of mismatched roles). Read-only — never write `nerv.yaml`,
+   `state.json`, or any cached agent file.
+
+6. **Phase note.** Always print, verbatim: "Phase 5 adds the orchestrator
    lock and safe resume."
 
 Do not modify any file. Do not launch any agent other than for the reads

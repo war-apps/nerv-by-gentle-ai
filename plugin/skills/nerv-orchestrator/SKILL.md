@@ -116,6 +116,21 @@ Inject only the configuration each agent needs, never the full document:
 | Hyuga | `tasks` block, `git` block |
 | Fuyutsuki, Hyuga | `critical_paths` |
 
+**Model and effort per role.** Resolve each of the 18 `nerv:<role>` launches'
+model and effort once per session, in this order: the project
+`models.<role>` entry in `<repo>/.nerv/nerv.yaml`, then the user
+`models.<role>` entry in `~/.claude/nerv/nerv.yaml`, then — for whichever
+entry resolved and names a phase via `from: <phase>` instead of an explicit
+`model`/`effort` — that phase's `{model, effort}` in
+`~/.gentle-ai/state.json`'s `claude_phase_assignments`, then the plugin's
+own built-in default (aoba sonnet/low; kaji, ritsuko opus/high; melchor,
+misato fable/high; every other role sonnet/medium). An explicit
+`model`/`effort` on a `models.<role>` entry always wins over that same
+entry's `from`; a role absent from both files keeps the plugin default.
+Cache the resolved 18-role table for the session, the same as the two-file
+merge above; re-resolve only if `nerv.yaml` or `state.json` changes
+mid-session.
+
 **Engram project and knowledge base.** Every NERV-governed repo has its
 own Engram project — resolved by the SessionStart hook and printed as
 `Engram project: <name> (source: ...)` at session start, `nerv` itself
@@ -551,6 +566,21 @@ fixed pipeline tables above, for any work the tables leave to judgment):
   2 non-mechanical edits without delegation, pause and delegate the next
   bounded unit.
 
+**Mandatory model gate.** Every Agent tool call for a `nerv:<role>` launch
+MUST pass `model: <resolved model>` (see Configuration resolution's Model
+and effort per role). The launch line Ikari appends to
+`deliberation-log.md` records `model=<value> source=<project|user|
+gentle-ai:<phase>|default>` in its payload. At envelope readback, Ikari
+compares the agent's reported model (see Usage collection) against the
+resolved one; a mismatch logs a `model_mismatch` warning event and never
+stops the pipeline. Effort cannot be passed per call — Claude Code honors
+`effort` only from the agent's cached frontmatter — so the resolved effort
+is informational at launch time and only takes effect once
+`pwsh tools/install.ps1 -ApplyModels` has written it into the cache. When
+the resolved effort differs from the role's cached frontmatter effort,
+Ikari logs one `effort_drift` event per role per session (payload: role,
+resolved, cached) and continues.
+
 ### Per-launch prompt template
 
 Every Ikari → NERV-agent launch uses this shape:
@@ -558,6 +588,7 @@ Every Ikari → NERV-agent launch uses this shape:
 ```markdown
 ## Role
 nerv:<role> — <one-line task for this launch>
+Model: {resolved model} (effort {resolved effort}, source {source})
 
 ## Change
 {change-name} at openspec/changes/{change}/
@@ -718,7 +749,9 @@ duration). After each launch Ikari records one row
 launch, not separate input/output counts. The accumulated table is handed
 to Aoba in the run-summary launch; Aoba never estimates figures, and Ikari
 never omits a launch, including retries and failed ones (mark them in the
-row).
+row). `model` in this row is the REPORTED model from the Agent result, kept
+as-is — it is not the resolved model from the Mandatory model gate, though
+the two are compared at envelope readback (see Delegation triggers).
 
 ## Deliberation log
 
