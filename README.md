@@ -276,6 +276,79 @@ correction applies only if one is required, and an acknowledged receipt is
 logged as `rdd_receipt`; on a decline, the run continues under ordinary
 repository policy. Ikari itself never enables or disables the RDD switch.
 
+## Setup
+
+After installing the plugin (see "Install" below), run the configuration
+wizard instead of hand-editing YAML:
+
+```
+pwsh tools/install.ps1 -Configure
+```
+
+or, if the plugin is already installed:
+
+```
+pwsh tools/configure.ps1
+```
+
+The wizard runs six sections, each skippable (`-SkipSkills`, `-SkipModels`,
+`-SkipRepos`, `-SkipCommands`, `-NoRefresh`):
+
+1. **Prerequisites** — informational checks for `gentle-ai` (major version
+   3 required), `engram` (optional), and `claude` (required for the
+   refresh step).
+1. **Required skills** — `tools/install-skills.ps1` reads
+   `tools/skills-manifest.json` (the nine external skills the plugin
+   defaults reference, with their skills.sh sources; the five gentle-ai
+   ones; the `security-review` built-in), installs the missing external
+   ones with `npx skills add <repo> --skill <id> -g -a claude-code -y`, and
+   names `gentle-ai install`/`sync` as the remedy for missing gentle-ai
+   skills. Already-present skills are never touched; `-DryRun` previews.
+   `pwsh tools/install.ps1 -Skills` runs the same step without the wizard.
+2. **User config** — asks `git` (base branch, worktree policy, branch and
+   commit-ref patterns), `tasks` (provider, ask-when-missing,
+   subtasks-per-wave, timer store, rounding minutes, and — when the
+   provider is Teamwork — the ref prefix, assignee id, default
+   project/tasklist ids, and the seven workflow-stage names), `skills`
+   (one comma-separated stack per consuming role), `critical_paths`, and
+   `artifacts.commit`, then writes `~/.claude/nerv/nerv.yaml`, backing up
+   any existing file first. Every field the wizard changes is edited **in
+   place** — same line, same indentation, existing trailing comment kept —
+   and a field left unchanged (Enter keeps the shown value) is never
+   rewritten at all; a whole block (`git:`, `tasks:`, `skills:`,
+   `artifacts:`, or the `providers.teamwork` sub-block) is only generated
+   fresh when it is missing from the file entirely. Nothing the wizard has
+   no field for — extra keys, `known_projects:`, `sources:`,
+   `sources_howto:`, or anything else you added by hand — is ever dropped
+   or regenerated.
+3. **Models** — optionally launches `tools/configure-models.ps1` for
+   per-role model/effort overrides (see "Configuring models and effort"
+   below).
+4. **Repos** — optionally writes `.nerv/nerv.yaml` in one or more local
+   git repositories (base branch, task provider, and — for Teamwork —
+   this repo's project/tasklist ids), leaving an already-initialized repo
+   untouched.
+5. **Slash commands** — optionally copies the Teamwork procedures under
+   `plugin/skills/nerv-tasks/providers/teamwork/procedures/` into
+   `~/.claude/commands/task/` as the 16 `/task:*` commands, never
+   overwriting a file that already exists there.
+6. **Apply and refresh** — optionally applies the resolved `models:`
+   block to the plugin cache and runs `tools/install.ps1 -RefreshCache`.
+
+Every prompt shows its current or default value in brackets; Enter keeps
+it. `-AnswersFile <path>` drives the whole wizard from a text file (one
+answer per line) instead of prompting, for scripted setup.
+
+After the wizard, open Claude Code in each configured repository and run
+`/nerv:init` once — this bootstraps gentle-ai's SDD registry when it is
+missing; the wizard itself only writes `.nerv/nerv.yaml`.
+
+Outside the wizard, the plugin stays self-contained apart from these
+requirements: **gentle-ai 3.x** installed and configured (`gentle-ai
+install`), **Claude Code** with the **Teamwork MCP** configured when the
+Teamwork task-tracker adapter is used, and **Engram** (optional — used for
+the shared `nerv` knowledge base and per-repo memory detection).
+
 ## Install
 
 1. `git clone https://github.com/war-apps/nerv-gentle-ai.git` (the folder path is registered as a local plugin marketplace, so keep the clone where it will stay).
@@ -286,6 +359,9 @@ repository policy. Ikari itself never enables or disables the RDD switch.
    ```yaml
    enabled: true
    ```
+
+   Or run `pwsh tools/configure.ps1` (see "Setup" above) to generate it
+   interactively instead.
 
 Run `pwsh tools/install.ps1 -Uninstall` to remove the marketplace and
 plugin registration again.

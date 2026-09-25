@@ -45,6 +45,17 @@
     the same model/effort apply step as -ApplyModels, at the end, once the
     cache readback confirms the refreshed sha.
 
+.PARAMETER Skills
+    Install the skills the plugin defaults reference (tools/install-skills.ps1):
+    external ones from skills.sh with npx skills add -g, gentle-ai-shipped ones
+    verified only. Idempotent; already-present skills are left alone.
+
+.PARAMETER Configure
+    Runs `tools/configure.ps1 -RepoPath $RepoPath -NoRefresh` at the end of
+    this script's main body (skipped on -Uninstall). Without -Configure, if
+    no user-scope `~/.claude/nerv/nerv.yaml` is found, a one-line hint to
+    run the configuration wizard is printed instead.
+
 .PARAMETER ApplyModels
     Applies the `models:` block from the user-scope `~/.claude/nerv/nerv.yaml`
     (never the project-scope file — effort is a local-cache concern) to the
@@ -91,7 +102,10 @@ param(
 
     [switch]$RefreshCache,
 
-    [switch]$ApplyModels
+    [switch]$ApplyModels,
+
+    [switch]$Configure,
+    [switch]$Skills
 )
 
 # =============================================================================
@@ -843,6 +857,29 @@ if ($RefreshCache) {
 }
 elseif ($ApplyModels) {
     Invoke-NervApplyModels -RepoPath $RepoPath
+}
+
+if (-not $Uninstall) {
+    if ($Skills) {
+        Write-Host ""
+        Write-Host "=== Installing required skills ===" -ForegroundColor Cyan
+        $global:LASTEXITCODE = 0
+        & pwsh -NoProfile -File (Join-Path $PSScriptRoot "install-skills.ps1")
+        if ($LASTEXITCODE -ne 0) { Write-Warning "install-skills.ps1 reported failures; see the lines above." }
+    }
+    if ($Configure) {
+        Write-Host ""
+        Write-Host "=== Running configuration wizard ===" -ForegroundColor Cyan
+        & pwsh -NoProfile -File (Join-Path $PSScriptRoot "configure.ps1") -RepoPath $RepoPath -NoRefresh
+    }
+    else {
+        $homeDirForHint = Get-NervHomeDir
+        $userConfigHintPath = Join-Path $homeDirForHint ".claude/nerv/nerv.yaml"
+        if (-not (Test-Path -LiteralPath $userConfigHintPath)) {
+            Write-Host ""
+            Write-Host "No user config found: run pwsh tools/configure.ps1 to set up NERV (or re-run with -Configure)."
+        }
+    }
 }
 
 Write-Host ""
