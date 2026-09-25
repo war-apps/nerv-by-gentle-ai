@@ -1,0 +1,20 @@
+{
+  "schema": "nerv.skills-manifest/v1",
+  "skills": [
+    { "name": "tdd", "kind": "external", "repo": "mattpocock/skills", "skill": "tdd", "used_by": ["testing"] },
+    { "name": "playwright-best-practices", "kind": "external", "repo": "currents-dev/playwright-best-practices-skill", "used_by": ["testing"] },
+    { "name": "dotnet-best-practices", "kind": "external", "repo": "github/awesome-copilot", "skill": "dotnet-best-practices", "used_by": ["code"] },
+    { "name": "typescript-best-practices", "kind": "external", "repo": "alleneubank/claude-code", "skill": "typescript-best-practices", "used_by": ["code"] },
+    { "name": "best-practices", "kind": "external", "repo": "addyosmani/web-quality-skills", "skill": "best-practices", "used_by": ["best-practices"] },
+    { "name": "solid-principles", "kind": "external", "repo": "thebushidocollective/han", "skill": "solid-principles", "used_by": ["best-practices"] },
+    { "name": "clean-code-guard", "kind": "external", "repo": "amElnagdy/guard-skills", "skill": "clean-code-guard", "used_by": ["best-practices", "audit"] },
+    { "name": "hexagonal-architecture", "kind": "external", "repo": "affaan-m/ecc", "skill": "hexagonal-architecture", "used_by": ["architecture"] },
+    { "name": "c4-architecture", "kind": "external", "repo": "softaworks/agent-toolkit", "skill": "c4-architecture", "used_by": ["architecture"] },
+    { "name": "work-unit-commits", "kind": "gentle-ai", "used_by": ["delivery"] },
+    { "name": "chained-pr", "kind": "gentle-ai", "used_by": ["delivery"] },
+    { "name": "branch-pr", "kind": "gentle-ai", "used_by": ["delivery"] },
+    { "name": "judgment-day", "kind": "gentle-ai", "used_by": ["audit"] },
+    { "name": "skill-registry", "kind": "gentle-ai", "used_by": ["registry"] },
+    { "name": "security-review", "kind": "builtin", "used_by": ["audit"] }
+  ]
+}
