@@ -114,6 +114,16 @@ Branch `feature/setup-wizard`, off `develop` (phases 0-8 merged). Started 2026-0
 - [x] T9.5 DONE (writer C; commit 9edd6e5; 22 assertions; wired by the parent into `configure.ps1` section 0b and `install.ps1 -Skills`). Required skills installed by the installer: `tools/skills-manifest.json` (the external skills the plugin defaults reference — tdd, playwright-best-practices, dotnet-best-practices, typescript-best-practices, best-practices, solid-principles, clean-code-guard, hexagonal-architecture, c4-architecture — with their skills.sh source repo, plus the gentle-ai-shipped ones to verify only: work-unit-commits, chained-pr, branch-pr, judgment-day, skill-registry), `tools/install-skills.ps1` (detects missing skills under `~/.claude/skills/`, installs the external ones with `npx skills add <repo> --skill <id> -g -a claude-code -y`, reports gentle-ai-shipped gaps with the `gentle-ai install`/`sync` remedy, `-DryRun`, `-Only`), `tests/install-skills.test.ps1` (RED first); wired into `configure.ps1` as a section and `install.ps1 -Skills`. Route: writer C, then inline wiring.
 - [x] T9.4 DONE (inline): suites configure 99 / configure-models 22 / install-apply-models 22 / install-skills 22 / hooks 17 + 11 green; real runs against the user file: keep-everything → "No changes", byte-identical, no backup; change only `git.worktree` → exactly one line differs, restored afterwards; skills step reports 15 present. Verify: tests green; a scripted `configure.ps1` run against temp HOME/config paths produces the expected user file, project file and command copies; a real run against the user file with "keep current" answers leaves it byte-identical; cache refreshed. Route: inline.
 
+## RDD, Phase 9 (2026-09-25)
+
+Slice `develop..bf9a396` (four commits) returned `lens_context_budget_exceeded` at START, so it was reviewed commit by commit from the detached worktree `D:\projects
+erv-rdd-wt9`:
+- `7dfc166` (embedded Teamwork procedures): consent granted, reliability lens captured, `correction_required` with two CRITICAL findings (`R3-path-convention`: the adapter referenced `providers/teamwork/procedures/*` from inside `providers/`, a doubled segment resolving to nothing; `R3-stopall-cross-session`: stopAll collected every session's timers) plus `R3-unmapped-procedures` (clear/stopAll unreachable from the port) and `R3-branch-glob` (unquoted glob). The bound STATUS then timed out twice; the user chose "continue without reporting"; declined, no receipt. All four findings fixed on the branch in **c0a3783** (paths relative to the adapter, link-checked; stopAll scoped to this session; `discardTimer` and `stopAll` mapped in the port and the adapter; glob quoted).
+- `9edd6e5` (skills installer): consent granted, one CRITICAL (`R3-only-empty-filter-unproved`: an unknown `-Only` name became a parameter-binding error) plus the `-Json` single-entry shape; correction e2a3852 in the worktree (3 new assertions, 26/26), validator approved, **receipt `gentle-ai.review-acknowledged/v1`, lineage `review-3dbe84df823f4e9b`**; cherry-picked as 21c5bc1.
+- `afefdfa` (wizard): consent granted, bound STATUS timed out twice right after START; "continue without reporting"; declined, no receipt.
+- `bf9a396`, `5f3eda7` (docs): passive. `c0a3783`, `21c5bc1`, `21bf240`: medium, under budget.
+Advisory follow-ups from these reviews: adapter/command drift detection between the embedded procedures and installed `/task:*` copies; the `comment` REST contract vs. the procedures' config key; stage-move failure semantics stated once; sheet link column derived from the source config in the listing procedures; an automated link check over the adapter table; installer non-DryRun path and dot-source guard untested; manifest name uniqueness; test teardown guarantees; hardcoded manifest counts in tests.
+
 ## RDD, Phase 8 (2026-09-25)
 
 Slice `6939dd0..98d1bff` (wizard, tests, docs) assessed `medium` / `slice_budget_reached` from the detached worktree `D:\projects
@@ -152,7 +162,7 @@ The approved receipt lists 37 informational findings (16 WARNING, 21 SUGGESTION)
 
 ## Progress log
 
-- 2026-09-25: Phase 9 complete (self-contained Teamwork adapter, required-skills installer, full setup wizard with in-place config editing).
+- 2026-09-25: Phase 9 complete (self-contained Teamwork adapter, required-skills installer, full setup wizard with in-place config editing); README badges, banner, NERV Gentle-AI display name and the detailed Roles table; per-commit RDD: one receipt, two declined after STATUS timeouts, findings fixed.
 - 2026-09-25: Phase 8 complete (interactive model/effort wizard with scripted-answers mode, tests, README).
 - 2026-09-25: Phase 7 complete (per-role model/effort in nerv.yaml, mandatory model gate, -ApplyModels with defaults restore, status table); verified with a real haiku override on Aoba; RDD review granted, one correction (814a09b), receipt acknowledged.
 - 2026-09-25: Phase 6 complete (Engram project hook, nerv knowledge base + fallback, installer seed, README); three work-unit commits on feature/engram-project-hook; RDD review granted, one correction (711e577), receipt acknowledged.
