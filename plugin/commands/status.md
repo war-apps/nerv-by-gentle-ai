@@ -37,10 +37,14 @@ short and imperative — this is a status check, not a narrative.
    `nerv/` subfolder (for example `nerv/run-summary.md`). If no changes
    exist, say so plainly. For each active change, also read
    `nerv/.orchestrator.lock` if present (read-only — never refresh or
-   delete it from this command) and print `lock: session <session_id> —
-   fresh (heartbeat <Ns> ago)` or `lock: session <session_id> — stale
-   (heartbeat <Nm> ago)`, or `lock: none` when the file is absent. Fresh
-   means `heartbeat_at` is under 15 minutes old (see the Orchestrator lock
+   delete it from this command) and print `lock: session <session_id>,
+   step <step>, waiting_on <waiting_on> — fresh (heartbeat <N.N>m ago)`,
+   `… — held: parked on a user gate (heartbeat <N.N>m ago)` when
+   `waiting_on` is `user` whatever the age, `… — stale (heartbeat <N.N>m
+   ago)`, or `lock: none` when the file is absent; an unreadable or
+   partial lock, or one without a parseable `heartbeat_at`, prints `lock:
+   unreadable — treated as held`. Fresh means `heartbeat_at` is under 15
+   minutes old and `waiting_on` is not `user` (see the Orchestrator lock
    section of `nerv-orchestrator/SKILL.md`).
 
 5. **Phase note.** Always print, verbatim: "Phase 5 adds the orchestrator

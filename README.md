@@ -319,7 +319,7 @@ no new skills/scripts/commands) or FULL (multiple domains, a critical path,
 or governance-relevant surface); LIGHT runs a single RED/GREEN/REFACTOR
 cycle under a reduced Maya gate, while FULL adds Ritsuko's spec/test-plan,
 a blind MAGI vote per task, Fuyutsuki's governance veto, a plan-approval
-gate, wave-based implementation, and (once shipped) Kaji's audit.
+gate, wave-based implementation, and Kaji's five-pass audit before close.
 
 **Gates a human will see.** The grouped preflight question (task,
 worktree, branch, base) when no task/timer is active; a commit-validation
