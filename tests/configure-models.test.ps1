@@ -108,7 +108,7 @@ $yamlWithBlockLf = (
 $newBlock = "models:                             # new header`n  misato: { model: fable, effort: high }"
 
 $replaced = Set-NervYamlModelsBlock -YamlText $yamlWithBlockLf -BlockText $newBlock
-$expectedReplaced = "skills: {}`n" + $newBlock + "`ncritical_paths: [auth/, payments/, migrations/, infra/]"
+$expectedReplaced = "skills: {}`n" + $newBlock + "`ncritical_paths: [auth/, payments/, migrations/, infra/]`n"
 Report "set-replace-exact" ($replaced -eq $expectedReplaced)
 
 $noBlockYaml = "skills: {}`ncritical_paths: [auth/]"
@@ -116,11 +116,11 @@ $appended = Set-NervYamlModelsBlock -YamlText $noBlockYaml -BlockText $newBlock
 Report "append-ends-with-eol" ($appended.EndsWith("`n"))
 $replacedEol = Set-NervYamlModelsBlock -YamlText $yamlWithBlockLf -BlockText $newBlock
 Report "replace-ends-with-eol" ($replacedEol.EndsWith("`n"))
-$expectedAppended = $noBlockYaml + "`n`n" + $newBlock
+$expectedAppended = $noBlockYaml + "`n`n" + $newBlock + "`n"
 Report "set-append-when-absent" ($appended -eq $expectedAppended)
 
 $removed = Set-NervYamlModelsBlock -YamlText $yamlWithBlockLf -BlockText ''
-$expectedRemoved = "skills: {}`ncritical_paths: [auth/, payments/, migrations/, infra/]"
+$expectedRemoved = "skills: {}`ncritical_paths: [auth/, payments/, migrations/, infra/]`n"
 Report "set-remove-when-empty" ($removed -eq $expectedRemoved)
 
 $yamlWithBlockCrlf = $yamlWithBlockLf -replace "`n", "`r`n"
