@@ -1,0 +1,11 @@
+{
+  "name": "nerv",
+  "owner": { "name": "Walter Rodriguez" },
+  "plugins": [
+    {
+      "name": "nerv",
+      "source": "./plugin",
+      "description": "NERV: governance overlay on gentle-ai (Evangelion-named multi-agent workflow)"
+    }
+  ]
+}
