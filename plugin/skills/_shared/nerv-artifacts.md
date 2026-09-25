@@ -56,8 +56,14 @@ started_at: "2026-09-24T14:03:00Z"
 heartbeat_at: "2026-09-24T14:11:00Z"
 phase: "full"
 step: "11-wave-2"
+waiting_on: "agent"                # agent | user | none
 pid: null
 ```
+
+`waiting_on: user` marks a lock parked on a blocking prompt; such a lock is
+held at any heartbeat age (a human gate has no upper bound) and a resume
+against it must ask the user before taking over. Ikari sets it right before
+relaying the prompt and clears it (`none`) right after the answer.
 
 Fresh when `heartbeat_at` is under 15 minutes old (see `## Orchestrator
 lock` in `nerv-orchestrator/SKILL.md`); refreshed before every launch and

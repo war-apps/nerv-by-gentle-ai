@@ -327,7 +327,10 @@ stop before every Aoba commit; the corner-case questions relayed as one
 grouped prompt in FULL; the whole-plan approval HARD gate in FULL; the
 ranked issue gate after an audit; and the RDD consent envelope after a
 commit when review is due. Every one of these is a Lossless Blocking
-Prompt — relayed verbatim, never decided on the user's behalf.
+Prompt — relayed verbatim, never decided on the user's behalf. While one is
+open the orchestrator lock carries `waiting_on: user`, so the 15-minute
+staleness rule does not apply to it: a resume from another session must
+ask before taking over, however long the gate stays open.
 
 **Artifacts.** NERV writes only under `openspec/changes/{change}/nerv/`
 (deliberation log, exploration, test plan, votes, veto ruling, waves,
@@ -353,8 +356,8 @@ the configured provider. The 16 `/task:*` commands read the same single
 
 **`/nerv:status`.** Reports gentle-ai major-version compatibility, the
 active config (merged user + project), and — while a run is in progress —
-the orchestrator lock state (`nerv/.orchestrator.lock`: holder, wave,
-heartbeat age); the lock line disappears once the run closes.
+the orchestrator lock state (`nerv/.orchestrator.lock`: holder, step,
+`waiting_on`, heartbeat age); the lock line disappears once the run closes.
 
 ## Troubleshooting
 

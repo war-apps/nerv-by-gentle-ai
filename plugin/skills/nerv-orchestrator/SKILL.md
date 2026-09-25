@@ -69,18 +69,27 @@ carries "Do NOT delegate" in its own file and has no Agent tool access.
 
 Ikari alone holds this lock — no agent reads or writes it. File:
 `openspec/changes/{change}/nerv/.orchestrator.lock`, YAML: `{session_id,
-host, started_at, heartbeat_at, phase, step, pid: null}` (`session_id` = the
-UUID segment of this session's scratchpad path, `host` = machine name).
-Ikari writes it right after creating `state.yaml`; refreshes `heartbeat_at`/
-`phase`/`step` before every launch and after every envelope, as part of the
-same mechanical write as the `deliberation-log.md` append; deletes it at
-close or on an explicit stop. Never committed: excluded from every Aoba
+host, started_at, heartbeat_at, phase, step, waiting_on, pid: null}`
+(`session_id` = the UUID segment of this session's scratchpad path, `host`
+= machine name, `waiting_on` = `agent` while a launch runs, `user` while a
+blocking prompt is relayed, `none` otherwise). Ikari writes it right after
+creating `state.yaml`; refreshes `heartbeat_at`/`phase`/`step`/`waiting_on`
+before every launch and after every envelope, **and** right before relaying
+any blocking prompt (`waiting_on: user`) and right after the answer arrives
+(`waiting_on: none`), as part of the same mechanical write as the
+`deliberation-log.md` append; deletes it at close or on an explicit stop. Never committed: excluded from every Aoba
 commit regardless of `artifacts.commit` (below); Ikari adds the path to
 `.git/info/exclude` the moment it creates the lock.
 
 **Staleness**: fresh when `heartbeat_at` is under 15 minutes old — a single
 long launch (Ritsuko intel, a four-lens audit pass) can run ~10 minutes, so
-15 minutes leaves margin without mistaking a live run for a dead one.
+15 minutes leaves margin without mistaking a live run for a dead one. Age
+never applies while `waiting_on: user`: a human gate has no upper bound
+(preflight, commit validation, plan approval, issue gate, RDD consent), so
+a lock parked on one is treated as **held** however old its heartbeat, and
+a resume against it always relays the wait-or-take-over prompt; the user's
+explicit confirmation that the other session is dead is the only takeover
+path. A lock with `waiting_on: agent` or `none` follows the age rule.
 **Readback**: every launch's readback also re-reads the lock and confirms it
 still carries this session's `session_id`; a different id means another
 orchestrator took over — stop immediately with a `stop` event, no further
@@ -728,12 +737,13 @@ commit is a protocol violation, not a known limitation.
 
 On resuming an interrupted NERV change, in order:
 
-1. **Lock check.** Read `nerv/.orchestrator.lock`. Fresh (see `##
-   Orchestrator lock`) and its `session_id` is not ours → do not resume;
-   relay one blocking prompt, exactly two choices: wait (stop here, try
-   later) or take over (only after the user confirms the other session is
-   really dead; record `took_over_from: <session_id>`). Stale or absent →
-   proceed.
+1. **Lock check.** Read `nerv/.orchestrator.lock`. Held — fresh by age,
+   or `waiting_on: user` at any age (see `## Orchestrator lock`) — and its
+   `session_id` is not ours → do not resume; relay one blocking prompt,
+   exactly two choices: wait (stop here, try later) or take over (only
+   after the user confirms the other session is really dead; record
+   `took_over_from: <session_id>`). Stale (`waiting_on` not `user` and
+   `heartbeat_at` 15+ minutes old) or absent → proceed.
 2. **Memory + native status.** `mem_context` → `mem_search` scoped to
    `nerv/{change}` → `mem_get_observation` for each hit's full content →
    `gentle-ai sdd-status {change} --json`.

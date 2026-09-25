@@ -268,41 +268,59 @@ if ($RefreshCache) {
     Write-Host ""
     Write-Host "=== Refreshing plugin cache (nerv@nerv) ===" -ForegroundColor Cyan
 
-    Write-Host "-> claude plugin uninstall nerv@nerv"
-    & claude plugin uninstall nerv@nerv
-    if ($LASTEXITCODE -ne 0) {
-        Write-Warning "claude plugin uninstall nerv@nerv exited with code $LASTEXITCODE"
-    }
-
-    Write-Host "-> claude plugin install nerv@nerv"
-    & claude plugin install nerv@nerv
-    if ($LASTEXITCODE -ne 0) {
-        Write-Warning "claude plugin install nerv@nerv exited with code $LASTEXITCODE"
-    }
-
-    $installedPluginsPath = Join-Path $env:USERPROFILE ".claude\plugins\installed_plugins.json"
-    if (Test-Path -LiteralPath $installedPluginsPath) {
+    # Each external call resets $LASTEXITCODE first and treats an
+    # unresolvable command as a failure; any failure aborts the refresh
+    # instead of falling through to the success sentence.
+    foreach ($verb in @('uninstall', 'install')) {
+        Write-Host "-> claude plugin $verb nerv@nerv"
+        $global:LASTEXITCODE = 0
         try {
-            $installedPlugins = Get-Content -LiteralPath $installedPluginsPath -Raw -Encoding UTF8 | ConvertFrom-Json -Depth 50
-            # installed_plugins.json nests entries under "plugins" and stores an array per plugin id
-            $nervEntries = $installedPlugins.plugins.'nerv@nerv'
-            if (-not $nervEntries) { $nervEntries = $installedPlugins.'nerv@nerv' }
-            $nervEntry = @($nervEntries) | Select-Object -First 1
-            if ($nervEntry -and $nervEntry.gitCommitSha) {
-                Write-Host "nerv@nerv gitCommitSha : $($nervEntry.gitCommitSha) (installPath: $($nervEntry.installPath))"
-            }
-            else {
-                Write-Warning "nerv@nerv not found in $installedPluginsPath after refresh."
-            }
+            & claude plugin $verb nerv@nerv
         }
         catch {
-            Write-Warning "Could not parse $installedPluginsPath : $_"
+            Write-Error "claude plugin $verb nerv@nerv could not run: $_"
+            exit 1
+        }
+        if ($LASTEXITCODE -ne 0) {
+            Write-Error "claude plugin $verb nerv@nerv exited with code $LASTEXITCODE. Cache NOT refreshed."
+            exit 1
         }
     }
-    else {
-        Write-Warning "$installedPluginsPath not found; cannot report the cached gitCommitSha."
-    }
 
+    # Readback: the cached gitCommitSha must equal the repository HEAD.
+    $homeDir = if ($env:HOME) { $env:HOME } else { $env:USERPROFILE }
+    $installedPluginsPath = Join-Path $homeDir ".claude/plugins/installed_plugins.json"
+    if (-not (Test-Path -LiteralPath $installedPluginsPath)) {
+        Write-Error "$installedPluginsPath not found after install; cannot confirm the cached commit."
+        exit 1
+    }
+    $global:LASTEXITCODE = 0
+    $repoHead = (& git -C $RepoPath rev-parse HEAD 2>$null)
+    if ($LASTEXITCODE -ne 0 -or -not $repoHead) {
+        Write-Error "git rev-parse HEAD failed in $RepoPath; cannot confirm the cached commit."
+        exit 1
+    }
+    try {
+        $installedPlugins = Get-Content -LiteralPath $installedPluginsPath -Raw -Encoding UTF8 | ConvertFrom-Json -Depth 50
+        # installed_plugins.json nests entries under "plugins" and stores an array per plugin id
+        $nervEntries = $installedPlugins.plugins.'nerv@nerv'
+        if (-not $nervEntries) { $nervEntries = $installedPlugins.'nerv@nerv' }
+        $nervEntry = @($nervEntries) | Select-Object -First 1
+    }
+    catch {
+        Write-Error "Could not parse $installedPluginsPath : $_"
+        exit 1
+    }
+    $cachedSha = if ($nervEntry) { $nervEntry.gitCommitSha } else { $null }
+    if (-not $cachedSha) {
+        Write-Error "nerv@nerv not found in $installedPluginsPath after install."
+        exit 1
+    }
+    if ($cachedSha -ne $repoHead) {
+        Write-Error "Cached gitCommitSha $cachedSha does not match repository HEAD $repoHead. Commit first, then refresh again."
+        exit 1
+    }
+    Write-Host "nerv@nerv gitCommitSha : $cachedSha (matches HEAD; installPath: $($nervEntry.installPath))"
     Write-Host "Cache refreshed from the repo's committed HEAD. Restart Claude Code."
 }
 
