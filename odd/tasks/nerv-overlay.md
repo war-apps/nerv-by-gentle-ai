@@ -100,6 +100,13 @@ Branch `feature/model-assignments`, stacked on phase 6. Started 2026-09-25. Fact
 - [x] T7.3 DONE (writer A; commit 41eb188, 17 assertions RED→GREEN; parent follow-up: merged defaults so a removed override restores the plugin default, ASCII arrow, 22 assertions). Installer `-ApplyModels`: reads the user `nerv.yaml` `models:` block (and `state.json` for `from`), rewrites `model:`/`effort:` in the cached agents (`~/.claude/plugins/cache/nerv/nerv/<version>/agents/<role>.md`) and runs automatically at the end of `-RefreshCache`; `tests/install-apply-models.test.ps1` (fake cache + fake yaml, RED first). Route: writer A.
 - [x] T7.4 DONE (inline): all suites green (22 / 17 / 11+1 skip); user file with `models.aoba: { model: haiku, effort: low }` → `-ApplyModels` rewrote the cached aoba.md (haiku/low) → `nerv ping` in the bench reported `claude-haiku-4-5-20251001`, Ikari logged the resolved model from the user entry with no mismatch; override removed → apply restored sonnet/low in the cache. Verify: tests green; set `models.aoba: { model: haiku, effort: low }` in the user file, apply, `nerv ping` in the bench reports haiku; revert; cache refreshed. Route: inline.
 
+## RDD, Phase 7 (2026-09-25)
+
+Slice `1f444a6..c714de9` (models section, model gate, -ApplyModels, docs) assessed `medium` / `slice_budget_reached` from the detached worktree `D:\projects
+erv-rdd-wt7`. Consent granted; one lens (`review-reliability`) returned 8 findings, 1 CRITICAL scoped by the engine: `R3-models-block-comment-terminates` (a column-0 comment inside `models:` ended the scan and silently dropped the overrides below it — exactly the shape `/nerv:init` writes). Correction commit 814a09b (comments and blank lines skipped; fixture interleaves column-0 comments, RED 6 → GREEN 22). Targeted validator approved; exact acknowledgement burned the authority: **receipt `gentle-ai.review-acknowledged/v1`, lineage `review-4a701b054a7b939f`**. Reviewed boundary for this branch: 814a09b.
+
+Advisory findings (non-blocking follow-ups): `R3-applymodels-not-standalone` (the switch still runs the settings registration first; make it an early standalone path), `R3-invoke-applymodels-uncovered` (no test for `Invoke-NervApplyModels` failure paths), `R3-eol-normalization-unproved` (mixed line endings would be rewritten to one style), `R3-effort-insertion-branch-untested`, `R3-defaults-from-worktree` (defaults read from the working tree, not from HEAD, after `-RefreshCache`), `R3-silent-noop-on-unmatched-value`, `R3-fixture-coupled-assertions`.
+
 ## RDD, Phase 6 (2026-09-25)
 
 Slice `00f248c..838700b` (hook, knowledge base, installer, docs) assessed `high` (shell scripting, process start in the hook) from the detached worktree `D:\projects
@@ -126,7 +133,7 @@ The approved receipt lists 37 informational findings (16 WARNING, 21 SUGGESTION)
 
 ## Progress log
 
-- 2026-09-25: Phase 7 complete (per-role model/effort in nerv.yaml, mandatory model gate, -ApplyModels with defaults restore, status table); verified with a real haiku override on Aoba.
+- 2026-09-25: Phase 7 complete (per-role model/effort in nerv.yaml, mandatory model gate, -ApplyModels with defaults restore, status table); verified with a real haiku override on Aoba; RDD review granted, one correction (814a09b), receipt acknowledged.
 - 2026-09-25: Phase 6 complete (Engram project hook, nerv knowledge base + fallback, installer seed, README); three work-unit commits on feature/engram-project-hook; RDD review granted, one correction (711e577), receipt acknowledged.
 - 2026-09-25: Phase 5 complete (orchestrator lock, safe resume, close bookkeeping, artifacts commit policy, README final, installer -RefreshCache, J6 green with two protocol fixes and the command-name fix; memory note updated; Engram mirror pending on ambiguous_project).
 - 2026-09-24: plan approved; repo and remote created; Phase 0 started.
