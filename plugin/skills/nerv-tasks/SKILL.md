@@ -1,6 +1,6 @@
 ---
 name: nerv-tasks
-description: NERV task-tracking port: provider-agnostic operations (start, take, stop, moveStage, logTime, createTask, createSubtask, comment, complete, setPriority, list, listTimers) with composite ops block/cancel/close; Hyuga loads it for DISPATCH: tracker; providers under providers/.
+description: NERV task-tracking port: provider-agnostic operations (start, take, stop, moveStage, logTime, createTask, createSubtask, comment, complete, setPriority, list, listTimers, discardTimer) with composite ops block/cancel/close/done/stopAll; Hyuga loads it for DISPATCH: tracker; providers under providers/.
 ---
 
 # NERV Tasks — Provider-Agnostic Port
@@ -66,6 +66,7 @@ a provider-internal id shape.
 | `setPriority(taskRef, high\|medium\|low)` | taskRef, level | `{priority}` | Updates task priority | No-op if already at that priority |
 | `list(scope: mine\|all, filters)` | scope, optional filters (project, date, free text) | unified rows | Read-only | Merges the provider's tasks with every enabled `tasks.sources` entry into one table (§4) |
 | `listTimers(taskRef?)` | optional taskRef | timer rows | Read-only | Reads the local timer store only; never calls the provider |
+| `discardTimer(taskRef)` | taskRef | none | Deletes this session's local timer entry without logging | Mandatory user confirmation; never touches the provider |
 
 ## 4. Composite ops
 
@@ -74,6 +75,7 @@ Defined once here; adapters never redefine them, only the primitives they compos
 - `block(taskRef, reason)` = `comment(taskRef, "BLOQUEADA: " + reason)` + `moveStage(taskRef, blocked)` + `stop(taskRef, summary)`. `reason` is mandatory — never proceed with an empty or invented one.
 - `cancel(taskRef, reason)` = `comment(taskRef, "CANCELADA: " + reason)` + `moveStage(taskRef, canceled)` + `stop(taskRef, summary)`. `reason` is mandatory. The task stays open in the provider; the stage marks the cancellation.
 - `close(taskRef)` = `stop(taskRef, summary)` + `moveStage(taskRef, implemented)` + `complete(taskRef)`.
+- `stopAll(summaries)` = `stop(taskRef, summary)` for every timer THIS session holds (one summary per task, all gathered in one grouped question when missing). Other sessions' timers are listed as information only and never logged or removed.
 - `done(taskRef)` = `moveStage(taskRef, implemented)` + `stop(taskRef, summary)`. The task stays open — `complete` is not called; that is what distinguishes `done` from `close`.
 
 ## 5. Provider-agnostic invariants

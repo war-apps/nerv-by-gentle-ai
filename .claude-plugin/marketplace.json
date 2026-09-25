@@ -5,7 +5,7 @@
     {
       "name": "nerv",
       "source": "./plugin",
-      "description": "NERV: governance overlay on gentle-ai (Evangelion-named multi-agent workflow)"
+      "description": "NERV Gentle-AI: governance overlay on gentle-ai (Evangelion-named multi-agent workflow)"
     }
   ]
 }

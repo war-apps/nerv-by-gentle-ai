@@ -1,23 +1,85 @@
-# NERV
+# NERV Gentle-AI
 
-NERV is a Claude Code plugin implementing an Evangelion-named multi-agent
-governance workflow: Ikari orchestrates, Fuyutsuki holds governance veto,
-Misato authors the plan, MAGI (Balthasar / Melchor / Casper) vote per task,
-pilots (Rei / Shinji / Asuka / Toji / Kaworu) implement, Kaji compiles a
-ranked, multi-pass audit, Maya gates quality, Hyuga owns criticality/waves/
-task-tracking, and Aoba handles git operations and the run summary.
+<p align="center">
+  <a href="https://github.com/Gentleman-Programming/gentle-ai"><img alt="gentle-ai 3.x" src="https://img.shields.io/badge/gentle--ai-3.x-6f42c1?style=for-the-badge"></a>
+  <a href="https://code.claude.com/docs"><img alt="Claude Code plugin" src="https://img.shields.io/badge/Claude_Code-plugin-d97757?style=for-the-badge&logo=anthropic&logoColor=white"></a>
+  <a href="https://github.com/PowerShell/PowerShell"><img alt="PowerShell 7" src="https://img.shields.io/badge/PowerShell-7-5391FE?style=for-the-badge&logo=powershell&logoColor=white"></a>
+  <a href="https://www.gnu.org/software/bash/"><img alt="Bash hooks" src="https://img.shields.io/badge/Bash-hooks-4EAA25?style=for-the-badge&logo=gnubash&logoColor=white"></a>
+  <a href="https://www.markdownguide.org/"><img alt="Markdown agents and skills" src="https://img.shields.io/badge/Markdown-agents_%26_skills-000000?style=for-the-badge&logo=markdown&logoColor=white"></a>
+  <a href="https://mermaid.js.org/"><img alt="Mermaid diagrams" src="https://img.shields.io/badge/Mermaid-diagrams-FF3670?style=for-the-badge&logo=mermaid&logoColor=white"></a>
+  <a href="https://yaml.org/"><img alt="YAML config" src="https://img.shields.io/badge/YAML-nerv.yaml-CB171E?style=for-the-badge&logo=yaml&logoColor=white"></a>
+  <a href="https://github.com/Gentleman-Programming/gentle-ai"><img alt="OpenSpec SDD" src="https://img.shields.io/badge/OpenSpec-SDD_%2B_RDD-0aa?style=for-the-badge"></a>
+  <a href="https://github.com/Gentleman-Programming/engram"><img alt="Engram memory" src="https://img.shields.io/badge/Engram-memory-2d3748?style=for-the-badge"></a>
+  <a href="https://www.teamwork.com/"><img alt="Teamwork MCP" src="https://img.shields.io/badge/Teamwork-MCP_adapter-FF22B1?style=for-the-badge&logo=teamwork&logoColor=white"></a>
+  <a href="https://skills.sh/"><img alt="skills.sh" src="https://img.shields.io/badge/skills.sh-manifest-333?style=for-the-badge"></a>
+  <a href="https://git-scm.com/"><img alt="git" src="https://img.shields.io/badge/git-gitflow-F05032?style=for-the-badge&logo=git&logoColor=white"></a>
+</p>
 
-NERV brings governance that a plain implementation loop lacks: a per-task
-MAGI vote gated by criticality, a governance veto on new skills/scripts/
-commands, a mandatory quality gate before any audit, a multi-pass audit
-compiler with a ranked user issue gate, an append-only deliberation log, and
-a run summary reporting tokens, time, and model per agent.
+<p align="center">
+  <a href="https://github.com/Gentleman-Programming/gentle-ai"><img alt="Built with Gentle-AI" src="https://raw.githubusercontent.com/Gentleman-Programming/gentle-ai/main/docs/assets/brand/built-with-gentle-ai.png"></a>
+</p>
+
+NERV Gentle-AI is a Claude Code plugin implementing an Evangelion-named
+multi-agent governance workflow. Ikari orchestrates a cast of named
+agents through it; see "Roles" below for what each one does and when it
+runs.
+
+NERV Gentle-AI brings governance that a plain implementation loop lacks: a
+per-task MAGI vote gated by criticality, a governance veto on new
+skills/scripts/commands, a mandatory quality gate before any audit, a
+multi-pass audit compiler with a ranked user issue gate, an append-only
+deliberation log, and a run summary reporting tokens, time, and model per
+agent.
+
+## Roles
+
+Ikari is the main Claude Code session itself, not a spawnable agent — the
+sole spawner that launches every role below, classifies each request,
+relays every blocking gate to the user, and never delegates that
+authority to anyone it launches.
+
+| Agent | Role | Runs when | Produces | Default model / effort | Tools (summary) |
+|---|---|---|---|---|---|
+| `fuyutsuki` | Governance veto over new skills/scripts/commands; curates the deliberation log | FULL plan step, after the MAGI vote; end of every run | `nerv/veto-ruling.md`; curated `## Summary` in `nerv/deliberation-log.md` | sonnet / medium | Read, Write, Glob, Grep, Engram search/save |
+| `misato` | Operations director — authors `proposal.md`/`design.md`/`tasks.md`, revises exactly what the MAGI vote rejects, rules on deviations and test-vs-implementation disputes | FULL plan step; after a rejected MAGI vote or a veto; on demand for a ruling | `proposal.md`, `design.md`, `tasks.md`; ruling entries | fable / high | Read, Write, Glob, Grep, Engram search/save |
+| `ritsuko` | Chief scientist — codebase/history intel, test planning with a corner-case interview, end-of-run docs | LIGHT micro-intel; FULL intel and spec/test-plan steps; end-of-run documentation | `exploration-light.md`/`exploration.md`, `specs/{domain}/spec.md`, `nerv/test-plan.md`, doc deltas | opus / high | Read, Glob, Grep, WebFetch, WebSearch, Engram search/save |
+| `balthasar` | MAGI vote (VOTE mode): software-principles lens — SOLID, KISS, YAGNI, DRY, patterns; also an AUDIT-mode pass in Phase 3 | FULL blind MAGI vote round, per task; Phase 3 audit round | VOTE/AUDIT JSON, merged by Ikari into `nerv/votes.md`/`nerv/audit-report.md` | sonnet / medium | Read, Glob, Grep, Engram search |
+| `melchor` | MAGI vote (VOTE mode): structure/security lens — architecture, dead code, duplication, security; the deliberately strongest MAGI model; also an AUDIT-mode pass | same | same | fable / high | Read, Glob, Grep, Engram search |
+| `casper` | MAGI vote (VOTE mode): process lens — docs, comments, scope, commit hygiene, plan consistency; its AUDIT-mode pass also checks plan conformance and TDD commit order | same | same | sonnet / medium | Read, Glob, Grep, Engram search |
+| `rei` | Pilot — owns data: persistence, migrations, caches, observability, and that layer's security | GREEN/REFACTOR after Kaworu's RED, on data work units | source and tests in the working tree, TDD evidence | sonnet / medium | Read, Edit, Write, Glob, Grep, Bash, Engram search |
+| `shinji` | Pilot — owns the backend and its security | GREEN/REFACTOR after Kaworu's RED, on backend work units | source and tests in the working tree, TDD evidence | sonnet / medium | Read, Edit, Write, Glob, Grep, Bash, Engram search |
+| `asuka` | Pilot — owns the frontend: UI, state, accessibility, and client-side security | GREEN/REFACTOR after Kaworu's RED, on frontend work units | source and tests in the working tree, TDD evidence | sonnet / medium | Read, Edit, Write, Glob, Grep, Bash, Engram search |
+| `toji` | Pilot — owns infrastructure: CI/CD, Docker, Kubernetes, and infra security | GREEN/REFACTOR after Kaworu's RED, on infra work units (validation commands substitute for RED/GREEN where no runner exists) | source, manifests and pipelines in the working tree, TDD evidence or a validation-commands report | sonnet / medium | Read, Edit, Write, Glob, Grep, Bash, Engram search |
+| `kaworu` | Pilot — writes the failing RED test first for every work unit, before any pilot's GREEN step; never a domain owner | before every GREEN step, in both LIGHT and FULL | the RED test file; RED row of the TDD Cycle Evidence table | sonnet / medium | Read, Edit, Write, Glob, Grep, Bash, Engram search |
+| `maya` | Quality gate — runs tests/lint/build, reproduces the TDD evidence pilots reported, routes failures to whoever owns them | LIGHT reduced gate; FULL baseline (phase 0) and full a-d gate (phase 2) | `nerv/maya-report.md` | sonnet / medium | Read, Bash, Glob, Grep, Write, Engram search/save |
+| `kaji` | Audit compiler — merges and dedupes the five audit passes, prepares the refuter batch, carries unresolved items across re-audit rounds | Phase 3, once per audit round, after the five passes return | `nerv/audit-report.md` | opus / high | Read, Glob, Grep, Write, Engram search/save |
+| `kaji-security` | Audit pass — security across every layer: injection, authz, secrets, data exposure, unsafe defaults, dependencies, crypto, infra hardening | Phase 3, one of five parallel blind passes | JSON findings, merged by Kaji into `nerv/audit-report.md` | sonnet / medium | Read, Glob, Grep, Engram search |
+| `kaji-coverage` | Audit pass — implemented tests versus Ritsuko's test plan: missing cases, weakened or tautological assertions, untested acceptance criteria | Phase 3, one of five parallel blind passes | JSON findings, merged by Kaji into `nerv/audit-report.md` | sonnet / medium | Read, Glob, Grep, Engram search |
+| `kaji-refuter` | Detached, read-only refuter — attacks the round's inferential BLOCKER/CRITICAL findings with concrete counter-evidence | Phase 3, only when Kaji's refuter batch is non-empty | corroborated/refuted/inconclusive verdicts, folded by Kaji into `nerv/audit-report.md`'s `### Refuted` | sonnet / medium | Read, Glob, Grep, Engram search |
+| `hyuga` | Plan and issue operations — four dispatches: `criticality`, `waves`, `wave-report`, `ranking`, plus the provider-agnostic task-tracker dispatch | criticality before the MAGI vote; waves after plan approval; wave-report during implementation; ranking after the refuter; tracker at preflight, Maya's full-gate start, the issue gate, and close | `nerv/criticality.md`, `nerv/waves.md`, `nerv/issue-ranking.md`; tracker op result inline | sonnet / medium | Read, Write, Glob, Grep, Bash, Engram search/save, Teamwork MCP |
+| `aoba` | Git operations and run telemetry — organizes user-validated commits, freezes audit patches, archives closed changes, writes the run summary | after every user-validated work unit; patch freeze before each audit round; archive and run summary at close | conventional commits, `nerv/audit/diff-round-N.patch`, the archived change folder, `nerv/run-summary.md` | sonnet / low | Bash, Read, Glob, Grep, Write, Engram search/save |
+
+**How a run flows.** Every request is classified once, before the first
+agent launch: LIGHT for a small, single-domain change, FULL for anything
+touching two or more pilot domains, a critical path, a new
+skill/script/command, or a large diff. LIGHT runs one RED/GREEN/REFACTOR
+cycle — Kaworu's failing test, a domain-matched pilot, Aoba's
+user-validated commits, and a reduced Maya gate — shown in the "LIGHT
+pipeline" diagram further below. FULL adds Ritsuko's spec and
+corner-case interview, Misato's plan, a blind per-task MAGI vote,
+Fuyutsuki's governance veto, a whole-plan approval gate, Hyuga's
+dependency waves, Maya's full a-d gate, and a five-pass, Kaji-compiled
+audit behind a ranked user issue gate, shown in the "FULL pipeline"
+diagram further below. Both pipelines share the same RED/GREEN/REFACTOR
+primitive, the same Aoba commit-and-validate step, and the same native
+RDD review relay after every commit, detailed in "RDD per commit" further
+down.
 
 ## Requirements
 
 - **gentle-ai 3.x** — major version 3 is required; minor and patch are free.
-  Tested against 3.7.0. 4.x is untested and not supported until NERV's
-  contracts (the reuse map below) are re-verified against it.
+  Tested against 3.7.0. 4.x is untested and not supported until NERV
+  Gentle-AI's contracts (the reuse map below) are re-verified against it.
 - Claude Code with plugin marketplaces support (2.1+).
 - git.
 - bash available to hooks (Git Bash on Windows).
@@ -29,15 +91,16 @@ Tested against: gentle-ai 3.7.0
 
 ## Relation to gentle-ai
 
-NERV is an **overlay**, not a fork. It reuses gentle-ai's native engine and
-contracts unchanged — the SDD artifact pipeline, RDD (receipt-driven review),
-the skill registry and resolver, strict TDD, delivery budgeting with chained
-PRs, and the lossless blocking-prompt contract — and expresses NERV's own
-governance on top. NERV never modifies any gentle-ai file: nothing is ever
-written under `~/.claude/agents` or `~/.claude/skills`, so `gentle-ai sync`
-cannot see or touch it.
+NERV Gentle-AI is an **overlay**, not a fork. It reuses gentle-ai's native
+engine and contracts unchanged — the SDD artifact pipeline, RDD
+(receipt-driven review), the skill registry and resolver, strict TDD,
+delivery budgeting with chained PRs, and the lossless blocking-prompt
+contract — and expresses NERV Gentle-AI's own governance on top. NERV
+Gentle-AI never modifies any gentle-ai file: nothing is ever written
+under `~/.claude/agents` or `~/.claude/skills`, so `gentle-ai sync` cannot
+see or touch it.
 
-## How NERV integrates with gentle-ai
+## How NERV Gentle-AI integrates with gentle-ai
 
 ### Layering
 
@@ -73,13 +136,15 @@ flowchart TB
     NERVP -.reads only.-> GA
 ```
 
-NERV sits strictly above gentle-ai and below the repo it governs: Claude Code
-loads gentle-ai first (`CLAUDE.md`, its hooks, the `gentle-ai` binary, and
-the agents/skills it writes under `~/.claude`), NERV's plugin cache layers
-its own hook, agents, skills, and commands on top, and the repo carries only
-NERV's own state (`.nerv/nerv.yaml`, the `nerv/` subfolder of each change).
-`gentle-ai sync` never sees NERV's files because NERV never writes into the
-gentle-ai box, and NERV never writes into it either — it only reads from it.
+NERV Gentle-AI sits strictly above gentle-ai and below the repo it
+governs: Claude Code loads gentle-ai first (`CLAUDE.md`, its hooks, the
+`gentle-ai` binary, and the agents/skills it writes under `~/.claude`),
+NERV Gentle-AI's plugin cache layers its own hook, agents, skills, and
+commands on top, and the repo carries only NERV Gentle-AI's own state
+(`.nerv/nerv.yaml`, the `nerv/` subfolder of each change). `gentle-ai
+sync` never sees NERV Gentle-AI's files because NERV Gentle-AI never
+writes into the gentle-ai box, and NERV Gentle-AI never writes into it
+either — it only reads from it.
 
 ### Activation
 
@@ -108,8 +173,8 @@ sequenceDiagram
 ```
 
 Every session start runs gentle-ai's own `review stop-hook` first, then
-NERV's `nerv-session-start.sh`. The NERV hook checks `.nerv/nerv.yaml` for
-`enabled: true`; only then does it read and inject
+NERV Gentle-AI's `nerv-session-start.sh`. The NERV Gentle-AI hook checks
+`.nerv/nerv.yaml` for `enabled: true`; only then does it read and inject
 `nerv-orchestrator/SKILL.md` verbatim, which is the moment the session
 becomes Ikari. Without the marker the hook injects nothing at all, and
 gentle-ai's own ODD Implementation Routing stays in charge of the session.
@@ -148,14 +213,15 @@ flowchart LR
     NotUsed -.NERV roles author those artifacts instead.-> Superseded
 ```
 
-NERV calls a large slice of gentle-ai's native engine completely unchanged
-(SDD's read-only/mechanical steps, the whole RDD lifecycle, the delivery and
-skill-resolution skills, the persistence and lossless-prompt contracts). It
-supersedes exactly one thing — gentle-ai's ODD Implementation Routing — with
-its own LIGHT/FULL classification and pipelines, only in repos carrying the
-`.nerv/nerv.yaml` marker. It never touches the authoring half of SDD
-(`sdd-propose` through `sdd-verify`); NERV's own roles (Misato, Ritsuko, the
-MAGI, the pilots) author the equivalent artifacts instead.
+NERV Gentle-AI calls a large slice of gentle-ai's native engine completely
+unchanged (SDD's read-only/mechanical steps, the whole RDD lifecycle, the
+delivery and skill-resolution skills, the persistence and lossless-prompt
+contracts). It supersedes exactly one thing — gentle-ai's ODD
+Implementation Routing — with its own LIGHT/FULL classification and
+pipelines, only in repos carrying the `.nerv/nerv.yaml` marker. It never
+touches the authoring half of SDD (`sdd-propose` through `sdd-verify`);
+NERV Gentle-AI's own roles (Misato, Ritsuko, the MAGI, the pilots) author
+the equivalent artifacts instead.
 
 ### LIGHT pipeline
 
@@ -271,21 +337,99 @@ sequenceDiagram
 After every Aoba work-unit commit, Ikari assesses that commit against the
 last reviewed boundary. When review is due, Ikari relays gentle-ai's native
 consent envelope to the user losslessly and verbatim — never deciding on
-their behalf. On a grant, the native lenses run, a bounded NERV-pilot
-correction applies only if one is required, and an acknowledged receipt is
+their behalf. On a grant, the native lenses run, a bounded correction from
+a NERV Gentle-AI pilot applies only if one is required, and an
+acknowledged receipt is
 logged as `rdd_receipt`; on a decline, the run continues under ordinary
 repository policy. Ikari itself never enables or disables the RDD switch.
+
+## Setup
+
+After installing the plugin (see "Install" below), run the configuration
+wizard instead of hand-editing YAML:
+
+```
+pwsh tools/install.ps1 -Configure
+```
+
+or, if the plugin is already installed:
+
+```
+pwsh tools/configure.ps1
+```
+
+The wizard runs six sections, each skippable (`-SkipSkills`, `-SkipModels`,
+`-SkipRepos`, `-SkipCommands`, `-NoRefresh`):
+
+1. **Prerequisites** — informational checks for `gentle-ai` (major version
+   3 required), `engram` (optional), and `claude` (required for the
+   refresh step).
+1. **Required skills** — `tools/install-skills.ps1` reads
+   `tools/skills-manifest.json` (the nine external skills the plugin
+   defaults reference, with their skills.sh sources; the five gentle-ai
+   ones; the `security-review` built-in), installs the missing external
+   ones with `npx skills add <repo> --skill <id> -g -a claude-code -y`, and
+   names `gentle-ai install`/`sync` as the remedy for missing gentle-ai
+   skills. Already-present skills are never touched; `-DryRun` previews.
+   `pwsh tools/install.ps1 -Skills` runs the same step without the wizard.
+2. **User config** — asks `git` (base branch, worktree policy, branch and
+   commit-ref patterns), `tasks` (provider, ask-when-missing,
+   subtasks-per-wave, timer store, rounding minutes, and — when the
+   provider is Teamwork — the ref prefix, assignee id, default
+   project/tasklist ids, and the seven workflow-stage names), `skills`
+   (one comma-separated stack per consuming role), `critical_paths`, and
+   `artifacts.commit`, then writes `~/.claude/nerv/nerv.yaml`, backing up
+   any existing file first. Every field the wizard changes is edited **in
+   place** — same line, same indentation, existing trailing comment kept —
+   and a field left unchanged (Enter keeps the shown value) is never
+   rewritten at all; a whole block (`git:`, `tasks:`, `skills:`,
+   `artifacts:`, or the `providers.teamwork` sub-block) is only generated
+   fresh when it is missing from the file entirely. Nothing the wizard has
+   no field for — extra keys, `known_projects:`, `sources:`,
+   `sources_howto:`, or anything else you added by hand — is ever dropped
+   or regenerated.
+3. **Models** — optionally launches `tools/configure-models.ps1` for
+   per-role model/effort overrides (see "Configuring models and effort"
+   below).
+4. **Repos** — optionally writes `.nerv/nerv.yaml` in one or more local
+   git repositories (base branch, task provider, and — for Teamwork —
+   this repo's project/tasklist ids), leaving an already-initialized repo
+   untouched.
+5. **Slash commands** — optionally copies the Teamwork procedures under
+   `plugin/skills/nerv-tasks/providers/teamwork/procedures/` into
+   `~/.claude/commands/task/` as the 16 `/task:*` commands, never
+   overwriting a file that already exists there.
+6. **Apply and refresh** — optionally applies the resolved `models:`
+   block to the plugin cache and runs `tools/install.ps1 -RefreshCache`.
+
+Every prompt shows its current or default value in brackets; Enter keeps
+it. `-AnswersFile <path>` drives the whole wizard from a text file (one
+answer per line) instead of prompting, for scripted setup.
+
+After the wizard, open Claude Code in each configured repository and run
+`/nerv:init` once — this bootstraps gentle-ai's SDD registry when it is
+missing; the wizard itself only writes `.nerv/nerv.yaml`.
+
+Outside the wizard, the plugin stays self-contained apart from these
+requirements: **gentle-ai 3.x** installed and configured (`gentle-ai
+install`), **Claude Code** with the **Teamwork MCP** configured when the
+Teamwork task-tracker adapter is used, and **Engram** (optional — used for
+the shared `nerv` knowledge base and per-repo memory detection).
 
 ## Install
 
 1. `git clone https://github.com/war-apps/nerv-gentle-ai.git` (the folder path is registered as a local plugin marketplace, so keep the clone where it will stay).
 2. `pwsh tools/install.ps1`
 3. Restart Claude Code.
-4. In any repo where you want NERV active, create `.nerv/nerv.yaml` with:
+4. In any repo where you want NERV Gentle-AI active, create
+   `.nerv/nerv.yaml` with:
 
    ```yaml
    enabled: true
    ```
+
+   Or run `pwsh tools/configure.ps1` (see "Setup" above) to generate it
+   interactively instead.
 
 Run `pwsh tools/install.ps1 -Uninstall` to remove the marketplace and
 plugin registration again.
@@ -320,7 +464,7 @@ and run `pwsh tools/install.ps1 -ApplyModels` on its own instead.
 `enabled: true` — `/nerv:init` writes it interactively (base branch,
 worktree policy, skill stacks, task-tracker provider). Without the marker
 a session behaves like plain gentle-ai; with it, SessionStart injects the
-NERV orchestrator protocol and the session becomes Ikari.
+NERV Gentle-AI orchestrator protocol and the session becomes Ikari.
 
 **LIGHT vs. FULL.** Ikari classifies each request LIGHT (one pilot domain,
 no new skills/scripts/commands) or FULL (multiple domains, a critical path,
@@ -340,8 +484,9 @@ open the orchestrator lock carries `waiting_on: user`, so the 15-minute
 staleness rule does not apply to it: a resume from another session must
 ask before taking over, however long the gate stays open.
 
-**Artifacts.** NERV writes only under `openspec/changes/{change}/nerv/`
-(deliberation log, exploration, test plan, votes, veto ruling, waves,
+**Artifacts.** NERV Gentle-AI writes only under
+`openspec/changes/{change}/nerv/` (deliberation log, exploration, test
+plan, votes, veto ruling, waves,
 Maya reports, audit rounds, run summary) plus the shared gentle-ai SDD
 files (`state.yaml`, `proposal.md`, `design.md`, `tasks.md`, `specs/`) at
 the change root. `.nerv/nerv.yaml` (project scope) and
@@ -350,7 +495,7 @@ ever written under `~/.claude/agents` or `~/.claude/skills`.
 
 **Artifacts commit policy.** `artifacts.commit` controls when the `nerv/`
 folder is committed: `with-change` (each work-unit commit includes its own
-NERV artifacts), `at-close` (default — artifacts land in one
+NERV Gentle-AI artifacts), `at-close` (default — artifacts land in one
 `docs: nerv artifacts for {change}` commit when the run closes), or
 `never` (artifacts stay untracked; the user commits them manually, if
 ever).
@@ -370,8 +515,9 @@ the orchestrator lock state (`nerv/.orchestrator.lock`: holder, step,
 ### Engram project detection
 
 A second SessionStart hook, `plugin/hooks/nerv-engram-project.sh`, runs in
-**every** session — unlike the NERV activation hook above, it is not gated
-behind `.nerv/nerv.yaml` — to tell the session which Engram project to pass
+**every** session — unlike the NERV Gentle-AI activation hook above, it is
+not gated behind `.nerv/nerv.yaml` — to tell the session which Engram
+project to pass
 on every memory write. It detects the project in this order:
 
 1. `.engram/config.json` in the session directory, then in the git
@@ -387,15 +533,18 @@ on every memory write. It detects the project in this order:
 3. Otherwise, undetermined.
 
 Inside a NERV-enabled repo (`.nerv/nerv.yaml` with `enabled: true`), the
-hook also prints a reminder that NERV keeps a shared knowledge base in the
-Engram project named `nerv` — precedents (Misato rulings, Fuyutsuki vetoes,
+hook also prints a reminder that NERV Gentle-AI keeps a shared knowledge
+base in the Engram project named `nerv` — precedents (Misato rulings,
+Fuyutsuki vetoes,
 MAGI vote results, Kaji audit findings) mirrored from every NERV-governed
 repository under topic keys `nerv/kb/{repo}/{change}/{artifact}`, read
 before deciding and written back after. When detection is undetermined in
-a NERV repo, the hook falls back to `project: "nerv"` for that session's
+a NERV Gentle-AI repo, the hook falls back to `project: "nerv"` for that
+session's
 writes instead of leaving it unresolved.
 
-Outside a NERV repo, an undetermined detection is never silently guessed:
+Outside a NERV Gentle-AI repo, an undetermined detection is never
+silently guessed:
 the hook asks the session to pose one question to the user — general
 knowledge under the `root` project, or a specific named project — before
 the first Engram write (`mem_save`, `mem_session_summary`, `mem_context`).
@@ -425,7 +574,8 @@ warns and continues; nothing about plugin registration depends on it.
   delivery-budget heuristic so each fits.
 - **The `sdd-archive` agent refuses to launch.** gentle-ai's SDD dispatcher
   refuses `sdd-archive` outside a native SDD session (it wants an
-  interactive AskUserQuestion preflight NERV doesn't run). NERV archives
+  interactive AskUserQuestion preflight NERV Gentle-AI doesn't run). NERV
+  Gentle-AI archives
   mechanically instead — Aoba runs `git mv` plus
   `gentle-ai sdd-archive-compose` per delta spec.
 - **A launch dies under memory pressure.** The protocol retries the launch
@@ -435,7 +585,8 @@ warns and continues; nothing about plugin registration depends on it.
   closed waves.
 - **Commits carry a stray `Co-Authored-By` trailer.** The harness
   attribution reminder some environments inject is ignored by Aoba on
-  purpose — NERV commits never carry AI attribution trailers; a gatekeeper
+  purpose — NERV Gentle-AI commits never carry AI attribution trailers; a
+  gatekeeper
   check greps the commit message for this before it lands.
 - **`createTask` blocks with "tasklist not found."** A stale
   `tasks.providers.teamwork.tasklist_id` (or `project_id`) in `nerv.yaml`.
@@ -444,7 +595,8 @@ warns and continues; nothing about plugin registration depends on it.
   elsewhere.
 - **Extra reviewer sessions appear on every tool use.** That's the
   `security-guidance` plugin's own hook (installed independently — see
-  `install-claude-skills-global.ps1`), not NERV. NERV's own review relay
+  `install-claude-skills-global.ps1`), not NERV Gentle-AI. NERV
+  Gentle-AI's own review relay
   only runs after an Aoba work-unit commit.
 
 ## Known limitations
@@ -502,39 +654,13 @@ is the source of truth for what was actually observed at each phase.
   `bench/journeys.md` suite (J0-J5, plus J6's non-interactive and
   interactive design), README parity, and installer `-RefreshCache`.
 
-## Roles
-
-| Role | One-line responsibility |
-|---|---|
-| `fuyutsuki` | Governance veto ruling on new skills/scripts/commands; curates the deliberation log. |
-| `ritsuko` | Intel, spec + test plan, and docs — three spawns per run. |
-| `misato` | Authors the proposal, design, and tasks; issues binding rulings. |
-| `balthasar` | MAGI vote member (per-task vote and audit passes). |
-| `melchor` | MAGI vote member — the strong-model side of the MAGI asymmetry. |
-| `casper` | MAGI vote member; also runs in AUDIT mode. |
-| `rei` | Pilot — implements assigned tasks within a wave. |
-| `shinji` | Pilot — implements assigned tasks within a wave. |
-| `asuka` | Pilot — implements assigned tasks within a wave. |
-| `toji` | Pilot — implements assigned tasks within a wave. |
-| `kaworu` | Pilot — commits the failing (RED) test before the pilot's GREEN implementation. |
-| `kaji` | Compiles and dedupes the multi-pass audit into `audit-report.md`. |
-| `kaji-security` | Audit pass focused on security. |
-| `kaji-coverage` | Audit pass focused on test coverage. |
-| `kaji-refuter` | Detached read-only refuter for the audit's inferential findings batch. |
-| `maya` | Quality gate — runs tests, lint, and build across phases a-d. |
-| `hyuga` | Criticality, waves, issue ranking, and task-tracker dispatch. |
-| `aoba` | Git operations and run telemetry — commits, delivery prep, and the run summary. |
-
-Ikari (the orchestrator) is the session itself, not a spawnable agent — see
-`plugin/skills/nerv-orchestrator/SKILL.md`.
-
 ## Configuration schema
 
-Every NERV setting lives in `nerv.yaml`. There are exactly two copies, same
-schema: user scope `~/.claude/nerv/nerv.yaml` (personal defaults, never
-committed) and project scope `<repo>/.nerv/nerv.yaml` (committed). Project
-overrides user key by key; a missing key falls back to the user file, then
-to the built-in default.
+Every NERV Gentle-AI setting lives in `nerv.yaml`. There are exactly two
+copies, same schema: user scope `~/.claude/nerv/nerv.yaml` (personal
+defaults, never committed) and project scope `<repo>/.nerv/nerv.yaml`
+(committed). Project overrides user key by key; a missing key falls back
+to the user file, then to the built-in default.
 
 ```yaml
 # ~/.claude/nerv/nerv.yaml (user) and <repo>/.nerv/nerv.yaml (project): same schema
