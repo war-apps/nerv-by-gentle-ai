@@ -406,10 +406,10 @@ function Set-NervAgentFrontmatter {
 
             $parts = @()
             if ($modelChanged) {
-                $parts += "model $oldModel→$($assignment['Model'])"
+                $parts += "model $oldModel -> $($assignment['Model'])"
             }
             if ($effortChanged) {
-                $parts += "effort $oldEffort→$($assignment['Effort'])"
+                $parts += "effort $oldEffort -> $($assignment['Effort'])"
             }
             Write-Host "$role`: $($parts -join ', ')"
             $changedCount++
@@ -420,6 +420,63 @@ function Set-NervAgentFrontmatter {
     }
 
     Write-Host "Model/effort apply summary: $changedCount changed, $unchangedCount already up to date, $skippedCount skipped."
+}
+
+function Get-NervPluginDefaults {
+    <#
+    .SYNOPSIS
+        Reads the committed model/effort frontmatter of every agent in the
+        repo's plugin/agents directory: the plugin defaults. Applying the
+        merged table (defaults + overrides) means that removing an override
+        from nerv.yaml restores the default on the next -ApplyModels, instead
+        of leaving the previous override in the cache.
+    #>
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][string]$AgentsDir)
+
+    $defaults = @{}
+    if (-not (Test-Path -LiteralPath $AgentsDir)) {
+        Write-Warning "Plugin agents directory not found: $AgentsDir; no defaults available."
+        return $defaults
+    }
+    foreach ($file in Get-ChildItem -LiteralPath $AgentsDir -Filter '*.md' -File) {
+        $role = [System.IO.Path]::GetFileNameWithoutExtension($file.Name)
+        $lines = [System.IO.File]::ReadAllText($file.FullName) -split "`r`n|`n"
+        if ($lines.Count -lt 2 -or $lines[0].Trim() -ne '---') { continue }
+        $entry = @{}
+        for ($i = 1; $i -lt $lines.Count; $i++) {
+            $line = $lines[$i]
+            if ($line.Trim() -eq '---') { break }
+            if ($line -match '^model:\s*([^#\s]+)') { $entry['Model'] = $Matches[1].Trim() }
+            elseif ($line -match '^effort:\s*([^#\s]+)') { $entry['Effort'] = $Matches[1].Trim() }
+        }
+        if ($entry.Count -gt 0) { $defaults[$role] = $entry }
+    }
+    return $defaults
+}
+
+function Merge-NervModelAssignments {
+    <#
+    .SYNOPSIS
+        Overlays the nerv.yaml overrides on the plugin defaults, key by key:
+        an override that names only model keeps the default effort, and
+        vice versa. Roles present only in the overrides are kept as is.
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][hashtable]$Defaults,
+        [Parameter(Mandatory)][hashtable]$Overrides
+    )
+    $merged = @{}
+    foreach ($role in $Defaults.Keys) {
+        $merged[$role] = @{}
+        foreach ($k in $Defaults[$role].Keys) { $merged[$role][$k] = $Defaults[$role][$k] }
+    }
+    foreach ($role in $Overrides.Keys) {
+        if (-not $merged.ContainsKey($role)) { $merged[$role] = @{} }
+        foreach ($k in $Overrides[$role].Keys) { $merged[$role][$k] = $Overrides[$role][$k] }
+    }
+    return $merged
 }
 
 function Invoke-NervApplyModels {
@@ -464,11 +521,13 @@ function Invoke-NervApplyModels {
     }
 
     $assignments = Resolve-NervModelAssignments
+    $defaults = Get-NervPluginDefaults -AgentsDir (Join-Path $RepoPath "plugin/agents")
     if ($assignments.Count -eq 0) {
-        return
+        Write-Host "Applying plugin defaults to the cached agents (restores any override removed from nerv.yaml)."
     }
+    $merged = Merge-NervModelAssignments -Defaults $defaults -Overrides $assignments
 
-    Set-NervAgentFrontmatter -AgentsDir $agentsDir -Assignments $assignments
+    Set-NervAgentFrontmatter -AgentsDir $agentsDir -Assignments $merged
 }
 
 if ($MyInvocation.InvocationName -ne '.') {

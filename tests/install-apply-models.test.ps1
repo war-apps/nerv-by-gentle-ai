@@ -186,6 +186,35 @@ for ($i = 0; $i -lt $misatoCrlfBytes.Length; $i++) {
 Report "misato-crlf-preserved" (-not $hasBareLf)
 
 # ---------------------------------------------------------------------------
+# Case group D: plugin defaults restore a role whose override was removed
+# ---------------------------------------------------------------------------
+$agentsDirD = Join-Path $tempRoot "agents-d"
+New-Item -ItemType Directory -Path $agentsDirD | Out-Null
+$aobaDPath = Join-Path $agentsDirD "aoba.md"
+Copy-Item -LiteralPath (Join-Path $agentsSourceDir "aoba.md") -Destination $aobaDPath
+# Simulate a cache that still carries a previous override (haiku/low).
+Set-NervAgentFrontmatter -AgentsDir $agentsDirD -Assignments @{ aoba = @{ Model = 'haiku'; Effort = 'low' } } -WarningAction SilentlyContinue | Out-Null
+$defaultsAvailable = [bool](Get-Command Get-NervPluginDefaults -ErrorAction SilentlyContinue)
+Report "get-plugin-defaults-defined" $defaultsAvailable
+if ($defaultsAvailable) {
+    $defaults = Get-NervPluginDefaults -AgentsDir $agentsSourceDir
+    Report "plugin-defaults-aoba-sonnet-low" ($defaults.ContainsKey('aoba') -and $defaults['aoba']['Model'] -eq 'sonnet' -and $defaults['aoba']['Effort'] -eq 'low')
+    Report "plugin-defaults-count-18" ($defaults.Count -eq 18)
+    $merged = Merge-NervModelAssignments -Defaults $defaults -Overrides @{}
+    Set-NervAgentFrontmatter -AgentsDir $agentsDirD -Assignments $merged -WarningAction SilentlyContinue | Out-Null
+    $aobaDText = [System.IO.File]::ReadAllText($aobaDPath)
+    Report "removed-override-restores-default" (($aobaDText -match '(?m)^model:\s*sonnet') -and ($aobaDText -match '(?m)^effort:\s*low'))
+    $merged2 = Merge-NervModelAssignments -Defaults $defaults -Overrides @{ aoba = @{ Model = 'haiku' } }
+    Report "override-merges-over-default" ($merged2['aoba']['Model'] -eq 'haiku' -and $merged2['aoba']['Effort'] -eq 'low')
+}
+else {
+    Report "plugin-defaults-aoba-sonnet-low" $false "Get-NervPluginDefaults missing"
+    Report "plugin-defaults-count-18" $false "Get-NervPluginDefaults missing"
+    Report "removed-override-restores-default" $false "Merge-NervModelAssignments missing"
+    Report "override-merges-over-default" $false "Merge-NervModelAssignments missing"
+}
+
+# ---------------------------------------------------------------------------
 # Cleanup
 # ---------------------------------------------------------------------------
 Remove-Item -LiteralPath $tempRoot -Recurse -Force -ErrorAction SilentlyContinue
