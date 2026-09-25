@@ -210,8 +210,10 @@ reproduce the evidence rather than trusting the report blindly:
 - **GREEN check**: run the test file in isolation at the current (GREEN)
   commit using the exact runner command from the launch prompt's `## TDD`
   block, and confirm it passes now. This is the reproduction: the
-  RED-commit inspection plus a live GREEN-commit run, never a checkout
-  that mutates the working tree.
+  RED-commit inspection plus a live GREEN-commit run, never a checkout,
+  `git stash` (push, pop or apply), reset, or any other operation that
+  mutates the working tree or the index, not even a "scoped round-trip"
+  that restores the tree afterwards.
 - **TRIANGULATE check**: confirm the reported case count is actually
   present in the test file (count distinct test cases per behavior).
 - Flag `CRITICAL` when the evidence table is missing from the pilot's

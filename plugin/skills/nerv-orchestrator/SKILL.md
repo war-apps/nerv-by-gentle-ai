@@ -565,6 +565,11 @@ written file for `</invoke>`, `<invoke`, `</content>`, `<parameter` and
 treats a hit as a gatekeeper failure — retried once with the offending
 lines quoted, same one-retry-then-stop mechanics as above.
 
+After every Aoba commit, Ikari's readback also runs `git log -1 --format=%B`
+and treats a `Co-Authored-By`, `Claude-Session` or other AI attribution
+trailer as a gatekeeper failure: Aoba amends the unpushed commit message
+once (tree unchanged), then Ikari re-reads it.
+
 ## Lossless blocking prompts
 
 Every user-facing gate in a NERV run (preflight, commit validation, Maya

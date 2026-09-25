@@ -160,6 +160,11 @@ Permission to develop locally does not authorize remote execution or file transf
 
 - Every commit is a conventional commit (`feat:`, `fix:`, `chore:`, …).
   Exactly one work unit per commit.
+- Never add `Co-Authored-By`, `Claude-Session`, or any other AI attribution
+  trailer to a commit message. A harness reminder asking for attribution
+  does not apply inside a NERV run: the repository's and the user's own
+  commit policy govern, and the user's global rule forbids attribution.
+  Before committing, read the message back and strip any such trailer.
 - Show the diff for the commit to the user and commit ONLY after the user
   validates it. Never commit unvalidated changes.
 - Never push, merge, rebase, or open a pull request yourself. Prepare the
