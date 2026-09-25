@@ -455,6 +455,115 @@ base pre-stated), piped like J1
 Expected outcomes 1-10 above hold identically, except step 1 is silent
 (pre-answered, not asked) and no interactive prompt is shown.
 
-## J6: resume after interruption (Phase 5)
+## J6: Resume and concurrent orchestrator (Phase 5)
 
-To be written with its phase.
+Verifies the orchestrator lock (`openspec/changes/{change}/nerv/.orchestrator.lock`)
+and its 15-minute heartbeat rule: a resume while the lock is fresh and
+foreign must refuse rather than run alongside a live orchestrator; a resume
+after the heartbeat goes stale must take over cleanly, without re-voting
+frozen tasks or re-running closed waves.
+
+Setup: same scratch repo as J3, fresh branch `feature/power-resume` off
+`main` (`Calculator` has `Add`/`Subtract`/`Multiply`/`Divide` from
+J1/J3/J4), `.nerv/nerv.yaml` as in Common setup, `tasks.provider: none`,
+`gentle-ai review mode disable --scope clone --cwd <repo>`. Change name:
+`power-resume`. Request: add a `Power(int base, int exponent)` method to
+`Calculator` in src/Calc/Calculator.cs, using the same J3-style FULL
+prompt (task ref: none; work in place on `feature/power-resume`; pace:
+fast-forward; artifact store: openspec; PR strategy: single-pr; corner
+cases answered conservatively; plan approval pre-granted; every Aoba
+commit pre-validated).
+
+1. **Start and kill.** Launch the FULL run non-interactively
+   (`claude -p --max-turns 200 ...`, same allowedTools as J3), tailing
+   `nerv/deliberation-log.md`. As soon as the `vote_result` events for
+   both/all tasks appear in the log (MAGI vote round 1 concluded, tasks
+   frozen), kill the session process directly (not a graceful stop).
+   Expected before the kill: `nerv/.orchestrator.lock` exists, holder id
+   + PID + `heartbeat_at` populated, refreshed at least once since
+   creation.
+2. **Refused resume (fresh lock).** Within 15 minutes of the kill, launch
+   a resume session with the J3 resume prompt ("Resume the NERV run for
+   change `power-resume`. Follow the NERV orchestrator protocol injected
+   in this session, including its Resume section."). Expected: Ikari
+   reads the lock, finds `heartbeat_at` fresh (under 15 minutes old) and
+   the holder id foreign to this session, and refuses to take over —
+   `nerv/deliberation-log.md` gets a `lock_refused` event naming the
+   foreign holder and the lock's age; the session states plainly that a
+   live orchestrator appears to hold this change and stops. No file under
+   `openspec/changes/power-resume/` is written or modified by this
+   session (verify with `git status --porcelain` scoped to that path
+   before and after — identical). The refusal is unconditional in this
+   journey (no takeover offered) because the lock is fresh; a real
+   session may still offer a user-confirmed takeover per the protocol's
+   Resume section when it judges the holder is not actually alive — not
+   exercised here since 15 minutes have not elapsed.
+3. **Legitimate resume (stale lock).** Make the heartbeat stale: either
+   wait past the 15-minute rule, or, for a faster bench run, edit
+   `nerv/.orchestrator.lock`'s `heartbeat_at` field directly to a
+   timestamp older than 15 minutes (test-only shortcut — a real resume
+   never edits the lock by hand). Launch the resume session again with
+   the same prompt. Expected: `nerv/deliberation-log.md` gets a `resume`
+   event with `from_step` (the step after the last completed one — here,
+   after the vote) and `took_over_from` (the dead holder's id from the
+   stale lock); the lock is rewritten with this session's holder id and a
+   fresh heartbeat. The MAGI-voted, frozen tasks from step 1 are not
+   re-voted (no new `vote_cast`/`vote_result` events for the same task
+   ids); any wave already closed before the kill is not re-run (no
+   duplicate `wave_report` for a closed wave id). The run continues from
+   Fuyutsuki's veto ruling onward through plan approval, waves,
+   implementation, Maya's full gate, and close exactly as J3 describes.
+4. **`/nerv:status` during and after.** Run `/nerv:status` while the
+   resumed run is still in progress: it reports the lock state (holder
+   id, wave in progress, heartbeat age). Run it again after the run
+   closes: the lock line is absent (the lock file is removed at close).
+5. **`tasks.md` status at close.** After close, `tasks.md` shows
+   `status: done` for every task the run completed (T1 and any others
+   from `waves.md`) — not `status: planned`, the defect the J4 close
+   process left behind before Phase 5 (see `odd/tasks/nerv-overlay.md`
+   T3.2).
+6. **Artifacts commit policy: `at-close`.** With `.nerv/nerv.yaml`'s
+   `artifacts.commit: at-close` (the default, unchanged from Common
+   setup), inspect the closing commits: a commit
+   `docs: nerv artifacts for power-resume` exists in `git log`, and
+   `git show --stat` on it does **not** list `.orchestrator.lock` (the
+   lock file is never committed at any point — it is deleted before
+   close, and even mid-run it stays untracked/ignored). Confirm the
+   `nerv/` folder's content (deliberation log, votes, veto ruling, waves,
+   maya reports, run summary) is fully present in that commit or an
+   earlier work-unit commit, never left uncommitted after close.
+
+### Variant: tracker `none` (J5 companion)
+
+Same as J5's `tasks.provider: none` variant, run standalone (not chained
+off J3/J6's change) to confirm the grouped preflight question still asks
+what it should when there is no tracker at all. Setup: fresh branch,
+`.nerv/nerv.yaml` with `tasks.provider: none`, no active timer, no active
+task. Interactive session, prompt: "Add a `Modulo` method..." (as J5).
+Expected: **one grouped question** is still asked — Task (offers only
+"work without a task", since the provider is `none`), Worktree (per
+`git.worktree`), Branch name, Base branch — and `nerv:hyuga` is never
+launched with `DISPATCH: tracker` for any step of the run (no
+`tracker_event` entries in `nerv/deliberation-log.md`). This is the
+grouped-question shape already covered by J5 step 9; this variant exists
+standalone so it can run without Teamwork access at all.
+
+### Variant: missing-config preflight
+
+Interactive only (the grouped question cannot be exercised
+non-interactively). Setup: fresh branch in the scratch repo,
+`.nerv/nerv.yaml` present with `enabled: true` but **no `tasks:` block at
+all** (not even `provider: none` — the key is absent), and no local timer
+referenced in `~/.claude/work/timers.json` for this session. Prompt: "Add
+a `Sqrt(double x)` method to `Calculator`... Follow the NERV orchestrator
+protocol injected in this session."
+
+Expected: with no active timer and no `tasks.provider` to resolve
+implicitly, the preflight cannot stay silent — the grouped question
+(Task, Worktree, Branch, Base) is asked exactly as in J5 step 1, with the
+Task group falling back to "work without a task" / "create" options
+since no provider is configured. This confirms the preflight's silence
+condition genuinely requires both an active timer/task **and** a
+resolvable `tasks.provider` — a config missing the whole `tasks:` block
+is equivalent to `tasks.provider: none` for gating purposes, not a silent
+default.
