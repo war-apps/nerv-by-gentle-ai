@@ -31,6 +31,18 @@
     gentle-ai 3.x (tested against 3.7.0) but the installer does not enforce
     it unless asked to.
 
+.PARAMETER RefreshCache
+    Re-snapshot the plugin cache from the repo's committed HEAD: runs
+    `claude plugin uninstall nerv@nerv` followed by
+    `claude plugin install nerv@nerv` (both through `& claude`), then
+    reports the `gitCommitSha` recorded for `nerv@nerv` in
+    `~/.claude/plugins/installed_plugins.json` so you can confirm it
+    matches your latest commit. Claude Code only snapshots a directory
+    marketplace from committed HEAD (see README "Updating after local
+    changes"), so uncommitted edits stay invisible without this. Can be
+    combined with the normal marketplace/plugin registration in the same
+    call — registration runs first, the cache refresh runs after.
+
 .EXAMPLE
     pwsh tools/install.ps1
 
@@ -39,6 +51,12 @@
 
 .EXAMPLE
     pwsh tools/install.ps1 -RequireGentleAi
+
+.EXAMPLE
+    pwsh tools/install.ps1 -RefreshCache
+
+.EXAMPLE
+    pwsh tools/install.ps1 -RefreshCache -RequireGentleAi
 #>
 
 [CmdletBinding()]
@@ -49,7 +67,9 @@ param(
 
     [switch]$Uninstall,
 
-    [switch]$RequireGentleAi
+    [switch]$RequireGentleAi,
+
+    [switch]$RefreshCache
 )
 
 # --- gentle-ai version preflight (informational unless -RequireGentleAi) ---
@@ -194,51 +214,94 @@ else {
 if (-not $changed) {
     Write-Host ""
     Write-Host "No changes needed. settings.json left untouched."
-    exit 0
 }
+else {
+    # --- Backup before writing ---
+    $timestamp = Get-Date -Format "yyyyMMdd-HHmmss"
+    $backupPath = "$SettingsPath.bak-nerv-$timestamp"
+    Copy-Item -LiteralPath $SettingsPath -Destination $backupPath -Force
+    Write-Host ""
+    Write-Host "Backup written: $backupPath"
 
-# --- Backup before writing ---
-$timestamp = Get-Date -Format "yyyyMMdd-HHmmss"
-$backupPath = "$SettingsPath.bak-nerv-$timestamp"
-Copy-Item -LiteralPath $SettingsPath -Destination $backupPath -Force
-Write-Host ""
-Write-Host "Backup written: $backupPath"
+    # --- Write to a temp file, verify it, then swap it in (never a
+    #     truncating write to the live file) ---
+    $tempPath = "$SettingsPath.tmp-nerv"
 
-# --- Write to a temp file, verify it, then swap it in (never a truncating
-#     write to the live file) ---
-$tempPath = "$SettingsPath.tmp-nerv"
-
-try {
-    $json = $settings | ConvertTo-Json -Depth 50
-    $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
-    [System.IO.File]::WriteAllText($tempPath, $json, $utf8NoBom)
-
-    # Parse-verify the temp file before it ever touches the target.
     try {
-        Get-Content -LiteralPath $tempPath -Raw -Encoding UTF8 | ConvertFrom-Json -Depth 50 | Out-Null
+        $json = $settings | ConvertTo-Json -Depth 50
+        $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+        [System.IO.File]::WriteAllText($tempPath, $json, $utf8NoBom)
+
+        # Parse-verify the temp file before it ever touches the target.
+        try {
+            Get-Content -LiteralPath $tempPath -Raw -Encoding UTF8 | ConvertFrom-Json -Depth 50 | Out-Null
+        }
+        catch {
+            Remove-Item -LiteralPath $tempPath -Force -ErrorAction SilentlyContinue
+            throw "Temp settings file failed to parse-verify: $_"
+        }
+
+        Move-Item -LiteralPath $tempPath -Destination $SettingsPath -Force
+
+        # Re-read and parse the final file once more to confirm the swap landed cleanly.
+        Get-Content -LiteralPath $SettingsPath -Raw -Encoding UTF8 | ConvertFrom-Json -Depth 50 | Out-Null
+        Write-Host "settings.json verified."
     }
     catch {
-        Remove-Item -LiteralPath $tempPath -Force -ErrorAction SilentlyContinue
-        throw "Temp settings file failed to parse-verify: $_"
+        if (Test-Path -LiteralPath $backupPath) {
+            Copy-Item -LiteralPath $backupPath -Destination $SettingsPath -Force
+            Write-Host "settings.json restored from backup $backupPath"
+        }
+        if (Test-Path -LiteralPath $tempPath) {
+            Remove-Item -LiteralPath $tempPath -Force -ErrorAction SilentlyContinue
+        }
+        throw
     }
 
-    Move-Item -LiteralPath $tempPath -Destination $SettingsPath -Force
-
-    # Re-read and parse the final file once more to confirm the swap landed cleanly.
-    Get-Content -LiteralPath $SettingsPath -Raw -Encoding UTF8 | ConvertFrom-Json -Depth 50 | Out-Null
-    Write-Host "settings.json verified."
-}
-catch {
-    if (Test-Path -LiteralPath $backupPath) {
-        Copy-Item -LiteralPath $backupPath -Destination $SettingsPath -Force
-        Write-Host "settings.json restored from backup $backupPath"
-    }
-    if (Test-Path -LiteralPath $tempPath) {
-        Remove-Item -LiteralPath $tempPath -Force -ErrorAction SilentlyContinue
-    }
-    throw
+    Write-Host "settings.json updated."
 }
 
-Write-Host "settings.json updated."
+# --- Optional cache refresh: re-snapshot the plugin cache from committed
+#     HEAD (registration above only touches settings.json; Claude Code
+#     itself owns the cache snapshot under a `claude plugin` verb). ---
+if ($RefreshCache) {
+    Write-Host ""
+    Write-Host "=== Refreshing plugin cache (nerv@nerv) ===" -ForegroundColor Cyan
+
+    Write-Host "-> claude plugin uninstall nerv@nerv"
+    & claude plugin uninstall nerv@nerv
+    if ($LASTEXITCODE -ne 0) {
+        Write-Warning "claude plugin uninstall nerv@nerv exited with code $LASTEXITCODE"
+    }
+
+    Write-Host "-> claude plugin install nerv@nerv"
+    & claude plugin install nerv@nerv
+    if ($LASTEXITCODE -ne 0) {
+        Write-Warning "claude plugin install nerv@nerv exited with code $LASTEXITCODE"
+    }
+
+    $installedPluginsPath = Join-Path $env:USERPROFILE ".claude\plugins\installed_plugins.json"
+    if (Test-Path -LiteralPath $installedPluginsPath) {
+        try {
+            $installedPlugins = Get-Content -LiteralPath $installedPluginsPath -Raw -Encoding UTF8 | ConvertFrom-Json -Depth 50
+            $nervEntry = $installedPlugins.'nerv@nerv'
+            if ($nervEntry -and $nervEntry.gitCommitSha) {
+                Write-Host "nerv@nerv gitCommitSha : $($nervEntry.gitCommitSha)"
+            }
+            else {
+                Write-Warning "nerv@nerv not found in $installedPluginsPath after refresh."
+            }
+        }
+        catch {
+            Write-Warning "Could not parse $installedPluginsPath : $_"
+        }
+    }
+    else {
+        Write-Warning "$installedPluginsPath not found; cannot report the cached gitCommitSha."
+    }
+
+    Write-Host "Cache refreshed from the repo's committed HEAD. Restart Claude Code."
+}
+
 Write-Host ""
 Write-Host "Restart Claude Code for the change to take effect."
