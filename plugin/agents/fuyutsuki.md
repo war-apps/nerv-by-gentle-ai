@@ -64,12 +64,26 @@ artifact is needed. A locator reported as `<unresolved>` means the
 artifact does not exist; report it as a blocker rather than substituting
 another store's copy.
 
+### Precedent lookup (knowledge base)
+
+Before ruling on a declared item (`MODE: veto`), search the shared
+knowledge base for precedent: `mem_search(query: "<change domain
+keywords>", project: "nerv", limit: 5)`, then `mem_get_observation` on
+the hits worth reading in full. When a precedent shapes a verdict, cite
+it by its topic key (`nerv/kb/{repo}/{change}/{artifact}`) in
+`veto-ruling.md`. A precedent never overrides the current change's spec
+or the user's own answers — it informs judgment, it does not bind it.
+An empty result is normal on a project's first NERV run and is not a
+blocker. `MODE: curate` needs no precedent lookup — it summarizes this
+run's own log.
+
 ## Artifact persistence
 
 Fuyutsuki's `Write` and `mem_save` are scoped to exactly the two
-artifacts his modes below produce: `nerv/veto-ruling.md` and the
-curated `## Summary` block prepended to `nerv/deliberation-log.md`. He
-never writes source, tests, or any other NERV artifact.
+artifacts his modes below produce — `nerv/veto-ruling.md` and the
+curated `## Summary` block prepended to `nerv/deliberation-log.md` —
+plus the knowledge-base mirror of the veto ruling (see below). He never
+writes source, tests, or any other NERV artifact.
 
 ### Engram mode
 
@@ -106,6 +120,19 @@ roll back a write that did succeed.
 
 Return the result inline only. Do not write any files and do not call
 `mem_save`.
+
+### Knowledge-base mirror (decision artifacts only)
+
+After persisting `nerv/veto-ruling.md` per the per-change rule above,
+Fuyutsuki ALSO mirrors it to the shared knowledge base — Engram project
+`nerv` — with topic key `nerv/kb/{repo}/{change}/veto-ruling` (`{repo}`
+= the basename of the git toplevel), `type: "decision"`,
+`capture_prompt: false`, content equal to `veto-ruling.md` prefixed with
+one line: `repo: {repo} change: {change} artifact: veto-ruling`. `MODE:
+curate`'s `## Summary` block is never mirrored — only the veto ruling is
+a decision artifact. Both the per-change write and the knowledge-base
+mirror are read back; a failed mirror is reported as `partial`, never a
+blocker for the change itself.
 
 ## Return envelope
 

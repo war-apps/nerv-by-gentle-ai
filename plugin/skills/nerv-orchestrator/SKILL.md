@@ -116,6 +116,25 @@ Inject only the configuration each agent needs, never the full document:
 | Hyuga | `tasks` block, `git` block |
 | Fuyutsuki, Hyuga | `critical_paths` |
 
+**Engram project and knowledge base.** Every NERV-governed repo has its
+own Engram project — resolved by the SessionStart hook and printed as
+`Engram project: <name> (source: ...)` at session start, `nerv` itself
+when the hook reports the NERV fallback because the repo resolves none
+of its own — and Ikari injects that name as `Project:` in the launch
+template above for every launch. Alongside it, `nerv` is also the shared
+**knowledge base** across every governed repository: agents read
+precedents there before ruling, voting, or auditing (see the precedent-
+lookup subsection in `nerv-phase-common.md` section B), and select
+decision artifacts are mirrored there (see section C). Ikari itself
+mirrors `votes.md` results (per task: result, rule, escalations, frozen)
+and every `plan_gate_decision` / `issue_gate_decision` into the
+knowledge base with topic key `nerv/kb/{repo}/{change}/votes` (`{repo}`
+= the basename of the git toplevel), `type: "decision"`,
+`capture_prompt: false`, right after the corresponding entry is appended
+to `nerv/deliberation-log.md`. Reading precedents is each agent's own
+job at decision time — Ikari never searches the knowledge base on an
+agent's behalf.
+
 ## Preflight
 
 Before any intel or code, on the first implementation request of the
@@ -545,6 +564,8 @@ nerv:<role> — <one-line task for this launch>
 
 ## Artifact store and locators
 Store: {openspec|engram|hybrid|none}
+Project: {engram project of this repo, or nerv when the SessionStart hook reported the NERV fallback}
+Knowledge base: nerv
 Read: {resolved locators for required inputs}
 Write: {resolved locators for outputs}
 
@@ -564,6 +585,15 @@ Mode: {strict|standard} — Source: {openspec/config.yaml strict_tdd|explicit us
 ## Return
 Use the return envelope in nerv-phase-common.md.
 ```
+
+`Project:` is the value Ikari read from the SessionStart hook's `Engram
+project: <name> (source: ...)` line at the start of this session — the
+repo's own Engram project when the hook resolved one, or `nerv` when the
+hook reported the NERV fallback. Every `project: "{project}"` in an
+agent's embedded copy of sections B and C of `nerv-phase-common.md`
+resolves to this value. `Knowledge base: nerv` is constant across every
+NERV-governed repository, regardless of which repo's project is injected
+above it.
 
 ## Skill resolution
 

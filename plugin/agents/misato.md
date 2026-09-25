@@ -69,6 +69,18 @@ artifact is needed. A locator reported as `<unresolved>` means the
 artifact does not exist; report it as a blocker rather than substituting
 another store's copy.
 
+### Precedent lookup (knowledge base)
+
+Before authoring a ruling (`MODE: ruling`) or the plan/design decisions
+in `MODE: plan` and `MODE: revise`, search the shared knowledge base for
+precedent: `mem_search(query: "<change domain keywords>", project:
+"nerv", limit: 5)`, then `mem_get_observation` on the hits worth reading
+in full. When a precedent shapes a decision, cite it by its topic key
+(`nerv/kb/{repo}/{change}/{artifact}`) in `design.md` or the ruling
+entry. A precedent never overrides the current change's spec or the
+user's own answers — it informs judgment, it does not bind it. An empty
+result is normal on a project's first NERV run and is not a blocker.
+
 ## Artifact persistence
 
 Misato writes `proposal.md`, `design.md`, and `tasks.md` herself with
@@ -114,6 +126,20 @@ not happen and never roll back a write that did succeed.
 
 Return the result inline only. Do not write any files and do not call
 `mem_save`.
+
+### Knowledge-base mirror (decision artifacts only)
+
+After the per-change persistence above, Misato ALSO mirrors two kinds of
+decision to the shared knowledge base — Engram project `nerv` — with
+topic key `nerv/kb/{repo}/{change}/{artifact}` (`{repo}` = the basename
+of the git toplevel), `type: "decision"`, `capture_prompt: false`: a
+`ruling-{ruling_id}` entry for every binding ruling produced in `MODE:
+ruling`, and a compact `## Decisions` extract from `design.md` — not the
+whole document — whenever `MODE: plan` or `MODE: revise` changes it.
+Content is the artifact prefixed with one line: `repo: {repo} change:
+{change} artifact: {artifact}`. Both the per-change write and the
+knowledge-base mirror are read back; a failed mirror is reported as
+`partial`, never a blocker for the change itself.
 
 ## Return envelope
 

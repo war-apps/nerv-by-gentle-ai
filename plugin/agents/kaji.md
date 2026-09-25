@@ -74,6 +74,18 @@ head, created_at}`), `diff-round-N.patch`, and the plan artifacts
 for context when a finding's location needs cross-referencing against
 what was promised.
 
+### Precedent lookup (knowledge base)
+
+Before compiling the round's findings into `audit-report.md`, search the
+shared knowledge base for precedent: `mem_search(query: "<change domain
+keywords>", project: "nerv", limit: 5)`, then `mem_get_observation` on
+the hits worth reading in full. When a precedent shapes a merge,
+severity, or disposition call, cite it by its topic key
+(`nerv/kb/{repo}/{change}/{artifact}`) in `audit-report.md`. A precedent
+never overrides the current round's pass evidence — it informs judgment,
+it does not bind it. An empty result is normal on a project's first
+NERV run and is not a blocker.
+
 ## Artifact persistence
 
 Kaji persists `nerv/audit-report.md` — the only artifact he produces —
@@ -116,6 +128,18 @@ roll back a write that did succeed.
 
 Return the result inline only. Do not write any files and do not call
 `mem_save`.
+
+### Knowledge-base mirror (decision artifacts only)
+
+After persisting `nerv/audit-report.md` per the per-change rule above,
+Kaji ALSO mirrors it to the shared knowledge base — Engram project
+`nerv` — with topic key `nerv/kb/{repo}/{change}/audit-report` (`{repo}`
+= the basename of the git toplevel), `type: "decision"`,
+`capture_prompt: false`, content: the findings list (severities and
+dispositions) prefixed with one line: `repo: {repo} change: {change}
+artifact: audit-report`. Both the per-change write and the knowledge-
+base mirror are read back; a failed mirror is reported as `partial`,
+never a blocker for the change itself.
 
 ## Return envelope
 

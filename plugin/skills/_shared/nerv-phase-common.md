@@ -52,6 +52,17 @@ artifact is needed. A locator reported as `<unresolved>` means the artifact
 does not exist; report it as a blocker rather than substituting another
 store's copy or going looking for one yourself.
 
+### Precedent lookup (knowledge base)
+
+Before producing a ruling, veto, vote, or audit compilation, search the
+shared knowledge base for precedent: `mem_search(query: "<change domain
+keywords>", project: "nerv", limit: 5)`, then `mem_get_observation` on
+every hit worth reading in full. When a precedent shapes the decision,
+cite it by its topic key (`nerv/kb/{repo}/{change}/{artifact}`) in the
+output. A precedent never overrides the current change's spec or the
+user's own answers — it informs judgment, it does not bind it. An empty
+result is normal on a project's first NERV run and is not a blocker.
+
 ## C. Artifact persistence
 
 Persist every artifact you produce to the store Ikari reported, using that
@@ -93,6 +104,22 @@ back a write that did succeed.
 
 Return the result inline only. Do not write any files and do not call
 `mem_save`.
+
+### Knowledge-base mirror (decision artifacts only)
+
+After the per-change persistence above, decision artifacts are ALSO
+saved to the shared knowledge base — Engram project `nerv` — with topic
+key `nerv/kb/{repo}/{change}/{artifact}` (`{repo}` = the basename of the
+git toplevel), `type: "decision"`, `capture_prompt: false`, and content
+equal to the artifact itself prefixed with one line: `repo: {repo}
+change: {change} artifact: {artifact}`. Decision artifacts are:
+`veto-ruling` (Fuyutsuki), `ruling-*` and the plan/design decisions
+Misato records (a compact `## Decisions` extract, not the whole
+`design.md`), and `audit-report` (Kaji: the findings list with
+severities and dispositions). Everything else — test plans, Maya
+reports, waves, run summaries — is NOT mirrored. Both the per-change
+write and the knowledge-base mirror are read back; a failed mirror is
+reported as `partial`, never a blocker for the change itself.
 
 ## D. Return envelope
 

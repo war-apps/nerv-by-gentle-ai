@@ -735,3 +735,25 @@ payload_ref}`):
 - `lock_refused` — a resume attempt found a fresh `.orchestrator.lock` held
   by another session and the user chose to wait rather than take over
   (payload: the other session's `session_id` and `heartbeat_at`).
+
+## Knowledge base (Engram project nerv)
+
+Decision artifacts from every NERV-governed repository are mirrored to
+the shared Engram project `nerv` — the knowledge base every NERV run
+reads for precedent, regardless of which repo produced it (see `##
+Configuration resolution` in `nerv-orchestrator/SKILL.md` and sections B
+and C of `nerv-phase-common.md`). Topic-key scheme:
+`nerv/kb/{repo}/{change}/{artifact}`, where `{repo}` is the basename of
+the git toplevel.
+
+| artifact | mirrored by |
+|---|---|
+| votes (per-task result, rule, escalations, frozen) plus `plan_gate_decision` / `issue_gate_decision` | Ikari |
+| veto-ruling | Fuyutsuki |
+| ruling-* and the `## Decisions` extract from a plan/design decision | Misato |
+| audit-report | Kaji |
+
+Per-change artifacts (`nerv/{change}/{artifact}`, or their
+`openspec/changes/{change}/nerv/...` file) keep going to the repo's own
+Engram project exactly as documented per artifact above; the knowledge-
+base mirror is an additional write, never a substitute for it.
