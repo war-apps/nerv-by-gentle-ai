@@ -479,9 +479,10 @@ commit pre-validated).
    `nerv/deliberation-log.md`. As soon as the `vote_result` events for
    both/all tasks appear in the log (MAGI vote round 1 concluded, tasks
    frozen), kill the session process directly (not a graceful stop).
-   Expected before the kill: `nerv/.orchestrator.lock` exists, holder id
-   + PID + `heartbeat_at` populated, refreshed at least once since
-   creation.
+   Expected before the kill: `nerv/.orchestrator.lock` exists, holder
+   `session_id`, `host`, `phase`/`step` and `heartbeat_at` populated
+   (`pid` is always `null`: the protocol keys liveness on the heartbeat,
+   not on a process id), refreshed at least once since creation.
 2. **Refused resume (fresh lock).** Within 15 minutes of the kill, launch
    a resume session with the J3 resume prompt ("Resume the NERV run for
    change `power-resume`. Follow the NERV orchestrator protocol injected
@@ -490,13 +491,16 @@ commit pre-validated).
    the holder id foreign to this session, and refuses to take over —
    `nerv/deliberation-log.md` gets a `lock_refused` event naming the
    foreign holder and the lock's age; the session states plainly that a
-   live orchestrator appears to hold this change and stops. No file under
-   `openspec/changes/power-resume/` is written or modified by this
-   session (verify with `git status --porcelain` scoped to that path
-   before and after — identical). The refusal is unconditional in this
-   journey (no takeover offered) because the lock is fresh; a real
-   session may still offer a user-confirmed takeover per the protocol's
-   Resume section when it judges the holder is not actually alive — not
+   live orchestrator appears to hold this change and stops. Apart from
+   that single log append, no file under `openspec/changes/power-resume/`
+   is written, modified or deleted by this session, and the lock keeps
+   the foreign holder and its `heartbeat_at` untouched (verify by hashing
+   every file under the change except `deliberation-log.md` before and
+   after — identical; `git status --porcelain` is not enough while the
+   whole change folder is still untracked). In a non-interactive bench
+   run the harness prompt pre-answers the protocol's wait-or-take-over
+   prompt with "wait"; a real interactive session relays that prompt and
+   may take over only after the user confirms the holder is dead — not
    exercised here since 15 minutes have not elapsed.
 3. **Legitimate resume (stale lock).** Make the heartbeat stale: either
    wait past the 15-minute rule, or, for a faster bench run, edit
@@ -530,8 +534,13 @@ commit pre-validated).
    lock file is never committed at any point — it is deleted before
    close, and even mid-run it stays untracked/ignored). Confirm the
    `nerv/` folder's content (deliberation log, votes, veto ruling, waves,
-   maya reports, run summary) is fully present in that commit or an
-   earlier work-unit commit, never left uncommitted after close.
+   maya reports, run summary) is fully present in that commit, the
+   archive commit or the close commit (`docs: close nerv run for
+   power-resume`), never left uncommitted after close: `git status
+   --porcelain openspec/` prints nothing once the session exits. The
+   close commit is the run's last write, so the `stop` event precedes it
+   in the committed log and no `commit_recorded` line for the close
+   commit itself exists (its hash is in the session's final message).
 
 ### Variant: tracker `none` (J5 companion)
 
