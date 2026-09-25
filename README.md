@@ -598,3 +598,33 @@ apply step automatically at the end of its own cache refresh.
 and warns when the cached agent frontmatter has drifted from it, so a
 pending `-ApplyModels` run is visible without inspecting the cache by
 hand.
+
+### Configuring models and effort
+
+`pwsh tools/configure-models.ps1` is an interactive wizard for the
+`models:` block: it prints the resolved table (role, model, effort,
+source — `override`, `gentle-ai:<phase>`, or `default`), then lets you
+edit it role by role, or by group (`magi`, `pilots`, `kaji-passes`, `all`),
+until you type `done`. For each role it asks for a model
+(`sonnet`/`opus`/`haiku`/`fable`/`inherit`, a custom `claude-...` id, or
+`from:` a gentle-ai phase listed from `~/.gentle-ai/state.json`) and an
+effort (`low`/`medium`/`high`/`xhigh`/`max`), with Enter keeping the
+current value; `reset <role|group>` clears an override back to the plugin
+default. Confirming writes the block to nerv.yaml, after backing up the
+file to `<path>.bak-models-<yyyyMMdd-HHmmss>`.
+
+By default it edits the user-scope file
+(`~/.claude/nerv/nerv.yaml`); `-Scope project` edits
+`<repo>/.nerv/nerv.yaml` instead (it must already exist — run
+`/nerv:init` first) and carries the same `effort`-is-not-applicable
+caveat as editing that file by hand (see above). At user scope, after
+writing, it also offers to run `pwsh tools/install.ps1 -ApplyModels`
+immediately; pass `-NoApply` to skip that prompt.
+
+`-AnswersFile <path>` drives the wizard from a text file (one answer per
+line) instead of prompting, for scripted or tested runs.
+
+You can also skip the wizard and edit the `models:` block by hand in
+either nerv.yaml — see the inline-map syntax and the `from:` behavior
+above — then run `pwsh tools/install.ps1 -ApplyModels` yourself. Either
+way, restart Claude Code afterwards for the change to take effect.
