@@ -18,7 +18,8 @@ short and imperative — this is a status check, not a narrative.
    by key. Also print one line: `tasks.provider: <resolved value>` and
    `session timer: running (task <taskId>)` or `session timer: none`
    (check `~/.claude/work/timers.json` for an entry matching this
-   session's `sessionId`).
+   session's `sessionId`). Also print `artifacts.commit: <resolved value>`
+   (`with-change` | `at-close` | `never`).
 
 3. **gentle-ai version check.** Run `gentle-ai --version` and parse the
    first token as `MAJOR.MINOR.PATCH` (e.g. `3.7.0`). Compare against the
@@ -34,10 +35,16 @@ short and imperative — this is a status check, not a narrative.
    active change directory run `gentle-ai sdd-status --json` and list it
    alongside which NERV-owned artifacts are present under that change's
    `nerv/` subfolder (for example `nerv/run-summary.md`). If no changes
-   exist, say so plainly.
+   exist, say so plainly. For each active change, also read
+   `nerv/.orchestrator.lock` if present (read-only — never refresh or
+   delete it from this command) and print `lock: session <session_id> —
+   fresh (heartbeat <Ns> ago)` or `lock: session <session_id> — stale
+   (heartbeat <Nm> ago)`, or `lock: none` when the file is absent. Fresh
+   means `heartbeat_at` is under 15 minutes old (see the Orchestrator lock
+   section of `nerv-orchestrator/SKILL.md`).
 
-5. **Phase 0 note.** Always print, verbatim: "Phases 1+ add loop counters
-   and resume."
+5. **Phase note.** Always print, verbatim: "Phase 5 adds the orchestrator
+   lock and safe resume."
 
 Do not modify any file. Do not launch any agent other than for the reads
 above.

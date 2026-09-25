@@ -24,6 +24,9 @@ one NERV-owned key). Engram topic key for every artifact:
   when a task is active, or `null` when the change has no task
   (`tasks.provider: none`, or the user chose to work without one at
   Preflight).
+- `closed_at` is `null` until the change closes, then set once by Ikari at
+  Close (LIGHT's Close step or FULL's step 19), the same write that deletes
+  `nerv/.orchestrator.lock`.
 
 ```yaml
 dependsOn: []
@@ -32,7 +35,33 @@ nerv:
   classification_reason: "single domain, no critical path, under budget"
   task_ref: "TW-49132010"         # or null when no task
   created_at: "2026-09-24T14:03:00Z"
+  closed_at: null                 # set once, at Close
 ```
+
+## .orchestrator.lock (Ikari)
+
+- Purpose: concurrency guard — detects a second NERV session resuming the
+  same change while the first is still alive, so Resume never races an
+  active run.
+- Author: Ikari only; no other agent reads or writes this file. Never
+  persisted to Engram or committed to git — local, ephemeral, machine-scoped
+  state (Ikari adds it to `.git/info/exclude` on creation).
+- Location: `openspec/changes/{change}/nerv/.orchestrator.lock`.
+- Engram key: none.
+
+```yaml
+session_id: "26b0c7bf-8fa7-4b75"   # UUID segment of the scratchpad path
+host: "WALTER-PC"                  # machine name
+started_at: "2026-09-24T14:03:00Z"
+heartbeat_at: "2026-09-24T14:11:00Z"
+phase: "full"
+step: "11-wave-2"
+pid: null
+```
+
+Fresh when `heartbeat_at` is under 15 minutes old (see `## Orchestrator
+lock` in `nerv-orchestrator/SKILL.md`); refreshed before every launch and
+after every envelope; deleted at close or on an explicit stop.
 
 ## exploration-light.md (Ritsuko)
 
@@ -687,3 +716,16 @@ same shape (`{ts, phase, actor, event_type, payload_ref}`):
   dispatch: Preflight's `createTask`/`start`, Maya's full-gate
   `moveStage(testing)`, the issue gate's `comment`/`createTask` for
   accepted `DEFER` issues, and Close's `close`/`done`/`block`.
+
+### Phase 5 event types
+
+The orchestrator-lock and safe-resume hardening adds these event types to
+the same append-only log, same shape (`{ts, phase, actor, event_type,
+payload_ref}`):
+
+- `resume` — a NERV session resumed an interrupted change (payload:
+  `{from_step, took_over_from}` — `took_over_from` carries the stale
+  session's `session_id` on a takeover, or is absent on a normal resume).
+- `lock_refused` — a resume attempt found a fresh `.orchestrator.lock` held
+  by another session and the user chose to wait rather than take over
+  (payload: the other session's `session_id` and `heartbeat_at`).

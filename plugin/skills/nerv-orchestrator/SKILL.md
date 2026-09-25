@@ -51,7 +51,10 @@ carries "Do NOT delegate" in its own file and has no Agent tool access.
   never through Ikari's own tool calls.
 - Ikari's own writes are limited to mechanical bookkeeping: `.nerv/nerv.yaml`
   (only when the user asks to persist preflight answers), the change's
-  `state.yaml`, appending to `nerv/deliberation-log.md`, and any artifact
+  `state.yaml` (including `closed_at`, written once at close), appending to
+  `nerv/deliberation-log.md`, `nerv/.orchestrator.lock` (create, heartbeat
+  refresh, delete — see `## Orchestrator lock`), the `status: done` field on
+  completed tasks in `tasks.md` at close (that field only), and any artifact
   returned in the envelope of a read-only agent (Ritsuko), written verbatim
   to its resolved locator when the store is openspec or hybrid. NERV does
   not use `odd/`-style task tracking — the NERV change folder under
@@ -61,6 +64,27 @@ carries "Do NOT delegate" in its own file and has no Agent tool access.
   never infers a decision, and never defaults one.
 - Every launch names the agent as `nerv:<role>` (e.g. `nerv:aoba`,
   `nerv:kaworu`), never the bare role name.
+
+## Orchestrator lock
+
+Ikari alone holds this lock — no agent reads or writes it. File:
+`openspec/changes/{change}/nerv/.orchestrator.lock`, YAML: `{session_id,
+host, started_at, heartbeat_at, phase, step, pid: null}` (`session_id` = the
+UUID segment of this session's scratchpad path, `host` = machine name).
+Ikari writes it right after creating `state.yaml`; refreshes `heartbeat_at`/
+`phase`/`step` before every launch and after every envelope, as part of the
+same mechanical write as the `deliberation-log.md` append; deletes it at
+close or on an explicit stop. Never committed: excluded from every Aoba
+commit regardless of `artifacts.commit` (below); Ikari adds the path to
+`.git/info/exclude` the moment it creates the lock.
+
+**Staleness**: fresh when `heartbeat_at` is under 15 minutes old — a single
+long launch (Ritsuko intel, a four-lens audit pass) can run ~10 minutes, so
+15 minutes leaves margin without mistaking a live run for a dead one.
+**Readback**: every launch's readback also re-reads the lock and confirms it
+still carries this session's `session_id`; a different id means another
+orchestrator took over — stop immediately with a `stop` event, no further
+writes.
 
 ## Configuration resolution
 
@@ -213,6 +237,10 @@ user may override it when validating the step-7 commit. Maya's reduced mode
 (step 6) runs only the tests and lint/build touching the changed files —
 never the full suite — per the `b`/`c` phases of her report schema.
 
+At step 10, Ikari sets `status: done` on every completed task in `tasks.md`
+(that field only, a mechanical write), records `closed_at` in `state.yaml`,
+and deletes `nerv/.orchestrator.lock`.
+
 ## FULL pipeline (Phase 3)
 
 FULL adds MAGI vote, governance veto, waves, quality-gated implementation,
@@ -263,7 +291,9 @@ and Close only in LIGHT):
   findings become tracked follow-up work.
 - **Close (step 19).** `close` (`stop` with real start/end +
   `moveStage(implemented)` + `complete`), or `done` (same without
-  `complete`) when the user prefers the task stay open.
+  `complete`) when the user prefers the task stay open. Ikari also sets
+  `status: done` on every completed task in `tasks.md`, records `closed_at`
+  in `state.yaml`, and deletes `nerv/.orchestrator.lock`.
 
 A halted run routes to `block(reason)` instead — Ikari asks the user for
 the mandatory cause first, then Hyuga runs `block` with it. Every tracker
@@ -603,6 +633,16 @@ treated as due — never inferred as low risk. Log every assessment and every
 receipt as `rdd_assess` / `rdd_receipt` events in `deliberation-log.md`. The
 first boundary of a change is its branch point.
 
+**Untracked-path refusal.** When `review assess` returns `unassessable` for
+untracked paths (the NERV change folder is untracked by default — see
+`artifacts.commit` below), run the read-only status command it names:
+`gentle-ai review status --cwd <repo> --contract
+gentle-ai.review-integration/v2 --agent claude-code --next-transition`, take
+`eligible_untracked_inventory` from it, and rerun assess with
+`--untracked-scope=exclude --expected-untracked-inventory=<that digest>`.
+With `artifacts.commit: at-close` or `never`, the NERV folder is exactly
+that expected untracked content. Log both attempts as `rdd_assess`.
+
 ## Delivery
 
 Work happens as one conventional commit per work unit, validated by the user
@@ -616,6 +656,14 @@ slicing per their definitions). Resolve `work-unit-commits` and
 `chained-pr` by registry name, the same way as any other skill. Push, merge,
 and PR creation are always the user's own decision — Aoba prepares the
 commands, never runs them.
+
+**Artifacts commit policy.** `artifacts.commit` in the merged `nerv.yaml`
+(`with-change`|`at-close`|`never`, default `at-close`): `with-change` adds
+`openspec/changes/{change}/` to each work-unit commit that touches it;
+`at-close` leaves it untracked until Aoba commits it once, whole, as
+`docs: nerv artifacts for {change}`, through the normal user-validated
+commit; `never` leaves it untracked permanently. `nerv/.orchestrator.lock`
+is excluded from every commit regardless of this setting.
 
 ## Usage collection
 
@@ -646,17 +694,35 @@ also defined in `nerv-artifacts.md`: `patch_frozen`, `audit_pass`,
 `docs_written`, `archived`, `log_curated`. Phase 4 adds `tracker_event`
 (payload `{op, taskRef, result}`, defined in `nerv-artifacts.md`), logged
 once per Hyuga tracker op — Preflight, Maya's full-gate start, the issue
-gate, and Close.
+gate, and Close. Phase 5 adds `resume` (`{from_step, took_over_from}`) and
+`lock_refused`, also defined in `nerv-artifacts.md`, logged by the
+Orchestrator lock and Resume protocols.
 
 ## Resume
 
-On resuming an interrupted NERV change: `mem_context` → `mem_search` scoped
-to `nerv/{change}` → `mem_get_observation` for each hit's full content →
-`gentle-ai sdd-status {change} --json` → read the actual `nerv/*.md` files
-and `state.yaml` from their resolved locators → reconcile any divergence
-between memory, native status, and the files themselves → continue at the
-next unfinished pipeline step. Never infer active work from the newest
-global memory hit alone; always confirm against the change's own artifacts.
+On resuming an interrupted NERV change, in order:
+
+1. **Lock check.** Read `nerv/.orchestrator.lock`. Fresh (see `##
+   Orchestrator lock`) and its `session_id` is not ours → do not resume;
+   relay one blocking prompt, exactly two choices: wait (stop here, try
+   later) or take over (only after the user confirms the other session is
+   really dead; record `took_over_from: <session_id>`). Stale or absent →
+   proceed.
+2. **Memory + native status.** `mem_context` → `mem_search` scoped to
+   `nerv/{change}` → `mem_get_observation` for each hit's full content →
+   `gentle-ai sdd-status {change} --json`.
+3. **Artifacts.** Read `state.yaml`, every `nerv/*.md`, `votes.md`'s
+   `frozen` flags, `waves.md`, and the commits since the branch point.
+4. **Reconcile.** Frozen tasks are never re-voted; closed waves are never
+   re-run; a `commit_recorded` event whose hash exists in `git log` is
+   done. A launch recorded without its matching `envelope` event is the
+   only step to redo.
+5. **Take the lock.** Write it with our `session_id`, append a `resume`
+   event `{from_step, took_over_from}`, continue at the next unfinished
+   step.
+
+Never infer active work from the newest global memory hit alone; always
+confirm against the change's own artifacts.
 
 ## Ping
 
@@ -681,4 +747,6 @@ tracker (`nerv-tasks/SKILL.md`, the Teamwork adapter delegating to
 Hyuga's `DISPATCH: tracker`) and the single `nerv.yaml` config file
 (two scopes, one schema, project overrides user) are wired into Preflight,
 Maya's full-gate start, the issue gate, and Close in both pipelines.
-Phase 5 hardening is pending.
+Phase 5 hardening ships the orchestrator lock (concurrency guard, heartbeat
+staleness), safe resume, close-time `tasks.md`/`state.yaml` bookkeeping, the
+`artifacts.commit` policy, and RDD's untracked-path recovery path.

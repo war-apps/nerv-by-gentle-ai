@@ -205,6 +205,19 @@ created_at: "{ISO 8601 timestamp}"
 Obtain the HEAD hash with `git rev-parse HEAD` at freeze time — never
 invent it. Never hand-edit either file after generating it.
 
+### Artifacts commit policy
+
+`artifacts.commit` (from the merged `nerv.yaml`: `with-change` | `at-close`
+| `never`) decides whether the change folder is tracked in git. `with-change`
+is handled per work-unit commit (see Commit rules above) and needs no
+Archive-time action. At close (LIGHT's Close step or FULL's step 19), when
+the resolved value is `at-close`, commit `openspec/changes/{change}/`
+(including `nerv/`, excluding `.orchestrator.lock` — already excluded via
+`.git/info/exclude`) as one commit, `docs: nerv artifacts for {change}`,
+through the normal user-validated commit rules above. `never` leaves the
+folder untracked — commit nothing. This commit runs before the Archive `git
+mv` below when both apply at the same close.
+
 ### Archive
 
 NERV never launches gentle-ai's `sdd-archive` agent — its dispatcher
@@ -240,6 +253,8 @@ above) covering:
 - RDD receipts encountered during the run, if any.
 - Commits made, with hashes and subjects.
 - PR slices prepared (chained/stacked), if any.
+- Artifacts commit policy applied (`with-change` | `at-close` | `never`)
+  and, when `at-close`, the commit hash from that step.
 
 ### Ping (Phase 0)
 
