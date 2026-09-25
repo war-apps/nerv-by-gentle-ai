@@ -166,7 +166,10 @@ function Resolve-NervModelAssignments {
             }
             continue
         }
-        if ($line.Trim().Length -eq 0) {
+        # Blank lines and full-line comments never end the block: the
+        # /nerv:init template interleaves column-0 "# role: {...}" lines
+        # with the entries the user uncomments.
+        if ($line.Trim().Length -eq 0 -or $line -match '^\s*#') {
             continue
         }
         if ($line -match '^\s') {

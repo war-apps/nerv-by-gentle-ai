@@ -93,6 +93,8 @@ $configPath = Join-Path $tempRoot "nerv.yaml"
 skills: {}
 models:                             # per-role model and effort; project overrides user, key by key
   aoba: { model: haiku, effort: low }
+# balthasar: { model: sonnet, effort: medium }   # column-0 comment, as /nerv:init writes them
+#   casper: { model: sonnet, effort: medium }
   rei: { from: jd-judge-b }
   misato: { effort: bogus }
   ghost: { model: sonnet, effort: low }
