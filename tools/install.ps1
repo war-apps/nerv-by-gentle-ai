@@ -261,6 +261,59 @@ else {
     Write-Host "settings.json updated."
 }
 
+# --- Engram "nerv" knowledge-base project (idempotent check-or-create) ---
+# NERV mirrors precedents/decisions to a shared Engram project named "nerv"
+# across every NERV-governed repo (see README "Engram project detection").
+# This step only verifies/creates that project; it never touches
+# settings.json and never aborts the install on failure.
+if (-not $Uninstall) {
+    $engramCommand = Get-Command engram -ErrorAction SilentlyContinue
+    if ($null -eq $engramCommand) {
+        Write-Warning "engram not found on PATH; could not verify the 'nerv' Engram knowledge base."
+    }
+    else {
+        $global:LASTEXITCODE = 0
+        $nervProjectExists = $false
+        try {
+            $projectsOutput = & engram projects list 2>&1
+            if ($LASTEXITCODE -ne 0) {
+                Write-Warning "engram projects list exited with code ${LASTEXITCODE}: $projectsOutput"
+            }
+            else {
+                foreach ($line in $projectsOutput) {
+                    $firstToken = ([string]$line).Trim() -split '\s+' | Select-Object -First 1
+                    if ($firstToken -eq "nerv") {
+                        $nervProjectExists = $true
+                        break
+                    }
+                }
+            }
+        }
+        catch {
+            Write-Warning "engram projects list could not run: $_"
+        }
+
+        if ($nervProjectExists) {
+            Write-Host "Engram 'nerv' knowledge base already exists."
+        }
+        else {
+            $global:LASTEXITCODE = 0
+            try {
+                & engram save "NERV knowledge base" "Shared Engram project for NERV runs: precedents (Misato rulings, Fuyutsuki vetoes, MAGI vote results, Kaji audit findings) mirrored from every NERV-governed repository." --project nerv --type manual
+                if ($LASTEXITCODE -ne 0) {
+                    Write-Warning "engram save exited with code ${LASTEXITCODE}; could not create the 'nerv' Engram knowledge base."
+                }
+                else {
+                    Write-Host "Engram 'nerv' knowledge base created."
+                }
+            }
+            catch {
+                Write-Warning "engram save could not run: $_"
+            }
+        }
+    }
+}
+
 # --- Optional cache refresh: re-snapshot the plugin cache from committed
 #     HEAD (registration above only touches settings.json; Claude Code
 #     itself owns the cache snapshot under a `claude plugin` verb). ---

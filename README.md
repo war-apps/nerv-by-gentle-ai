@@ -22,6 +22,8 @@ a run summary reporting tokens, time, and model per agent.
 - git.
 - bash available to hooks (Git Bash on Windows).
 - PowerShell 7, for the installer (`tools/install.ps1`).
+- Engram (`engram` on PATH) is optional — without it the installer skips
+  the "nerv" knowledge-base check (see "Engram project detection" below).
 
 Tested against: gentle-ai 3.7.0
 
@@ -358,6 +360,38 @@ the configured provider. The 16 `/task:*` commands read the same single
 active config (merged user + project), and — while a run is in progress —
 the orchestrator lock state (`nerv/.orchestrator.lock`: holder, step,
 `waiting_on`, heartbeat age); the lock line disappears once the run closes.
+
+### Engram project detection
+
+A second SessionStart hook, `plugin/hooks/nerv-engram-project.sh`, runs in
+**every** session — unlike the NERV activation hook above, it is not gated
+behind `.nerv/nerv.yaml` — to tell the session which Engram project to pass
+on every memory write. It detects the project in this order:
+
+1. `.engram/config.json` in the repo root, if it declares `project_name`.
+2. Otherwise, the basename of the git toplevel directory (works from any
+   nested subfolder).
+3. Otherwise, undetermined.
+
+Inside a NERV-enabled repo (`.nerv/nerv.yaml` with `enabled: true`), the
+hook also prints a reminder that NERV keeps a shared knowledge base in the
+Engram project named `nerv` — precedents (Misato rulings, Fuyutsuki vetoes,
+MAGI vote results, Kaji audit findings) mirrored from every NERV-governed
+repository under topic keys `nerv/kb/{repo}/{change}/{artifact}`, read
+before deciding and written back after. When detection is undetermined in
+a NERV repo, the hook falls back to `project: "nerv"` for that session's
+writes instead of leaving it unresolved.
+
+Outside a NERV repo, an undetermined detection is never silently guessed:
+the hook asks the session to pose one question to the user — general
+knowledge under the `root` project, or a specific named project — before
+the first Engram write (`mem_save`, `mem_session_summary`, `mem_context`).
+
+`tools/install.ps1` keeps a `nerv` Engram project provisioned: when
+`engram` is on PATH, the installer checks `engram projects list` and
+creates the `nerv` knowledge-base project if it is missing (idempotent —
+a second run makes no changes). Without `engram` on PATH, the installer
+warns and continues; nothing about plugin registration depends on it.
 
 ## Troubleshooting
 
