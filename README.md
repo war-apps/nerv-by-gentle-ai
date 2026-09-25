@@ -368,7 +368,14 @@ A second SessionStart hook, `plugin/hooks/nerv-engram-project.sh`, runs in
 behind `.nerv/nerv.yaml` — to tell the session which Engram project to pass
 on every memory write. It detects the project in this order:
 
-1. `.engram/config.json` in the repo root, if it declares `project_name`.
+1. `.engram/config.json` in the session directory, then in the git
+   toplevel (so a nested subfolder still honors the repo-root config), if
+   it declares a `project_name` that passes validation: letters, digits,
+   dot, underscore, dash, 1–64 characters, alphanumeric first. The name
+   `nerv` is reserved for the knowledge base and is refused from any repo
+   config (warning on stderr, detection falls through). A repository you
+   merely open can therefore not redirect your memory writes to an
+   arbitrary or reserved project.
 2. Otherwise, the basename of the git toplevel directory (works from any
    nested subfolder).
 3. Otherwise, undetermined.

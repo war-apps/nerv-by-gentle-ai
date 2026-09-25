@@ -17,27 +17,48 @@ main() {
 
   local project_name="" source_label="" determined=0
 
-  # --- Detection source 1: .engram/config.json ---
-  local config_file="${dir}/.engram/config.json"
-  if [ -f "$config_file" ]; then
-    project_name="$(tr -d '\r' < "$config_file" 2>/dev/null \
+  # Resolve the repository root first: both the Engram config and the NERV
+  # activation file live at the git toplevel, so a session started in a
+  # nested subfolder must still find them. Without git (or outside a repo)
+  # the session directory is the only root we have.
+  local root="$dir"
+  local toplevel=""
+  if toplevel="$(git -C "$dir" rev-parse --show-toplevel 2>/dev/null)" && [ -n "$toplevel" ]; then
+    root="$toplevel"
+  fi
+
+  # --- Detection source 1: .engram/config.json (session dir, then repo root) ---
+  # The file is repository-controlled input: the extracted name is accepted
+  # only when it matches a strict charset (letters, digits, dot, underscore,
+  # dash; 1-64 chars, must start alphanumeric) and is not the reserved
+  # knowledge-base project "nerv", which no repository may claim for itself.
+  local config_file candidate
+  for config_file in "${dir}/.engram/config.json" "${root}/.engram/config.json"; do
+    [ -f "$config_file" ] || continue
+    candidate="$(tr -d '\r' < "$config_file" 2>/dev/null \
       | grep -o '"project_name"[[:space:]]*:[[:space:]]*"[^"]*"' \
       | head -n 1 \
       | sed -E 's/^"project_name"[[:space:]]*:[[:space:]]*"([^"]*)"$/\1/')"
-    if [ -n "$project_name" ]; then
-      source_label=".engram/config.json"
-      determined=1
+    [ -n "$candidate" ] || continue
+    if [ "$candidate" = "nerv" ]; then
+      echo "nerv-engram-project: ${config_file} names the reserved knowledge-base project \"nerv\"; ignored" >&2
+      break
     fi
-  fi
+    if ! printf '%s' "$candidate" | grep -Eq '^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$'; then
+      echo "nerv-engram-project: ${config_file} project_name rejected (allowed: [A-Za-z0-9._-], 1-64 chars, alphanumeric first); ignored" >&2
+      break
+    fi
+    project_name="$candidate"
+    source_label=".engram/config.json"
+    determined=1
+    break
+  done
 
   # --- Detection source 2: git toplevel basename ---
-  if [ "$determined" -eq 0 ]; then
-    local toplevel
-    if toplevel="$(git -C "$dir" rev-parse --show-toplevel 2>/dev/null)" && [ -n "$toplevel" ]; then
-      project_name="$(basename "$toplevel")"
-      source_label="git toplevel"
-      determined=1
-    fi
+  if [ "$determined" -eq 0 ] && [ -n "$toplevel" ]; then
+    project_name="$(basename "$toplevel")"
+    source_label="git toplevel"
+    determined=1
   fi
 
   if [ "$determined" -eq 1 ]; then
@@ -46,7 +67,7 @@ main() {
 
   # --- NERV activation gate (same CRLF-tolerant regex as
   # nerv-session-start.sh), only for the knowledge-base guidance below ---
-  local nerv_config="${dir}/.nerv/nerv.yaml"
+  local nerv_config="${root}/.nerv/nerv.yaml"
   local nerv_enabled=0
   if [ -f "$nerv_config" ] \
     && tr -d '\r' < "$nerv_config" 2>/dev/null | grep -Eq '^[[:space:]]*enabled:[[:space:]]*true[[:space:]]*(#.*)?$'; then
