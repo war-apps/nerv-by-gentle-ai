@@ -19,7 +19,7 @@ short and imperative — this is a status check, not a narrative.
    `session timer: running (task <taskId>)` or `session timer: none`
    (check `~/.claude/work/timers.json` for an entry matching this
    session's `sessionId`). Also print `artifacts.commit: <resolved value>`
-   (`with-change` | `at-close` | `never`).
+   (`with-change` | `at-close` | `never`; built-in default `at-close` when neither file sets it).
 
 3. **gentle-ai version check.** Run `gentle-ai --version` and parse the
    first token as `MAJOR.MINOR.PATCH` (e.g. `3.7.0`). Compare against the
