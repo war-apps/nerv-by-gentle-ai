@@ -72,7 +72,7 @@ per version, and (c) fits Gitflow without any bot commit on a base branch.
   actions pinned by SHA. Route: writer, loads the `github-actions-templates` skill first.
   Checks: `actionlint` if available, otherwise structural readback; a dry `pwsh` run of the
   version/tag/changelog guard script extracted to `tools/release-guard.ps1` with its test.
-- [ ] T3 Docs and baseline files. `CHANGELOG.md` with `## [Unreleased]` and a `## [0.1.0]`
+- [x] T3 DONE 2026-09-28 (writer on sonnet; parent spot check ran the guard against the real repo: ok true, changelog_section true, tag_exists false; read CHANGELOG.md and the README section in full; one parent fix: "four" → "six" `.ps1` suites in the CI paragraph). Commit `faf12c0`. Docs and baseline files. `CHANGELOG.md` with `## [Unreleased]` and a `## [0.1.0]`
   baseline entry summarizing what is on `main` today; README "Releases" section (how to cut a
   release, pre-releases, what the CI does, the `main`-as-default-branch note for marketplace
   consumers); `odd/tasks/release-pipeline.md` closed. Route: inline or writer depending on
@@ -101,10 +101,11 @@ per version, and (c) fits Gitflow without any bot commit on a base branch.
 
 ## Progress log
 
+- 2026-09-28: T3 complete (`faf12c0`), changelog baseline and README release process. All tasks done; push and PR chain pending user OK.
 - 2026-09-28: T2 complete (`369059b`), CI and release workflows plus the release guard; T3 (docs) running.
 - 2026-09-28: T1 complete (`706b631`), release script and suite; T2 (workflows) and T3 (docs) next.
 - 2026-09-28: feature document created; branch `feature/release-pipeline` from `develop`.
 
 ## Next step
 
-T3 (writer): `CHANGELOG.md` baseline and README "Releases"; then close the document, mirror it, and ask for the push and PR chain.
+Feature complete on `feature/release-pipeline`. Pending user decisions: push the branch and open the two chained PRs (PR 1/2: `706b631`+`7e9af5f`; PR 2/2: `369059b`..HEAD); set `main` as the GitHub default branch; create the baseline tag `v0.1.0` on `main` (`c9a4b1f`). First real exercise of the workflows happens with those PRs and the first merge to `main`.
