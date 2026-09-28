@@ -19,6 +19,7 @@ NERV existed only as a text spec. gentle-ai has the infrastructure NERV lacks (S
 - No Teamwork task for this work (user decision 2026-09-24): commits carry no `(TW-id)` suffix.
 - TDD: strict mode is enabled globally but this repo is markdown plus one shell script; verification is behavioral through `bench/journeys.md` and the checks listed per task.
 - Delivery strategy: `ask-on-risk` (default). Forecast for Phase 0: ~400 authored lines (scaffold + one agent + hook + installer + README).
+- Engram mirror (since 2026-09-28, the file exceeds the 50 KB observation cap): split by line range into `odd/nerv-overlay/tasks/phases-0-5`, `odd/nerv-overlay/tasks/phases-6-10`, `odd/nerv-overlay/tasks/rdd-and-followups`, plus the index `odd/nerv-overlay/tasks` (header, mirror layout, progress log, next step). Re-save every part whose range changed; this file stays the authority.
 
 ## Tasks
 
