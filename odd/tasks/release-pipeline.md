@@ -101,6 +101,7 @@ per version, and (c) fits Gitflow without any bot commit on a base branch.
 
 ## Progress log
 
+- 2026-09-28: pushed and delivered as a feature-branch chain: PR #9 `feature/release-pipeline-1-release-script` → `develop` (`706b631`..`7e9af5f`, 1366 lines, size:exception requested) and PR #10 `feature/release-pipeline` → PR #9 branch (`369059b`..HEAD, 988 lines). `ci.yml` cannot run on either PR yet: it lives only on the PR #10 head and filters on base `develop`/`main`, so its first run is PR #10 after #9 merges and #10 is retargeted to `develop` (retarget from the web UI: the gh token lacks read:org).
 - 2026-09-28: T3 complete (`faf12c0`), changelog baseline and README release process. All tasks done; push and PR chain pending user OK.
 - 2026-09-28: T2 complete (`369059b`), CI and release workflows plus the release guard; T3 (docs) running.
 - 2026-09-28: T1 complete (`706b631`), release script and suite; T2 (workflows) and T3 (docs) next.
@@ -108,4 +109,4 @@ per version, and (c) fits Gitflow without any bot commit on a base branch.
 
 ## Next step
 
-Feature complete on `feature/release-pipeline`. Pending user decisions: push the branch and open the two chained PRs (PR 1/2: `706b631`+`7e9af5f`; PR 2/2: `369059b`..HEAD); set `main` as the GitHub default branch; create the baseline tag `v0.1.0` on `main` (`c9a4b1f`). First real exercise of the workflows happens with those PRs and the first merge to `main`.
+Delivered as PR #9 and PR #10 (merge in order, retarget #10 to `develop` after #9 lands). Pending user decisions: set `main` as the GitHub default branch; create the baseline tag `v0.1.0` on `main` (`c9a4b1f`). First real exercise of the workflows happens with those PRs and the first merge to `main`.
