@@ -17,8 +17,18 @@
 
 .PARAMETER RepoPath
     Path to the NERV repo root (the directory containing .claude-plugin\
-    marketplace.json). Defaults to the parent of this script's directory
-    (tools\..), i.e. the repo root when the script is run in place.
+    marketplace.json). Defaults to the grandparent of this script's
+    directory (plugin\tools\..\..), i.e. the repo root when the script is
+    run in place from the repo (plugin/tools/install.ps1).
+
+    When this script instead runs from the installed plugin cache
+    (~/.claude/plugins/cache/nerv/nerv/<version>/tools/install.ps1), that
+    grandparent is the cache's own parent directory, NOT the repo — so the
+    default falls back to the marketplace path registered in
+    ~/.claude/settings.json under extraKnownMarketplaces.nerv.source.path
+    (written by this same script's marketplace-registration step) whenever
+    <computed-grandparent>/plugin/.claude-plugin/plugin.json does not
+    exist. Pass -RepoPath explicitly to bypass both.
 
 .PARAMETER Uninstall
     Remove extraKnownMarketplaces.nerv and enabledPlugins["nerv@nerv"]
@@ -94,7 +104,39 @@
 param(
     [string]$SettingsPath = (Join-Path $env:USERPROFILE ".claude\settings.json"),
 
-    [string]$RepoPath = (Split-Path -Parent $PSScriptRoot),
+    [string]$RepoPath = $(
+        # Normal case: running in place at <repo>/plugin/tools/install.ps1 —
+        # the repo root is this script's directory's grandparent.
+        $nervComputedRepoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
+        $nervPluginJsonProbe = Join-Path $nervComputedRepoRoot 'plugin/.claude-plugin/plugin.json'
+        if (Test-Path -LiteralPath $nervPluginJsonProbe) {
+            $nervComputedRepoRoot
+        }
+        else {
+            # Installed-cache case: <cache>/nerv/nerv/<version>/tools/install.ps1 —
+            # the grandparent is the cache's version-parent directory, not the
+            # repo. Fall back to the marketplace path this script itself wrote
+            # to settings.json when it registered the plugin.
+            $nervFallbackRepoRoot = $nervComputedRepoRoot
+            $nervSettingsProbePath = Join-Path $env:USERPROFILE ".claude\settings.json"
+            if ((-not (Test-Path -LiteralPath $nervSettingsProbePath)) -and $env:HOME) {
+                $nervSettingsProbePath = Join-Path $env:HOME ".claude/settings.json"
+            }
+            if (Test-Path -LiteralPath $nervSettingsProbePath) {
+                try {
+                    $nervSettingsProbe = Get-Content -LiteralPath $nervSettingsProbePath -Raw -Encoding UTF8 | ConvertFrom-Json -Depth 50
+                    $nervMarketplacePath = $nervSettingsProbe.extraKnownMarketplaces.nerv.source.path
+                    if ($nervMarketplacePath) { $nervFallbackRepoRoot = $nervMarketplacePath }
+                }
+                catch {
+                    # Malformed settings.json: keep the computed (likely wrong)
+                    # grandparent; callers that need the real repo pass
+                    # -RepoPath explicitly.
+                }
+            }
+            $nervFallbackRepoRoot
+        }
+    ),
 
     [switch]$Uninstall,
 

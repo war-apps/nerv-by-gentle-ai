@@ -15,8 +15,9 @@ $ErrorActionPreference = "Stop"
 
 $selfDir = $PSScriptRoot
 $repoRoot = Split-Path -Parent $selfDir
-$scriptPath = Join-Path $repoRoot "tools/install-skills.ps1"
-$realManifestPath = Join-Path $repoRoot "tools/skills-manifest.json"
+$scriptPath = Join-Path $repoRoot "plugin/tools/install-skills.ps1"
+$realManifestPath = Join-Path $repoRoot "plugin/tools/skills-manifest.json"
+$rootForwarderPath = Join-Path $repoRoot "tools/install-skills.ps1"
 
 $script:passCount = 0
 $script:failCount = 0
@@ -64,7 +65,7 @@ $statusAvailable = [bool](Get-Command Get-NervSkillsStatus -ErrorAction Silently
 $argsAvailable = [bool](Get-Command New-NervSkillInstallArgs -ErrorAction SilentlyContinue)
 
 if (-not $readAvailable -or -not $testInstalledAvailable -or -not $statusAvailable -or -not $argsAvailable) {
-    Report "functions-defined-after-dot-source" $false "one or more of Read-NervSkillsManifest/Test-NervSkillInstalled/Get-NervSkillsStatus/New-NervSkillInstallArgs not found (tools/install-skills.ps1 not implemented yet)"
+    Report "functions-defined-after-dot-source" $false "one or more of Read-NervSkillsManifest/Test-NervSkillInstalled/Get-NervSkillsStatus/New-NervSkillInstallArgs not found (plugin/tools/install-skills.ps1 not implemented yet)"
     Write-Host ""
     Write-Host "Results: $script:passCount passed, $script:failCount failed"
     exit 1
@@ -210,6 +211,32 @@ if ($parsedOk) {
 }
 else {
     Report "json-output-has-at-least-15-entries" $false "JSON did not parse"
+}
+
+# ---------------------------------------------------------------------------
+# Case group F: root tools/install-skills.ps1 is a thin forwarder to
+# plugin/tools/install-skills.ps1 — same args, same output, same exit code.
+# ---------------------------------------------------------------------------
+Report "root-forwarder-exists" (Test-Path -LiteralPath $rootForwarderPath)
+
+if (Test-Path -LiteralPath $rootForwarderPath) {
+    $skillsDirF = Join-Path $tempRoot "skills-f"
+    New-Item -ItemType Directory -Path $skillsDirF -Force | Out-Null
+
+    $outputForwarder = & pwsh -NoProfile -File $rootForwarderPath -ManifestPath $realManifestPath -SkillsDir $skillsDirF -Only "tdd" -Json -DryRun 2>&1
+    $exitForwarder = $LASTEXITCODE
+    $outputDirect = & pwsh -NoProfile -File $scriptPath -ManifestPath $realManifestPath -SkillsDir $skillsDirF -Only "tdd" -Json -DryRun 2>&1
+    $exitDirect = $LASTEXITCODE
+
+    $forwarderJoined = ($outputForwarder -join "`n")
+    $directJoined = ($outputDirect -join "`n")
+
+    Report "root-forwarder-output-matches-plugin-script" ($forwarderJoined -eq $directJoined) "forwarder exit $exitForwarder, direct exit $exitDirect"
+    Report "root-forwarder-exit-matches" ($exitForwarder -eq $exitDirect) "forwarder $exitForwarder vs direct $exitDirect"
+}
+else {
+    Report "root-forwarder-output-matches-plugin-script" $false "tools/install-skills.ps1 not found"
+    Report "root-forwarder-exit-matches" $false "tools/install-skills.ps1 not found"
 }
 
 # ---------------------------------------------------------------------------

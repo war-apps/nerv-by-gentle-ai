@@ -28,7 +28,14 @@
 
 .PARAMETER RepoPath
     Path to the NERV repo root (for plugin/agents defaults and
-    -ApplyModels). Defaults to the parent of this script's directory.
+    -ApplyModels). Defaults to the grandparent of this script's directory
+    (plugin\tools\..\..), i.e. the repo root when this script runs in
+    place from the repo. When this script instead runs from the installed
+    plugin cache, that grandparent is not the repo; -ApplyModels then
+    delegates to install.ps1's own Invoke-NervApplyModels, whose plugin
+    defaults lookup degrades to a warning (informational, not fatal) when
+    plugin/agents cannot be found under the guessed path. Pass -RepoPath
+    explicitly to bypass this.
 
 .PARAMETER ProjectDir
     Directory whose `.nerv/nerv.yaml` is edited when -Scope project.
@@ -66,7 +73,7 @@ param(
     [ValidateSet('user', 'project')]
     [string]$Scope = 'user',
 
-    [string]$RepoPath = (Split-Path -Parent $PSScriptRoot),
+    [string]$RepoPath = (Split-Path -Parent (Split-Path -Parent $PSScriptRoot)),
 
     [string]$ProjectDir = (Get-Location).Path,
 

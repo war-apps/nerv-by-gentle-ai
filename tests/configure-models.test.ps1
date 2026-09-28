@@ -16,7 +16,8 @@ $ErrorActionPreference = "Stop"
 
 $selfDir = $PSScriptRoot
 $repoRoot = Split-Path -Parent $selfDir
-$wizardPath = Join-Path $repoRoot "tools/configure-models.ps1"
+$wizardPath = Join-Path $repoRoot "plugin/tools/configure-models.ps1"
+$rootForwarderPath = Join-Path $repoRoot "tools/configure-models.ps1"
 
 $script:passCount = 0
 $script:failCount = 0
@@ -41,7 +42,7 @@ function Report {
 # prompts, writes, or applies anything for real.
 # ---------------------------------------------------------------------------
 if (-not (Test-Path -LiteralPath $wizardPath)) {
-    Report "wizard-script-exists" $false "tools/configure-models.ps1 not found (not implemented yet)"
+    Report "wizard-script-exists" $false "plugin/tools/configure-models.ps1 not found (not implemented yet)"
     Write-Host ""
     Write-Host "Results: $script:passCount passed, $script:failCount failed"
     exit 1
@@ -207,6 +208,37 @@ $configAfterReset = if (Test-Path -LiteralPath $e2eConfigPath) { Get-Content -Li
 
 Report "e2e-reset-exit-zero" ($e2eExit2 -eq 0)
 Report "e2e-reset-removes-override" ($null -ne $configAfterReset -and $configAfterReset -notmatch 'haiku')
+
+# ---------------------------------------------------------------------------
+# Case group E: root tools/configure-models.ps1 is a thin forwarder to
+# plugin/tools/configure-models.ps1 — the same -Set/-AnswersFile run through
+# the root forwarder must write the exact same override line as running the
+# plugin script directly.
+# ---------------------------------------------------------------------------
+Report "root-forwarder-exists" (Test-Path -LiteralPath $rootForwarderPath)
+
+if (Test-Path -LiteralPath $rootForwarderPath) {
+    $e2eForwarderConfigPath = Join-Path $tempRoot "nerv-forwarder.yaml"
+    @'
+enabled: true
+critical_paths: [auth/, payments/, migrations/, infra/]
+'@ | Set-Content -LiteralPath $e2eForwarderConfigPath -Encoding UTF8 -NoNewline
+
+    $answersPathForwarder = Join-Path $tempRoot "answers-forwarder.txt"
+    Set-Content -LiteralPath $answersPathForwarder -Value @('aoba', '3', '1', 'done', 'Y') -Encoding UTF8
+
+    & $pwshExe -NoProfile -File $rootForwarderPath -ConfigPath $e2eForwarderConfigPath -StatePath $e2eStatePath -RepoPath $repoRoot -NoApply -AnswersFile $answersPathForwarder | Out-Null
+    $forwarderExit = $LASTEXITCODE
+
+    $configAfterForwarder = if (Test-Path -LiteralPath $e2eForwarderConfigPath) { Get-Content -LiteralPath $e2eForwarderConfigPath -Raw -Encoding UTF8 } else { $null }
+
+    Report "root-forwarder-exit-zero" ($forwarderExit -eq 0) "exit $forwarderExit"
+    Report "root-forwarder-output-matches-plugin-script" ($null -ne $configAfterForwarder -and $configAfterForwarder -match '(?m)^\s*aoba: \{ model: haiku, effort: low \}\s*$')
+}
+else {
+    Report "root-forwarder-exit-zero" $false "tools/configure-models.ps1 not found"
+    Report "root-forwarder-output-matches-plugin-script" $false "tools/configure-models.ps1 not found"
+}
 
 # ---------------------------------------------------------------------------
 # Cleanup

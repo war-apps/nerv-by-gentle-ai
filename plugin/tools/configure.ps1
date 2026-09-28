@@ -26,8 +26,15 @@
                              tools/install.ps1 -RefreshCache.
 
 .PARAMETER RepoPath
-    Path to the NERV repo root. Defaults to the parent of this script's
-    directory.
+    Path to the NERV repo root. Defaults to the grandparent of this
+    script's directory (plugin\tools\..\..), i.e. the repo root when this
+    script runs in place from the repo. When this script instead runs from
+    the installed plugin cache, that grandparent is not the repo; this
+    script only needs the real repo path for the interactive Section 5
+    (apply + -RefreshCache), which delegates to install.ps1 without
+    forwarding -RepoPath, so install.ps1's own cache-aware fallback
+    resolves it there. Everything else (Sections 0-4) works from the cache
+    as is. Pass -RepoPath explicitly to bypass this.
 
 .PARAMETER ConfigPath
     Overrides the resolved user-scope nerv.yaml path (defaults to
@@ -73,7 +80,7 @@
 
 [CmdletBinding()]
 param(
-    [string]$RepoPath = (Split-Path -Parent $PSScriptRoot),
+    [string]$RepoPath = (Split-Path -Parent (Split-Path -Parent $PSScriptRoot)),
 
     [string]$ConfigPath,
 
