@@ -25,6 +25,12 @@
       5. Apply and refresh — optionally runs Invoke-NervApplyModels and
                              tools/install.ps1 -RefreshCache.
 
+    Non-interactive mode: passing -Print, -Set, -SetModel, -InitRepo, or
+    -InstallCommands skips the interactive sections above entirely (never
+    calls Read-Host) and runs exactly one non-interactive request instead —
+    see each parameter below. Exit codes: 0 success, 1 rejected input
+    (unknown key, invalid value, bad path), 2 unexpected error.
+
 .PARAMETER RepoPath
     Path to the NERV repo root. Defaults to the grandparent of this
     script's directory (plugin\tools\..\..), i.e. the repo root when this
@@ -71,11 +77,87 @@
 .PARAMETER NoRefresh
     Skip section 5 (Apply and refresh) entirely.
 
+.PARAMETER StatePath
+    Overrides gentle-ai's state.json path (defaults to
+    `<HomeDir>/.gentle-ai/state.json`), used to resolve `from:` phases for
+    -Print's `models` table and for -SetModel's `from:<phase>` form.
+
+.PARAMETER Print
+    Non-interactive: prints one JSON object describing the current state
+    (config_path, exists, prerequisites, values, defaults, models,
+    skills_status) to stdout and nothing else, then exits. See the script's
+    `.NOTES` (or the report from the task that added this) for the exact
+    shape. Ignores every other non-interactive switch when combined with
+    them.
+
+.PARAMETER Set
+    Non-interactive, repeatable: one or more `key=value` pairs naming a
+    managed nerv.yaml key (see Get-NervConfigDefaults for the full
+    catalogue) and its new value. Edits the user-scope file in place
+    through the existing pure YAML functions. An unknown key, a malformed
+    entry (no `=`), or an invalid value for an enumerated key (e.g.
+    git.worktree must be ask|always|never) rejects the WHOLE batch (exit 1,
+    nothing written) before any change is applied.
+
+.PARAMETER SetModel
+    Non-interactive, repeatable: one or more `role=<spec>` pairs, where
+    `<spec>` is `model[/effort]` (e.g. `sonnet/high`), `from:<gentle-ai-phase>`,
+    or `default` (clears the role's override). Delegates to
+    tools/configure-models.ps1's own pure functions
+    (Read-NervModelsOverrides, Format-NervModelsBlock,
+    Set-NervYamlModelsBlock) to edit the `models:` block. `role` must be one
+    of the 18 NERV agent roles (Get-NervRoleCatalogue in
+    tools/configure-models.ps1); an unknown role or an invalid model/effort
+    token rejects the batch the same way -Set does.
+
+.PARAMETER InitRepo
+    Non-interactive: path to a git repository to initialize for NERV (writes
+    `<repo>/.nerv/nerv.yaml` via the same Format-NervProjectFile the
+    interactive Section 3 uses). Never overwrites an existing project
+    config; that case is reported as a warning, not an error (exit 0).
+
+.PARAMETER RepoBase
+    With -InitRepo: this repo's base_branch override.
+
+.PARAMETER RepoProvider
+    With -InitRepo: this repo's tasks.provider override
+    (teamwork | github-projects | jira | none).
+
+.PARAMETER RepoProjectId
+    With -InitRepo: this repo's Teamwork project id override.
+
+.PARAMETER RepoTasklistId
+    With -InitRepo: this repo's Teamwork tasklist id override.
+
+.PARAMETER InstallCommands
+    Non-interactive: runs the same "copy the Teamwork procedures into
+    ~/.claude/commands/task/" step as the interactive Section 4, never
+    overwriting an existing file there.
+
+.PARAMETER Json
+    With any non-interactive mutating mode (-Set, -SetModel, -InitRepo,
+    -InstallCommands): print the result as one JSON summary object
+    (`changed`, `changes`, `written`, `warnings`, `config_path`, `backup`)
+    instead of a short human summary. Ignored by -Print, which always
+    prints JSON.
+
 .EXAMPLE
     pwsh tools/configure.ps1
 
 .EXAMPLE
     pwsh tools/configure.ps1 -SkipModels -NoRefresh -AnswersFile answers.txt
+
+.EXAMPLE
+    pwsh tools/configure.ps1 -Print
+
+.EXAMPLE
+    pwsh tools/configure.ps1 -Set git.worktree=always -Set tasks.rounding_minutes=30 -Json
+
+.EXAMPLE
+    pwsh tools/configure.ps1 -SetModel misato=fable/high -SetModel melchor=from:jd-judge-b -Json
+
+.EXAMPLE
+    pwsh tools/configure.ps1 -InitRepo C:\repos\some-repo -RepoBase develop -RepoProvider teamwork -RepoProjectId 111 -RepoTasklistId 222 -Json
 #>
 
 [CmdletBinding()]
@@ -97,7 +179,29 @@ param(
     [switch]$SkipCommands,
     [switch]$SkipSkills,
 
-    [switch]$NoRefresh
+    [switch]$NoRefresh,
+
+    [string]$StatePath,
+
+    [switch]$Print,
+
+    [string[]]$Set,
+
+    [string[]]$SetModel,
+
+    [string]$InitRepo,
+
+    [string]$RepoBase,
+
+    [string]$RepoProvider,
+
+    [string]$RepoProjectId,
+
+    [string]$RepoTasklistId,
+
+    [switch]$InstallCommands,
+
+    [switch]$Json
 )
 
 # =============================================================================
@@ -118,6 +222,8 @@ param(
 $wizardRepoPath = $RepoPath
 $wizardConfigPath = $ConfigPath
 $wizardAnswersFile = $AnswersFile
+$wizardStatePath = $StatePath
+$wizardJson = $Json
 
 $installScriptPath = Join-Path $PSScriptRoot 'install.ps1'
 $installGuardPath = Join-Path ([System.IO.Path]::GetTempPath()) 'nerv-configure-install-guard-nonexistent.json'
@@ -126,9 +232,16 @@ $installGuardPath = Join-Path ([System.IO.Path]::GetTempPath()) 'nerv-configure-
 $modelsScriptPath = Join-Path $PSScriptRoot 'configure-models.ps1'
 . $modelsScriptPath -RepoPath $wizardRepoPath -NoApply 2>$null
 
+# install-skills.ps1 is dot-sourced too, purely to reuse Read-NervSkillsManifest
+# / Get-NervSkillsStatus for -Print's `skills_status` — same inert-body guard.
+$installSkillsScriptPath = Join-Path $PSScriptRoot 'install-skills.ps1'
+. $installSkillsScriptPath 2>$null
+
 $RepoPath = $wizardRepoPath
 $ConfigPath = $wizardConfigPath
 $AnswersFile = $wizardAnswersFile
+$StatePath = $wizardStatePath
+$Json = $wizardJson
 
 # =============================================================================
 # Pure functions — dot-sourceable, no side effects of their own. Everything
@@ -764,6 +877,278 @@ function Format-NervProjectFile {
     return (($lines -join "`n") + "`n")
 }
 
+function Get-NervListDefaultFromScalar {
+    <#
+    .SYNOPSIS
+        Strips a scalar's optional `[ ... ]` bracket wrapper and trims it —
+        used to read a bare/list-style value (e.g. critical_paths) back out
+        as a plain comma-separated string.
+    #>
+    param([string]$RawValue)
+    if (-not $RawValue) { return '' }
+    $v = $RawValue.Trim()
+    if ($v.StartsWith('[') -and $v.EndsWith(']')) { $v = $v.Substring(1, $v.Length - 2) }
+    return $v.Trim()
+}
+
+function Get-NervStageDefault {
+    <#
+    .SYNOPSIS
+        Reads one stage name's current value out of a raw
+        `{ inDev: ..., testing: ..., ... }` stages inline-map text, or
+        $Fallback when $StagesRaw is empty/absent or the stage isn't found.
+    #>
+    param([string]$StagesRaw, [string]$StageKey, [string]$Fallback)
+    if (-not $StagesRaw) { return $Fallback }
+    $m = [regex]::Match($StagesRaw, "$([regex]::Escape($StageKey)):\s*([^,}]+)")
+    if ($m.Success) { return $m.Groups[1].Value.Trim() }
+    return $Fallback
+}
+
+function Get-NervSkillsCategoryDefault {
+    <#
+    .SYNOPSIS
+        Reads one skills category's current comma-separated list, whether
+        `skills:` is written as a block (each category on its own indented
+        line) or as an inline map (`skills: { testing: [...], ... }`) —
+        Read-NervScalar's dotted-path walker cannot see into an inline
+        map's fields, so this checks the inline form first and only falls
+        back to the block-style nested lookup when `skills:` is not
+        inline. Falls back to $Fallback when the category is not found in
+        either form (or `skills:` does not exist at all).
+    #>
+    param([string]$YamlText, [string]$Category, [string]$Fallback)
+
+    if (Test-NervYamlKeyExists -YamlText $YamlText -Key 'skills') {
+        if (Test-NervYamlKeyIsInline -YamlText $YamlText -Key 'skills') {
+            $inlineRaw = Read-NervScalar -YamlText $YamlText -Path 'skills'
+            $val = Get-NervYamlInlineListField -InlineText $inlineRaw -Key $Category
+            if ($val) { return $val }
+        }
+        else {
+            $val = Get-NervListDefaultFromScalar (Read-NervScalar -YamlText $YamlText -Path "skills.$Category")
+            if ($val) { return $val }
+        }
+    }
+    return $Fallback
+}
+
+function Get-NervConfigAllowedValues {
+    <#
+    .SYNOPSIS
+        Enumerated allowed values for the managed nerv.yaml keys that have a
+        closed set of valid values — the single source of truth reused by
+        both the interactive wizard's Get-NervChoiceOrDefault prompts
+        (Section 1 below) and the non-interactive -Set/-InitRepo validation,
+        so the two can never drift apart.
+    #>
+    [CmdletBinding()]
+    param()
+
+    return @{
+        'git.worktree'            = @('ask', 'always', 'never')
+        'tasks.provider'          = @('teamwork', 'github-projects', 'jira', 'none')
+        'tasks.ask_when_missing'  = @('true', 'false')
+        'tasks.subtasks_per_wave' = @('true', 'false')
+        'artifacts.commit'        = @('with-change', 'at-close', 'never')
+    }
+}
+
+function Get-NervConfigDefaults {
+    <#
+    .SYNOPSIS
+        Built-in default value for every managed nerv.yaml key, keyed by
+        dotted path — the complete catalogue of keys -Set/-Print accept.
+        Mirrors the $default* fallback constants the interactive Section 1
+        below computes from an existing file; kept here as one map so
+        -Set's "unknown key" rejection and -Print's `defaults` share a
+        single source of truth instead of a second, hand-kept list.
+    #>
+    [CmdletBinding()]
+    param()
+
+    return [ordered]@{
+        'git.base_branch'                             = 'develop'
+        'git.worktree'                                 = 'ask'
+        'git.branch_pattern'                           = 'feature/{prefix}-{id}-{slug}'
+        'git.commit_ref_pattern'                       = '({PREFIX}-{id})'
+        'tasks.provider'                                = 'teamwork'
+        'tasks.ask_when_missing'                        = 'true'
+        'tasks.subtasks_per_wave'                       = 'false'
+        'tasks.timer_store'                             = '~/.claude/work/timers.json'
+        'tasks.rounding_minutes'                         = '15'
+        'tasks.providers.teamwork.task_ref_prefix'       = 'tw'
+        'tasks.providers.teamwork.assignee_id'           = ''
+        'tasks.providers.teamwork.default_project_id'    = ''
+        'tasks.providers.teamwork.default_tasklist_id'   = ''
+        'tasks.providers.teamwork.stages.inDev'          = 'DESARROLLO'
+        'tasks.providers.teamwork.stages.testing'        = 'TESTING'
+        'tasks.providers.teamwork.stages.implemented'    = 'IMPLEMENTA'
+        'tasks.providers.teamwork.stages.blocked'        = 'BLOQUEA'
+        'tasks.providers.teamwork.stages.canceled'       = 'CANCEL'
+        'tasks.providers.teamwork.stages.pending'        = 'PENDIENTE'
+        'tasks.providers.teamwork.stages.analysis'       = 'ANALISIS'
+        'skills.testing'                                 = 'tdd, playwright-best-practices'
+        'skills.code'                                    = 'dotnet-best-practices, typescript-best-practices'
+        'skills.best-practices'                          = 'best-practices, solid-principles, clean-code-guard'
+        'skills.architecture'                            = 'hexagonal-architecture, c4-architecture'
+        'skills.audit'                                   = 'security-review, clean-code-guard'
+        'critical_paths'                                 = 'auth/, payments/, migrations/, infra/'
+        'artifacts.commit'                                = 'at-close'
+    }
+}
+
+function Get-NervManagedConfigValue {
+    <#
+    .SYNOPSIS
+        Reads one managed key's current resolved value out of $YamlText,
+        falling back to its Get-NervConfigDefaults entry when the key (or
+        its containing block) is absent. Returns $null for a key not in the
+        catalogue at all.
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][AllowEmptyString()][string]$YamlText,
+        [Parameter(Mandatory)][string]$Key
+    )
+
+    $defaults = Get-NervConfigDefaults
+    if (-not $defaults.Contains($Key)) { return $null }
+    $fallback = $defaults[$Key]
+
+    if ($Key -like 'tasks.providers.teamwork.stages.*') {
+        $stageName = $Key.Substring('tasks.providers.teamwork.stages.'.Length)
+        $stagesRaw = Read-NervScalar -YamlText $YamlText -Path 'tasks.providers.teamwork.stages'
+        return Get-NervStageDefault -StagesRaw $stagesRaw -StageKey $stageName -Fallback $fallback
+    }
+
+    if ($Key -like 'skills.*') {
+        $category = $Key.Substring('skills.'.Length)
+        return Get-NervSkillsCategoryDefault -YamlText $YamlText -Category $category -Fallback $fallback
+    }
+
+    if ($Key -eq 'critical_paths') {
+        $listValue = Get-NervListDefaultFromScalar (Read-NervScalar -YamlText $YamlText -Path 'critical_paths')
+        if ($listValue) { return $listValue }
+        return $fallback
+    }
+
+    $scalarValue = Read-NervScalar -YamlText $YamlText -Path $Key
+    if ($null -ne $scalarValue -and $scalarValue -ne '') { return $scalarValue }
+    return $fallback
+}
+
+function Set-NervManagedConfigValue {
+    <#
+    .SYNOPSIS
+        Writes one managed key's new value into $YamlText and returns the
+        updated text, auto-vivifying any missing parent block the same way
+        the interactive Section 1 does. Assumes $Key/$Value already passed
+        Get-NervConfigAllowedValues validation — this function does not
+        validate, only writes.
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][AllowEmptyString()][string]$YamlText,
+        [Parameter(Mandatory)][string]$Key,
+        [Parameter(Mandatory)][AllowEmptyString()][string]$Value
+    )
+
+    if ($Key -like 'tasks.providers.teamwork.stages.*') {
+        $stageName = $Key.Substring('tasks.providers.teamwork.stages.'.Length)
+        $defaults = Get-NervConfigDefaults
+        $stagesRaw = Read-NervScalar -YamlText $YamlText -Path 'tasks.providers.teamwork.stages'
+        $stageOrder = @('inDev', 'testing', 'implemented', 'blocked', 'canceled', 'pending', 'analysis')
+        $parts = foreach ($stage in $stageOrder) {
+            $current = if ($stage -eq $stageName) { $Value } else { Get-NervStageDefault -StagesRaw $stagesRaw -StageKey $stage -Fallback $defaults["tasks.providers.teamwork.stages.$stage"] }
+            "${stage}: $current"
+        }
+        $stagesValue = "{ $($parts -join ', ') }"
+        return Set-NervYamlScalar -YamlText $YamlText -Path 'tasks.providers.teamwork.stages' -Value $stagesValue -Raw
+    }
+
+    if ($Key -like 'skills.*') {
+        $category = $Key.Substring('skills.'.Length)
+
+        if (-not (Test-NervYamlKeyExists -YamlText $YamlText -Key 'skills')) {
+            $defaults = Get-NervConfigDefaults
+            $values = @{}
+            foreach ($cat in @('testing', 'code', 'best-practices', 'architecture', 'audit')) {
+                $values[$cat] = if ($cat -eq $category) { $Value } else { Get-NervSkillsCategoryDefault -YamlText $YamlText -Category $cat -Fallback $defaults["skills.$cat"] }
+            }
+            return (Set-NervYamlBlock -YamlText $YamlText -Key 'skills' -BlockText (Format-NervSkillsBlock -Values $values))
+        }
+
+        if (Test-NervYamlKeyIsInline -YamlText $YamlText -Key 'skills') {
+            $currentInline = Read-NervScalar -YamlText $YamlText -Path 'skills'
+            $currentInline = Set-NervYamlInlineListField -InlineText $currentInline -Key $category -NewValue $Value
+            return Set-NervYamlScalar -YamlText $YamlText -Path 'skills' -Value $currentInline -Raw
+        }
+
+        return Set-NervYamlScalar -YamlText $YamlText -Path "skills.$category" -Value "[$Value]" -Raw
+    }
+
+    if ($Key -eq 'critical_paths') {
+        $list = @($Value -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ -ne '' })
+        $joined = ($list -join ', ')
+        if (-not (Test-NervYamlKeyExists -YamlText $YamlText -Key 'critical_paths')) {
+            return Set-NervYamlBlock -YamlText $YamlText -Key 'critical_paths' -BlockText (Format-NervCriticalPathsLine -Paths $list)
+        }
+        return Set-NervYamlScalar -YamlText $YamlText -Path 'critical_paths' -Value "[$joined]" -Raw
+    }
+
+    return Set-NervYamlScalar -YamlText $YamlText -Path $Key -Value $Value
+}
+
+function ConvertFrom-NervSetArg {
+    <#
+    .SYNOPSIS
+        Splits one `-Set`/`-SetModel` argument ("key=value") on its FIRST
+        `=` into @{ Key; Value }, or $null when there is no `=` at index >=
+        1 (missing key, or no `=` at all).
+    #>
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][string]$Arg)
+
+    $idx = $Arg.IndexOf('=')
+    if ($idx -lt 1) { return $null }
+    return [pscustomobject]@{
+        Key   = $Arg.Substring(0, $idx)
+        Value = $Arg.Substring($idx + 1)
+    }
+}
+
+function Get-NervPrerequisitesStatus {
+    <#
+    .SYNOPSIS
+        Informational-only detection of gentle-ai/engram/claude on PATH, for
+        -Print's `prerequisites`. Mirrors the interactive Section 0 checks
+        below without printing anything (Section 0 keeps its own Write-Host
+        calls, unchanged, for the interactive path).
+    #>
+    [CmdletBinding()]
+    param()
+
+    $gentleAiVersionOutput = $null
+    try { $gentleAiVersionOutput = (gentle-ai --version 2>&1 | Select-Object -First 1) -as [string] } catch { $gentleAiVersionOutput = $null }
+    $gentleAiFound = -not [string]::IsNullOrWhiteSpace($gentleAiVersionOutput)
+    $gentleAiVersion = $null
+    $gentleAiOk = $false
+    if ($gentleAiFound) {
+        $versionMatch = [regex]::Match($gentleAiVersionOutput, '(\d+)\.(\d+)\.(\d+)')
+        if ($versionMatch.Success) {
+            $gentleAiVersion = $versionMatch.Value
+            $gentleAiOk = ([int]$versionMatch.Groups[1].Value -eq 3)
+        }
+    }
+
+    return [ordered]@{
+        gentle_ai = [ordered]@{ found = $gentleAiFound; version = $gentleAiVersion; ok = $gentleAiOk }
+        engram    = [ordered]@{ found = [bool](Get-Command engram -ErrorAction SilentlyContinue) }
+        claude    = [ordered]@{ found = [bool](Get-Command claude -ErrorAction SilentlyContinue) }
+    }
+}
+
 # =============================================================================
 # Interactive body — skipped entirely when this file is dot-sourced (tests
 # drive the pure functions above directly; the end-to-end scenario launches
@@ -772,6 +1157,296 @@ function Format-NervProjectFile {
 if ($MyInvocation.InvocationName -ne '.') {
 
 $ErrorActionPreference = "Stop"
+
+# =============================================================================
+# Non-interactive modes — never call Read-Host. Handled first and exclusively:
+# when any of -Print/-Set/-SetModel/-InitRepo/-InstallCommands is passed, this
+# whole block runs and the process exits from inside it; the interactive
+# sections below never run. Exit codes: 0 success, 1 rejected input, 2
+# unexpected error.
+# =============================================================================
+if ($Print -or $Set -or $SetModel -or $InitRepo -or $InstallCommands) {
+
+    $homeDirResolved = if ($HomeDir) { $HomeDir } else { Get-NervHomeDir }
+    $userConfigPath = if ($ConfigPath) { $ConfigPath } else { Join-Path $homeDirResolved ".claude/nerv/nerv.yaml" }
+    $statePathResolved = if ($StatePath) { $StatePath } else { Join-Path $homeDirResolved ".gentle-ai/state.json" }
+
+    try {
+        if ($Print) {
+            $existingTextForPrint = if (Test-Path -LiteralPath $userConfigPath) { Get-Content -LiteralPath $userConfigPath -Raw -Encoding UTF8 } else { '' }
+            if ($null -eq $existingTextForPrint) { $existingTextForPrint = '' }
+
+            $defaultsMap = Get-NervConfigDefaults
+            $valuesMap = [ordered]@{}
+            foreach ($k in $defaultsMap.Keys) { $valuesMap[$k] = Get-NervManagedConfigValue -YamlText $existingTextForPrint -Key $k }
+
+            $modelsDefaults = Get-NervPluginDefaults -AgentsDir (Join-Path $RepoPath "plugin/agents") 3>$null
+            $modelsOverrides = Read-NervModelsOverrides -ConfigPath $userConfigPath -StatePath $statePathResolved 3>$null 6>$null
+            $stateObjForPrint = $null
+            if (Test-Path -LiteralPath $statePathResolved) {
+                try { $stateObjForPrint = Get-Content -LiteralPath $statePathResolved -Raw -Encoding UTF8 | ConvertFrom-Json -Depth 50 } catch { $stateObjForPrint = $null }
+            }
+            $modelsTable = Get-NervModelTable -Defaults $modelsDefaults -Overrides $modelsOverrides -State $stateObjForPrint
+
+            $skillsManifestPathForPrint = Join-Path $PSScriptRoot 'skills-manifest.json'
+            $skillsDirForPrint = Join-Path $homeDirResolved '.claude/skills'
+            $skillsStatus = @()
+            if (Test-Path -LiteralPath $skillsManifestPathForPrint) {
+                $skillsManifestForPrint = Read-NervSkillsManifest -Path $skillsManifestPathForPrint
+                $skillsStatus = Get-NervSkillsStatus -Manifest $skillsManifestForPrint -SkillsDir $skillsDirForPrint
+            }
+
+            $printPayload = [ordered]@{
+                config_path   = $userConfigPath
+                exists        = (Test-Path -LiteralPath $userConfigPath)
+                prerequisites = Get-NervPrerequisitesStatus
+                values        = $valuesMap
+                defaults      = $defaultsMap
+                models        = @($modelsTable)
+                skills_status = @($skillsStatus)
+            }
+
+            ConvertTo-Json -InputObject $printPayload -Depth 10
+            exit 0
+        }
+
+        # ---- mutating modes: -Set, -SetModel, -InitRepo, -InstallCommands ----
+        $niChanges = [System.Collections.Generic.List[object]]::new()
+        $niWritten = [System.Collections.Generic.List[string]]::new()
+        $niWarnings = [System.Collections.Generic.List[string]]::new()
+        $niBackupPath = $null
+        $niAnyChanged = $false
+        $niPrimaryConfigPath = $userConfigPath
+
+        $niExistingUserYaml = if (Test-Path -LiteralPath $userConfigPath) { Get-Content -LiteralPath $userConfigPath -Raw -Encoding UTF8 } else { '' }
+        if ($null -eq $niExistingUserYaml) { $niExistingUserYaml = '' }
+        $niWorkingYaml = $niExistingUserYaml
+        if ($niWorkingYaml -eq '') {
+            $niWorkingYaml = "# ~/.claude/nerv/nerv.yaml -- NERV user-scope configuration`n# Generated/updated by tools/configure.ps1`n"
+        }
+        $niTouchedUserConfig = $false
+
+        if ($Set) {
+            $niDefaultsMap = Get-NervConfigDefaults
+            $niAllowedMap = Get-NervConfigAllowedValues
+            $niParsedEntries = [System.Collections.Generic.List[object]]::new()
+
+            foreach ($rawEntry in $Set) {
+                $parsed = ConvertFrom-NervSetArg -Arg $rawEntry
+                if (-not $parsed) {
+                    Write-Host "Invalid -Set entry '$rawEntry'; expected key=value."
+                    exit 1
+                }
+                if (-not $niDefaultsMap.Contains($parsed.Key)) {
+                    Write-Host "Unknown config key '$($parsed.Key)'. Managed keys: $($niDefaultsMap.Keys -join ', ')."
+                    exit 1
+                }
+                if ($niAllowedMap.ContainsKey($parsed.Key) -and ($niAllowedMap[$parsed.Key] -notcontains $parsed.Value)) {
+                    Write-Host "Invalid value '$($parsed.Value)' for key '$($parsed.Key)'. Allowed: $($niAllowedMap[$parsed.Key] -join ', ')."
+                    exit 1
+                }
+                $niParsedEntries.Add($parsed)
+            }
+
+            foreach ($entry in $niParsedEntries) {
+                $oldValue = Get-NervManagedConfigValue -YamlText $niWorkingYaml -Key $entry.Key
+                if ($oldValue -ne $entry.Value) {
+                    $niWorkingYaml = Set-NervManagedConfigValue -YamlText $niWorkingYaml -Key $entry.Key -Value $entry.Value
+                    $niChanges.Add([ordered]@{ key = $entry.Key; from = $oldValue; to = $entry.Value })
+                    $niTouchedUserConfig = $true
+                }
+            }
+        }
+
+        if ($SetModel) {
+            $niRoleCatalogue = Get-NervRoleCatalogue
+            $niModelOverrides = Read-NervModelsOverrides -ConfigPath $userConfigPath -StatePath $statePathResolved 3>$null 6>$null
+
+            foreach ($rawEntry in $SetModel) {
+                $parsed = ConvertFrom-NervSetArg -Arg $rawEntry
+                if (-not $parsed) {
+                    Write-Host "Invalid -SetModel entry '$rawEntry'; expected role=model[/effort], role=from:<phase>, or role=default."
+                    exit 1
+                }
+                $role = $parsed.Key
+                $spec = $parsed.Value
+
+                if ($niRoleCatalogue.AllRoles -notcontains $role) {
+                    Write-Host "Unknown role '$role'. Valid roles: $($niRoleCatalogue.AllRoles -join ', ')."
+                    exit 1
+                }
+
+                $oldEntry = if ($niModelOverrides.ContainsKey($role)) { $niModelOverrides[$role] } else { @{} }
+                $oldDisplay = if ($oldEntry.ContainsKey('From')) {
+                    "from:$($oldEntry['From'])"
+                }
+                elseif ($oldEntry.Count -gt 0) {
+                    $oldEffortSuffix = if ($oldEntry.ContainsKey('Effort')) { "/$($oldEntry['Effort'])" } else { '' }
+                    "$($oldEntry['Model'])$oldEffortSuffix"
+                }
+                else {
+                    'default'
+                }
+
+                if ($spec -ieq 'default') {
+                    if ($niModelOverrides.ContainsKey($role)) { $niModelOverrides.Remove($role) }
+                    $newDisplay = 'default'
+                }
+                elseif ($spec -match '(?i)^from:(?<phase>.+)$') {
+                    $niModelOverrides[$role] = @{ From = $Matches['phase'] }
+                    $newDisplay = "from:$($Matches['phase'])"
+                }
+                else {
+                    $specParts = $spec -split '/', 2
+                    $modelPart = $specParts[0]
+                    $effortPart = if ($specParts.Count -gt 1) { $specParts[1] } else { $null }
+
+                    if ($modelPart -notmatch '^(sonnet|opus|haiku|fable|inherit)$' -and $modelPart -notmatch '^claude-.+$') {
+                        Write-Host "Invalid model '$modelPart' for role '$role'. Allowed: sonnet, opus, haiku, fable, inherit, a claude-... id, from:<phase>, or default."
+                        exit 1
+                    }
+                    if ($effortPart -and $effortPart -notmatch '^(low|medium|high|xhigh|max)$') {
+                        Write-Host "Invalid effort '$effortPart' for role '$role'. Allowed: low, medium, high, xhigh, max."
+                        exit 1
+                    }
+
+                    $newEntry = @{ Model = $modelPart }
+                    if ($effortPart) { $newEntry['Effort'] = $effortPart }
+                    $niModelOverrides[$role] = $newEntry
+                    $newDisplay = $spec
+                }
+
+                if ($oldDisplay -ne $newDisplay) {
+                    $niChanges.Add([ordered]@{ key = "models.$role"; from = $oldDisplay; to = $newDisplay })
+                    $niTouchedUserConfig = $true
+                }
+            }
+
+            $niModelsBlockText = if ($niModelOverrides.Count -gt 0) { Format-NervModelsBlock -Overrides $niModelOverrides } else { '' }
+            $niWorkingYaml = Set-NervYamlModelsBlock -YamlText $niWorkingYaml -BlockText $niModelsBlockText
+        }
+
+        if ($niTouchedUserConfig -and ($niWorkingYaml -ne $niExistingUserYaml)) {
+            if (Test-Path -LiteralPath $userConfigPath) {
+                $niTimestamp = Get-Date -Format "yyyyMMdd-HHmmss"
+                $niBackupPath = "$userConfigPath.bak-configure-$niTimestamp"
+                Copy-Item -LiteralPath $userConfigPath -Destination $niBackupPath -Force
+            }
+            else {
+                $niConfigDir = Split-Path -Parent $userConfigPath
+                if ($niConfigDir -and -not (Test-Path -LiteralPath $niConfigDir)) {
+                    New-Item -ItemType Directory -Path $niConfigDir -Force | Out-Null
+                }
+            }
+            $niUtf8NoBom = New-Object System.Text.UTF8Encoding($false)
+            [System.IO.File]::WriteAllText($userConfigPath, $niWorkingYaml, $niUtf8NoBom)
+            $niWritten.Add($userConfigPath)
+            $niAnyChanged = $true
+        }
+
+        if ($InitRepo) {
+            if (-not (Test-Path -LiteralPath $InitRepo)) {
+                Write-Host "Path not found: $InitRepo"
+                exit 1
+            }
+
+            if ($RepoProvider) {
+                $niAllowedProviders = (Get-NervConfigAllowedValues)['tasks.provider']
+                if ($niAllowedProviders -notcontains $RepoProvider) {
+                    Write-Host "Invalid -RepoProvider '$RepoProvider'. Allowed: $($niAllowedProviders -join ', ')."
+                    exit 1
+                }
+            }
+
+            $global:LASTEXITCODE = 0
+            $niRepoToplevel = $null
+            try { $niRepoToplevel = (& git -C $InitRepo rev-parse --show-toplevel 2>$null) } catch { $niRepoToplevel = $null }
+            if ($LASTEXITCODE -ne 0 -or -not $niRepoToplevel) {
+                Write-Host "Not a git repository: $InitRepo"
+                exit 1
+            }
+            $niRepoToplevel = ([string]$niRepoToplevel).Trim()
+            $niRepoConfigPath = Join-Path $niRepoToplevel ".nerv/nerv.yaml"
+
+            if (Test-Path -LiteralPath $niRepoConfigPath) {
+                $niWarnings.Add("$niRepoConfigPath already initialized; left untouched.")
+                if (-not ($Set -or $SetModel)) { $niPrimaryConfigPath = $niRepoConfigPath }
+            }
+            else {
+                $niRepoValues = @{}
+                if ($RepoBase) { $niRepoValues['base_branch'] = $RepoBase }
+                if ($RepoProvider) { $niRepoValues['provider'] = $RepoProvider }
+                if ($RepoProjectId) { $niRepoValues['project_id'] = $RepoProjectId }
+                if ($RepoTasklistId) { $niRepoValues['tasklist_id'] = $RepoTasklistId }
+
+                $niRepoProjectYaml = Format-NervProjectFile -Values $niRepoValues
+                $niRepoConfigDir = Split-Path -Parent $niRepoConfigPath
+                if (-not (Test-Path -LiteralPath $niRepoConfigDir)) {
+                    New-Item -ItemType Directory -Path $niRepoConfigDir -Force | Out-Null
+                }
+                $niUtf8NoBom = New-Object System.Text.UTF8Encoding($false)
+                [System.IO.File]::WriteAllText($niRepoConfigPath, $niRepoProjectYaml, $niUtf8NoBom)
+                $niWritten.Add($niRepoConfigPath)
+                $niAnyChanged = $true
+                if (-not ($Set -or $SetModel)) { $niPrimaryConfigPath = $niRepoConfigPath }
+            }
+        }
+
+        if ($InstallCommands) {
+            $niProceduresDir = Join-Path $RepoPath "plugin/skills/nerv-tasks/providers/teamwork/procedures"
+            if (-not (Test-Path -LiteralPath $niProceduresDir)) {
+                $niWarnings.Add("Teamwork procedures not found at $niProceduresDir; skipping.")
+            }
+            else {
+                $niDestDir = Join-Path $homeDirResolved ".claude/commands/task"
+                if (-not (Test-Path -LiteralPath $niDestDir)) {
+                    New-Item -ItemType Directory -Path $niDestDir -Force | Out-Null
+                }
+                foreach ($file in Get-ChildItem -LiteralPath $niProceduresDir -Filter '*.md' -File) {
+                    $niDestFile = Join-Path $niDestDir $file.Name
+                    if (Test-Path -LiteralPath $niDestFile) {
+                        $niWarnings.Add("Skipped (already exists): $($file.Name)")
+                        continue
+                    }
+                    Copy-Item -LiteralPath $file.FullName -Destination $niDestFile
+                    $niWritten.Add($niDestFile)
+                    $niAnyChanged = $true
+                }
+            }
+        }
+
+        $niSummary = [ordered]@{
+            changed     = [bool]$niAnyChanged
+            changes     = @($niChanges)
+            written     = @($niWritten)
+            warnings    = @($niWarnings)
+            config_path = $niPrimaryConfigPath
+            backup      = $niBackupPath
+        }
+
+        if ($Json) {
+            ConvertTo-Json -InputObject $niSummary -Depth 10
+        }
+        else {
+            if (-not $niAnyChanged) {
+                Write-Host "No changes."
+            }
+            else {
+                Write-Host "Changed:"
+                foreach ($c in $niChanges) { Write-Host "  $($c.key): $($c.from) -> $($c.to)" }
+                Write-Host "Written:"
+                foreach ($w in $niWritten) { Write-Host "  $w" }
+            }
+            foreach ($w in $niWarnings) { Write-Host "Warning: $w" }
+        }
+
+        exit 0
+    }
+    catch {
+        Write-Host "Unexpected error: $_"
+        exit 2
+    }
+}
 
 Write-Host "=== NERV Setup Wizard ===" -ForegroundColor Cyan
 Write-Host ""
@@ -821,49 +1496,9 @@ function Get-NervChoiceOrDefault {
     }
 }
 
-function Get-NervListDefaultFromScalar {
-    param([string]$RawValue)
-    if (-not $RawValue) { return '' }
-    $v = $RawValue.Trim()
-    if ($v.StartsWith('[') -and $v.EndsWith(']')) { $v = $v.Substring(1, $v.Length - 2) }
-    return $v.Trim()
-}
-
-function Get-NervStageDefault {
-    param([string]$StagesRaw, [string]$StageKey, [string]$Fallback)
-    if (-not $StagesRaw) { return $Fallback }
-    $m = [regex]::Match($StagesRaw, "$([regex]::Escape($StageKey)):\s*([^,}]+)")
-    if ($m.Success) { return $m.Groups[1].Value.Trim() }
-    return $Fallback
-}
-
-function Get-NervSkillsCategoryDefault {
-    <#
-    .SYNOPSIS
-        Reads one skills category's current comma-separated list, whether
-        `skills:` is written as a block (each category on its own indented
-        line) or as an inline map (`skills: { testing: [...], ... }`) —
-        Read-NervScalar's dotted-path walker cannot see into an inline
-        map's fields, so this checks the inline form first and only falls
-        back to the block-style nested lookup when `skills:` is not
-        inline. Falls back to $Fallback when the category is not found in
-        either form (or `skills:` does not exist at all).
-    #>
-    param([string]$YamlText, [string]$Category, [string]$Fallback)
-
-    if (Test-NervYamlKeyExists -YamlText $YamlText -Key 'skills') {
-        if (Test-NervYamlKeyIsInline -YamlText $YamlText -Key 'skills') {
-            $inlineRaw = Read-NervScalar -YamlText $YamlText -Path 'skills'
-            $val = Get-NervYamlInlineListField -InlineText $inlineRaw -Key $Category
-            if ($val) { return $val }
-        }
-        else {
-            $val = Get-NervListDefaultFromScalar (Read-NervScalar -YamlText $YamlText -Path "skills.$Category")
-            if ($val) { return $val }
-        }
-    }
-    return $Fallback
-}
+# Single source of truth for every enumerated key's allowed values, shared
+# with the non-interactive -Set validation above (Get-NervConfigAllowedValues).
+$nervAllowedValues = Get-NervConfigAllowedValues
 
 # --- Section 0: Prerequisites ---
 Write-Host "--- Prerequisites ---"
@@ -975,15 +1610,15 @@ if (-not $defaultArtifactsCommit) { $defaultArtifactsCommit = 'at-close' }
 Write-Host ""
 Write-Host "-- git --"
 $gitBaseBranch = Get-NervAnswerOrDefault -Prompt 'Base branch' -Current $defaultBaseBranch
-$gitWorktree = Get-NervChoiceOrDefault -Prompt 'Worktree policy' -ValidValues @('ask', 'always', 'never') -Current $defaultWorktree
+$gitWorktree = Get-NervChoiceOrDefault -Prompt 'Worktree policy' -ValidValues $nervAllowedValues['git.worktree'] -Current $defaultWorktree
 $gitBranchPattern = Get-NervAnswerOrDefault -Prompt 'Branch pattern' -Current $defaultBranchPattern
 $gitCommitRefPattern = Get-NervAnswerOrDefault -Prompt 'Commit ref pattern' -Current $defaultCommitRefPattern
 
 Write-Host ""
 Write-Host "-- tasks --"
-$tasksProvider = Get-NervChoiceOrDefault -Prompt 'Task provider' -ValidValues @('teamwork', 'github-projects', 'jira', 'none') -Current $defaultProvider
-$tasksAskWhenMissing = Get-NervChoiceOrDefault -Prompt 'Ask when missing' -ValidValues @('true', 'false') -Current $defaultAskWhenMissing
-$tasksSubtasksPerWave = Get-NervChoiceOrDefault -Prompt 'Subtasks per wave' -ValidValues @('true', 'false') -Current $defaultSubtasksPerWave
+$tasksProvider = Get-NervChoiceOrDefault -Prompt 'Task provider' -ValidValues $nervAllowedValues['tasks.provider'] -Current $defaultProvider
+$tasksAskWhenMissing = Get-NervChoiceOrDefault -Prompt 'Ask when missing' -ValidValues $nervAllowedValues['tasks.ask_when_missing'] -Current $defaultAskWhenMissing
+$tasksSubtasksPerWave = Get-NervChoiceOrDefault -Prompt 'Subtasks per wave' -ValidValues $nervAllowedValues['tasks.subtasks_per_wave'] -Current $defaultSubtasksPerWave
 $tasksTimerStore = Get-NervAnswerOrDefault -Prompt 'Timer store path' -Current $defaultTimerStore
 $tasksRoundingMinutes = Get-NervAnswerOrDefault -Prompt 'Rounding minutes' -Current $defaultRoundingMinutes
 
@@ -1027,7 +1662,7 @@ Write-Host ""
 $criticalPaths = Get-NervAnswerOrDefault -Prompt 'Critical paths (comma-separated)' -Current $defaultCriticalPaths
 
 Write-Host ""
-$artifactsCommit = Get-NervChoiceOrDefault -Prompt 'Artifacts commit policy' -ValidValues @('with-change', 'at-close', 'never') -Current $defaultArtifactsCommit
+$artifactsCommit = Get-NervChoiceOrDefault -Prompt 'Artifacts commit policy' -ValidValues $nervAllowedValues['artifacts.commit'] -Current $defaultArtifactsCommit
 
 # --- Apply only what actually changed, key by key, via Set-NervYamlScalar.
 #     Format-NervGitBlock/Format-NervTasksBlock/Format-NervSkillsBlock/
@@ -1378,7 +2013,7 @@ if (-not $SkipRepos) {
         }
 
         $repoBaseBranch = Get-NervAnswerOrDefault -Prompt 'Base branch for this repo' -Current $gitBaseBranch
-        $repoProvider = Get-NervChoiceOrDefault -Prompt 'Task provider for this repo' -ValidValues @('teamwork', 'github-projects', 'jira', 'none') -Current $tasksProvider
+        $repoProvider = Get-NervChoiceOrDefault -Prompt 'Task provider for this repo' -ValidValues $nervAllowedValues['tasks.provider'] -Current $tasksProvider
 
         $repoProjectValues = @{
             base_branch = $repoBaseBranch

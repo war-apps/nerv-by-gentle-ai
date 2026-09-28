@@ -7,9 +7,10 @@
     Format-NervTasksBlock, Format-NervSkillsBlock,
     Format-NervCriticalPathsLine, Format-NervArtifactsBlock,
     Format-NervProjectFile) plus end-to-end child-process runs of the
-    interactive wizard driven by -AnswersFile. No Pester — prints PASS/FAIL
-    (and SKIP) lines and exits 1 on any failure, matching
-    tests/configure-models.test.ps1's style.
+    interactive wizard driven by -AnswersFile, AND of the non-interactive
+    modes (-Print, -Set, -SetModel, -InitRepo, -InstallCommands). No
+    Pester — prints PASS/FAIL (and SKIP) lines and exits 1 on any failure,
+    matching tests/configure-models.test.ps1's style.
 
 .EXAMPLE
     pwsh -NoProfile -File tests/configure.test.ps1
@@ -774,6 +775,357 @@ else {
     Report "root-forwarder-exit-zero" $false "tools/configure.ps1 not found"
     Report "root-forwarder-output-matches-plugin-script" $false "tools/configure.ps1 not found"
 }
+
+# ---------------------------------------------------------------------------
+# Case group J: non-interactive modes (-Print, -Set, -SetModel, -InitRepo,
+# -InstallCommands) — each driven as a real child-process run, since these
+# are user-facing CLI switches, not just pure functions.
+# ---------------------------------------------------------------------------
+$tempRootNi = Join-Path ([System.IO.Path]::GetTempPath()) ("nerv-configure-test-ni-" + [Guid]::NewGuid().ToString("N"))
+New-Item -ItemType Directory -Path $tempRootNi -Force | Out-Null
+$tempHomeNi = Join-Path $tempRootNi "home"
+New-Item -ItemType Directory -Path $tempHomeNi -Force | Out-Null
+$niConfigPath = Join-Path $tempRootNi "nerv.yaml"
+[System.IO.File]::WriteAllText($niConfigPath, $fixtureLf, (New-Object System.Text.UTF8Encoding($false)))
+$niStatePath = Join-Path $tempHomeNi ".gentle-ai/state.json"
+
+# -- -Print: parse the JSON, check the top-level shape and a couple of
+#    values resolved from the fixture. --
+$printOutput = & $pwshExe -NoProfile -File $wizardPath -RepoPath $repoRoot -HomeDir $tempHomeNi -ConfigPath $niConfigPath -StatePath $niStatePath -Print
+$printExit = $LASTEXITCODE
+Report "print-exit-zero" ($printExit -eq 0) "exit $printExit"
+
+$printParsed = $null
+try { $printParsed = ($printOutput -join "`n") | ConvertFrom-Json } catch { $printParsed = $null }
+Report "print-output-is-valid-json" ($null -ne $printParsed)
+
+if ($printParsed) {
+    Report "print-has-config-path" ($printParsed.config_path -eq $niConfigPath)
+    Report "print-has-exists-true" ($printParsed.exists -eq $true)
+    Report "print-has-prerequisites-shape" (
+        $null -ne $printParsed.prerequisites -and
+        $null -ne $printParsed.prerequisites.gentle_ai -and
+        $null -ne $printParsed.prerequisites.engram -and
+        $null -ne $printParsed.prerequisites.claude
+    )
+    Report "print-values-git-base-branch" ($printParsed.values.'git.base_branch' -eq 'develop')
+    Report "print-values-stage-inDev" ($printParsed.values.'tasks.providers.teamwork.stages.inDev' -eq 'DESARROLLO')
+    Report "print-defaults-git-worktree" ($printParsed.defaults.'git.worktree' -eq 'ask')
+    Report "print-models-is-array-with-known-role" (
+        $null -ne $printParsed.models -and (@($printParsed.models) | Where-Object { $_.role -eq 'misato' }).Count -eq 1
+    )
+    Report "print-models-misato-is-override" ((@($printParsed.models) | Where-Object { $_.role -eq 'misato' })[0].source -eq 'override')
+    Report "print-skills-status-is-array" (@($printParsed.skills_status).Count -gt 0)
+}
+else {
+    Report "print-has-config-path" $false "no parsed JSON"
+    Report "print-has-exists-true" $false "no parsed JSON"
+    Report "print-has-prerequisites-shape" $false "no parsed JSON"
+    Report "print-values-git-base-branch" $false "no parsed JSON"
+    Report "print-values-stage-inDev" $false "no parsed JSON"
+    Report "print-defaults-git-worktree" $false "no parsed JSON"
+    Report "print-models-is-array-with-known-role" $false "no parsed JSON"
+    Report "print-models-misato-is-override" $false "no parsed JSON"
+    Report "print-skills-status-is-array" $false "no parsed JSON"
+}
+
+# -- -Set happy path: one key changes, file differs in exactly that line,
+#    JSON summary says changed=true. --
+$niSetHappyOutput = & $pwshExe -NoProfile -File $wizardPath -HomeDir $tempHomeNi -ConfigPath $niConfigPath -StatePath $niStatePath -Set 'git.base_branch=develop2' -Json
+$niSetHappyExit = $LASTEXITCODE
+Report "set-happy-exit-zero" ($niSetHappyExit -eq 0) "exit $niSetHappyExit"
+
+$niSetHappyParsed = $null
+try { $niSetHappyParsed = ($niSetHappyOutput -join "`n") | ConvertFrom-Json } catch { $niSetHappyParsed = $null }
+Report "set-happy-json-changed-true" ($null -ne $niSetHappyParsed -and $niSetHappyParsed.changed -eq $true)
+Report "set-happy-json-change-entry" (
+    $null -ne $niSetHappyParsed -and (@($niSetHappyParsed.changes) | Where-Object { $_.key -eq 'git.base_branch' -and $_.from -eq 'develop' -and $_.to -eq 'develop2' }).Count -eq 1
+)
+
+$niConfigAfterSetHappy = Get-Content -LiteralPath $niConfigPath -Raw -Encoding UTF8
+if ($null -ne $niConfigAfterSetHappy) {
+    $fixtureLinesForSet = @($fixtureLf -split "`n")
+    $afterLinesForSet = @($niConfigAfterSetHappy -split "`n")
+    $niDiffCount = 0
+    $maxLenForSet = [Math]::Max($fixtureLinesForSet.Count, $afterLinesForSet.Count)
+    for ($i = 0; $i -lt $maxLenForSet; $i++) {
+        $a = if ($i -lt $fixtureLinesForSet.Count) { $fixtureLinesForSet[$i] } else { $null }
+        $b = if ($i -lt $afterLinesForSet.Count) { $afterLinesForSet[$i] } else { $null }
+        if ($a -cne $b) { $niDiffCount++ }
+    }
+    Report "set-happy-diff-exactly-one-line" ($niDiffCount -eq 1) "diff count $niDiffCount"
+}
+else {
+    Report "set-happy-diff-exactly-one-line" $false "config file unreadable after run"
+}
+
+$niBackupsAfterHappy = @(Get-ChildItem -LiteralPath $tempRootNi -Filter "nerv.yaml.bak-configure-*" -File -ErrorAction SilentlyContinue)
+Report "set-happy-backup-created" ($niBackupsAfterHappy.Count -ge 1)
+
+# -- -Set no-op: same value as already on disk -> byte-identical, no backup,
+#    changed=false. --
+$niBackupCountBeforeNoop = $niBackupsAfterHappy.Count
+$niSetNoopOutput = & $pwshExe -NoProfile -File $wizardPath -HomeDir $tempHomeNi -ConfigPath $niConfigPath -StatePath $niStatePath -Set 'git.base_branch=develop2' -Json
+$niSetNoopExit = $LASTEXITCODE
+Report "set-noop-exit-zero" ($niSetNoopExit -eq 0) "exit $niSetNoopExit"
+
+$niSetNoopParsed = $null
+try { $niSetNoopParsed = ($niSetNoopOutput -join "`n") | ConvertFrom-Json } catch { $niSetNoopParsed = $null }
+Report "set-noop-json-changed-false" ($null -ne $niSetNoopParsed -and $niSetNoopParsed.changed -eq $false)
+
+$niConfigAfterSetNoop = Get-Content -LiteralPath $niConfigPath -Raw -Encoding UTF8
+Report "set-noop-byte-identical" ($null -ne $niConfigAfterSetNoop -and $niConfigAfterSetNoop -ceq $niConfigAfterSetHappy)
+
+$niBackupsAfterNoop = @(Get-ChildItem -LiteralPath $tempRootNi -Filter "nerv.yaml.bak-configure-*" -File -ErrorAction SilentlyContinue)
+Report "set-noop-no-backup-created" ($niBackupsAfterNoop.Count -eq $niBackupCountBeforeNoop) "before $niBackupCountBeforeNoop, after $($niBackupsAfterNoop.Count)"
+
+# -- -Set unknown key: exit 1, message names the key, nothing written
+#    (compare against the post-happy-path content, which is the current
+#    on-disk state at this point in the run). --
+$niUnknownKeyOutput = & $pwshExe -NoProfile -File $wizardPath -HomeDir $tempHomeNi -ConfigPath $niConfigPath -StatePath $niStatePath -Set 'bogus.nonexistent.key=x' 2>&1
+$niUnknownKeyExit = $LASTEXITCODE
+Report "set-unknown-key-exit-one" ($niUnknownKeyExit -eq 1) "exit $niUnknownKeyExit"
+Report "set-unknown-key-message-names-key" (($niUnknownKeyOutput -join "`n") -match [regex]::Escape('bogus.nonexistent.key'))
+$niConfigAfterUnknownKey = Get-Content -LiteralPath $niConfigPath -Raw -Encoding UTF8
+Report "set-unknown-key-nothing-written" ($null -ne $niConfigAfterUnknownKey -and $niConfigAfterUnknownKey -ceq $niConfigAfterSetHappy)
+
+# -- -Set invalid enumerated value: exit 1, message names the key. --
+$niInvalidValueOutput = & $pwshExe -NoProfile -File $wizardPath -HomeDir $tempHomeNi -ConfigPath $niConfigPath -StatePath $niStatePath -Set 'git.worktree=bogus' 2>&1
+$niInvalidValueExit = $LASTEXITCODE
+Report "set-invalid-value-exit-one" ($niInvalidValueExit -eq 1) "exit $niInvalidValueExit"
+Report "set-invalid-value-message-names-key" (($niInvalidValueOutput -join "`n") -match 'git\.worktree')
+
+# -- -SetModel round trip: set a role's model/effort, then clear it back to
+#    default, checking the models: block content after each step. --
+$niSetModelOutput = & $pwshExe -NoProfile -File $wizardPath -HomeDir $tempHomeNi -ConfigPath $niConfigPath -StatePath $niStatePath -SetModel 'hyuga=opus/xhigh' -Json
+$niSetModelExit = $LASTEXITCODE
+Report "setmodel-exit-zero" ($niSetModelExit -eq 0) "exit $niSetModelExit"
+
+$niSetModelParsed = $null
+try { $niSetModelParsed = ($niSetModelOutput -join "`n") | ConvertFrom-Json } catch { $niSetModelParsed = $null }
+Report "setmodel-json-changed-true" ($null -ne $niSetModelParsed -and $niSetModelParsed.changed -eq $true)
+
+$niConfigAfterSetModel = Get-Content -LiteralPath $niConfigPath -Raw -Encoding UTF8
+Report "setmodel-block-has-new-role" ($null -ne $niConfigAfterSetModel -and $niConfigAfterSetModel -match 'hyuga: \{ model: opus, effort: xhigh \}')
+Report "setmodel-block-keeps-existing-role" ($null -ne $niConfigAfterSetModel -and $niConfigAfterSetModel -match 'misato: \{ model: fable, effort: high \}')
+
+$niSetModelClearOutput = & $pwshExe -NoProfile -File $wizardPath -HomeDir $tempHomeNi -ConfigPath $niConfigPath -StatePath $niStatePath -SetModel 'hyuga=default' -Json
+$niSetModelClearExit = $LASTEXITCODE
+Report "setmodel-clear-exit-zero" ($niSetModelClearExit -eq 0) "exit $niSetModelClearExit"
+$niConfigAfterSetModelClear = Get-Content -LiteralPath $niConfigPath -Raw -Encoding UTF8
+Report "setmodel-clear-removes-role" ($null -ne $niConfigAfterSetModelClear -and $niConfigAfterSetModelClear -notmatch 'hyuga:')
+
+# -- -SetModel unknown role: exit 1, message names the role. --
+$niSetModelUnknownOutput = & $pwshExe -NoProfile -File $wizardPath -HomeDir $tempHomeNi -ConfigPath $niConfigPath -StatePath $niStatePath -SetModel 'bogus-role=sonnet' 2>&1
+$niSetModelUnknownExit = $LASTEXITCODE
+Report "setmodel-unknown-role-exit-one" ($niSetModelUnknownExit -eq 1) "exit $niSetModelUnknownExit"
+Report "setmodel-unknown-role-message-names-role" (($niSetModelUnknownOutput -join "`n") -match 'bogus-role')
+
+# -- -InitRepo: creates <repo>/.nerv/nerv.yaml with the given fields;
+#    running it again reports "already initialized" and writes nothing. --
+$niRepoDir = Join-Path $tempRootNi "repo"
+New-Item -ItemType Directory -Path $niRepoDir -Force | Out-Null
+& git init -q $niRepoDir 2>$null | Out-Null
+
+$niInitRepoOutput = & $pwshExe -NoProfile -File $wizardPath -InitRepo $niRepoDir -RepoBase develop -RepoProvider teamwork -RepoProjectId 111 -RepoTasklistId 222 -Json
+$niInitRepoExit = $LASTEXITCODE
+Report "initrepo-exit-zero" ($niInitRepoExit -eq 0) "exit $niInitRepoExit"
+
+$niInitRepoParsed = $null
+try { $niInitRepoParsed = ($niInitRepoOutput -join "`n") | ConvertFrom-Json } catch { $niInitRepoParsed = $null }
+Report "initrepo-json-changed-true" ($null -ne $niInitRepoParsed -and $niInitRepoParsed.changed -eq $true)
+
+$niRepoConfigPath = Join-Path $niRepoDir ".nerv/nerv.yaml"
+$niRepoConfigContent = if (Test-Path -LiteralPath $niRepoConfigPath) { Get-Content -LiteralPath $niRepoConfigPath -Raw -Encoding UTF8 } else { $null }
+Report "initrepo-file-created" ($null -ne $niRepoConfigContent)
+Report "initrepo-enabled-true" ($null -ne $niRepoConfigContent -and $niRepoConfigContent -match '(?m)^enabled: true')
+Report "initrepo-base-branch" ($null -ne $niRepoConfigContent -and $niRepoConfigContent -match 'base_branch: develop\s')
+Report "initrepo-project-id" ($null -ne $niRepoConfigContent -and $niRepoConfigContent -match 'project_id: 111')
+Report "initrepo-tasklist-id" ($null -ne $niRepoConfigContent -and $niRepoConfigContent -match 'tasklist_id: 222')
+
+$niInitRepoAgainOutput = & $pwshExe -NoProfile -File $wizardPath -InitRepo $niRepoDir -RepoBase develop3 -Json
+$niInitRepoAgainExit = $LASTEXITCODE
+Report "initrepo-again-exit-zero" ($niInitRepoAgainExit -eq 0) "exit $niInitRepoAgainExit"
+$niInitRepoAgainParsed = $null
+try { $niInitRepoAgainParsed = ($niInitRepoAgainOutput -join "`n") | ConvertFrom-Json } catch { $niInitRepoAgainParsed = $null }
+Report "initrepo-again-changed-false" ($null -ne $niInitRepoAgainParsed -and $niInitRepoAgainParsed.changed -eq $false)
+$niRepoConfigContentAfterAgain = Get-Content -LiteralPath $niRepoConfigPath -Raw -Encoding UTF8
+Report "initrepo-again-file-untouched" ($null -ne $niRepoConfigContentAfterAgain -and $niRepoConfigContentAfterAgain -ceq $niRepoConfigContent)
+
+# -- -InitRepo against a non-git path: exit 1. --
+$niNotGitDir = Join-Path $tempRootNi "notgit"
+New-Item -ItemType Directory -Path $niNotGitDir -Force | Out-Null
+& $pwshExe -NoProfile -File $wizardPath -InitRepo $niNotGitDir -Json | Out-Null
+Report "initrepo-not-a-git-repo-exit-one" ($LASTEXITCODE -eq 1) "exit $LASTEXITCODE"
+
+# -- -InstallCommands: copies the Teamwork procedures once, skips existing
+#    files on a second run. --
+$niCmdsHomeDir = Join-Path $tempRootNi "cmds-home"
+New-Item -ItemType Directory -Path $niCmdsHomeDir -Force | Out-Null
+$niInstallCommandsOutput = & $pwshExe -NoProfile -File $wizardPath -RepoPath $repoRoot -HomeDir $niCmdsHomeDir -InstallCommands -Json
+$niInstallCommandsExit = $LASTEXITCODE
+Report "installcommands-exit-zero" ($niInstallCommandsExit -eq 0) "exit $niInstallCommandsExit"
+$niInstallCommandsParsed = $null
+try { $niInstallCommandsParsed = ($niInstallCommandsOutput -join "`n") | ConvertFrom-Json } catch { $niInstallCommandsParsed = $null }
+Report "installcommands-json-changed-true" ($null -ne $niInstallCommandsParsed -and $niInstallCommandsParsed.changed -eq $true)
+$niCommandsDestDir = Join-Path $niCmdsHomeDir ".claude/commands/task"
+Report "installcommands-files-copied" ((Test-Path -LiteralPath $niCommandsDestDir) -and (@(Get-ChildItem -LiteralPath $niCommandsDestDir -Filter '*.md' -File).Count -gt 0))
+
+$niInstallCommandsAgainOutput = & $pwshExe -NoProfile -File $wizardPath -RepoPath $repoRoot -HomeDir $niCmdsHomeDir -InstallCommands -Json
+$niInstallCommandsAgainParsed = $null
+try { $niInstallCommandsAgainParsed = ($niInstallCommandsAgainOutput -join "`n") | ConvertFrom-Json } catch { $niInstallCommandsAgainParsed = $null }
+Report "installcommands-again-changed-false" ($null -ne $niInstallCommandsAgainParsed -and $niInstallCommandsAgainParsed.changed -eq $false)
+Report "installcommands-again-has-skip-warnings" ($null -ne $niInstallCommandsAgainParsed -and @($niInstallCommandsAgainParsed.warnings).Count -gt 0)
+
+# -- Non-interactive modes never prompt: run with stdin CLOSED and verify
+#    the process still exits promptly instead of blocking on Read-Host. --
+$niStdinConfigPath = Join-Path $tempRootNi "stdin-nerv.yaml"
+[System.IO.File]::WriteAllText($niStdinConfigPath, $fixtureLf, (New-Object System.Text.UTF8Encoding($false)))
+
+$niPsi = [System.Diagnostics.ProcessStartInfo]::new()
+$niPsi.FileName = $pwshExe
+foreach ($a in @('-NoProfile', '-NonInteractive', '-File', $wizardPath, '-Set', 'git.base_branch=develop9', '-Json', '-HomeDir', $tempHomeNi, '-ConfigPath', $niStdinConfigPath)) {
+    $niPsi.ArgumentList.Add($a)
+}
+$niPsi.RedirectStandardInput = $true
+$niPsi.RedirectStandardOutput = $true
+$niPsi.RedirectStandardError = $true
+$niPsi.UseShellExecute = $false
+
+$niProc = [System.Diagnostics.Process]::Start($niPsi)
+$niProc.StandardInput.Close()
+$niFinished = $niProc.WaitForExit(20000)
+Report "non-interactive-never-prompts-exits-promptly" $niFinished "did not exit within 20s with stdin closed (likely blocked on input)"
+if ($niFinished) {
+    Report "non-interactive-never-prompts-exit-zero" ($niProc.ExitCode -eq 0) "exit $($niProc.ExitCode)"
+}
+else {
+    try { $niProc.Kill() } catch {}
+    Report "non-interactive-never-prompts-exit-zero" $false "process killed after timeout"
+}
+
+Remove-Item -LiteralPath $tempRootNi -Recurse -Force -ErrorAction SilentlyContinue
+
+# ---------------------------------------------------------------------------
+# Case group K: the documented apply contract for -Set/-SetModel (T10.5).
+# A repeated named parameter (`-Set a=1 -Set b=2`) is rejected by PowerShell
+# in every launch mode, and under `pwsh -File` a real array is not
+# available either. The only form that carries N keys from Bash and from
+# PowerShell 7, with exit code propagation and batch atomicity, is the
+# in-process call `pwsh -NoProfile -Command "& '<script>' -Set
+# 'k1=v1','k2=v2' -Json"`. Cases K.a-c pin the documented contract itself
+# (doc/README text); cases K.d pin the already-correct behaviour of that
+# documented form as a real child process, against its own fresh fixture
+# copy (independent of case group J's config/temp dir).
+# ---------------------------------------------------------------------------
+$configureMdPath = Join-Path $repoRoot "plugin/commands/configure.md"
+$readmePath = Join-Path $repoRoot "README.md"
+$configureMdText = if (Test-Path -LiteralPath $configureMdPath) { Get-Content -LiteralPath $configureMdPath -Raw -Encoding UTF8 } else { $null }
+$readmeText = if (Test-Path -LiteralPath $readmePath) { Get-Content -LiteralPath $readmePath -Raw -Encoding UTF8 } else { $null }
+
+# -- K.a: the doc must not document a repeated named parameter. --
+Report "doc-apply-has-no-repeated-set" (
+    $null -ne $configureMdText -and
+    $configureMdText -notmatch [regex]::Escape('[-Set ') -and
+    $configureMdText -notmatch [regex]::Escape('[-SetModel ')
+) "plugin/commands/configure.md still documents a repeated -Set/-SetModel token"
+
+# -- K.b: the doc's apply lines for -Set and -SetModel must use the
+#    `-Command "& '${CLAUDE_PLUGIN_ROOT}/tools/configure.ps1' ..."` form,
+#    not `-File`. --
+Report "doc-apply-uses-command-form" (
+    $null -ne $configureMdText -and
+    $configureMdText -match [regex]::Escape('pwsh -NoProfile -Command "& ''${CLAUDE_PLUGIN_ROOT}/tools/configure.ps1''') -and
+    ($configureMdText -split "`n" | Where-Object { $_ -match '-Set\b' -and $_ -notmatch '-SetModel' }) -match [regex]::Escape('-Command "& ''${CLAUDE_PLUGIN_ROOT}/tools/configure.ps1''') -and
+    ($configureMdText -split "`n" | Where-Object { $_ -match '-SetModel\b' }) -match [regex]::Escape('-Command "& ''${CLAUDE_PLUGIN_ROOT}/tools/configure.ps1''')
+) "apply lines for -Set/-SetModel do not use the documented -Command form"
+
+# -- K.c: README must not describe -Set as repeatable via a repeated flag. --
+Report "readme-set-not-described-as-repeatable" (
+    $null -ne $readmeText -and
+    $readmeText -notmatch [regex]::Escape('-Set key=value` (repeatable)')
+) "README.md still describes -Set as (repeatable)"
+
+# -- K.d: behaviour of the documented multi-key form, launched as a real
+#    child process with -Command, against a fresh temp fixture copy
+#    independent from case group J. --
+$tempRootK = Join-Path ([System.IO.Path]::GetTempPath()) ("nerv-configure-test-k-" + [Guid]::NewGuid().ToString("N"))
+New-Item -ItemType Directory -Path $tempRootK -Force | Out-Null
+$tempHomeK = Join-Path $tempRootK "home"
+New-Item -ItemType Directory -Path $tempHomeK -Force | Out-Null
+$kConfigPath = Join-Path $tempRootK "nerv.yaml"
+[System.IO.File]::WriteAllText($kConfigPath, $fixtureLf, (New-Object System.Text.UTF8Encoding($false)))
+$kStatePath = Join-Path $tempHomeK ".gentle-ai/state.json"
+
+function Invoke-NervConfigureCommand {
+    param([string]$ArgsLine)
+    $commandLine = "& '$wizardPath' $ArgsLine"
+    & $pwshExe -NoProfile -Command $commandLine
+}
+
+# -- set-batch-two-keys-one-write: two -Set keys in one quoted array
+#    element list -> exit 0, changed true, 2 changes, 1 written path, 1
+#    backup file. --
+$kSetBatchArgs = "-HomeDir '$tempHomeK' -ConfigPath '$kConfigPath' -StatePath '$kStatePath' -Set 'git.branch_pattern={branchType}/{prefix}-{id}-{slug}','skills.testing=tdd, playwright-best-practices, extra' -Json"
+$kSetBatchOutput = Invoke-NervConfigureCommand -ArgsLine $kSetBatchArgs
+$kSetBatchExit = $LASTEXITCODE
+
+$kSetBatchParsed = $null
+try { $kSetBatchParsed = ($kSetBatchOutput -join "`n") | ConvertFrom-Json } catch { $kSetBatchParsed = $null }
+
+Report "set-batch-two-keys-one-write-exit-zero" ($kSetBatchExit -eq 0) "exit $kSetBatchExit"
+Report "set-batch-two-keys-one-write-changed-true" ($null -ne $kSetBatchParsed -and $kSetBatchParsed.changed -eq $true)
+Report "set-batch-two-keys-one-write-two-changes" (
+    $null -ne $kSetBatchParsed -and (@($kSetBatchParsed.changes)).Count -eq 2 -and
+    (@($kSetBatchParsed.changes) | Where-Object { $_.key -eq 'git.branch_pattern' -and $_.to -eq '{branchType}/{prefix}-{id}-{slug}' }).Count -eq 1 -and
+    (@($kSetBatchParsed.changes) | Where-Object { $_.key -eq 'skills.testing' -and $_.to -eq 'tdd, playwright-best-practices, extra' }).Count -eq 1
+) "changes: $(if ($kSetBatchParsed) { $kSetBatchParsed.changes | ConvertTo-Json -Compress } else { 'none' })"
+Report "set-batch-two-keys-one-write-one-written-path" ($null -ne $kSetBatchParsed -and (@($kSetBatchParsed.written)).Count -eq 1)
+
+$kBackupsAfterBatch = @(Get-ChildItem -LiteralPath $tempRootK -Filter "nerv.yaml.bak-configure-*" -File -ErrorAction SilentlyContinue)
+Report "set-batch-two-keys-one-write-one-backup" ($kBackupsAfterBatch.Count -eq 1) "backup count $($kBackupsAfterBatch.Count)"
+
+$kConfigAfterBatch = Get-Content -LiteralPath $kConfigPath -Raw -Encoding UTF8
+
+# -- set-batch-unknown-key-writes-nothing: a valid key plus an unknown key
+#    in the same batch -> exit 1, config byte-identical, no new backup. --
+$kBackupCountBeforeUnknown = $kBackupsAfterBatch.Count
+$kUnknownBatchArgs = "-HomeDir '$tempHomeK' -ConfigPath '$kConfigPath' -StatePath '$kStatePath' -Set 'git.base_branch=zzz','bogus.key=1' -Json"
+Invoke-NervConfigureCommand -ArgsLine $kUnknownBatchArgs | Out-Null
+$kUnknownBatchExit = $LASTEXITCODE
+
+Report "set-batch-unknown-key-writes-nothing-exit-one" ($kUnknownBatchExit -eq 1) "exit $kUnknownBatchExit"
+
+$kConfigAfterUnknown = Get-Content -LiteralPath $kConfigPath -Raw -Encoding UTF8
+Report "set-batch-unknown-key-writes-nothing-byte-identical" ($null -ne $kConfigAfterUnknown -and $kConfigAfterUnknown -ceq $kConfigAfterBatch)
+
+$kBackupsAfterUnknown = @(Get-ChildItem -LiteralPath $tempRootK -Filter "nerv.yaml.bak-configure-*" -File -ErrorAction SilentlyContinue)
+Report "set-batch-unknown-key-writes-nothing-no-new-backup" ($kBackupsAfterUnknown.Count -eq $kBackupCountBeforeUnknown) "before $kBackupCountBeforeUnknown, after $($kBackupsAfterUnknown.Count)"
+
+# -- setmodel-batch-two-roles: two -SetModel entries in one quoted array
+#    element list -> exit 0, both tokens processed (no PowerShell repeated-
+#    parameter error). `hyuga` has no prior override, so it produces a real
+#    change; `rei=default` is a no-op because `rei` is already default in
+#    this fixture (mirrors group J's -SetModel round-trip style: check exit
+#    code, `changed`, and the resulting models: block content). --
+$kSetModelArgs = "-HomeDir '$tempHomeK' -ConfigPath '$kConfigPath' -StatePath '$kStatePath' -SetModel 'hyuga=opus/xhigh','rei=default' -Json"
+$kSetModelOutput = Invoke-NervConfigureCommand -ArgsLine $kSetModelArgs
+$kSetModelExit = $LASTEXITCODE
+
+$kSetModelParsed = $null
+try { $kSetModelParsed = ($kSetModelOutput -join "`n") | ConvertFrom-Json } catch { $kSetModelParsed = $null }
+
+Report "setmodel-batch-two-roles-exit-zero" ($kSetModelExit -eq 0) "exit $kSetModelExit"
+Report "setmodel-batch-two-roles-changed-true" ($null -ne $kSetModelParsed -and $kSetModelParsed.changed -eq $true)
+Report "setmodel-batch-two-roles-hyuga-change" (
+    $null -ne $kSetModelParsed -and (@($kSetModelParsed.changes) | Where-Object { $_.key -eq 'models.hyuga' -and $_.from -eq 'default' -and $_.to -eq 'opus/xhigh' }).Count -eq 1
+)
+
+$kConfigAfterSetModel = Get-Content -LiteralPath $kConfigPath -Raw -Encoding UTF8
+Report "setmodel-batch-two-roles-block-has-hyuga" ($null -ne $kConfigAfterSetModel -and $kConfigAfterSetModel -match 'hyuga: \{ model: opus, effort: xhigh \}')
+Report "setmodel-batch-two-roles-rei-still-default" ($null -ne $kConfigAfterSetModel -and $kConfigAfterSetModel -notmatch '(?m)^\s*rei:')
+
+Remove-Item -LiteralPath $tempRootK -Recurse -Force -ErrorAction SilentlyContinue
 
 # ---------------------------------------------------------------------------
 # Cleanup
