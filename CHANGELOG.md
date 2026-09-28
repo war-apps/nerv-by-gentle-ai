@@ -37,3 +37,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   NERV's roles (testing, code, best-practices, architecture, audit).
 - The Engram project hook (SessionStart) and knowledge base integration
   for cross-session memory of decisions, conventions, and run history.
+- Tag-driven release process: `tools/release.ps1` computes the version and
+  changelog from Conventional Commits, CI runs every suite on pull requests,
+  and the Release workflow tags, publishes the GitHub Release and opens the
+  back-merge on each merge to `main`.
