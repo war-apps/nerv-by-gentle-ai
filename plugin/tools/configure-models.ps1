@@ -356,6 +356,32 @@ function Get-NervModelTable {
     return $table.ToArray()
 }
 
+function Get-NervRoleCatalogue {
+    <#
+    .SYNOPSIS
+        Returns @{ AllRoles = string[]; Groups = hashtable } for the 18 NERV
+        agent roles and their group shortcuts (magi, pilots, kaji-passes,
+        all) — the single source of truth shared by this script's own
+        interactive role/group prompts below and by
+        tools/configure.ps1's non-interactive -SetModel role validation.
+    #>
+    [CmdletBinding()]
+    param()
+
+    $allRoleNames = @(
+        'aoba', 'asuka', 'balthasar', 'casper', 'fuyutsuki', 'hyuga', 'kaji',
+        'kaji-coverage', 'kaji-refuter', 'kaji-security', 'kaworu', 'maya',
+        'melchor', 'misato', 'rei', 'ritsuko', 'shinji', 'toji'
+    )
+    $roleGroups = @{
+        'magi'        = @('balthasar', 'melchor', 'casper')
+        'pilots'      = @('rei', 'shinji', 'asuka', 'toji', 'kaworu')
+        'kaji-passes' = @('kaji', 'kaji-security', 'kaji-coverage', 'kaji-refuter')
+        'all'         = $allRoleNames
+    }
+    return @{ AllRoles = $allRoleNames; Groups = $roleGroups }
+}
+
 # =============================================================================
 # Interactive body — skipped entirely when this file is dot-sourced (tests
 # drive the pure functions above directly; the end-to-end scenario launches
@@ -365,17 +391,9 @@ if ($MyInvocation.InvocationName -ne '.') {
 
 $ErrorActionPreference = "Stop"
 
-$allRoleNames = @(
-    'aoba', 'asuka', 'balthasar', 'casper', 'fuyutsuki', 'hyuga', 'kaji',
-    'kaji-coverage', 'kaji-refuter', 'kaji-security', 'kaworu', 'maya',
-    'melchor', 'misato', 'rei', 'ritsuko', 'shinji', 'toji'
-)
-$roleGroups = @{
-    'magi'         = @('balthasar', 'melchor', 'casper')
-    'pilots'       = @('rei', 'shinji', 'asuka', 'toji', 'kaworu')
-    'kaji-passes'  = @('kaji', 'kaji-security', 'kaji-coverage', 'kaji-refuter')
-    'all'          = $allRoleNames
-}
+$roleCatalogue = Get-NervRoleCatalogue
+$allRoleNames = $roleCatalogue.AllRoles
+$roleGroups = $roleCatalogue.Groups
 
 if (-not $StatePath) {
     $StatePath = Join-Path (Get-NervHomeDir) ".gentle-ai/state.json"
