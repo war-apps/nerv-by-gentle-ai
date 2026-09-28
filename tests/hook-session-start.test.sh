@@ -77,10 +77,10 @@ assert_active() {
   local case_name="$1" out_file="$2" exit_code="$3"
   local out first_line
   out="$(cat "$out_file")"
-  first_line="$(printf '%s\n' "$out" | head -n 1)"
+  first_line="$(head -n 1 "$out_file")"
   if [ "$exit_code" -eq 0 ] \
     && [ "$first_line" = "# NERV orchestrator protocol (active: .nerv/nerv.yaml enabled)" ] \
-    && printf '%s' "$out" | grep -q 'name: nerv-orchestrator'; then
+    && grep -q 'name: nerv-orchestrator' "$out_file"; then
     report "$case_name" 0
   else
     report "$case_name" 1 "expected active header + skill body + exit 0, got exit=${exit_code} first_line=[${first_line}]"
@@ -93,7 +93,7 @@ assert_empty_stdout_with_stderr() {
   local out err
   out="$(cat "$out_file")"
   err="$(cat "$err_file")"
-  if [ -z "$out" ] && [ "$exit_code" -eq 0 ] && printf '%s' "$err" | grep -q "$pattern"; then
+  if [ -z "$out" ] && [ "$exit_code" -eq 0 ] && grep -q "$pattern" "$err_file"; then
     report "$case_name" 0
   else
     report "$case_name" 1 "expected empty stdout + exit 0 + stderr matching [${pattern}], got exit=${exit_code} stdout=[${out}] stderr=[${err}]"
