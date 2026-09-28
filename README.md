@@ -796,3 +796,60 @@ You can also skip the wizard and edit the `models:` block by hand in
 either nerv.yaml — see the inline-map syntax and the `from:` behavior
 above — then run `pwsh tools/install.ps1 -ApplyModels` yourself. Either
 way, restart Claude Code afterwards for the change to take effect.
+
+## Releases
+
+**Versioning.** The plugin follows [SemVer](https://semver.org/). The
+`version` in `plugin/.claude-plugin/plugin.json`, the git tag `vX.Y.Z`,
+and the matching `## [X.Y.Z]` section in `CHANGELOG.md` always agree.
+This is not cosmetic: Claude Code detects plugin updates by comparing
+`plugin.json`'s `version` string (see "Updating after local changes"
+above), so a release that does not bump it is invisible to every
+installed user.
+
+**How the version is computed.** `tools/release.ps1` derives the next
+version from the [Conventional Commits](https://www.conventionalcommits.org/)
+reachable since the last `vX.Y.Z` tag: `feat` bumps minor, `fix`/`perf`
+bump patch, a `!` before the colon or a `BREAKING CHANGE:` footer bumps
+major, and every other type (`docs`, `chore`, `test`, `refactor`, `ci`,
+`build`, `style`) contributes no bump on its own.
+
+**Cutting a release (Gitflow).**
+
+1. `git checkout -b release/X.Y.Z develop`
+2. `pwsh tools/release.ps1 -Preview` — review the computed version and
+   changelog section.
+3. `pwsh tools/release.ps1 -Apply` (or `-Version X.Y.Z` to override the
+   computed bump) — writes `plugin.json` and inserts the section into
+   `CHANGELOG.md`.
+4. Review `CHANGELOG.md`, then commit `chore(release): X.Y.Z`.
+5. Open the PR to `main`. On merge, the Release workflow runs the full
+   suite plus `tools/release-guard.ps1`, creates the tag and the GitHub
+   Release with that changelog section as its notes, and opens the
+   back-merge PR to `develop` — merge that PR to close the loop.
+
+Hotfixes follow the same steps from `hotfix/X.Y.Z` branched off `main`
+instead of `develop`.
+
+**Pre-releases.** On the release branch, run
+`pwsh tools/release.ps1 -Apply -PreRelease rc` and push the resulting
+`vX.Y.Z-rc.N` tag directly — pushing that tag publishes a GitHub
+pre-release with auto-generated notes, without going through `main`.
+
+**What the guard refuses, and how to recover.**
+`tools/release-guard.ps1` fails the Release workflow before it tags or
+publishes anything when the version in `plugin.json` is already tagged,
+or `CHANGELOG.md` has no matching `## [X.Y.Z]` section. If the Release
+job fails *after* the tag was already pushed (e.g. the GitHub Release
+step itself failed), create the release by hand with
+`gh release create vX.Y.Z --notes-file <section>` — re-running the
+workflow will refuse, since the guard sees the tag already exists.
+
+**CI.** `.github/workflows/ci.yml` runs every suite (the six `.ps1`
+suites and the two hook `.sh` suites) on every pull request targeting
+`develop` or `main`.
+
+**Marketplace consumers.** A marketplace added from GitHub serves the
+repository's default branch. For users to receive released versions
+rather than in-progress `develop` content, the default branch must be
+`main`, or the marketplace entry must pin an explicit `ref`.

@@ -1,0 +1,57 @@
+name: CI
+
+on:
+  pull_request:
+    branches:
+      - develop
+      - main
+  push:
+    branches:
+      - develop
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Test suites
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+
+      - name: configure.test.ps1
+        shell: pwsh
+        run: pwsh -NoProfile -File tests/configure.test.ps1
+
+      - name: configure-models.test.ps1
+        shell: pwsh
+        run: pwsh -NoProfile -File tests/configure-models.test.ps1
+
+      - name: install-apply-models.test.ps1
+        shell: pwsh
+        run: pwsh -NoProfile -File tests/install-apply-models.test.ps1
+
+      - name: install-skills.test.ps1
+        shell: pwsh
+        run: pwsh -NoProfile -File tests/install-skills.test.ps1
+
+      - name: release.test.ps1
+        shell: pwsh
+        run: pwsh -NoProfile -File tests/release.test.ps1
+
+      - name: release-guard.test.ps1
+        shell: pwsh
+        run: pwsh -NoProfile -File tests/release-guard.test.ps1
+
+      - name: hook-session-start.test.sh
+        shell: bash
+        run: bash tests/hook-session-start.test.sh
+
+      - name: hook-engram-project.test.sh
+        shell: bash
+        run: bash tests/hook-engram-project.test.sh

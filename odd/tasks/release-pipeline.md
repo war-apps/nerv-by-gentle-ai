@@ -38,8 +38,8 @@ per version, and (c) fits Gitflow without any bot commit on a base branch.
   publishes. Back-merge `main` → `develop` is opened as a PR by CI, never pushed directly.
 - Pre-releases: `vX.Y.Z-rc.N` tags from `release/*` publish a GitHub pre-release.
 - Never rewrite `plugin.json` formatting beyond the `version` value (2-space JSON, LF, no BOM).
-- Artifacts in English. Never push without explicit OK (branch pushes for PRs are authorized
-  by the user's "arranquemos").
+- Artifacts in English. Never push without explicit OK: the push of `feature/release-pipeline` and
+  the PR chain are asked for at the end of T3.
 - Out of scope: changing the GitHub default branch to `main` and creating the baseline tag
   `v0.1.0` on the current `main` are user decisions recorded under Decisions pending.
 
@@ -61,7 +61,7 @@ per version, and (c) fits Gitflow without any bot commit on a base branch.
   byte-preservation, changelog insertion and idempotence. Route: writer (writer trigger:
   2 non-trivial files). Checks: `pwsh -NoProfile -File tests/release.test.ps1` green plus
   the four existing `.ps1` suites unchanged.
-- [ ] T2 GitHub Actions. `.github/workflows/ci.yml`: on pull_request to `develop` and `main`,
+- [x] T2 DONE 2026-09-28 (writer on sonnet, loaded `github-actions-templates`; parent spot check re-ran the guard suite 54/54 and `actionlint` clean, read `release.yml` in full). Commit `369059b`. RED observed on `release-guard-script-exists` (0/1), GREEN 54/54; `release.test.ps1` still 106. One parent correction before commit: the back-merge step now fetches `develop` and exits 0 when `develop` already contains `main`, so a no-op back-merge cannot turn a published release red. Pinned `actions/checkout@93cb6efe…` (v5.0.1) copied from gentle-ai. Unverified: the workflows have not run on GitHub yet; the first PR will exercise `ci.yml`, the first merge to `main` will exercise `release.yml`. GitHub Actions. `.github/workflows/ci.yml`: on pull_request to `develop` and `main`,
   run the four `.ps1` suites on `ubuntu-latest` (pwsh preinstalled) and the two hook `.sh`
   suites with bash. `.github/workflows/release.yml`: on push to `main`, read `plugin.json`
   version, fail if the tag `v<version>` already exists or `CHANGELOG.md` has no `## [<version>]`
@@ -72,7 +72,7 @@ per version, and (c) fits Gitflow without any bot commit on a base branch.
   actions pinned by SHA. Route: writer, loads the `github-actions-templates` skill first.
   Checks: `actionlint` if available, otherwise structural readback; a dry `pwsh` run of the
   version/tag/changelog guard script extracted to `tools/release-guard.ps1` with its test.
-- [ ] T3 Docs and baseline files. `CHANGELOG.md` with `## [Unreleased]` and a `## [0.1.0]`
+- [x] T3 DONE 2026-09-28 (writer on sonnet; parent spot check ran the guard against the real repo: ok true, changelog_section true, tag_exists false; read CHANGELOG.md and the README section in full; one parent fix: "four" → "six" `.ps1` suites in the CI paragraph). Commit `faf12c0`. Docs and baseline files. `CHANGELOG.md` with `## [Unreleased]` and a `## [0.1.0]`
   baseline entry summarizing what is on `main` today; README "Releases" section (how to cut a
   release, pre-releases, what the CI does, the `main`-as-default-branch note for marketplace
   consumers); `odd/tasks/release-pipeline.md` closed. Route: inline or writer depending on
@@ -88,7 +88,7 @@ per version, and (c) fits Gitflow without any bot commit on a base branch.
 - `pwsh tools/release.ps1 -Preview` on this repo prints the next version derived from the
   commits since the last tag (or since the root when no tag exists) and the changelog section.
 - `-Apply` changes exactly one line of `plugin.json` and inserts one section in `CHANGELOG.md`;
-  running it twice is a no-op with exit 0 when nothing new is releasable.
+  running it again with nothing new releasable (after CI tagged the result) exits 1 "nothing to release" and leaves both files byte-unchanged (decision during T1: `-Apply` never tags, so exit 0 would hide a misuse).
 - The release workflow refuses a `main` push whose version already has a tag or lacks a
   changelog section, and otherwise produces tag + Release + back-merge PR.
 
@@ -101,9 +101,12 @@ per version, and (c) fits Gitflow without any bot commit on a base branch.
 
 ## Progress log
 
+- 2026-09-28: pushed and delivered as a feature-branch chain: PR #9 `feature/release-pipeline-1-release-script` → `develop` (`706b631`..`7e9af5f`, 1366 lines, size:exception requested) and PR #10 `feature/release-pipeline` → PR #9 branch (`369059b`..HEAD, 988 lines). `ci.yml` cannot run on either PR yet: it lives only on the PR #10 head and filters on base `develop`/`main`, so its first run is PR #10 after #9 merges and #10 is retargeted to `develop` (retarget from the web UI: the gh token lacks read:org).
+- 2026-09-28: T3 complete (`faf12c0`), changelog baseline and README release process. All tasks done; push and PR chain pending user OK.
+- 2026-09-28: T2 complete (`369059b`), CI and release workflows plus the release guard; T3 (docs) running.
 - 2026-09-28: T1 complete (`706b631`), release script and suite; T2 (workflows) and T3 (docs) next.
 - 2026-09-28: feature document created; branch `feature/release-pipeline` from `develop`.
 
 ## Next step
 
-T2 (writer): CI and release workflows plus `tools/release-guard.ps1` with its suite, RED first; then T3.
+Delivered as PR #9 and PR #10 (merge in order, retarget #10 to `develop` after #9 lands). Pending user decisions: set `main` as the GitHub default branch; create the baseline tag `v0.1.0` on `main` (`c9a4b1f`). First real exercise of the workflows happens with those PRs and the first merge to `main`.
