@@ -345,8 +345,28 @@ repository policy. Ikari itself never enables or disables the RDD switch.
 
 ## Setup
 
-After installing the plugin (see "Install" below), run the configuration
-wizard instead of hand-editing YAML:
+After installing the plugin (see "Install" below), the fastest way to
+configure NERV Gentle-AI is from inside Claude Code, once:
+
+```
+pwsh tools/install.ps1
+```
+
+then run:
+
+```
+/nerv:configure
+```
+
+`/nerv:configure` asks the same questions as the terminal wizard below,
+through native blocking prompts, pre-filled from the current config, and
+applies only the answers you confirm — see "`/nerv:configure`" in
+"Operations" further down. The scripts themselves now live under
+`plugin/tools/` in the installed plugin cache
+(`${CLAUDE_PLUGIN_ROOT}/tools/*.ps1`); the root `tools/*.ps1` scripts in
+this repository are thin forwarders kept for the terminal workflow below.
+
+From a terminal instead, run the same wizard directly:
 
 ```
 pwsh tools/install.ps1 -Configure
@@ -357,6 +377,16 @@ or, if the plugin is already installed:
 ```
 pwsh tools/configure.ps1
 ```
+
+The same script also runs without prompts, which is what `/nerv:configure`
+drives: `-Print` emits the current state as JSON (config path,
+prerequisites, managed values next to their defaults, per-role models,
+skills status); `-Set key=value` (repeatable), `-SetModel
+role=model[/effort]` (or `role=from:<gentle-ai-phase>`, `role=default`),
+`-InitRepo <path>` with `-RepoBase`/`-RepoProvider`/`-RepoProjectId`/
+`-RepoTasklistId`, and `-InstallCommands` apply one change each; `-Json`
+returns a summary of what changed and what was written. Nothing is written
+when nothing changed, and the script exits 1 on a rejected key or value.
 
 The wizard runs six sections, each skippable (`-SkipSkills`, `-SkipModels`,
 `-SkipRepos`, `-SkipCommands`, `-NoRefresh`):
@@ -462,9 +492,10 @@ and run `pwsh tools/install.ps1 -ApplyModels` on its own instead.
 
 **Activation.** A repo opts in by creating `.nerv/nerv.yaml` with
 `enabled: true` — `/nerv:init` writes it interactively (base branch,
-worktree policy, skill stacks, task-tracker provider). Without the marker
-a session behaves like plain gentle-ai; with it, SessionStart injects the
-NERV Gentle-AI orchestrator protocol and the session becomes Ikari.
+worktree policy, skill stacks, task-tracker provider), and `/nerv:configure`
+revisits any of those choices afterwards. Without the marker a session
+behaves like plain gentle-ai; with it, SessionStart injects the NERV
+Gentle-AI orchestrator protocol and the session becomes Ikari.
 
 **LIGHT vs. FULL.** Ikari classifies each request LIGHT (one pilot domain,
 no new skills/scripts/commands) or FULL (multiple domains, a critical path,
@@ -511,6 +542,12 @@ the configured provider. The 16 `/task:*` commands read the same single
 active config (merged user + project), and — while a run is in progress —
 the orchestrator lock state (`nerv/.orchestrator.lock`: holder, step,
 `waiting_on`, heartbeat age); the lock line disappears once the run closes.
+
+**`/nerv:configure`.** Configures `nerv.yaml` (user and project scope),
+per-role models, skills, and repository registration through grouped
+guided questions instead of hand-editing YAML or the terminal wizard — see
+"Setup" above. Read-only in `claude -p`, where it prints the current
+config and the exact `-Set`/`-SetModel` syntax instead of asking.
 
 ### Engram project detection
 
