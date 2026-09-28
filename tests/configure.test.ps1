@@ -1007,6 +1007,127 @@ else {
 Remove-Item -LiteralPath $tempRootNi -Recurse -Force -ErrorAction SilentlyContinue
 
 # ---------------------------------------------------------------------------
+# Case group K: the documented apply contract for -Set/-SetModel (T10.5).
+# A repeated named parameter (`-Set a=1 -Set b=2`) is rejected by PowerShell
+# in every launch mode, and under `pwsh -File` a real array is not
+# available either. The only form that carries N keys from Bash and from
+# PowerShell 7, with exit code propagation and batch atomicity, is the
+# in-process call `pwsh -NoProfile -Command "& '<script>' -Set
+# 'k1=v1','k2=v2' -Json"`. Cases K.a-c pin the documented contract itself
+# (doc/README text); cases K.d pin the already-correct behaviour of that
+# documented form as a real child process, against its own fresh fixture
+# copy (independent of case group J's config/temp dir).
+# ---------------------------------------------------------------------------
+$configureMdPath = Join-Path $repoRoot "plugin/commands/configure.md"
+$readmePath = Join-Path $repoRoot "README.md"
+$configureMdText = if (Test-Path -LiteralPath $configureMdPath) { Get-Content -LiteralPath $configureMdPath -Raw -Encoding UTF8 } else { $null }
+$readmeText = if (Test-Path -LiteralPath $readmePath) { Get-Content -LiteralPath $readmePath -Raw -Encoding UTF8 } else { $null }
+
+# -- K.a: the doc must not document a repeated named parameter. --
+Report "doc-apply-has-no-repeated-set" (
+    $null -ne $configureMdText -and
+    $configureMdText -notmatch [regex]::Escape('[-Set ') -and
+    $configureMdText -notmatch [regex]::Escape('[-SetModel ')
+) "plugin/commands/configure.md still documents a repeated -Set/-SetModel token"
+
+# -- K.b: the doc's apply lines for -Set and -SetModel must use the
+#    `-Command "& '${CLAUDE_PLUGIN_ROOT}/tools/configure.ps1' ..."` form,
+#    not `-File`. --
+Report "doc-apply-uses-command-form" (
+    $null -ne $configureMdText -and
+    $configureMdText -match [regex]::Escape('pwsh -NoProfile -Command "& ''${CLAUDE_PLUGIN_ROOT}/tools/configure.ps1''') -and
+    ($configureMdText -split "`n" | Where-Object { $_ -match '-Set\b' -and $_ -notmatch '-SetModel' }) -match [regex]::Escape('-Command "& ''${CLAUDE_PLUGIN_ROOT}/tools/configure.ps1''') -and
+    ($configureMdText -split "`n" | Where-Object { $_ -match '-SetModel\b' }) -match [regex]::Escape('-Command "& ''${CLAUDE_PLUGIN_ROOT}/tools/configure.ps1''')
+) "apply lines for -Set/-SetModel do not use the documented -Command form"
+
+# -- K.c: README must not describe -Set as repeatable via a repeated flag. --
+Report "readme-set-not-described-as-repeatable" (
+    $null -ne $readmeText -and
+    $readmeText -notmatch [regex]::Escape('-Set key=value` (repeatable)')
+) "README.md still describes -Set as (repeatable)"
+
+# -- K.d: behaviour of the documented multi-key form, launched as a real
+#    child process with -Command, against a fresh temp fixture copy
+#    independent from case group J. --
+$tempRootK = Join-Path ([System.IO.Path]::GetTempPath()) ("nerv-configure-test-k-" + [Guid]::NewGuid().ToString("N"))
+New-Item -ItemType Directory -Path $tempRootK -Force | Out-Null
+$tempHomeK = Join-Path $tempRootK "home"
+New-Item -ItemType Directory -Path $tempHomeK -Force | Out-Null
+$kConfigPath = Join-Path $tempRootK "nerv.yaml"
+[System.IO.File]::WriteAllText($kConfigPath, $fixtureLf, (New-Object System.Text.UTF8Encoding($false)))
+$kStatePath = Join-Path $tempHomeK ".gentle-ai/state.json"
+
+function Invoke-NervConfigureCommand {
+    param([string]$ArgsLine)
+    $commandLine = "& '$wizardPath' $ArgsLine"
+    & $pwshExe -NoProfile -Command $commandLine
+}
+
+# -- set-batch-two-keys-one-write: two -Set keys in one quoted array
+#    element list -> exit 0, changed true, 2 changes, 1 written path, 1
+#    backup file. --
+$kSetBatchArgs = "-HomeDir '$tempHomeK' -ConfigPath '$kConfigPath' -StatePath '$kStatePath' -Set 'git.branch_pattern={branchType}/{prefix}-{id}-{slug}','skills.testing=tdd, playwright-best-practices, extra' -Json"
+$kSetBatchOutput = Invoke-NervConfigureCommand -ArgsLine $kSetBatchArgs
+$kSetBatchExit = $LASTEXITCODE
+
+$kSetBatchParsed = $null
+try { $kSetBatchParsed = ($kSetBatchOutput -join "`n") | ConvertFrom-Json } catch { $kSetBatchParsed = $null }
+
+Report "set-batch-two-keys-one-write-exit-zero" ($kSetBatchExit -eq 0) "exit $kSetBatchExit"
+Report "set-batch-two-keys-one-write-changed-true" ($null -ne $kSetBatchParsed -and $kSetBatchParsed.changed -eq $true)
+Report "set-batch-two-keys-one-write-two-changes" (
+    $null -ne $kSetBatchParsed -and (@($kSetBatchParsed.changes)).Count -eq 2 -and
+    (@($kSetBatchParsed.changes) | Where-Object { $_.key -eq 'git.branch_pattern' -and $_.to -eq '{branchType}/{prefix}-{id}-{slug}' }).Count -eq 1 -and
+    (@($kSetBatchParsed.changes) | Where-Object { $_.key -eq 'skills.testing' -and $_.to -eq 'tdd, playwright-best-practices, extra' }).Count -eq 1
+) "changes: $(if ($kSetBatchParsed) { $kSetBatchParsed.changes | ConvertTo-Json -Compress } else { 'none' })"
+Report "set-batch-two-keys-one-write-one-written-path" ($null -ne $kSetBatchParsed -and (@($kSetBatchParsed.written)).Count -eq 1)
+
+$kBackupsAfterBatch = @(Get-ChildItem -LiteralPath $tempRootK -Filter "nerv.yaml.bak-configure-*" -File -ErrorAction SilentlyContinue)
+Report "set-batch-two-keys-one-write-one-backup" ($kBackupsAfterBatch.Count -eq 1) "backup count $($kBackupsAfterBatch.Count)"
+
+$kConfigAfterBatch = Get-Content -LiteralPath $kConfigPath -Raw -Encoding UTF8
+
+# -- set-batch-unknown-key-writes-nothing: a valid key plus an unknown key
+#    in the same batch -> exit 1, config byte-identical, no new backup. --
+$kBackupCountBeforeUnknown = $kBackupsAfterBatch.Count
+$kUnknownBatchArgs = "-HomeDir '$tempHomeK' -ConfigPath '$kConfigPath' -StatePath '$kStatePath' -Set 'git.base_branch=zzz','bogus.key=1' -Json"
+Invoke-NervConfigureCommand -ArgsLine $kUnknownBatchArgs | Out-Null
+$kUnknownBatchExit = $LASTEXITCODE
+
+Report "set-batch-unknown-key-writes-nothing-exit-one" ($kUnknownBatchExit -eq 1) "exit $kUnknownBatchExit"
+
+$kConfigAfterUnknown = Get-Content -LiteralPath $kConfigPath -Raw -Encoding UTF8
+Report "set-batch-unknown-key-writes-nothing-byte-identical" ($null -ne $kConfigAfterUnknown -and $kConfigAfterUnknown -ceq $kConfigAfterBatch)
+
+$kBackupsAfterUnknown = @(Get-ChildItem -LiteralPath $tempRootK -Filter "nerv.yaml.bak-configure-*" -File -ErrorAction SilentlyContinue)
+Report "set-batch-unknown-key-writes-nothing-no-new-backup" ($kBackupsAfterUnknown.Count -eq $kBackupCountBeforeUnknown) "before $kBackupCountBeforeUnknown, after $($kBackupsAfterUnknown.Count)"
+
+# -- setmodel-batch-two-roles: two -SetModel entries in one quoted array
+#    element list -> exit 0, both tokens processed (no PowerShell repeated-
+#    parameter error). `hyuga` has no prior override, so it produces a real
+#    change; `rei=default` is a no-op because `rei` is already default in
+#    this fixture (mirrors group J's -SetModel round-trip style: check exit
+#    code, `changed`, and the resulting models: block content). --
+$kSetModelArgs = "-HomeDir '$tempHomeK' -ConfigPath '$kConfigPath' -StatePath '$kStatePath' -SetModel 'hyuga=opus/xhigh','rei=default' -Json"
+$kSetModelOutput = Invoke-NervConfigureCommand -ArgsLine $kSetModelArgs
+$kSetModelExit = $LASTEXITCODE
+
+$kSetModelParsed = $null
+try { $kSetModelParsed = ($kSetModelOutput -join "`n") | ConvertFrom-Json } catch { $kSetModelParsed = $null }
+
+Report "setmodel-batch-two-roles-exit-zero" ($kSetModelExit -eq 0) "exit $kSetModelExit"
+Report "setmodel-batch-two-roles-changed-true" ($null -ne $kSetModelParsed -and $kSetModelParsed.changed -eq $true)
+Report "setmodel-batch-two-roles-hyuga-change" (
+    $null -ne $kSetModelParsed -and (@($kSetModelParsed.changes) | Where-Object { $_.key -eq 'models.hyuga' -and $_.from -eq 'default' -and $_.to -eq 'opus/xhigh' }).Count -eq 1
+)
+
+$kConfigAfterSetModel = Get-Content -LiteralPath $kConfigPath -Raw -Encoding UTF8
+Report "setmodel-batch-two-roles-block-has-hyuga" ($null -ne $kConfigAfterSetModel -and $kConfigAfterSetModel -match 'hyuga: \{ model: opus, effort: xhigh \}')
+Report "setmodel-batch-two-roles-rei-still-default" ($null -ne $kConfigAfterSetModel -and $kConfigAfterSetModel -notmatch '(?m)^\s*rei:')
+
+Remove-Item -LiteralPath $tempRootK -Recurse -Force -ErrorAction SilentlyContinue
+
+# ---------------------------------------------------------------------------
 # Cleanup
 # ---------------------------------------------------------------------------
 Remove-Item -LiteralPath $tempRoot -Recurse -Force -ErrorAction SilentlyContinue

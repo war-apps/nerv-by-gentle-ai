@@ -99,14 +99,22 @@ changes confirmed — never more.
      procedures into `~/.claude/commands/task/` (never overwriting an
      existing file there)?
 
-4. **Apply.** For each section with at least one changed answer:
+4. **Apply.** `-Set` and `-SetModel` each take a PowerShell array, not a
+   repeated flag: a repeated named parameter is rejected by PowerShell in
+   every launch mode, and `-File` cannot carry more than one `-Set` value
+   either (a comma-separated string binds as a single element, which is
+   what keeps a comma-separated value like `skills.testing=tdd,
+   playwright-best-practices` safe inside one element). Pass every key of
+   a batch as one quoted, comma-separated array literal to `-Command`
+   instead. For each section with at least one changed answer:
    - **git / tasks / skills / critical_paths / artifacts**: collect every
      changed key from steps above into one call —
-     `pwsh -NoProfile -File "${CLAUDE_PLUGIN_ROOT}/tools/configure.ps1" -Set key=value [-Set key2=value2 ...] -Json`.
-     An unknown key exits 1 with nothing written — surface that verbatim
-     and stop applying further `-Set`s from the same batch until fixed.
+     `pwsh -NoProfile -Command "& '${CLAUDE_PLUGIN_ROOT}/tools/configure.ps1' -Set 'key=value','key2=value2' -Json"`.
+     An unknown key anywhere in the batch exits 1 with nothing written —
+     surface that verbatim and stop applying further keys from the same
+     batch until fixed.
    - **models**: one call per confirmed batch —
-     `pwsh -NoProfile -File "${CLAUDE_PLUGIN_ROOT}/tools/configure.ps1" -SetModel role=model[/effort] [-SetModel role2=from:<phase>] -Json`.
+     `pwsh -NoProfile -Command "& '${CLAUDE_PLUGIN_ROOT}/tools/configure.ps1' -SetModel 'role=model[/effort]','role2=from:<phase>' -Json"`.
    - **repo**: `pwsh -NoProfile -File "${CLAUDE_PLUGIN_ROOT}/tools/configure.ps1" -InitRepo <path> -RepoBase <base> -RepoProvider <provider> [-RepoProjectId <id> -RepoTasklistId <id>] -Json`.
      This never overwrites an existing `.nerv/nerv.yaml`; if one is already
      present, the result carries a `warnings` entry saying so — report it
@@ -145,4 +153,6 @@ Under `claude -p` this command cannot ask questions. In that mode, run only
 steps 1–2, print the `-Print` summary as-is, and print the exact `-Set` /
 `-SetModel` / `-InitRepo` / `-InstallCommands` syntax the user would need
 to run themselves to make the same changes — do not guess an answer for
-any question and do not apply anything.
+any question and do not apply anything. For `-Set` and `-SetModel`, print
+the `-Command` form shown in step 4 above (a quoted array literal), never
+a repeated `-Set`/`-SetModel` flag.

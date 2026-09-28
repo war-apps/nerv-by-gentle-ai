@@ -381,12 +381,17 @@ pwsh tools/configure.ps1
 The same script also runs without prompts, which is what `/nerv:configure`
 drives: `-Print` emits the current state as JSON (config path,
 prerequisites, managed values next to their defaults, per-role models,
-skills status); `-Set key=value` (repeatable), `-SetModel
-role=model[/effort]` (or `role=from:<gentle-ai-phase>`, `role=default`),
-`-InitRepo <path>` with `-RepoBase`/`-RepoProvider`/`-RepoProjectId`/
-`-RepoTasklistId`, and `-InstallCommands` apply one change each; `-Json`
-returns a summary of what changed and what was written. Nothing is written
-when nothing changed, and the script exits 1 on a rejected key or value.
+skills status); `-Set 'key=value','key2=value2'` (an array, one or more
+entries — PowerShell rejects a repeated `-Set` flag, and `-File` cannot
+carry more than one array element, so this form needs `pwsh -Command`, not
+`pwsh -File`), `-SetModel 'role=model[/effort]','role2=from:<gentle-ai-phase>'`
+(or `role=default`) the same way, `-InitRepo <path>` with
+`-RepoBase`/`-RepoProvider`/`-RepoProjectId`/`-RepoTasklistId`, and
+`-InstallCommands` apply one change each; `-Json` returns a summary of
+what changed and what was written. Nothing is written when nothing
+changed, and the script exits 1 on a rejected key or value, or on any
+unknown key in a `-Set`/`-SetModel` batch (writing nothing for that
+batch).
 
 The wizard runs six sections, each skippable (`-SkipSkills`, `-SkipModels`,
 `-SkipRepos`, `-SkipCommands`, `-NoRefresh`):
