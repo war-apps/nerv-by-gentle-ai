@@ -19,7 +19,8 @@ $ErrorActionPreference = "Stop"
 
 $selfDir = $PSScriptRoot
 $repoRoot = Split-Path -Parent $selfDir
-$wizardPath = Join-Path $repoRoot "tools/configure.ps1"
+$wizardPath = Join-Path $repoRoot "plugin/tools/configure.ps1"
+$rootForwarderPath = Join-Path $repoRoot "tools/configure.ps1"
 
 $script:passCount = 0
 $script:failCount = 0
@@ -50,7 +51,7 @@ function ReportSkip {
 # defines functions and never prompts, writes, or applies anything for real.
 # ---------------------------------------------------------------------------
 if (-not (Test-Path -LiteralPath $wizardPath)) {
-    Report "wizard-script-exists" $false "tools/configure.ps1 not found (not implemented yet)"
+    Report "wizard-script-exists" $false "plugin/tools/configure.ps1 not found (not implemented yet)"
     Write-Host ""
     Write-Host "Results: $script:passCount passed, $script:failCount failed"
     exit 1
@@ -738,6 +739,41 @@ else {
 }
 
 Remove-Item -LiteralPath $tempRootInlineArtifacts -Recurse -Force -ErrorAction SilentlyContinue
+
+# ---------------------------------------------------------------------------
+# Case group I: root tools/configure.ps1 is a thin forwarder to
+# plugin/tools/configure.ps1 — a no-op run (empty -AnswersFile, everything
+# skipped) through the root forwarder must byte-identically match the same
+# run through the plugin script.
+# ---------------------------------------------------------------------------
+Report "root-forwarder-exists" (Test-Path -LiteralPath $rootForwarderPath)
+
+if (Test-Path -LiteralPath $rootForwarderPath) {
+    $tempRootForwarder = Join-Path ([System.IO.Path]::GetTempPath()) ("nerv-configure-test-forwarder-" + [Guid]::NewGuid().ToString("N"))
+    New-Item -ItemType Directory -Path $tempRootForwarder -Force | Out-Null
+    $tempHomeForwarder = Join-Path $tempRootForwarder "home"
+    New-Item -ItemType Directory -Path $tempHomeForwarder -Force | Out-Null
+
+    $forwarderConfigPath = Join-Path $tempRootForwarder "nerv.yaml"
+    [System.IO.File]::WriteAllText($forwarderConfigPath, $fixtureLf, (New-Object System.Text.UTF8Encoding($false)))
+
+    $forwarderAnswersPath = Join-Path $tempRootForwarder "answers.txt"
+    Set-Content -LiteralPath $forwarderAnswersPath -Value @() -Encoding UTF8
+
+    & $pwshExe -NoProfile -File $rootForwarderPath -HomeDir $tempHomeForwarder -ConfigPath $forwarderConfigPath -SkipSkills -SkipModels -SkipRepos -SkipCommands -NoRefresh -AnswersFile $forwarderAnswersPath | Out-Null
+    $forwarderExit = $LASTEXITCODE
+
+    $configAfterForwarder = if (Test-Path -LiteralPath $forwarderConfigPath) { Get-Content -LiteralPath $forwarderConfigPath -Raw -Encoding UTF8 } else { $null }
+
+    Report "root-forwarder-exit-zero" ($forwarderExit -eq 0) "exit $forwarderExit"
+    Report "root-forwarder-output-matches-plugin-script" ($null -ne $configAfterForwarder -and $configAfterForwarder -ceq $fixtureLf)
+
+    Remove-Item -LiteralPath $tempRootForwarder -Recurse -Force -ErrorAction SilentlyContinue
+}
+else {
+    Report "root-forwarder-exit-zero" $false "tools/configure.ps1 not found"
+    Report "root-forwarder-output-matches-plugin-script" $false "tools/configure.ps1 not found"
+}
 
 # ---------------------------------------------------------------------------
 # Cleanup

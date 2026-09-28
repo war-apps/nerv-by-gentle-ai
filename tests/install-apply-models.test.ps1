@@ -13,7 +13,8 @@ $ErrorActionPreference = "Stop"
 
 $selfDir = $PSScriptRoot
 $repoRoot = Split-Path -Parent $selfDir
-$installerPath = Join-Path $repoRoot "tools/install.ps1"
+$installerPath = Join-Path $repoRoot "plugin/tools/install.ps1"
+$rootForwarderPath = Join-Path $repoRoot "tools/install.ps1"
 $agentsSourceDir = Join-Path $repoRoot "plugin/agents"
 
 $script:passCount = 0
@@ -214,6 +215,37 @@ else {
     Report "plugin-defaults-count-18" $false "Get-NervPluginDefaults missing"
     Report "removed-override-restores-default" $false "Merge-NervModelAssignments missing"
     Report "override-merges-over-default" $false "Merge-NervModelAssignments missing"
+}
+
+# ---------------------------------------------------------------------------
+# Case group E: root tools/install.ps1 is a thin forwarder to
+# plugin/tools/install.ps1 — a bogus, nonexistent -SettingsPath makes the
+# real script throw its own "settings.json not found" error before touching
+# any real file, gentle-ai, or engram; the forwarder must produce the exact
+# same error text (proving -SettingsPath/-RepoPath were forwarded) and the
+# same non-zero exit code.
+# ---------------------------------------------------------------------------
+Report "root-forwarder-exists" (Test-Path -LiteralPath $rootForwarderPath)
+
+if (Test-Path -LiteralPath $rootForwarderPath) {
+    $bogusSettingsPathE = Join-Path ([System.IO.Path]::GetTempPath()) ("nerv-install-forwarder-test-nonexistent-" + [Guid]::NewGuid().ToString("N") + ".json")
+
+    $outputForwarder = & pwsh -NoProfile -File $rootForwarderPath -SettingsPath $bogusSettingsPathE -RepoPath $repoRoot 2>&1
+    $exitForwarder = $LASTEXITCODE
+    $outputDirect = & pwsh -NoProfile -File $installerPath -SettingsPath $bogusSettingsPathE -RepoPath $repoRoot 2>&1
+    $exitDirect = $LASTEXITCODE
+
+    $forwarderText = ($outputForwarder | ForEach-Object { [string]$_ }) -join "`n"
+    $directText = ($outputDirect | ForEach-Object { [string]$_ }) -join "`n"
+
+    Report "root-forwarder-exit-matches" ($exitForwarder -eq $exitDirect -and $exitForwarder -ne 0) "forwarder $exitForwarder vs direct $exitDirect"
+    Report "root-forwarder-error-names-bogus-path" ($forwarderText -match [regex]::Escape($bogusSettingsPathE)) "output: $($forwarderText.Substring(0, [Math]::Min(200, $forwarderText.Length)))"
+    Report "root-forwarder-output-matches-plugin-script" ($forwarderText -eq $directText)
+}
+else {
+    Report "root-forwarder-exit-matches" $false "tools/install.ps1 not found"
+    Report "root-forwarder-error-names-bogus-path" $false "tools/install.ps1 not found"
+    Report "root-forwarder-output-matches-plugin-script" $false "tools/install.ps1 not found"
 }
 
 # ---------------------------------------------------------------------------
