@@ -34,8 +34,8 @@ const (
 )
 
 // manifestPath is where the manifest lives inside the embedded plugin
-// tree (nerv.PluginFS()), i.e. plugin/tools/skills-manifest.json on disk.
-const manifestPath = "tools/skills-manifest.json"
+// tree (nerv.PluginFS()), i.e. plugin/skills-manifest.json on disk.
+const manifestPath = "skills-manifest.json"
 
 // SkillEntry is one manifest entry.
 type SkillEntry struct {
@@ -118,7 +118,7 @@ func LoadManifest(data []byte) (*Manifest, error) {
 	return &Manifest{Schema: schema, Skills: entries}, nil
 }
 
-// LoadManifestFS reads tools/skills-manifest.json from fsys (typically
+// LoadManifestFS reads skills-manifest.json from fsys (typically
 // nerv.PluginFS()) and parses it via LoadManifest.
 func LoadManifestFS(fsys fs.FS) (*Manifest, error) {
 	data, err := fs.ReadFile(fsys, manifestPath)

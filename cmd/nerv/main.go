@@ -18,8 +18,12 @@ import (
 const usage = `Usage: nerv <command> [flags]
 
 Commands:
-  version [--json]   Print the binary and plugin versions
-  configure [flags]  Configure NERV (non-interactive; see "nerv configure --help")
+  version [--json]     Print the binary and plugin versions
+  configure [flags]    Configure NERV (non-interactive; see "nerv configure --help")
+  install [flags]      Install NERV (see "nerv install --help")
+  uninstall [flags]    Uninstall NERV (see "nerv uninstall --help")
+  apply-models [flags] Apply model/effort assignments to the cached agents
+  skills [flags]       Install or verify skills (see "nerv skills --help")
 `
 
 // options bundles nerv's external effects (the embedded plugin tree, the
@@ -61,6 +65,14 @@ func run(args []string, stdout, stderr io.Writer, opts options) int {
 		return runVersion(args[1:], stdout, stderr, opts)
 	case "configure":
 		return runConfigure(args[1:], stdout, stderr, opts)
+	case "install":
+		return runInstall(args[1:], stdout, stderr, opts)
+	case "uninstall":
+		return runUninstall(args[1:], stdout, stderr, opts)
+	case "apply-models":
+		return runApplyModels(args[1:], stdout, stderr, opts)
+	case "skills":
+		return runSkills(args[1:], stdout, stderr, opts)
 	default:
 		fmt.Fprint(stderr, usage)
 		return 2
