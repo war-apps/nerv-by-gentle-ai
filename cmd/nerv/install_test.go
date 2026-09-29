@@ -91,6 +91,69 @@ func TestRunUninstall_HappyPath_Exits0(t *testing.T) {
 	}
 }
 
+// ---------------------------------------------------------------------------
+// nerv install ends by running the wizard unless --no-configure or stdin is
+// not a terminal.
+// ---------------------------------------------------------------------------
+
+func TestRunInstall_Terminal_NoNoConfigure_RunsWizard(t *testing.T) {
+	forceTerminal(t, true)
+	home := t.TempDir()
+	seedInstalledPluginsForCLI(t, home)
+	var stdout, stderr bytes.Buffer
+	opts := testOptions(home)
+	opts.Runner = baseInstallRunner()
+	opts.Stdin = strings.NewReader("") // every prompt keeps its default/no-op answer
+
+	code := run([]string{"install", "--home", home, "--no-skills"}, &stdout, &stderr, opts)
+
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0; stdout:\n%s\nstderr:\n%s", code, stdout.String(), stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "NERV Setup Wizard") {
+		t.Errorf("expected the wizard to run, got:\n%s", stdout.String())
+	}
+}
+
+func TestRunInstall_NotATerminal_NoNoConfigure_PrintsHintNotWizard(t *testing.T) {
+	forceTerminal(t, false)
+	home := t.TempDir()
+	seedInstalledPluginsForCLI(t, home)
+	var stdout, stderr bytes.Buffer
+	opts := testOptions(home)
+	opts.Runner = baseInstallRunner()
+
+	code := run([]string{"install", "--home", home, "--no-skills"}, &stdout, &stderr, opts)
+
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0; stdout:\n%s\nstderr:\n%s", code, stdout.String(), stderr.String())
+	}
+	if strings.Contains(stdout.String(), "NERV Setup Wizard") {
+		t.Error("expected the wizard NOT to run when stdin is not a terminal")
+	}
+	if !strings.Contains(stdout.String(), "Run `nerv configure`") {
+		t.Errorf("expected the configure hint, got:\n%s", stdout.String())
+	}
+}
+
+func TestRunInstall_NoConfigure_SkipsHintAndWizard(t *testing.T) {
+	forceTerminal(t, true)
+	home := t.TempDir()
+	seedInstalledPluginsForCLI(t, home)
+	var stdout, stderr bytes.Buffer
+	opts := testOptions(home)
+	opts.Runner = baseInstallRunner()
+
+	code := run([]string{"install", "--home", home, "--no-skills", "--no-configure"}, &stdout, &stderr, opts)
+
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0; stdout:\n%s\nstderr:\n%s", code, stdout.String(), stderr.String())
+	}
+	if strings.Contains(stdout.String(), "NERV Setup Wizard") || strings.Contains(stdout.String(), "nerv configure") {
+		t.Errorf("expected neither the wizard nor the hint, got:\n%s", stdout.String())
+	}
+}
+
 func TestRunApplyModels_MissingCache_Exits0WithWarning(t *testing.T) {
 	home := t.TempDir()
 	var stdout, stderr bytes.Buffer

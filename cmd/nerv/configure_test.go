@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -18,14 +19,23 @@ func testOptions(home string) options {
 		Runner:   &envtest.FakeRunner{},
 		Now:      func() time.Time { return time.Date(2026, 9, 29, 12, 0, 0, 0, time.UTC) },
 		LookPath: func(string) (string, error) { return "", os.ErrNotExist },
+		Stdin:    strings.NewReader(""),
 	}
 }
 
+func forceTerminal(t *testing.T, terminal bool) {
+	t.Helper()
+	prev := stdinIsTerminal
+	stdinIsTerminal = func() bool { return terminal }
+	t.Cleanup(func() { stdinIsTerminal = prev })
+}
+
 // ---------------------------------------------------------------------------
-// No mode flag: the interactive wizard is not available yet in this build.
+// No mode flag, no --answers, stdin not a terminal: refusal notice, exit 1.
 // ---------------------------------------------------------------------------
 
-func TestRunConfigure_NoModeFlag_PrintsNoticeAndExits1(t *testing.T) {
+func TestRunConfigure_NoModeFlag_NotATerminal_PrintsNoticeAndExits1(t *testing.T) {
+	forceTerminal(t, false)
 	var stdout, stderr bytes.Buffer
 	home := t.TempDir()
 
@@ -34,8 +44,91 @@ func TestRunConfigure_NoModeFlag_PrintsNoticeAndExits1(t *testing.T) {
 	if code != 1 {
 		t.Fatalf("exit code = %d, want 1", code)
 	}
-	if stdout.Len() == 0 {
-		t.Error("expected a notice on stdout")
+	if !strings.Contains(stdout.String(), "stdin is not a terminal") {
+		t.Errorf("expected the not-a-terminal notice, got: %q", stdout.String())
+	}
+}
+
+// ---------------------------------------------------------------------------
+// No mode flag, stdin IS a terminal: the wizard runs interactively.
+// ---------------------------------------------------------------------------
+
+func TestRunConfigure_NoModeFlag_Terminal_RunsWizard(t *testing.T) {
+	forceTerminal(t, true)
+	var stdout, stderr bytes.Buffer
+	home := t.TempDir()
+	opts := testOptions(home)
+	opts.Stdin = strings.NewReader("")
+
+	code := run([]string{
+		"configure", "--home", home,
+		"--skip-skills", "--skip-models", "--skip-repos", "--skip-commands", "--no-refresh",
+	}, &stdout, &stderr, opts)
+
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0 (stderr=%q, stdout=%q)", code, stderr.String(), stdout.String())
+	}
+	if !strings.Contains(stdout.String(), "NERV Setup Wizard") {
+		t.Errorf("expected the wizard banner, got: %q", stdout.String())
+	}
+}
+
+// ---------------------------------------------------------------------------
+// --answers <file> drives the wizard end to end, regardless of terminal-ness.
+// ---------------------------------------------------------------------------
+
+func TestRunConfigure_Answers_DrivesWizard(t *testing.T) {
+	forceTerminal(t, false)
+	home := t.TempDir()
+	configPath := filepath.Join(home, ".claude", "nerv", "nerv.yaml")
+	if err := os.MkdirAll(filepath.Dir(configPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(configPath, []byte("enabled: true\ngit:\n  base_branch: develop\n  worktree: ask\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	answersPath := filepath.Join(home, "answers.txt")
+	answers := "release\n" + strings.Repeat("\n", 30)
+	if err := os.WriteFile(answersPath, []byte(answers), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	code := run([]string{
+		"configure", "--home", home, "--answers", answersPath,
+		"--skip-skills", "--skip-models", "--skip-repos", "--skip-commands", "--no-refresh",
+	}, &stdout, &stderr, testOptions(home))
+
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0 (stderr=%q, stdout=%q)", code, stderr.String(), stdout.String())
+	}
+	got, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(got), "base_branch: release") {
+		t.Errorf("expected base_branch updated, got:\n%s", got)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// --answers pointing at a missing file behaves like an empty answers file
+// (no error, every prompt keeps its current value).
+// ---------------------------------------------------------------------------
+
+func TestRunConfigure_Answers_MissingFileActsEmpty(t *testing.T) {
+	forceTerminal(t, false)
+	home := t.TempDir()
+
+	var stdout, stderr bytes.Buffer
+	code := run([]string{
+		"configure", "--home", home, "--answers", filepath.Join(home, "nonexistent-answers.txt"),
+		"--skip-skills", "--skip-models", "--skip-repos", "--skip-commands", "--no-refresh",
+	}, &stdout, &stderr, testOptions(home))
+
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0 (stderr=%q, stdout=%q)", code, stderr.String(), stdout.String())
 	}
 }
 

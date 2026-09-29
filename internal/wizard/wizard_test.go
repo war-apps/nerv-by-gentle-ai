@@ -1,0 +1,390 @@
+package wizard_test
+
+import (
+	"bytes"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+	"time"
+
+	nerv "github.com/war-apps/nerv-gentle-ai"
+	"github.com/war-apps/nerv-gentle-ai/internal/config"
+	"github.com/war-apps/nerv-gentle-ai/internal/configure"
+	"github.com/war-apps/nerv-gentle-ai/internal/env/envtest"
+	"github.com/war-apps/nerv-gentle-ai/internal/wizard"
+)
+
+// fixtureLF mirrors the real nerv.yaml shape (every managed key at its
+// built-in default), LF line endings — port of tests/configure.test.ps1's
+// $fixtureLf, trimmed to the fields the Go wizard's User-config section
+// actually asks about (the exotic known_projects:/sources:/sources_howto:
+// preservation is already covered by internal/config's own P1a suite; this
+// file exercises the wizard's own prompt flow and section wiring).
+const fixtureLF = "" +
+	"enabled: true\n" +
+	"skills:                             # stacks per consuming role; names must exist in .atl/skill-registry.md\n" +
+	"  testing: [tdd, playwright-best-practices]                        # ritsuko, kaworu, maya\n" +
+	"  code: [dotnet-best-practices, typescript-best-practices]         # pilots\n" +
+	"  best-practices: [best-practices, solid-principles, clean-code-guard]  # balthasar\n" +
+	"  architecture: [hexagonal-architecture, c4-architecture]          # melchor\n" +
+	"  audit: [security-review, clean-code-guard]                       # kaji passes\n" +
+	"critical_paths: [auth/, payments/, migrations/, infra/]            # Hyuga auto-critical\n" +
+	"git:\n" +
+	"  base_branch: develop              # default base for the worktree offer\n" +
+	"  worktree: ask                     # ask | always | never\n" +
+	`  branch_pattern: "feature/{prefix}-{id}-{slug}"   # prefix comes from the provider (tw, gh, jira)` + "\n" +
+	`  commit_ref_pattern: "({PREFIX}-{id})"` + "\n" +
+	"tasks:\n" +
+	`  provider: teamwork                # teamwork | github-projects | jira | none ; "ask" when absent` + "\n" +
+	"  ask_when_missing: true            # preflight asks task + worktree + branch if no active task\n" +
+	"  subtasks_per_wave: false\n" +
+	"  timer_store: ~/.claude/work/timers.json\n" +
+	"  rounding_minutes: 15\n" +
+	"  providers:                        # one block per provider, only the enabled one is required\n" +
+	"    teamwork:\n" +
+	"      task_ref_prefix: tw           # {prefix} in branch_pattern / commit_ref_pattern\n" +
+	"      assignee_id: 686035           # user scope\n" +
+	"      default_project_id: 1271726\n" +
+	"      default_tasklist_id: 3951970\n" +
+	"      stages: { inDev: DESARROLLO, testing: TESTING, implemented: IMPLEMENTA, blocked: BLOQUEA, canceled: CANCEL, pending: PENDIENTE, analysis: ANALISIS }\n" +
+	`    github-projects: { task_ref_prefix: gh, owner: "", project_number: 0 }    # later` + "\n" +
+	`    jira: { task_ref_prefix: jira, site: "", project_key: "" }               # later` + "\n" +
+	"artifacts:\n" +
+	"  commit: at-close                  # with-change | at-close | never (default: at-close)\n"
+
+func fixedNow() time.Time { return time.Date(2026, 9, 29, 15, 4, 5, 0, time.UTC) }
+
+func lookPathNone(string) (string, error) { return "", os.ErrNotExist }
+
+func noRunner() *envtest.FakeRunner { return &envtest.FakeRunner{} }
+
+func testPaths(root, home string) configure.Paths {
+	return configure.Paths{
+		Config:      filepath.Join(root, "nerv.yaml"),
+		State:       filepath.Join(home, ".gentle-ai", "state.json"),
+		SkillsDir:   filepath.Join(home, ".claude", "skills"),
+		CommandsDir: filepath.Join(home, ".claude", "commands", "task"),
+	}
+}
+
+func writeFixture(t *testing.T, path string) {
+	t.Helper()
+	if err := os.WriteFile(path, []byte(fixtureLF), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func skipAll() wizard.Options {
+	return wizard.Options{SkipSkills: true, SkipModels: true, SkipRepos: true, SkipCommands: true, NoRefresh: true}
+}
+
+func countBackups(t *testing.T, root string) int {
+	t.Helper()
+	matches, err := filepath.Glob(filepath.Join(root, "nerv.yaml.bak-configure-*"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return len(matches)
+}
+
+// ---------------------------------------------------------------------------
+// Case group F (tests/configure.test.ps1's ~403-424): empty -AnswersFile ->
+// every prompt keeps its current value, the config is left byte-identical,
+// and no backup is written.
+// ---------------------------------------------------------------------------
+
+func TestRun_EmptyAnswers_ByteIdenticalNoBackup(t *testing.T) {
+	root := t.TempDir()
+	home := t.TempDir()
+	writeFixture(t, filepath.Join(root, "nerv.yaml"))
+	paths := testPaths(root, home)
+	deps := configure.Deps{Home: home, FS: nerv.PluginFS(), Runner: noRunner(), Now: fixedNow, LookPath: lookPathNone}
+
+	opts := skipAll()
+	opts.Paths = paths
+
+	var out bytes.Buffer
+	summary, err := wizard.Run(deps, strings.NewReader(""), &out, opts)
+	if err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+	if summary.Changed {
+		t.Errorf("Changed = true, want false; output:\n%s", out.String())
+	}
+
+	got, err := os.ReadFile(paths.Config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != fixtureLF {
+		t.Errorf("config mutated on empty answers:\ngot:\n%s\nwant:\n%s", got, fixtureLF)
+	}
+	if n := countBackups(t, root); n != 0 {
+		t.Errorf("backups = %d, want 0", n)
+	}
+	if strings.Contains(out.String(), "Restart Claude Code") {
+		t.Error("expected no restart reminder when nothing changed")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Case group G (tests/configure.test.ps1's ~426-548): only git.base_branch
+// answered -> exactly one line differs, plus a repo init and a slash
+// commands install driven by the same answers file.
+// ---------------------------------------------------------------------------
+
+func TestRun_BaseBranchChange_RepoInitAndCommandsInstall(t *testing.T) {
+	root := t.TempDir()
+	home := t.TempDir()
+	writeFixture(t, filepath.Join(root, "nerv.yaml"))
+	paths := testPaths(root, home)
+
+	repoDir := filepath.Join(t.TempDir(), "repo")
+	if err := os.MkdirAll(repoDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	runner := &envtest.FakeRunner{
+		Responses: map[string]envtest.Response{
+			"git -C " + repoDir + " rev-parse --show-toplevel": {Stdout: repoDir + "\n", ExitCode: 0},
+		},
+	}
+	deps := configure.Deps{Home: home, FS: nerv.PluginFS(), Runner: runner, Now: fixedNow, LookPath: lookPathNone}
+
+	opts := wizard.Options{Paths: paths, SkipSkills: true, SkipModels: true, NoRefresh: true}
+
+	lines := []string{"develop2"}
+	for i := 0; i < 26; i++ { // worktree..artifacts.commit: 26 more blanks
+		lines = append(lines, "")
+	}
+	lines = append(lines,
+		"",      // write confirm [Y/n] -> blank means yes
+		repoDir, // repo path
+		"",      // repo base branch (keep)
+		"",      // repo task provider (keep teamwork)
+		"111",   // repo project id
+		"222",   // repo tasklist id
+		"",      // repo path again -> skip
+		"y",     // install slash commands
+	)
+	in := strings.NewReader(strings.Join(lines, "\n"))
+
+	var out bytes.Buffer
+	summary, err := wizard.Run(deps, in, &out, opts)
+	if err != nil {
+		t.Fatalf("Run() error = %v; output:\n%s", err, out.String())
+	}
+	if !summary.Changed {
+		t.Errorf("Changed = false, want true; output:\n%s", out.String())
+	}
+
+	got, err := os.ReadFile(paths.Config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(got), "base_branch: develop2") {
+		t.Errorf("base_branch not updated:\n%s", got)
+	}
+	if diff := diffLineCount(fixtureLF, string(got)); diff != 1 {
+		t.Errorf("diff line count = %d, want 1; got:\n%s", diff, got)
+	}
+	if n := countBackups(t, root); n < 1 {
+		t.Error("expected a backup to be written")
+	}
+
+	repoConfigPath := filepath.Join(repoDir, ".nerv", "nerv.yaml")
+	repoConfig, err := os.ReadFile(repoConfigPath)
+	if err != nil {
+		t.Fatalf("repo config not written: %v", err)
+	}
+	for _, want := range []string{"enabled: true", "project_id: 111", "tasklist_id: 222"} {
+		if !strings.Contains(string(repoConfig), want) {
+			t.Errorf("repo config missing %q:\n%s", want, repoConfig)
+		}
+	}
+
+	copied, err := filepath.Glob(filepath.Join(paths.CommandsDir, "*.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(copied) == 0 {
+		t.Error("expected the Teamwork /task:* commands to be copied")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// A declined write confirmation leaves the file untouched even when an
+// answer actually changed a value.
+// ---------------------------------------------------------------------------
+
+func TestRun_DeclineWrite_LeavesFileUntouched(t *testing.T) {
+	root := t.TempDir()
+	home := t.TempDir()
+	writeFixture(t, filepath.Join(root, "nerv.yaml"))
+	paths := testPaths(root, home)
+	deps := configure.Deps{Home: home, FS: nerv.PluginFS(), Runner: noRunner(), Now: fixedNow, LookPath: lookPathNone}
+
+	opts := skipAll()
+	opts.Paths = paths
+
+	lines := []string{"develop2"}
+	for i := 0; i < 26; i++ {
+		lines = append(lines, "")
+	}
+	lines = append(lines, "n") // decline the write
+
+	var out bytes.Buffer
+	summary, err := wizard.Run(deps, strings.NewReader(strings.Join(lines, "\n")), &out, opts)
+	if err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+	if summary.Changed {
+		t.Error("Changed = true, want false (write declined)")
+	}
+	got, err := os.ReadFile(paths.Config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != fixtureLF {
+		t.Errorf("config mutated despite declined write:\n%s", got)
+	}
+	if !strings.Contains(out.String(), "Aborted; no changes written to user config.") {
+		t.Errorf("expected the abort message; output:\n%s", out.String())
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Changing tasks.provider away from "teamwork" must skip every
+// tasks.providers.teamwork.* prompt (11 fewer answer lines needed).
+// ---------------------------------------------------------------------------
+
+func TestRun_NonTeamworkProvider_SkipsTeamworkPrompts(t *testing.T) {
+	root := t.TempDir()
+	home := t.TempDir()
+	writeFixture(t, filepath.Join(root, "nerv.yaml"))
+	paths := testPaths(root, home)
+	deps := configure.Deps{Home: home, FS: nerv.PluginFS(), Runner: noRunner(), Now: fixedNow, LookPath: lookPathNone}
+
+	opts := skipAll()
+	opts.Paths = paths
+
+	lines := []string{
+		"",     // git.base_branch
+		"",     // git.worktree
+		"",     // git.branch_pattern
+		"",     // git.commit_ref_pattern
+		"none", // tasks.provider (CHANGED away from teamwork)
+		"",     // tasks.ask_when_missing
+		"",     // tasks.subtasks_per_wave
+		"",     // tasks.timer_store
+		"",     // tasks.rounding_minutes
+		// no teamwork.* lines here
+		"", "", "", "", "", // skills x5
+		"",  // critical_paths
+		"",  // artifacts.commit
+		"y", // write confirm
+	}
+
+	var out bytes.Buffer
+	summary, err := wizard.Run(deps, strings.NewReader(strings.Join(lines, "\n")), &out, opts)
+	if err != nil {
+		t.Fatalf("Run() error = %v; output:\n%s", err, out.String())
+	}
+	if !summary.Changed {
+		t.Fatalf("Changed = false, want true; output:\n%s", out.String())
+	}
+
+	got, err := os.ReadFile(paths.Config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(got), "provider: none") {
+		t.Errorf("tasks.provider not updated:\n%s", got)
+	}
+	// Every skills category and critical_paths/artifacts must be unchanged
+	// (their blank answers were correctly consumed, not shifted by 11
+	// unexpectedly-asked teamwork lines).
+	for _, want := range []string{
+		"testing: [tdd, playwright-best-practices]",
+		"audit: [security-review, clean-code-guard]",
+		"critical_paths: [auth/, payments/, migrations/, infra/]",
+		"commit: at-close",
+	} {
+		if !strings.Contains(string(got), want) {
+			t.Errorf("expected %q preserved:\n%s", want, got)
+		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Models section: the "magi" group keyword assigns model+effort to all
+// three MAGI roles (balthasar, melchor, casper) in one answer.
+// ---------------------------------------------------------------------------
+
+func TestRun_ModelsSection_MagiGroup(t *testing.T) {
+	root := t.TempDir()
+	home := t.TempDir()
+	writeFixture(t, filepath.Join(root, "nerv.yaml"))
+	paths := testPaths(root, home)
+	deps := configure.Deps{Home: home, FS: nerv.PluginFS(), Runner: noRunner(), Now: fixedNow, LookPath: lookPathNone}
+
+	opts := wizard.Options{Paths: paths, SkipSkills: true, SkipRepos: true, SkipCommands: true, NoRefresh: true}
+
+	lines := make([]string, 0, 33)
+	for i := 0; i < 27; i++ { // user-config section: every prompt kept (no change, no write confirm consumed)
+		lines = append(lines, "")
+	}
+	lines = append(lines,
+		"y",    // "Configure per-role model and effort now?"
+		"magi", // role group
+		"2",    // model choice: opus
+		"3",    // effort choice: high
+		"done", // finish the role loop
+		"y",    // write confirm
+	)
+
+	var out bytes.Buffer
+	summary, err := wizard.Run(deps, strings.NewReader(strings.Join(lines, "\n")), &out, opts)
+	if err != nil {
+		t.Fatalf("Run() error = %v; output:\n%s", err, out.String())
+	}
+	if !summary.Changed {
+		t.Fatalf("Changed = false, want true; output:\n%s", out.String())
+	}
+
+	got, err := os.ReadFile(paths.Config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, role := range config.Roles().Groups["magi"] {
+		want := role + ": { model: opus, effort: high }"
+		if !strings.Contains(string(got), want) {
+			t.Errorf("expected %q in models: block:\n%s", want, got)
+		}
+	}
+}
+
+// diffLineCount counts differing lines between a and b (positionally, like
+// tests/configure.test.ps1's own e2e diff assertions).
+func diffLineCount(a, b string) int {
+	aLines := strings.Split(a, "\n")
+	bLines := strings.Split(b, "\n")
+	max := len(aLines)
+	if len(bLines) > max {
+		max = len(bLines)
+	}
+	diff := 0
+	for i := 0; i < max; i++ {
+		var al, bl string
+		if i < len(aLines) {
+			al = aLines[i]
+		}
+		if i < len(bLines) {
+			bl = bLines[i]
+		}
+		if al != bl {
+			diff++
+		}
+	}
+	return diff
+}

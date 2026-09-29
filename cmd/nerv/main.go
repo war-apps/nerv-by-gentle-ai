@@ -35,6 +35,9 @@ type options struct {
 	Runner   env.Runner
 	Now      func() time.Time
 	LookPath func(string) (string, error)
+	// Stdin is the wizard's interactive input source; tests inject a
+	// scripted reader instead of the real os.Stdin.
+	Stdin io.Reader
 }
 
 func defaultOptions() options {
@@ -43,6 +46,7 @@ func defaultOptions() options {
 		Runner:   env.ExecRunner{},
 		Now:      time.Now,
 		LookPath: env.LookPath,
+		Stdin:    os.Stdin,
 	}
 }
 

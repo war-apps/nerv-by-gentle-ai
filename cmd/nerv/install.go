@@ -9,6 +9,7 @@ import (
 
 	"github.com/war-apps/nerv-gentle-ai/internal/configure"
 	"github.com/war-apps/nerv-gentle-ai/internal/install"
+	"github.com/war-apps/nerv-gentle-ai/internal/wizard"
 )
 
 const installUsage = `Usage: nerv install [flags]
@@ -16,12 +17,14 @@ const installUsage = `Usage: nerv install [flags]
 Materializes the embedded NERV plugin under <home>/.nerv/marketplace,
 registers it in Claude Code's settings.json, refreshes the plugin cache,
 applies model/effort assignments to the cached agents, ensures the Engram
-"nerv" knowledge base, and installs skills.
+"nerv" knowledge base, and installs skills. Unless --no-configure is given,
+it then runs the interactive setup wizard when stdin is a terminal, or
+prints the "run nerv configure" hint otherwise.
 
 Flags:
   --require-gentle-ai   Fail (exit 1) when gentle-ai is missing or not 3.x
   --no-skills           Skip installing skills
-  --no-configure        Skip the "run nerv configure" hint
+  --no-configure        Skip the closing wizard/hint entirely
   --home <dir>          Override the resolved home directory
   --settings <path>     Override the settings.json path
 `
@@ -79,9 +82,35 @@ func runInstall(args []string, stdout, stderr io.Writer, opts options) int {
 	err = install.Install(context.Background(), deps, install.Options{
 		RequireGentleAI: *requireGentleAI,
 		NoSkills:        *noSkills,
-		NoConfigure:     *noConfigure,
+		// cmd owns the hint-vs-wizard decision below, so the hint
+		// install.Install would otherwise print unconditionally is always
+		// suppressed here.
+		NoConfigure: true,
 	})
-	return mapInstallError(stdout, err)
+	if code := mapInstallError(stdout, err); code != 0 {
+		return code
+	}
+
+	if *noConfigure {
+		return 0
+	}
+	if !stdinIsTerminal() {
+		fmt.Fprintln(stdout, "\nRun `nerv configure` to set up NERV.")
+		return 0
+	}
+
+	wizDeps := configure.Deps{Home: home, FS: opts.PluginFS, Runner: opts.Runner, Now: opts.Now, LookPath: opts.LookPath}
+	wizPaths := configure.ResolvePaths(home, "")
+	wizOpts := wizard.Options{Paths: wizPaths, SettingsPath: *settingsOverride}
+	if _, err := wizard.Run(wizDeps, opts.Stdin, stdout, wizOpts); err != nil {
+		fmt.Fprintf(stdout, "nerv: %v\n", err)
+		var refusal *configure.RefusalError
+		if errors.As(err, &refusal) {
+			return 1
+		}
+		return 2
+	}
+	return 0
 }
 
 func runUninstall(args []string, stdout, stderr io.Writer, opts options) int {
