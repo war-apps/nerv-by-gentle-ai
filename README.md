@@ -343,10 +343,84 @@ acknowledged receipt is
 logged as `rdd_receipt`; on a decline, the run continues under ordinary
 repository policy. Ikari itself never enables or disables the RDD switch.
 
+## Install
+
+One command checks prerequisites, checks out a release channel, registers
+the plugin, and can run the configuration wizard.
+
+**Linux / macOS:**
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/war-apps/nerv-gentle-ai/main/get-nerv.sh | bash
+```
+
+or with `wget`:
+
+```bash
+wget -qO- https://raw.githubusercontent.com/war-apps/nerv-gentle-ai/main/get-nerv.sh | bash
+```
+
+**Windows (PowerShell 7):**
+
+```powershell
+irm https://raw.githubusercontent.com/war-apps/nerv-gentle-ai/main/get-nerv.ps1 | iex
+```
+
+or download the file first when you want to pass options (`iex` never
+receives parameters):
+
+```powershell
+curl -fsSL -o get-nerv.ps1 https://raw.githubusercontent.com/war-apps/nerv-gentle-ai/main/get-nerv.ps1; pwsh -File get-nerv.ps1 -Channel rc
+```
+
+### Channels
+
+- `stable` (default) — the latest GitHub Release, published from `main`.
+- `rc` — the newest `vX.Y.Z-rc.N` pre-release, published from a
+  `release/*` branch.
+- `alpha` — the newest `vX.Y.Z-alpha.N` pre-release, published from
+  `develop`; before the first alpha exists, this falls back to the
+  `develop` branch itself.
+
+Select a channel with `NERV_CHANNEL` — the shell one-liner inherits an
+exported/prefixed environment, so this works as shown:
+`NERV_CHANNEL=alpha curl -fsSL https://raw.githubusercontent.com/war-apps/nerv-gentle-ai/main/get-nerv.sh | bash`
+— or with `--channel` on the downloaded file (`bash get-nerv.sh --channel rc`).
+On Windows, either `$env:NERV_CHANNEL = 'alpha'; irm ... | iex` or `-Channel`
+on the downloaded file.
+
+### What the installer does
+
+1. Checks prerequisites: `git`, PowerShell 7 (`pwsh`), and the `claude`
+   CLI — gentle-ai 3.x is checked separately by the setup script.
+2. Clones or updates the checkout in `~/.nerv/src` (override with
+   `NERV_HOME` / `--dir` / `-Dir`).
+3. Registers the local marketplace and enables the plugin.
+4. Refreshes the plugin cache and applies model assignments.
+5. Installs the required skills.
+6. Runs the configuration wizard.
+
+Skip the wizard with `--no-configure` / `NERV_NO_CONFIGURE=1` (`-NoConfigure`
+/ `$env:NERV_NO_CONFIGURE` on Windows). It is also skipped automatically
+when no interactive terminal is attached to the installer, and the command
+to run it later is printed in that case.
+
+### Updating
+
+Re-run the same one-liner: it re-resolves the channel's current ref,
+fetches it, and refreshes the plugin cache. Restart Claude Code afterwards.
+
+### Prerequisite hints
+
+- **PowerShell 7** — macOS: `brew install --cask powershell`; Linux: see
+  [Microsoft's install docs](https://learn.microsoft.com/powershell/scripting/install/installing-powershell-on-linux).
+- **Claude Code** — see its [setup page](https://docs.claude.com/en/docs/claude-code/setup).
+
 ## Setup
 
-After installing the plugin (see "Install" below), the fastest way to
-configure NERV Gentle-AI is from inside Claude Code, once:
+After installing the plugin (see "Manual setup (developers)" below for the
+git-clone path), the fastest way to configure NERV Gentle-AI is from inside
+Claude Code, once:
 
 ```
 pwsh tools/install.ps1
@@ -451,7 +525,10 @@ install`), **Claude Code** with the **Teamwork MCP** configured when the
 Teamwork task-tracker adapter is used, and **Engram** (optional — used for
 the shared `nerv` knowledge base and per-repo memory detection).
 
-## Install
+## Manual setup (developers)
+
+For contributing to the plugin itself, or as an alternative to the
+one-line installer above:
 
 1. `git clone https://github.com/war-apps/nerv-gentle-ai.git` (the folder path is registered as a local plugin marketplace, so keep the clone where it will stay).
 2. `pwsh tools/install.ps1`
@@ -814,6 +891,15 @@ bump patch, a `!` before the colon or a `BREAKING CHANGE:` footer bumps
 major, and every other type (`docs`, `chore`, `test`, `refactor`, `ci`,
 `build`, `style`) contributes no bump on its own.
 
+**Channels.** Every push to a Gitflow branch publishes automatically —
+nothing to run by hand:
+
+| Branch push | Publishes |
+|---|---|
+| `develop` | `vX.Y.Z-alpha.N` pre-release — version computed from Conventional Commits since the last stable tag; nothing is published when there is nothing releasable. |
+| `release/*` | `vX.Y.Z-rc.N` pre-release — version taken from `plugin.json` on that branch. |
+| `main` (merge) | Stable `vX.Y.Z` release — the matching `CHANGELOG.md` section becomes the release notes. |
+
 **Cutting a release (Gitflow).**
 
 1. `git checkout -b release/X.Y.Z develop`
@@ -831,10 +917,13 @@ major, and every other type (`docs`, `chore`, `test`, `refactor`, `ci`,
 Hotfixes follow the same steps from `hotfix/X.Y.Z` branched off `main`
 instead of `develop`.
 
-**Pre-releases.** On the release branch, run
-`pwsh tools/release.ps1 -Apply -PreRelease rc` and push the resulting
-`vX.Y.Z-rc.N` tag directly — pushing that tag publishes a GitHub
-pre-release with auto-generated notes, without going through `main`.
+**Pre-releases.** Pre-releases are automatic (see "Channels" above): the
+`release.yml` workflow itself computes the version, creates the tag, and
+publishes the GitHub pre-release when it sees the push — a `release/*`
+push runs the `rc` job and a `develop` push runs the `alpha` job, neither
+going through `main`. There is nothing to run by hand and no tag to push
+yourself; `tools/release.ps1 -PreRelease alpha|rc` is what the workflow
+calls internally.
 
 **What the guard refuses, and how to recover.**
 `tools/release-guard.ps1` fails the Release workflow before it tags or
