@@ -108,7 +108,7 @@ Claude Code and runs the configuration wizard after installing. PowerShell leave
   gentle-ai 3.x preflight, Engram knowledge-base check-or-create). Specification:
   `tests/install-apply-models.test.ps1` (28) and `tests/install-skills.test.ps1` (29); scripts,
   forwarders under `tools/` and suites deleted. Route: writer.
-- [~] P3: wizard DONE 2026-09-29 as commit `3a3c044` (writer on sonnet; parent spot check: 15 packages ok, answers-file run against a temp home changed exactly the two answered keys with a backup). TDD deviation, recorded for the user: the writer built internal/wizard together with its tests and proved them load-bearing by mutation (RED on a forced wrong effort, GREEN on revert) instead of writing them first. Incident during the parent spot check: `nerv configure --home <tmp> < /dev/null` was NOT refused (Windows NUL device reads as a console), the wizard took EOF as "accept every default and answer Y", and the real runner executed `claude plugin uninstall/install nerv@nerv` and nine `npx skills add -g` on the developer machine; the plugin cache was restored from develop (7afbec5) by a momentary checkout, global skills were re-fetched (same sources), settings.json untouched. P3.1 (pending): terminal detection with golang.org/x/term, EOF on any prompt aborts with exit 1 and no side effects, `--home`/`--settings` removed from the public CLI (tests inject them through options). `internal/wizard` and interactive `nerv configure`. Port of the interactive sections of
+- [x] P3 DONE 2026-09-29: wizard as commit `3a3c044` (writer on sonnet; parent spot check: 15 packages ok, answers-file run against a temp home changed exactly the two answered keys with a backup). TDD deviation, recorded for the user: the writer built internal/wizard together with its tests and proved them load-bearing by mutation (RED on a forced wrong effort, GREEN on revert) instead of writing them first. Incident during the parent spot check: `nerv configure --home <tmp> < /dev/null` was NOT refused (Windows NUL device reads as a console), the wizard took EOF as "accept every default and answer Y", and the real runner executed `claude plugin uninstall/install nerv@nerv` and nine `npx skills add -g` on the developer machine; the plugin cache was restored from develop (7afbec5) by a momentary checkout, global skills were re-fetched (same sources), settings.json untouched. P3.1 DONE as commit `8051784` (two writers on sonnet, RED first for the EOF abort, the flag removal and the custom-id loop; the x/term swap itself has no unit-testable RED, said so): terminal detection with golang.org/x/term (go.mod now 1.26.0, CI reads go-version-file), EOF on any prompt aborts with exit 1 and no side effects, `--home`/`--settings` removed from the public CLI (tests inject them through options). `internal/wizard` and interactive `nerv configure`. Port of the interactive sections of
   `configure.ps1` (git, tasks and Teamwork, skills, models, repo, commands) over injected
   reader/writer, reusing P1's editor and catalogues; `nerv install` ends by running it unless
   `--no-configure` or stdin is not a terminal. Tests drive the prompts with scripted input. Route:
@@ -148,6 +148,7 @@ Claude Code and runs the configuration wizard after installing. PowerShell leave
 
 ## Progress log
 
+- 2026-09-29: P3.1 safety fixes (`8051784`); P4 next.
 - 2026-09-29: P3 wizard committed (`3a3c044`); orchestrator incident on the dev machine during the spot check, remediated; P3.1 safety fixes next.
 - 2026-09-29: P2 complete (`3c94749`), install/uninstall/apply-models/skills; only release*.ps1 and get-nerv.ps1 remain. P3 next.
 - 2026-09-29: P1 complete (`1b2c944`), nerv configure non-interactive; first PowerShell deletions. P2 next.
@@ -159,4 +160,4 @@ Claude Code and runs the configuration wizard after installing. PowerShell leave
 
 ## Next step
 
-P3.1 (writer): x/term terminal detection, EOF abort, no public --home/--settings; RED first. Then P4.
+P4 (writer): internal/release and `nerv release preview|apply|guard`, workflows on `go run`, goreleaser after the stable tag; delete release*.ps1, forwarders and suites; RED first.
