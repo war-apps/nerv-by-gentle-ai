@@ -31,7 +31,11 @@ var (
 func runModelsSection(deps Deps, paths configure.Paths, s *session, out io.Writer) (bool, error) {
 	fmt.Fprintln(out)
 	fmt.Fprintln(out, "--- Models ---")
-	if !s.yesNo("Configure per-role model and effort now?", false) {
+	configureNow, err := s.yesNo("Configure per-role model and effort now?", false)
+	if err != nil {
+		return false, err
+	}
+	if !configureNow {
 		return false, nil
 	}
 
@@ -114,16 +118,28 @@ func runModelsSection(deps Deps, paths configure.Paths, s *session, out io.Write
 			}
 		}
 
-		modelChoice, chosen := s.menuChoice(
+		modelChoice, chosen, err := s.menuChoice(
 			fmt.Sprintf("Model (1 sonnet, 2 opus, 3 haiku, 4 fable, 5 inherit, 6 custom id, 7 from gentle-ai phase, Enter keeps %s):", currentDisplay),
 			[]string{"1", "2", "3", "4", "5", "6", "7"})
+		if err != nil {
+			return false, err
+		}
 
 		var newModel, newFrom string
 		if chosen {
 			switch modelChoice {
 			case "6":
 				for {
-					customID := s.prompt("Custom model id (claude-...):")
+					customID, err := s.promptRequired("Custom model id (claude-...):")
+					if err != nil {
+						return false, err
+					}
+					if customID == "" {
+						// blank keeps the current model unchanged, mirroring
+						// every other model choice's blank-answer semantics.
+						chosen = false
+						break
+					}
 					if customModelIDRe.MatchString(customID) {
 						newModel = customID
 						break
@@ -141,7 +157,11 @@ func runModelsSection(deps Deps, paths configure.Paths, s *session, out io.Write
 						fmt.Fprintf(out, "  %d) %s (%s/%s)\n", i+1, p, pa.Model, pa.Effort)
 						valid[i] = strconv.Itoa(i + 1)
 					}
-					if idx, ok := s.menuChoice("Phase number:", valid); ok {
+					idx, ok, err := s.menuChoice("Phase number:", valid)
+					if err != nil {
+						return false, err
+					}
+					if ok {
 						n, _ := strconv.Atoi(idx)
 						newFrom = phaseNames[n-1]
 					}
@@ -155,7 +175,10 @@ func runModelsSection(deps Deps, paths configure.Paths, s *session, out io.Write
 		if modelChoice == "7" && newFrom != "" {
 			effortLabel = "Effort (1 low, 2 medium, 3 high, 4 xhigh, 5 max, Enter keeps inherited):"
 		}
-		effortChoice, effortChosen := s.menuChoice(effortLabel, []string{"1", "2", "3", "4", "5"})
+		effortChoice, effortChosen, err := s.menuChoice(effortLabel, []string{"1", "2", "3", "4", "5"})
+		if err != nil {
+			return false, err
+		}
 		var newEffort string
 		if effortChosen {
 			newEffort = effortMenu[effortChoice]
@@ -207,7 +230,11 @@ func runModelsSection(deps Deps, paths configure.Paths, s *session, out io.Write
 		fmt.Fprintf(out, "No overrides left; the existing models: block will be removed from %s.\n", paths.Config)
 	}
 
-	if !s.yesNo(fmt.Sprintf("Write to %s?", paths.Config), true) {
+	write, err := s.yesNo(fmt.Sprintf("Write to %s?", paths.Config), true)
+	if err != nil {
+		return false, err
+	}
+	if !write {
 		fmt.Fprintln(out, "Aborted; no changes written.")
 		return false, nil
 	}

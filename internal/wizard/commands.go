@@ -21,7 +21,11 @@ func runCommandsSection(deps Deps, paths configure.Paths, s *session, out io.Wri
 		return false, nil
 	}
 
-	if !s.yesNo(fmt.Sprintf("Install the Teamwork procedures as /task:* commands in %s?", paths.CommandsDir), false) {
+	install, err := s.yesNo(fmt.Sprintf("Install the Teamwork procedures as /task:* commands in %s?", paths.CommandsDir), false)
+	if err != nil {
+		return false, err
+	}
+	if !install {
 		return false, nil
 	}
 

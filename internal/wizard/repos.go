@@ -59,13 +59,25 @@ func runReposSection(deps Deps, paths configure.Paths, s *session, out io.Writer
 			continue
 		}
 
-		repoBaseBranch := s.ask("Base branch for this repo", baseBranch)
-		repoProvider := s.choose("Task provider for this repo", allowedProviders, provider)
+		repoBaseBranch, err := s.ask("Base branch for this repo", baseBranch)
+		if err != nil {
+			return anyChanged, err
+		}
+		repoProvider, err := s.choose("Task provider for this repo", allowedProviders, provider)
+		if err != nil {
+			return anyChanged, err
+		}
 
 		req := configure.InitRepoRequest{Path: repoPath, Base: repoBaseBranch, Provider: repoProvider}
 		if repoProvider == "teamwork" {
-			req.ProjectID = s.ask("Teamwork project id for this repo", "")
-			req.TasklistID = s.ask("Teamwork tasklist id for this repo", "")
+			req.ProjectID, err = s.ask("Teamwork project id for this repo", "")
+			if err != nil {
+				return anyChanged, err
+			}
+			req.TasklistID, err = s.ask("Teamwork tasklist id for this repo", "")
+			if err != nil {
+				return anyChanged, err
+			}
 		}
 
 		result, err := configure.InitRepo(deps, req)

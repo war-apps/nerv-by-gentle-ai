@@ -2,6 +2,7 @@ package wizard_test
 
 import (
 	"bytes"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -89,12 +90,19 @@ func countBackups(t *testing.T, root string) int {
 }
 
 // ---------------------------------------------------------------------------
-// Case group F (tests/configure.test.ps1's ~403-424): empty -AnswersFile ->
-// every prompt keeps its current value, the config is left byte-identical,
-// and no backup is written.
+// Case group F (tests/configure.test.ps1's ~403-424): every prompt
+// answered with an actual blank line -> every prompt keeps its current
+// value, the config is left byte-identical, and no backup is written.
+//
+// A genuinely empty reader is a different case now (P3.1.2's EOF-aborts
+// fix): see TestRun_ReaderEndsAtFirstPrompt_AbortsWithoutWriteOrRunnerCall
+// below. Blank line and EOF used to be indistinguishable (both fell
+// through readLineOr's own default); this test used to exercise that by
+// passing a wholly empty reader, which is exactly the incident the fix
+// addresses — it now needs real blank lines instead.
 // ---------------------------------------------------------------------------
 
-func TestRun_EmptyAnswers_ByteIdenticalNoBackup(t *testing.T) {
+func TestRun_AllBlankAnswers_ByteIdenticalNoBackup(t *testing.T) {
 	root := t.TempDir()
 	home := t.TempDir()
 	writeFixture(t, filepath.Join(root, "nerv.yaml"))
@@ -104,10 +112,16 @@ func TestRun_EmptyAnswers_ByteIdenticalNoBackup(t *testing.T) {
 	opts := skipAll()
 	opts.Paths = paths
 
+	// git(4) + tasks(5) + tasks.providers.teamwork(11, since the fixture's
+	// provider stays "teamwork" on a blank answer) + skills(5) +
+	// critical_paths(1) + artifacts.commit(1) = 27 prompts, every one a
+	// real blank line (not exhaustion).
+	in := strings.NewReader(strings.Repeat("\n", 27))
+
 	var out bytes.Buffer
-	summary, err := wizard.Run(deps, strings.NewReader(""), &out, opts)
+	summary, err := wizard.Run(deps, in, &out, opts)
 	if err != nil {
-		t.Fatalf("Run() error = %v", err)
+		t.Fatalf("Run() error = %v; output:\n%s", err, out.String())
 	}
 	if summary.Changed {
 		t.Errorf("Changed = true, want false; output:\n%s", out.String())
@@ -118,13 +132,213 @@ func TestRun_EmptyAnswers_ByteIdenticalNoBackup(t *testing.T) {
 		t.Fatal(err)
 	}
 	if string(got) != fixtureLF {
-		t.Errorf("config mutated on empty answers:\ngot:\n%s\nwant:\n%s", got, fixtureLF)
+		t.Errorf("config mutated on all-blank answers:\ngot:\n%s\nwant:\n%s", got, fixtureLF)
 	}
 	if n := countBackups(t, root); n != 0 {
 		t.Errorf("backups = %d, want 0", n)
 	}
 	if strings.Contains(out.String(), "Restart Claude Code") {
 		t.Error("expected no restart reminder when nothing changed")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// P3.1.2 (EOF aborts): a reader that ends at the very first prompt (no
+// lines at all, i.e. immediate EOF — the same shape a redirected
+// /dev/null gives the wizard) must abort with ErrInputClosed, write
+// nothing, write no backup, and never call the process runner. This is
+// the exact incident case: `nerv configure --home <tmp> < /dev/null`.
+// ---------------------------------------------------------------------------
+
+func TestRun_ReaderEndsAtFirstPrompt_AbortsWithoutWriteOrRunnerCall(t *testing.T) {
+	root := t.TempDir()
+	home := t.TempDir()
+	writeFixture(t, filepath.Join(root, "nerv.yaml"))
+	paths := testPaths(root, home)
+	runner := &envtest.FakeRunner{}
+	deps := configure.Deps{Home: home, FS: nerv.PluginFS(), Runner: runner, Now: fixedNow, LookPath: lookPathNone}
+
+	opts := skipAll()
+	opts.Paths = paths
+
+	var out bytes.Buffer
+	_, err := wizard.Run(deps, strings.NewReader(""), &out, opts)
+	if !errors.Is(err, wizard.ErrInputClosed) {
+		t.Fatalf("Run() error = %v, want ErrInputClosed", err)
+	}
+
+	got, err := os.ReadFile(paths.Config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != fixtureLF {
+		t.Errorf("config mutated despite EOF abort:\ngot:\n%s\nwant:\n%s", got, fixtureLF)
+	}
+	if n := countBackups(t, root); n != 0 {
+		t.Errorf("backups = %d, want 0", n)
+	}
+	if calls := mutatingCalls(runner.Calls); len(calls) != 0 {
+		t.Errorf("mutating calls = %+v, want none: an aborted wizard must never touch the process runner", calls)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// P3.1.2 (EOF aborts): a reader that answers every user-config prompt
+// (with real blank lines, keeping every value unchanged, so section 1
+// never even reaches its own write-confirmation) but ends exactly at the
+// wizard's final "apply and refresh" gate must abort there too: nothing
+// gets applied to the plugin cache and the process runner is never
+// called, even though many earlier prompts were already answered —
+// the same all-or-nothing guarantee, exercised at the very end of the
+// wizard instead of the very start.
+// ---------------------------------------------------------------------------
+
+func TestRun_ReaderEndsAtApplyAndRefreshPrompt_AbortsWithoutRunnerCall(t *testing.T) {
+	root := t.TempDir()
+	home := t.TempDir()
+	writeFixture(t, filepath.Join(root, "nerv.yaml"))
+	paths := testPaths(root, home)
+	runner := &envtest.FakeRunner{}
+	deps := configure.Deps{Home: home, FS: nerv.PluginFS(), Runner: runner, Now: fixedNow, LookPath: lookPathNone}
+
+	opts := wizard.Options{Paths: paths, SkipSkills: true, SkipModels: true, SkipRepos: true, SkipCommands: true}
+
+	// The 27 user-config prompts, every one a real blank line (no
+	// change, no write-confirmation asked) — then nothing left for the
+	// "Apply models to the plugin cache and refresh it now?" gate.
+	in := strings.NewReader(strings.Repeat("\n", 27))
+
+	var out bytes.Buffer
+	_, err := wizard.Run(deps, in, &out, opts)
+	if !errors.Is(err, wizard.ErrInputClosed) {
+		t.Fatalf("Run() error = %v, want ErrInputClosed; output:\n%s", err, out.String())
+	}
+	if !strings.Contains(out.String(), "Apply models to the plugin cache and refresh it now?") {
+		t.Fatalf("expected the reader to have reached the apply-and-refresh prompt; output:\n%s", out.String())
+	}
+
+	got, err := os.ReadFile(paths.Config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != fixtureLF {
+		t.Errorf("config mutated despite EOF abort:\ngot:\n%s\nwant:\n%s", got, fixtureLF)
+	}
+	if calls := mutatingCalls(runner.Calls); len(calls) != 0 {
+		t.Errorf("mutating calls = %+v, want none: install.ApplyModels/RefreshCache must never run", calls)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// P3.1.3 (models section custom-id EOF): the models section's "6 custom
+// model id" sub-loop used to read with s.prompt, which silently yields ""
+// on a genuinely exhausted reader instead of signalling EOF — and "" never
+// matches customModelIDRe, so the loop spun forever instead of aborting
+// like every other prompt in the wizard. Guarded with a timeout so a
+// regression fails this test instead of hanging the whole suite.
+// ---------------------------------------------------------------------------
+
+func TestRun_ModelsSection_CustomModelID_EOFAfterPrompt_AbortsWithoutWriteOrRunnerCall(t *testing.T) {
+	root := t.TempDir()
+	home := t.TempDir()
+	writeFixture(t, filepath.Join(root, "nerv.yaml"))
+	paths := testPaths(root, home)
+	runner := &envtest.FakeRunner{}
+	deps := configure.Deps{Home: home, FS: nerv.PluginFS(), Runner: runner, Now: fixedNow, LookPath: lookPathNone}
+
+	opts := wizard.Options{Paths: paths, SkipSkills: true, SkipRepos: true, SkipCommands: true, NoRefresh: true}
+
+	lines := make([]string, 0, 30)
+	for i := 0; i < 27; i++ { // user-config section: every prompt kept (no change, no write confirm consumed)
+		lines = append(lines, "")
+	}
+	lines = append(lines,
+		"y",         // "Configure per-role model and effort now?"
+		"balthasar", // single role
+		"6",         // model choice: custom id
+		// reader ends here: the custom-id sub-prompt gets genuine EOF
+	)
+
+	in := strings.NewReader(strings.Join(lines, "\n"))
+	var out bytes.Buffer
+
+	done := make(chan error, 1)
+	go func() {
+		_, err := wizard.Run(deps, in, &out, opts)
+		done <- err
+	}()
+
+	select {
+	case err := <-done:
+		if !errors.Is(err, wizard.ErrInputClosed) {
+			t.Fatalf("Run() error = %v, want ErrInputClosed; output:\n%s", err, out.String())
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("Run() hung on the custom model id prompt after EOF; want ErrInputClosed")
+	}
+
+	got, err := os.ReadFile(paths.Config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != fixtureLF {
+		t.Errorf("config mutated despite EOF abort:\ngot:\n%s\nwant:\n%s", got, fixtureLF)
+	}
+	if n := countBackups(t, root); n != 0 {
+		t.Errorf("backups = %d, want 0", n)
+	}
+	if calls := mutatingCalls(runner.Calls); len(calls) != 0 {
+		t.Errorf("mutating calls = %+v, want none: an aborted wizard must never touch the process runner", calls)
+	}
+}
+
+// P3.1.3 (models section custom-id re-prompt): an invalid custom model id
+// (not matching ^claude-.+$) must still re-prompt instead of aborting, and
+// a later valid id must be applied as the override — proving the EOF fix
+// above didn't break the existing re-prompt behavior.
+func TestRun_ModelsSection_CustomModelID_InvalidThenValid_AppliesOverride(t *testing.T) {
+	root := t.TempDir()
+	home := t.TempDir()
+	writeFixture(t, filepath.Join(root, "nerv.yaml"))
+	paths := testPaths(root, home)
+	deps := configure.Deps{Home: home, FS: nerv.PluginFS(), Runner: noRunner(), Now: fixedNow, LookPath: lookPathNone}
+
+	opts := wizard.Options{Paths: paths, SkipSkills: true, SkipRepos: true, SkipCommands: true, NoRefresh: true}
+
+	lines := make([]string, 0, 36)
+	for i := 0; i < 27; i++ {
+		lines = append(lines, "")
+	}
+	lines = append(lines,
+		"y",           // "Configure per-role model and effort now?"
+		"balthasar",   // single role
+		"6",           // model choice: custom id
+		"not-a-model", // invalid: doesn't match ^claude-.+$, re-prompts
+		"claude-x",    // valid custom id
+		"",            // effort: blank keeps current
+		"done",        // finish the role loop
+		"y",           // write confirm
+	)
+
+	var out bytes.Buffer
+	summary, err := wizard.Run(deps, strings.NewReader(strings.Join(lines, "\n")), &out, opts)
+	if err != nil {
+		t.Fatalf("Run() error = %v; output:\n%s", err, out.String())
+	}
+	if !summary.Changed {
+		t.Fatalf("Changed = false, want true; output:\n%s", out.String())
+	}
+	if !strings.Contains(out.String(), "Invalid model id") {
+		t.Errorf("expected the invalid id to be rejected and re-prompted; output:\n%s", out.String())
+	}
+
+	got, err := os.ReadFile(paths.Config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "balthasar: { model: claude-x }"
+	if !strings.Contains(string(got), want) {
+		t.Errorf("expected %q in models: block:\n%s", want, got)
 	}
 }
 
@@ -362,6 +576,22 @@ func TestRun_ModelsSection_MagiGroup(t *testing.T) {
 			t.Errorf("expected %q in models: block:\n%s", want, got)
 		}
 	}
+}
+
+// mutatingCalls filters out the informational "gentle-ai --version"
+// prerequisites check (printPrerequisites runs it unconditionally, before
+// any prompt, and it never mutates anything) so EOF-abort tests can
+// assert on the calls the 2026-09-29 incident actually cared about:
+// `claude plugin uninstall/install` and `npx skills add -g`.
+func mutatingCalls(calls []envtest.Call) []envtest.Call {
+	var out []envtest.Call
+	for _, c := range calls {
+		if c.Name == "gentle-ai" {
+			continue
+		}
+		out = append(out, c)
+	}
+	return out
 }
 
 // diffLineCount counts differing lines between a and b (positionally, like

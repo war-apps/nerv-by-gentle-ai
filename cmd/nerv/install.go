@@ -25,27 +25,18 @@ Flags:
   --require-gentle-ai   Fail (exit 1) when gentle-ai is missing or not 3.x
   --no-skills           Skip installing skills
   --no-configure        Skip the closing wizard/hint entirely
-  --home <dir>          Override the resolved home directory
-  --settings <path>     Override the settings.json path
 `
 
 const uninstallUsage = `Usage: nerv uninstall [flags]
 
 Removes NERV's settings.json registration, uninstalls the cached plugin,
 and removes the materialized marketplace directory.
-
-Flags:
-  --home <dir>          Override the resolved home directory
-  --settings <path>     Override the settings.json path
 `
 
 const applyModelsUsage = `Usage: nerv apply-models [flags]
 
 Applies the models: overrides from the user-scope nerv.yaml (merged over
 the plugin's own committed defaults) to the cached agent frontmatter.
-
-Flags:
-  --home <dir>          Override the resolved home directory
 `
 
 func runInstall(args []string, stdout, stderr io.Writer, opts options) int {
@@ -55,15 +46,13 @@ func runInstall(args []string, stdout, stderr io.Writer, opts options) int {
 	requireGentleAI := fs.Bool("require-gentle-ai", false, "")
 	noSkills := fs.Bool("no-skills", false, "")
 	noConfigure := fs.Bool("no-configure", false, "")
-	homeOverride := fs.String("home", "", "")
-	settingsOverride := fs.String("settings", "", "")
 
 	if err := fs.Parse(args); err != nil {
 		fmt.Fprint(stderr, installUsage)
 		return 2
 	}
 
-	home, err := configure.ResolveHome(*homeOverride)
+	home, err := configure.ResolveHome(opts.Home)
 	if err != nil {
 		fmt.Fprintf(stdout, "nerv: %v\n", err)
 		return 2
@@ -71,7 +60,7 @@ func runInstall(args []string, stdout, stderr io.Writer, opts options) int {
 
 	deps := install.Deps{
 		Home:         home,
-		SettingsPath: *settingsOverride,
+		SettingsPath: opts.Settings,
 		FS:           opts.PluginFS,
 		Runner:       opts.Runner,
 		Now:          opts.Now,
@@ -101,9 +90,12 @@ func runInstall(args []string, stdout, stderr io.Writer, opts options) int {
 
 	wizDeps := configure.Deps{Home: home, FS: opts.PluginFS, Runner: opts.Runner, Now: opts.Now, LookPath: opts.LookPath}
 	wizPaths := configure.ResolvePaths(home, "")
-	wizOpts := wizard.Options{Paths: wizPaths, SettingsPath: *settingsOverride}
+	wizOpts := wizard.Options{Paths: wizPaths, SettingsPath: opts.Settings}
 	if _, err := wizard.Run(wizDeps, opts.Stdin, stdout, wizOpts); err != nil {
 		fmt.Fprintf(stdout, "nerv: %v\n", err)
+		if errors.Is(err, wizard.ErrInputClosed) {
+			return 1
+		}
 		var refusal *configure.RefusalError
 		if errors.As(err, &refusal) {
 			return 1
@@ -117,15 +109,12 @@ func runUninstall(args []string, stdout, stderr io.Writer, opts options) int {
 	fs := flag.NewFlagSet("uninstall", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 
-	homeOverride := fs.String("home", "", "")
-	settingsOverride := fs.String("settings", "", "")
-
 	if err := fs.Parse(args); err != nil {
 		fmt.Fprint(stderr, uninstallUsage)
 		return 2
 	}
 
-	home, err := configure.ResolveHome(*homeOverride)
+	home, err := configure.ResolveHome(opts.Home)
 	if err != nil {
 		fmt.Fprintf(stdout, "nerv: %v\n", err)
 		return 2
@@ -133,7 +122,7 @@ func runUninstall(args []string, stdout, stderr io.Writer, opts options) int {
 
 	deps := install.Deps{
 		Home:         home,
-		SettingsPath: *settingsOverride,
+		SettingsPath: opts.Settings,
 		FS:           opts.PluginFS,
 		Runner:       opts.Runner,
 		Now:          opts.Now,
@@ -149,14 +138,12 @@ func runApplyModels(args []string, stdout, stderr io.Writer, opts options) int {
 	fs := flag.NewFlagSet("apply-models", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 
-	homeOverride := fs.String("home", "", "")
-
 	if err := fs.Parse(args); err != nil {
 		fmt.Fprint(stderr, applyModelsUsage)
 		return 2
 	}
 
-	home, err := configure.ResolveHome(*homeOverride)
+	home, err := configure.ResolveHome(opts.Home)
 	if err != nil {
 		fmt.Fprintf(stdout, "nerv: %v\n", err)
 		return 2

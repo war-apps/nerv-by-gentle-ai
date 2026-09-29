@@ -23,7 +23,6 @@ Flags:
                       instead of running it
   --json             Print the computed status as a JSON array
   --only name,...    Restrict processing to these skill names
-  --home <dir>       Override the resolved home directory
 `
 
 // runSkills ports install-skills.ps1's CLI exactly: the human table (or
@@ -38,14 +37,13 @@ func runSkills(args []string, stdout, stderr io.Writer, opts options) int {
 	dryRun := fs.Bool("dry-run", false, "")
 	jsonOut := fs.Bool("json", false, "")
 	only := fs.String("only", "", "")
-	homeOverride := fs.String("home", "", "")
 
 	if err := fs.Parse(args); err != nil {
 		fmt.Fprint(stderr, skillsUsage)
 		return 2
 	}
 
-	home, err := configure.ResolveHome(*homeOverride)
+	home, err := configure.ResolveHome(opts.Home)
 	if err != nil {
 		fmt.Fprintf(stdout, "nerv: %v\n", err)
 		return 2

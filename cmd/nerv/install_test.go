@@ -51,7 +51,7 @@ func TestRunInstall_HappyPath_Exits0(t *testing.T) {
 	opts := testOptions(home)
 	opts.Runner = baseInstallRunner()
 
-	code := run([]string{"install", "--home", home, "--no-skills", "--no-configure"}, &stdout, &stderr, opts)
+	code := run([]string{"install", "--no-skills", "--no-configure"}, &stdout, &stderr, opts)
 
 	if code != 0 {
 		t.Fatalf("exit code = %d, want 0; stdout:\n%s\nstderr:\n%s", code, stdout.String(), stderr.String())
@@ -67,7 +67,7 @@ func TestRunInstall_RequireGentleAIMissing_Exits1(t *testing.T) {
 	opts := testOptions(home)
 	opts.Runner = &envtest.FakeRunner{Default: envtest.Response{Err: errors.New("not found")}}
 
-	code := run([]string{"install", "--home", home, "--require-gentle-ai", "--no-skills", "--no-configure"}, &stdout, &stderr, opts)
+	code := run([]string{"install", "--require-gentle-ai", "--no-skills", "--no-configure"}, &stdout, &stderr, opts)
 
 	if code != 1 {
 		t.Fatalf("exit code = %d, want 1; stdout:\n%s", code, stdout.String())
@@ -84,7 +84,7 @@ func TestRunUninstall_HappyPath_Exits0(t *testing.T) {
 		},
 	}
 
-	code := run([]string{"uninstall", "--home", home}, &stdout, &stderr, opts)
+	code := run([]string{"uninstall"}, &stdout, &stderr, opts)
 
 	if code != 0 {
 		t.Fatalf("exit code = %d, want 0; stdout:\n%s\nstderr:\n%s", code, stdout.String(), stderr.String())
@@ -103,9 +103,12 @@ func TestRunInstall_Terminal_NoNoConfigure_RunsWizard(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	opts := testOptions(home)
 	opts.Runner = baseInstallRunner()
-	opts.Stdin = strings.NewReader("") // every prompt keeps its default/no-op answer
+	// Real blank lines (not an exhausted reader — see wizard.ErrInputClosed)
+	// for every prompt the full wizard asks, so every value keeps its
+	// default/no-op answer instead of the wizard aborting on EOF.
+	opts.Stdin = strings.NewReader(strings.Repeat("\n", 60))
 
-	code := run([]string{"install", "--home", home, "--no-skills"}, &stdout, &stderr, opts)
+	code := run([]string{"install", "--no-skills"}, &stdout, &stderr, opts)
 
 	if code != 0 {
 		t.Fatalf("exit code = %d, want 0; stdout:\n%s\nstderr:\n%s", code, stdout.String(), stderr.String())
@@ -123,7 +126,7 @@ func TestRunInstall_NotATerminal_NoNoConfigure_PrintsHintNotWizard(t *testing.T)
 	opts := testOptions(home)
 	opts.Runner = baseInstallRunner()
 
-	code := run([]string{"install", "--home", home, "--no-skills"}, &stdout, &stderr, opts)
+	code := run([]string{"install", "--no-skills"}, &stdout, &stderr, opts)
 
 	if code != 0 {
 		t.Fatalf("exit code = %d, want 0; stdout:\n%s\nstderr:\n%s", code, stdout.String(), stderr.String())
@@ -144,7 +147,7 @@ func TestRunInstall_NoConfigure_SkipsHintAndWizard(t *testing.T) {
 	opts := testOptions(home)
 	opts.Runner = baseInstallRunner()
 
-	code := run([]string{"install", "--home", home, "--no-skills", "--no-configure"}, &stdout, &stderr, opts)
+	code := run([]string{"install", "--no-skills", "--no-configure"}, &stdout, &stderr, opts)
 
 	if code != 0 {
 		t.Fatalf("exit code = %d, want 0; stdout:\n%s\nstderr:\n%s", code, stdout.String(), stderr.String())
@@ -158,12 +161,59 @@ func TestRunApplyModels_MissingCache_Exits0WithWarning(t *testing.T) {
 	home := t.TempDir()
 	var stdout, stderr bytes.Buffer
 
-	code := run([]string{"apply-models", "--home", home}, &stdout, &stderr, testOptions(home))
+	code := run([]string{"apply-models"}, &stdout, &stderr, testOptions(home))
 
 	if code != 0 {
 		t.Fatalf("exit code = %d, want 0; stdout:\n%s\nstderr:\n%s", code, stdout.String(), stderr.String())
 	}
 	if !strings.Contains(stdout.String(), "not found") {
 		t.Errorf("expected a warning about the missing cache dir, got:\n%s", stdout.String())
+	}
+}
+
+// ---------------------------------------------------------------------------
+// P3.1.3: "--home"/"--settings" are no longer public flags on install,
+// uninstall, or apply-models — same rationale as configure's own
+// TestRunConfigure_HomeFlag_NoLongerAccepted.
+// ---------------------------------------------------------------------------
+
+func TestRunInstall_HomeAndSettingsFlags_NoLongerAccepted(t *testing.T) {
+	home := t.TempDir()
+	var stdout, stderr bytes.Buffer
+
+	code := run([]string{"install", "--home", home, "--no-skills", "--no-configure"}, &stdout, &stderr, testOptions(home))
+
+	if code != 2 {
+		t.Fatalf("exit code = %d, want 2 (a rejected unknown flag); stdout=%q", code, stdout.String())
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	code = run([]string{"install", "--settings", filepath.Join(home, "settings.json"), "--no-skills", "--no-configure"}, &stdout, &stderr, testOptions(home))
+
+	if code != 2 {
+		t.Fatalf("exit code = %d, want 2 (a rejected unknown flag); stdout=%q", code, stdout.String())
+	}
+}
+
+func TestRunUninstall_HomeFlag_NoLongerAccepted(t *testing.T) {
+	home := t.TempDir()
+	var stdout, stderr bytes.Buffer
+
+	code := run([]string{"uninstall", "--home", home}, &stdout, &stderr, testOptions(home))
+
+	if code != 2 {
+		t.Fatalf("exit code = %d, want 2 (a rejected unknown flag); stdout=%q", code, stdout.String())
+	}
+}
+
+func TestRunApplyModels_HomeFlag_NoLongerAccepted(t *testing.T) {
+	home := t.TempDir()
+	var stdout, stderr bytes.Buffer
+
+	code := run([]string{"apply-models", "--home", home}, &stdout, &stderr, testOptions(home))
+
+	if code != 2 {
+		t.Fatalf("exit code = %d, want 2 (a rejected unknown flag); stdout=%q", code, stdout.String())
 	}
 }

@@ -20,19 +20,23 @@ import (
 // `pwsh tools/install-skills.ps1 -DryRun`; that script no longer exists
 // (P2), so the declined-offer message instead points at `nerv skills
 // --dry-run`.
-func offerSkillsInstall(ctx context.Context, deps Deps, paths configure.Paths, s *session, out io.Writer) {
+func offerSkillsInstall(ctx context.Context, deps Deps, paths configure.Paths, s *session, out io.Writer) error {
 	fmt.Fprintln(out)
 	fmt.Fprintln(out, "--- Required skills ---")
 
-	if !s.yesNo("Install the skills the plugin references (missing ones only, via npx skills add -g)?", true) {
+	install, err := s.yesNo("Install the skills the plugin references (missing ones only, via npx skills add -g)?", true)
+	if err != nil {
+		return err
+	}
+	if !install {
 		fmt.Fprintln(out, "Skipped. Run `nerv skills` later (add --dry-run to preview).")
-		return
+		return nil
 	}
 
 	manifest, err := skills.LoadManifestFS(deps.FS)
 	if err != nil {
 		fmt.Fprintf(out, "Warning: could not read the skills manifest: %v\n", err)
-		return
+		return nil
 	}
 
 	statuses := skills.Status(manifest, paths.SkillsDir)
@@ -46,4 +50,5 @@ func offerSkillsInstall(ctx context.Context, deps Deps, paths configure.Paths, s
 	if result.Failed > 0 {
 		fmt.Fprintln(out, "Warning: some skills failed to install; see the lines above.")
 	}
+	return nil
 }

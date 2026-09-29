@@ -38,6 +38,25 @@ type options struct {
 	// Stdin is the wizard's interactive input source; tests inject a
 	// scripted reader instead of the real os.Stdin.
 	Stdin io.Reader
+	// Home overrides the resolved home directory. Empty means
+	// env.HomeDir() decides, exactly as configure.ResolveHome documents.
+	//
+	// There is deliberately no public "--home" flag: a fake home never
+	// sandboxes the global commands every subcommand can still reach
+	// through it (`claude plugin ...`, `npx ... -g`, gentle-ai's own
+	// state). A 2026-09-29 incident ran `nerv configure --home <tmp>`
+	// expecting that tmp dir to contain the blast radius, but the
+	// wizard's `claude plugin uninstall/install` and `npx skills add -g`
+	// calls ran against the real machine regardless of --home — the flag
+	// looked like a sandbox and was not one. Home is settable only here,
+	// in options, so only tests (which also fake Runner/LookPath) can
+	// override it.
+	Home string
+	// Settings overrides the resolved Claude Code settings.json path.
+	// Empty means "<Home>/.claude/settings.json" (install.Deps's own
+	// default). No public "--settings" flag either, for the same reason
+	// as Home above: settable only here, only for tests.
+	Settings string
 }
 
 func defaultOptions() options {

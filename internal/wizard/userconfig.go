@@ -84,41 +84,78 @@ func runUserConfigSection(deps Deps, paths configure.Paths, s *session, out io.W
 
 	answers := map[string]string{}
 
+	// ask/choose wrappers that stop the whole section at the first
+	// ErrInputClosed: once the reader is genuinely exhausted, no further
+	// prompt is asked and no write is attempted (all-or-nothing — see
+	// ErrInputClosed's doc comment).
+	var sectionErr error
+	askField := func(label, key string) {
+		if sectionErr != nil {
+			return
+		}
+		v, err := s.ask(label, current(key))
+		if err != nil {
+			sectionErr = err
+			return
+		}
+		answers[key] = v
+	}
+	chooseField := func(label, key string) {
+		if sectionErr != nil {
+			return
+		}
+		v, err := s.choose(label, allowed(key), current(key))
+		if err != nil {
+			sectionErr = err
+			return
+		}
+		answers[key] = v
+	}
+
 	fmt.Fprintln(out)
 	fmt.Fprintln(out, "-- git --")
-	answers["git.base_branch"] = s.ask("Base branch", current("git.base_branch"))
-	answers["git.worktree"] = s.choose("Worktree policy", allowed("git.worktree"), current("git.worktree"))
-	answers["git.branch_pattern"] = s.ask("Branch pattern", current("git.branch_pattern"))
-	answers["git.commit_ref_pattern"] = s.ask("Commit ref pattern", current("git.commit_ref_pattern"))
+	askField("Base branch", "git.base_branch")
+	chooseField("Worktree policy", "git.worktree")
+	askField("Branch pattern", "git.branch_pattern")
+	askField("Commit ref pattern", "git.commit_ref_pattern")
 
 	fmt.Fprintln(out)
 	fmt.Fprintln(out, "-- tasks --")
-	answers["tasks.provider"] = s.choose("Task provider", allowed("tasks.provider"), current("tasks.provider"))
-	answers["tasks.ask_when_missing"] = s.choose("Ask when missing", allowed("tasks.ask_when_missing"), current("tasks.ask_when_missing"))
-	answers["tasks.subtasks_per_wave"] = s.choose("Subtasks per wave", allowed("tasks.subtasks_per_wave"), current("tasks.subtasks_per_wave"))
-	answers["tasks.timer_store"] = s.ask("Timer store path", current("tasks.timer_store"))
-	answers["tasks.rounding_minutes"] = s.ask("Rounding minutes", current("tasks.rounding_minutes"))
+	chooseField("Task provider", "tasks.provider")
+	chooseField("Ask when missing", "tasks.ask_when_missing")
+	chooseField("Subtasks per wave", "tasks.subtasks_per_wave")
+	askField("Timer store path", "tasks.timer_store")
+	askField("Rounding minutes", "tasks.rounding_minutes")
 
-	if answers["tasks.provider"] == "teamwork" {
+	if sectionErr == nil && answers["tasks.provider"] == "teamwork" {
 		fmt.Fprintln(out)
 		fmt.Fprintln(out, "-- tasks.providers.teamwork --")
 		for _, f := range teamworkFields {
-			answers[f.key] = s.ask(f.label, current(f.key))
+			askField(f.label, f.key)
 		}
 	}
 
-	fmt.Fprintln(out)
-	fmt.Fprintln(out, "-- skills (comma-separated) --")
-	for _, cat := range skillsCategories {
-		key := "skills." + cat
-		answers[key] = s.ask(cat, current(key))
+	if sectionErr == nil {
+		fmt.Fprintln(out)
+		fmt.Fprintln(out, "-- skills (comma-separated) --")
+		for _, cat := range skillsCategories {
+			askField(cat, "skills."+cat)
+		}
 	}
 
-	fmt.Fprintln(out)
-	answers["critical_paths"] = s.ask("Critical paths (comma-separated)", current("critical_paths"))
+	if sectionErr == nil {
+		fmt.Fprintln(out)
+		askField("Critical paths (comma-separated)", "critical_paths")
+	}
 
-	fmt.Fprintln(out)
-	answers["artifacts.commit"] = s.choose("Artifacts commit policy", allowed("artifacts.commit"), current("artifacts.commit"))
+	if sectionErr == nil {
+		fmt.Fprintln(out)
+		chooseField("Artifacts commit policy", "artifacts.commit")
+	}
+
+	if sectionErr != nil {
+		return userConfigResult{}, sectionErr
+	}
 
 	result := userConfigResult{BaseBranch: answers["git.base_branch"], Provider: answers["tasks.provider"]}
 
@@ -148,7 +185,11 @@ func runUserConfigSection(deps Deps, paths configure.Paths, s *session, out io.W
 		fmt.Fprintf(out, "  %s\n", c)
 	}
 
-	if !s.yesNo(fmt.Sprintf("Write to %s?", paths.Config), true) {
+	write, err := s.yesNo(fmt.Sprintf("Write to %s?", paths.Config), true)
+	if err != nil {
+		return userConfigResult{}, err
+	}
+	if !write {
 		fmt.Fprintln(out, "Aborted; no changes written to user config.")
 		return result, nil
 	}

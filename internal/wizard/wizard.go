@@ -82,7 +82,9 @@ func Run(deps Deps, in io.Reader, out io.Writer, opts Options) (Summary, error) 
 	printPrerequisites(ctx, deps, out)
 
 	if !opts.SkipSkills {
-		offerSkillsInstall(ctx, deps, opts.Paths, s, out)
+		if err := offerSkillsInstall(ctx, deps, opts.Paths, s, out); err != nil {
+			return summary, err
+		}
 	}
 
 	uc, err := runUserConfigSection(deps, opts.Paths, s, out)
@@ -172,7 +174,11 @@ func toolLine(found bool, yes, no string) string {
 // calls Invoke-NervApplyModels then `install.ps1 -RefreshCache`.
 func runApplyAndRefreshSection(ctx context.Context, deps Deps, opts Options, s *session, out io.Writer) error {
 	fmt.Fprintln(out)
-	if !s.yesNo("Apply models to the plugin cache and refresh it now?", true) {
+	apply, err := s.yesNo("Apply models to the plugin cache and refresh it now?", true)
+	if err != nil {
+		return err
+	}
+	if !apply {
 		return nil
 	}
 

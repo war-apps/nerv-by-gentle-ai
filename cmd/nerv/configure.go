@@ -45,7 +45,6 @@ With --init-repo:
 Other flags:
   --json                    Print the result as JSON (ignored by --print, which always does)
   --config <path>           Override the user-scope nerv.yaml path
-  --home <dir>              Override the resolved home directory
 `
 
 // stringList is a repeatable string flag: each --flag value appends an
@@ -78,7 +77,6 @@ func runConfigure(args []string, stdout, stderr io.Writer, opts options) int {
 	installCommands := fs.Bool("install-commands", false, "")
 	jsonOut := fs.Bool("json", false, "")
 	configOverride := fs.String("config", "", "")
-	homeOverride := fs.String("home", "", "")
 	answersFile := fs.String("answers", "", "")
 	skipSkills := fs.Bool("skip-skills", false, "")
 	skipModels := fs.Bool("skip-models", false, "")
@@ -112,7 +110,7 @@ func runConfigure(args []string, stdout, stderr io.Writer, opts options) int {
 		return 2
 	}
 
-	home, err := configure.ResolveHome(*homeOverride)
+	home, err := configure.ResolveHome(opts.Home)
 	if err != nil {
 		fmt.Fprintf(stdout, "nerv: %v\n", err)
 		return 2
@@ -192,6 +190,9 @@ func runConfigureWizard(stdout io.Writer, deps configure.Deps, opts options, wiz
 	_, err := wizard.Run(deps, in, stdout, wizOpts)
 	if err != nil {
 		fmt.Fprintf(stdout, "nerv: %v\n", err)
+		if errors.Is(err, wizard.ErrInputClosed) {
+			return 1
+		}
 		var refusal *configure.RefusalError
 		if errors.As(err, &refusal) {
 			return 1

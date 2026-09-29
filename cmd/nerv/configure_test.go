@@ -20,6 +20,7 @@ func testOptions(home string) options {
 		Now:      func() time.Time { return time.Date(2026, 9, 29, 12, 0, 0, 0, time.UTC) },
 		LookPath: func(string) (string, error) { return "", os.ErrNotExist },
 		Stdin:    strings.NewReader(""),
+		Home:     home,
 	}
 }
 
@@ -39,7 +40,7 @@ func TestRunConfigure_NoModeFlag_NotATerminal_PrintsNoticeAndExits1(t *testing.T
 	var stdout, stderr bytes.Buffer
 	home := t.TempDir()
 
-	code := run([]string{"configure", "--home", home}, &stdout, &stderr, testOptions(home))
+	code := run([]string{"configure"}, &stdout, &stderr, testOptions(home))
 
 	if code != 1 {
 		t.Fatalf("exit code = %d, want 1", code)
@@ -58,10 +59,13 @@ func TestRunConfigure_NoModeFlag_Terminal_RunsWizard(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	home := t.TempDir()
 	opts := testOptions(home)
-	opts.Stdin = strings.NewReader("")
+	// Real blank lines (not an exhausted reader — see wizard.ErrInputClosed)
+	// for every user-config prompt, so every value keeps its current
+	// default and the wizard completes instead of aborting.
+	opts.Stdin = strings.NewReader(strings.Repeat("\n", 27))
 
 	code := run([]string{
-		"configure", "--home", home,
+		"configure",
 		"--skip-skills", "--skip-models", "--skip-repos", "--skip-commands", "--no-refresh",
 	}, &stdout, &stderr, opts)
 
@@ -96,7 +100,7 @@ func TestRunConfigure_Answers_DrivesWizard(t *testing.T) {
 
 	var stdout, stderr bytes.Buffer
 	code := run([]string{
-		"configure", "--home", home, "--answers", answersPath,
+		"configure", "--answers", answersPath,
 		"--skip-skills", "--skip-models", "--skip-repos", "--skip-commands", "--no-refresh",
 	}, &stdout, &stderr, testOptions(home))
 
@@ -113,8 +117,11 @@ func TestRunConfigure_Answers_DrivesWizard(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// --answers pointing at a missing file behaves like an empty answers file
-// (no error, every prompt keeps its current value).
+// --answers pointing at a missing file behaves like an empty answers file:
+// openAnswersFile still treats "file not found" as "no answers" rather
+// than an error, but an empty answers file is now genuine EOF at the
+// first prompt (P3.1.2), so the wizard aborts with exit 1 instead of
+// silently keeping every default.
 // ---------------------------------------------------------------------------
 
 func TestRunConfigure_Answers_MissingFileActsEmpty(t *testing.T) {
@@ -123,12 +130,15 @@ func TestRunConfigure_Answers_MissingFileActsEmpty(t *testing.T) {
 
 	var stdout, stderr bytes.Buffer
 	code := run([]string{
-		"configure", "--home", home, "--answers", filepath.Join(home, "nonexistent-answers.txt"),
+		"configure", "--answers", filepath.Join(home, "nonexistent-answers.txt"),
 		"--skip-skills", "--skip-models", "--skip-repos", "--skip-commands", "--no-refresh",
 	}, &stdout, &stderr, testOptions(home))
 
-	if code != 0 {
-		t.Fatalf("exit code = %d, want 0 (stderr=%q, stdout=%q)", code, stderr.String(), stdout.String())
+	if code != 1 {
+		t.Fatalf("exit code = %d, want 1 (stderr=%q, stdout=%q)", code, stderr.String(), stdout.String())
+	}
+	if !strings.Contains(stdout.String(), "input ended before the wizard finished; nothing was written") {
+		t.Errorf("expected the ErrInputClosed notice, got: %q", stdout.String())
 	}
 }
 
@@ -140,7 +150,7 @@ func TestRunConfigure_MultipleModes_UsageErrorExit2(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	home := t.TempDir()
 
-	code := run([]string{"configure", "--home", home, "--print", "--install-commands"}, &stdout, &stderr, testOptions(home))
+	code := run([]string{"configure", "--print", "--install-commands"}, &stdout, &stderr, testOptions(home))
 
 	if code != 2 {
 		t.Fatalf("exit code = %d, want 2", code)
@@ -158,7 +168,7 @@ func TestRunConfigure_Print_EmitsJSON(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	home := t.TempDir()
 
-	code := run([]string{"configure", "--home", home, "--print"}, &stdout, &stderr, testOptions(home))
+	code := run([]string{"configure", "--print"}, &stdout, &stderr, testOptions(home))
 
 	if code != 0 {
 		t.Fatalf("exit code = %d, want 0 (stderr=%q)", code, stderr.String())
@@ -188,7 +198,7 @@ func TestRunConfigure_Set_HappyPathThenNoop(t *testing.T) {
 	}
 
 	var stdout1, stderr1 bytes.Buffer
-	code := run([]string{"configure", "--home", home, "--set", "git.worktree=always", "--json"}, &stdout1, &stderr1, testOptions(home))
+	code := run([]string{"configure", "--set", "git.worktree=always", "--json"}, &stdout1, &stderr1, testOptions(home))
 	if code != 0 {
 		t.Fatalf("exit code = %d, want 0 (stderr=%q)", code, stderr1.String())
 	}
@@ -207,7 +217,7 @@ func TestRunConfigure_Set_HappyPathThenNoop(t *testing.T) {
 	}
 
 	var stdout2, stderr2 bytes.Buffer
-	code = run([]string{"configure", "--home", home, "--set", "git.worktree=always", "--json"}, &stdout2, &stderr2, testOptions(home))
+	code = run([]string{"configure", "--set", "git.worktree=always", "--json"}, &stdout2, &stderr2, testOptions(home))
 	if code != 0 {
 		t.Fatalf("exit code = %d, want 0 (stderr=%q)", code, stderr2.String())
 	}
@@ -234,7 +244,7 @@ func TestRunConfigure_Set_UnknownKeyExit1(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	home := t.TempDir()
 
-	code := run([]string{"configure", "--home", home, "--set", "bogus.key=1"}, &stdout, &stderr, testOptions(home))
+	code := run([]string{"configure", "--set", "bogus.key=1"}, &stdout, &stderr, testOptions(home))
 
 	if code != 1 {
 		t.Fatalf("exit code = %d, want 1 (stdout=%q)", code, stdout.String())
@@ -257,5 +267,24 @@ func TestRunConfigure_HomeResolutionFailure_Exit2(t *testing.T) {
 
 	if code != 2 {
 		t.Fatalf("exit code = %d, want 2 (stdout=%q)", code, stdout.String())
+	}
+}
+
+// ---------------------------------------------------------------------------
+// P3.1.3: "--home" is no longer a public flag on "nerv configure" — a fake
+// home never sandboxes the global commands it can still reach (claude
+// plugin, npx -g); the home directory comes only from options.Home
+// (tests) or env.HomeDir() (production). Passing it is now an unknown
+// flag, which fails the flag.ContinueOnError parse and exits 2.
+// ---------------------------------------------------------------------------
+
+func TestRunConfigure_HomeFlag_NoLongerAccepted(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	home := t.TempDir()
+
+	code := run([]string{"configure", "--home", home, "--print"}, &stdout, &stderr, testOptions(home))
+
+	if code != 2 {
+		t.Fatalf("exit code = %d, want 2 (a rejected unknown flag); stdout=%q stderr=%q", code, stdout.String(), stderr.String())
 	}
 }
