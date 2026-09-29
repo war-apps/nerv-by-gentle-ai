@@ -46,16 +46,27 @@
     computation and the "nothing to release" check.
 
 .PARAMETER PreRelease
-    Pre-release identifier (e.g. `rc`) appended to the computed bump as
-    `-<PreRelease>.<N>`, where N is one more than the highest existing
-    `vX.Y.Z-<PreRelease>.N` tag for that same base version. Ignored when
-    -Version is also given, since -Version is already a complete version
-    string.
+    Pre-release label (e.g. `alpha`, `beta`, `rc`; must match `^[a-z]+$`)
+    appended to the base version as `-<PreRelease>.<N>`, where N is one
+    more than the highest existing `v<base>-<PreRelease>.N` tag for that
+    same base version (other labels never interfere with the count).
+    Ignored when -Version is also given, since -Version is already a
+    complete version string. An invalid label exits 1 with a clear
+    message.
+
+.PARAMETER PreReleaseBase
+    Selects what `-PreRelease` bumps from: `next` (default) uses the
+    version computed from Conventional Commits since the last stable tag
+    (today's behavior, requires a releasable commit); `current` uses the
+    version already in plugin.json as-is and does not require a
+    releasable commit. Meaningless without -PreRelease (exits 1).
 
 .PARAMETER Json
     Print the result as one JSON object instead of human-readable text:
-    `{current, last_tag, bump, next, prerelease, commits, section,
-    applied}`, plus `written` when -Apply ran.
+    `{current, last_tag, bump, next, tag, base, prerelease, commits,
+    section, applied}`, plus `written` when -Apply ran. `tag` is
+    `"v" + next` (`null` when next is null); `base` is the base version
+    without any pre-release suffix.
 
 .EXAMPLE
     pwsh tools/release.ps1 -Preview
@@ -81,6 +92,9 @@ param(
     [string]$Version,
 
     [string]$PreRelease,
+
+    [ValidateSet('next', 'current')]
+    [string]$PreReleaseBase = 'next',
 
     [switch]$Json
 )
@@ -314,25 +328,74 @@ function Get-NervBumpKind {
     return $best
 }
 
+function Get-NervNextPreReleaseNumber {
+    <#
+    .SYNOPSIS
+        1 + the highest existing `v<Base>-<Label>.N` tag in $ExistingTags
+        for that exact base version and label (other labels, or other
+        base versions, never interfere).
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][string]$Base,
+        [Parameter(Mandatory)][string]$Label,
+        [string[]]$ExistingTags = @()
+    )
+
+    $maxN = 0
+    $escapedBase = [regex]::Escape($Base)
+    $escapedLabel = [regex]::Escape($Label)
+    foreach ($t in @($ExistingTags | Where-Object { $_ })) {
+        if ($t -match "^v$escapedBase-$escapedLabel\.(\d+)$") {
+            $n = [int]$Matches[1]
+            if ($n -gt $maxN) { $maxN = $n }
+        }
+    }
+    return $maxN + 1
+}
+
 function Get-NervNextVersion {
     <#
     .SYNOPSIS
         Computes the next semver string from $Current + $Bump. Returns
-        $null when $Bump is 'none'.
+        $null when $Bump is 'none' (unless -PreReleaseBase 'current' is
+        given, which never requires a releasable bump).
 
     .PARAMETER PreRelease
-        When given (e.g. `rc`), the result is `X.Y.Z-<PreRelease>.N`,
-        where N is one more than the highest existing
-        `vX.Y.Z-<PreRelease>.N` tag in -ExistingTags for that same base
-        version (or 1 when none exists).
+        Pre-release label (e.g. `rc`; must match `^[a-z]+$`, or this
+        throws). When given, the result is `<base>-<PreRelease>.N`, where
+        N is one more than the highest existing `v<base>-<PreRelease>.N`
+        tag in -ExistingTags for that same base version (or 1 when none
+        exists). Other labels never interfere with the count.
+
+    .PARAMETER PreReleaseBase
+        Only meaningful together with -PreRelease. `next` (default): the
+        base is $Current bumped by $Bump (today's behavior). `current`:
+        the base is $Current as-is, ignoring $Bump entirely -- so this
+        never requires a releasable commit.
     #>
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)][string]$Current,
         [Parameter(Mandatory)][ValidateSet('major', 'minor', 'patch', 'none')][string]$Bump,
         [string]$PreRelease,
+        [ValidateSet('next', 'current')][string]$PreReleaseBase = 'next',
         [string[]]$ExistingTags = @()
     )
+
+    if ($PreRelease -and $PreRelease -cnotmatch '^[a-z]+$') {
+        throw "Invalid -PreRelease label '$PreRelease'; expected lowercase letters only (e.g. 'alpha', 'beta', 'rc')."
+    }
+
+    if ($PreRelease -and $PreReleaseBase -eq 'current') {
+        $currentMatch = [regex]::Match($Current, '^(\d+)\.(\d+)\.(\d+)')
+        if (-not $currentMatch.Success) {
+            throw "Current version '$Current' is not valid semver."
+        }
+        $currentBase = "$($currentMatch.Groups[1].Value).$($currentMatch.Groups[2].Value).$($currentMatch.Groups[3].Value)"
+        $n = Get-NervNextPreReleaseNumber -Base $currentBase -Label $PreRelease -ExistingTags $ExistingTags
+        return "$currentBase-$PreRelease.$n"
+    }
 
     if ($Bump -eq 'none') {
         return $null
@@ -356,16 +419,8 @@ function Get-NervNextVersion {
     $bumpedBase = "$major.$minor.$patch"
 
     if ($PreRelease) {
-        $maxN = 0
-        $escapedBase = [regex]::Escape($bumpedBase)
-        $escapedPre = [regex]::Escape($PreRelease)
-        foreach ($t in @($ExistingTags | Where-Object { $_ })) {
-            if ($t -match "^v$escapedBase-$escapedPre\.(\d+)$") {
-                $n = [int]$Matches[1]
-                if ($n -gt $maxN) { $maxN = $n }
-            }
-        }
-        return "$bumpedBase-$PreRelease.$($maxN + 1)"
+        $n = Get-NervNextPreReleaseNumber -Base $bumpedBase -Label $PreRelease -ExistingTags $ExistingTags
+        return "$bumpedBase-$PreRelease.$n"
     }
 
     return $bumpedBase
@@ -534,6 +589,21 @@ if ($MyInvocation.InvocationName -ne '.') {
     $ErrorActionPreference = "Stop"
 
     try {
+        if ($PreReleaseBase -ne 'next' -and -not $PreRelease) {
+            Write-Host "-PreReleaseBase requires -PreRelease; it has no meaning on its own."
+            exit 1
+        }
+
+        if ($PreRelease -and $PreRelease -cnotmatch '^[a-z]+$') {
+            Write-Host "Invalid -PreRelease label '$PreRelease'; expected lowercase letters only (e.g. 'alpha', 'beta', 'rc')."
+            exit 1
+        }
+
+        if ($PreRelease -and $Apply) {
+            Write-Host "-Apply cannot be combined with -PreRelease: pre-releases are tag-only and never modify plugin.json or CHANGELOG.md."
+            exit 1
+        }
+
         if (-not (Test-Path -LiteralPath $RepoPath)) {
             Write-Host "Repository path not found: '$RepoPath'."
             exit 2
@@ -582,7 +652,7 @@ if ($MyInvocation.InvocationName -ne '.') {
             if ($LASTEXITCODE -ne 0) {
                 throw "git tag failed in '$repoPathResolved' (exit $LASTEXITCODE)."
             }
-            $nextVersion = Get-NervNextVersion -Current $currentVersion -Bump $bumpKind -PreRelease $PreRelease -ExistingTags @($existingTags)
+            $nextVersion = Get-NervNextVersion -Current $currentVersion -Bump $bumpKind -PreRelease $PreRelease -PreReleaseBase $PreReleaseBase -ExistingTags @($existingTags)
         }
         else {
             $nextVersion = Get-NervNextVersion -Current $currentVersion -Bump $bumpKind
@@ -595,11 +665,16 @@ if ($MyInvocation.InvocationName -ne '.') {
                 [ordered]@{ sha = $_.Sha; short_sha = $_.ShortSha; subject = $_.Subject; body = $_.Body }
             })
 
+        $tagValue = if ($nextVersion) { "v$nextVersion" } else { $null }
+        $baseVersion = if ($nextVersion) { ([regex]::Match($nextVersion, '^(\d+\.\d+\.\d+)')).Groups[1].Value } else { $null }
+
         $result = [ordered]@{
             current    = $currentVersion
             last_tag   = $lastTag
             bump       = $bumpKind
             next       = $nextVersion
+            tag        = $tagValue
+            base       = $baseVersion
             prerelease = if ($PreRelease) { $PreRelease } else { $null }
             commits    = $commitsPayload
             section    = $section
@@ -632,6 +707,7 @@ if ($MyInvocation.InvocationName -ne '.') {
             Write-Host "Last tag        : $(if ($lastTag) { $lastTag } else { '(none)' })"
             Write-Host "Bump            : $bumpKind"
             Write-Host "Next version    : $nextVersion"
+            Write-Host "Tag             : $(if ($tagValue) { $tagValue } else { '(none)' })"
             if ($PreRelease) { Write-Host "Pre-release     : $PreRelease" }
             Write-Host ""
             Write-Host $section

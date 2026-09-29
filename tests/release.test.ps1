@@ -602,6 +602,187 @@ finally {
     Remove-FixtureRepo $repoH10
 }
 
+# ---------------------------------------------------------------------------
+# Case group D2: Get-NervNextVersion -- PreReleaseBase and label validation
+# ---------------------------------------------------------------------------
+Report "nextversion-prerelease-base-default-is-next" (
+    (Get-NervNextVersion -Current '0.2.0' -Bump 'minor' -PreRelease 'rc' -ExistingTags @()) -eq '0.3.0-rc.1'
+)
+Report "nextversion-prerelease-base-current-uses-current-as-base" (
+    (Get-NervNextVersion -Current '0.2.0' -Bump 'none' -PreRelease 'rc' -PreReleaseBase 'current' -ExistingTags @('v0.1.0')) -eq '0.2.0-rc.1'
+)
+Report "nextversion-prerelease-base-current-numbers-from-existing-rc-tag" (
+    (Get-NervNextVersion -Current '0.2.0' -Bump 'none' -PreRelease 'rc' -PreReleaseBase 'current' -ExistingTags @('v0.1.0', 'v0.2.0-rc.1')) -eq '0.2.0-rc.2'
+)
+Report "nextversion-prerelease-base-current-other-labels-do-not-interfere" (
+    (Get-NervNextVersion -Current '0.2.0' -Bump 'none' -PreRelease 'rc' -PreReleaseBase 'current' -ExistingTags @('v0.2.0-alpha.3')) -eq '0.2.0-rc.1'
+)
+Report "nextversion-prerelease-base-next-other-labels-do-not-interfere" (
+    (Get-NervNextVersion -Current '0.1.0' -Bump 'minor' -PreRelease 'rc' -ExistingTags @('v0.2.0-alpha.3')) -eq '0.2.0-rc.1'
+)
+
+$labelThrew = $false
+try { Get-NervNextVersion -Current '1.0.0' -Bump 'minor' -PreRelease 'RC' -ExistingTags @() | Out-Null }
+catch { $labelThrew = $true }
+Report "nextversion-invalid-label-uppercase-throws" $labelThrew
+
+$labelThrew2 = $false
+try { Get-NervNextVersion -Current '1.0.0' -Bump 'minor' -PreRelease 'rc1' -ExistingTags @() | Out-Null }
+catch { $labelThrew2 = $true }
+Report "nextversion-invalid-label-digits-throws" $labelThrew2
+
+$labelThrew3 = $false
+try { Get-NervNextVersion -Current '1.0.0' -Bump 'minor' -PreRelease 'release-candidate' -ExistingTags @() | Out-Null }
+catch { $labelThrew3 = $true }
+Report "nextversion-invalid-label-hyphen-throws" $labelThrew3
+
+# ---------------------------------------------------------------------------
+# Case group I: -PreRelease / -PreReleaseBase CLI behaviour and JSON tag/base
+# ---------------------------------------------------------------------------
+
+# -- I1: JSON gains tag and base fields on a plain (non-prerelease) run --
+$repoI1 = New-ReleaseFixtureRepo -Version '0.1.0'
+try {
+    Add-ReleaseFixtureCommit -RepoPath $repoI1 -Message "feat: add cool feature" | Out-Null
+
+    $i1Output = & $pwshExe -NoProfile -File $scriptPath -RepoPath $repoI1 -Preview -Json
+    $i1Parsed = $null
+    try { $i1Parsed = ($i1Output -join "`n") | ConvertFrom-Json } catch { $i1Parsed = $null }
+
+    Report "cli-json-has-tag-field" ($null -ne $i1Parsed -and $i1Parsed.tag -eq 'v0.2.0')
+    Report "cli-json-has-base-field" ($null -ne $i1Parsed -and $i1Parsed.base -eq '0.2.0')
+}
+finally {
+    Remove-FixtureRepo $repoI1
+}
+
+# -- I2: JSON tag/base on a -PreRelease run (base next) --
+$repoI2 = New-ReleaseFixtureRepo -Version '0.1.0'
+try {
+    Add-ReleaseFixtureCommit -RepoPath $repoI2 -Message "feat: prerelease-worthy feature" | Out-Null
+
+    $i2Output = & $pwshExe -NoProfile -File $scriptPath -RepoPath $repoI2 -PreRelease 'alpha' -Json
+    $i2Parsed = $null
+    try { $i2Parsed = ($i2Output -join "`n") | ConvertFrom-Json } catch { $i2Parsed = $null }
+
+    Report "cli-prerelease-next-json-tag" ($null -ne $i2Parsed -and $i2Parsed.tag -eq 'v0.2.0-alpha.1')
+    Report "cli-prerelease-next-json-base" ($null -ne $i2Parsed -and $i2Parsed.base -eq '0.2.0')
+}
+finally {
+    Remove-FixtureRepo $repoI2
+}
+
+# -- I3: nothing-to-release still reports tag=null, base=null --
+$repoI3 = New-ReleaseFixtureRepo -Version '0.1.0'
+try {
+    Add-ReleaseFixtureCommit -RepoPath $repoI3 -Message "docs: tweak docs only" | Out-Null
+
+    $i3Output = & $pwshExe -NoProfile -File $scriptPath -RepoPath $repoI3 -Json
+    $i3Parsed = $null
+    try { $i3Parsed = ($i3Output -join "`n") | ConvertFrom-Json } catch { $i3Parsed = $null }
+
+    Report "cli-nothing-to-release-json-tag-null" ($null -ne $i3Parsed -and $null -eq $i3Parsed.tag)
+    Report "cli-nothing-to-release-json-base-null" ($null -ne $i3Parsed -and $null -eq $i3Parsed.base)
+}
+finally {
+    Remove-FixtureRepo $repoI3
+}
+
+# -- I4: invalid -PreRelease label exits 1 (CLI) --
+$repoI4 = New-ReleaseFixtureRepo -Version '0.1.0'
+try {
+    Add-ReleaseFixtureCommit -RepoPath $repoI4 -Message "feat: add cool feature" | Out-Null
+
+    $i4Output = & $pwshExe -NoProfile -File $scriptPath -RepoPath $repoI4 -PreRelease 'RC' 2>&1
+    Report "cli-prerelease-invalid-label-exit-one" ($LASTEXITCODE -eq 1) "exit $LASTEXITCODE"
+    Report "cli-prerelease-invalid-label-message" (($i4Output -join "`n") -match '(?i)invalid')
+}
+finally {
+    Remove-FixtureRepo $repoI4
+}
+
+# -- I5: -PreReleaseBase without -PreRelease exits 1 (meaningless) --
+$repoI5 = New-ReleaseFixtureRepo -Version '0.1.0'
+try {
+    & $pwshExe -NoProfile -File $scriptPath -RepoPath $repoI5 -PreReleaseBase 'current' 2>&1 | Out-Null
+    Report "cli-prereleasebase-without-prerelease-exit-one" ($LASTEXITCODE -eq 1) "exit $LASTEXITCODE"
+}
+finally {
+    Remove-FixtureRepo $repoI5
+}
+
+# -- I6: -Apply combined with -PreRelease exits 1, writes nothing (tag-only) --
+$repoI6 = New-ReleaseFixtureRepo -Version '0.1.0'
+try {
+    Add-ReleaseFixtureCommit -RepoPath $repoI6 -Message "feat: add cool feature" | Out-Null
+    $pluginJsonPathI6 = Join-Path $repoI6 "plugin/.claude-plugin/plugin.json"
+    $beforeI6 = [System.IO.File]::ReadAllText($pluginJsonPathI6)
+
+    $i6Output = & $pwshExe -NoProfile -File $scriptPath -RepoPath $repoI6 -PreRelease 'alpha' -Apply 2>&1
+    Report "cli-apply-with-prerelease-exit-one" ($LASTEXITCODE -eq 1) "exit $LASTEXITCODE"
+    Report "cli-apply-with-prerelease-message" (($i6Output -join "`n") -match '(?i)tag-only')
+
+    $afterI6 = [System.IO.File]::ReadAllText($pluginJsonPathI6)
+    Report "cli-apply-with-prerelease-plugin-json-unchanged" ($beforeI6 -ceq $afterI6)
+    Report "cli-apply-with-prerelease-no-changelog" (-not (Test-Path -LiteralPath (Join-Path $repoI6 "CHANGELOG.md")))
+}
+finally {
+    Remove-FixtureRepo $repoI6
+}
+
+# -- I7: -PreReleaseBase current end to end, matching the fixture in the
+#    feature document: plugin.json at 0.2.0, tags v0.1.0 and v0.2.0-rc.1 --
+$repoI7 = New-ReleaseFixtureRepo -Version '0.2.0'
+try {
+    Add-ReleaseFixtureTag -RepoPath $repoI7 -Tag 'v0.1.0'
+    Add-ReleaseFixtureTag -RepoPath $repoI7 -Tag 'v0.2.0-rc.1'
+
+    $i7Output = & $pwshExe -NoProfile -File $scriptPath -RepoPath $repoI7 -PreRelease 'rc' -PreReleaseBase 'current' -Json
+    $i7Exit = $LASTEXITCODE
+    $i7Parsed = $null
+    try { $i7Parsed = ($i7Output -join "`n") | ConvertFrom-Json } catch { $i7Parsed = $null }
+
+    Report "cli-prereleasebase-current-exit-zero" ($i7Exit -eq 0) "exit $i7Exit"
+    Report "cli-prereleasebase-current-next" ($null -ne $i7Parsed -and $i7Parsed.next -eq '0.2.0-rc.2')
+    Report "cli-prereleasebase-current-tag" ($null -ne $i7Parsed -and $i7Parsed.tag -eq 'v0.2.0-rc.2')
+    Report "cli-prereleasebase-current-base" ($null -ne $i7Parsed -and $i7Parsed.base -eq '0.2.0')
+}
+finally {
+    Remove-FixtureRepo $repoI7
+}
+
+# -- I8: -PreReleaseBase current with no rc tag yet -> rc.1, and it does not
+#    require a releasable commit (no feat/fix since v0.1.0) --
+$repoI8 = New-ReleaseFixtureRepo -Version '0.2.0'
+try {
+    Add-ReleaseFixtureTag -RepoPath $repoI8 -Tag 'v0.1.0'
+    Add-ReleaseFixtureCommit -RepoPath $repoI8 -Message "docs: only docs since last stable tag" | Out-Null
+
+    $i8Output = & $pwshExe -NoProfile -File $scriptPath -RepoPath $repoI8 -PreRelease 'rc' -PreReleaseBase 'current' -Json
+    $i8Exit = $LASTEXITCODE
+    $i8Parsed = $null
+    try { $i8Parsed = ($i8Output -join "`n") | ConvertFrom-Json } catch { $i8Parsed = $null }
+
+    Report "cli-prereleasebase-current-no-releasable-commit-required-exit-zero" ($i8Exit -eq 0) "exit $i8Exit"
+    Report "cli-prereleasebase-current-first-rc" ($null -ne $i8Parsed -and $i8Parsed.next -eq '0.2.0-rc.1')
+}
+finally {
+    Remove-FixtureRepo $repoI8
+}
+
+# -- I9: text output prints the tag --
+$repoI9 = New-ReleaseFixtureRepo -Version '0.1.0'
+try {
+    Add-ReleaseFixtureCommit -RepoPath $repoI9 -Message "feat: add cool feature" | Out-Null
+
+    $i9Output = & $pwshExe -NoProfile -File $scriptPath -RepoPath $repoI9 -Preview 2>&1
+    $i9Text = ($i9Output -join "`n")
+    Report "cli-text-output-prints-tag" ($i9Text -match [regex]::Escape('v0.2.0'))
+}
+finally {
+    Remove-FixtureRepo $repoI9
+}
+
 Write-Host ""
 Write-Host "Results: $script:passCount passed, $script:failCount failed"
 if ($script:failCount -ne 0) { exit 1 }
