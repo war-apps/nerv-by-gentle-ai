@@ -4,8 +4,8 @@ on:
   push:
     branches:
       - main
-    tags:
-      - "v*-rc.*"
+      - develop
+      - "release/**"
 
 permissions:
   contents: write
@@ -16,6 +16,197 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  alpha:
+    name: Alpha pre-release (develop)
+    if: github.ref == 'refs/heads/develop'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: configure.test.ps1
+        shell: pwsh
+        run: pwsh -NoProfile -File tests/configure.test.ps1
+
+      - name: configure-models.test.ps1
+        shell: pwsh
+        run: pwsh -NoProfile -File tests/configure-models.test.ps1
+
+      - name: install-apply-models.test.ps1
+        shell: pwsh
+        run: pwsh -NoProfile -File tests/install-apply-models.test.ps1
+
+      - name: install-skills.test.ps1
+        shell: pwsh
+        run: pwsh -NoProfile -File tests/install-skills.test.ps1
+
+      - name: release.test.ps1
+        shell: pwsh
+        run: pwsh -NoProfile -File tests/release.test.ps1
+
+      - name: release-guard.test.ps1
+        shell: pwsh
+        run: pwsh -NoProfile -File tests/release-guard.test.ps1
+
+      - name: hook-session-start.test.sh
+        shell: bash
+        run: bash tests/hook-session-start.test.sh
+
+      - name: hook-engram-project.test.sh
+        shell: bash
+        run: bash tests/hook-engram-project.test.sh
+
+      - name: Compute alpha pre-release
+        id: prerelease
+        shell: pwsh
+        run: |
+          $output = pwsh -NoProfile -File tools/release.ps1 -Preview -PreRelease alpha -Json
+          $exitCode = $LASTEXITCODE
+          $output | Write-Host
+
+          $parsed = $null
+          try { $parsed = ($output -join "`n") | ConvertFrom-Json } catch { $parsed = $null }
+
+          if ($exitCode -ne 0) {
+            if ($parsed -and $parsed.bump -eq 'none') {
+              Write-Host "nothing to pre-release"
+              "skip=true" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+              exit 0
+            }
+            Write-Host "tools/release.ps1 failed (exit $exitCode)."
+            exit $exitCode
+          }
+
+          "skip=false" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "tag=$($parsed.tag)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "last_tag=$($parsed.last_tag)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+
+      - name: Configure git identity
+        if: steps.prerelease.outputs.skip != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Create and push pre-release tag
+        if: steps.prerelease.outputs.skip != 'true'
+        shell: bash
+        env:
+          TAG: ${{ steps.prerelease.outputs.tag }}
+        run: |
+          set -euo pipefail
+          git tag -a "$TAG" -m "Pre-release $TAG"
+          git push origin "$TAG"
+
+      - name: Create GitHub pre-release
+        if: steps.prerelease.outputs.skip != 'true'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.prerelease.outputs.tag }}
+          LAST_TAG: ${{ steps.prerelease.outputs.last_tag }}
+        run: |
+          set -euo pipefail
+          if [ -n "$LAST_TAG" ]; then
+            gh release create "$TAG" --title "$TAG" --prerelease --generate-notes --notes-start-tag "$LAST_TAG"
+          else
+            gh release create "$TAG" --title "$TAG" --prerelease --generate-notes
+          fi
+
+  rc:
+    name: Release candidate (release/*)
+    if: startsWith(github.ref, 'refs/heads/release/')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: configure.test.ps1
+        shell: pwsh
+        run: pwsh -NoProfile -File tests/configure.test.ps1
+
+      - name: configure-models.test.ps1
+        shell: pwsh
+        run: pwsh -NoProfile -File tests/configure-models.test.ps1
+
+      - name: install-apply-models.test.ps1
+        shell: pwsh
+        run: pwsh -NoProfile -File tests/install-apply-models.test.ps1
+
+      - name: install-skills.test.ps1
+        shell: pwsh
+        run: pwsh -NoProfile -File tests/install-skills.test.ps1
+
+      - name: release.test.ps1
+        shell: pwsh
+        run: pwsh -NoProfile -File tests/release.test.ps1
+
+      - name: release-guard.test.ps1
+        shell: pwsh
+        run: pwsh -NoProfile -File tests/release-guard.test.ps1
+
+      - name: hook-session-start.test.sh
+        shell: bash
+        run: bash tests/hook-session-start.test.sh
+
+      - name: hook-engram-project.test.sh
+        shell: bash
+        run: bash tests/hook-engram-project.test.sh
+
+      - name: Compute rc pre-release
+        id: prerelease
+        shell: pwsh
+        run: |
+          $output = pwsh -NoProfile -File tools/release.ps1 -Preview -PreRelease rc -PreReleaseBase current -Json
+          $exitCode = $LASTEXITCODE
+          $output | Write-Host
+
+          if ($exitCode -ne 0) {
+            Write-Host "tools/release.ps1 failed (exit $exitCode)."
+            exit $exitCode
+          }
+
+          $parsed = ($output -join "`n") | ConvertFrom-Json
+          "tag=$($parsed.tag)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "last_tag=$($parsed.last_tag)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+
+      - name: Configure git identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Create and push pre-release tag
+        shell: bash
+        env:
+          TAG: ${{ steps.prerelease.outputs.tag }}
+        run: |
+          set -euo pipefail
+          git tag -a "$TAG" -m "Pre-release $TAG"
+          git push origin "$TAG"
+
+      - name: Create GitHub pre-release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.prerelease.outputs.tag }}
+          LAST_TAG: ${{ steps.prerelease.outputs.last_tag }}
+        run: |
+          set -euo pipefail
+          if [ -n "$LAST_TAG" ]; then
+            gh release create "$TAG" --title "$TAG" --prerelease --generate-notes --notes-start-tag "$LAST_TAG"
+          else
+            gh release create "$TAG" --title "$TAG" --prerelease --generate-notes
+          fi
+
   stable:
     name: Stable release (main)
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
@@ -125,51 +316,3 @@ jobs:
               --title "chore: back-merge main into develop after ${TAG}" \
               --body "Back-merges the release commit and tag \`${TAG}\` from \`main\` into \`develop\`, per Gitflow."
           fi
-
-  prerelease:
-    name: Pre-release (rc tag)
-    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && contains(github.ref, '-rc.')
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
-
-      - name: configure.test.ps1
-        shell: pwsh
-        run: pwsh -NoProfile -File tests/configure.test.ps1
-
-      - name: configure-models.test.ps1
-        shell: pwsh
-        run: pwsh -NoProfile -File tests/configure-models.test.ps1
-
-      - name: install-apply-models.test.ps1
-        shell: pwsh
-        run: pwsh -NoProfile -File tests/install-apply-models.test.ps1
-
-      - name: install-skills.test.ps1
-        shell: pwsh
-        run: pwsh -NoProfile -File tests/install-skills.test.ps1
-
-      - name: release.test.ps1
-        shell: pwsh
-        run: pwsh -NoProfile -File tests/release.test.ps1
-
-      - name: release-guard.test.ps1
-        shell: pwsh
-        run: pwsh -NoProfile -File tests/release-guard.test.ps1
-
-      - name: hook-session-start.test.sh
-        shell: bash
-        run: bash tests/hook-session-start.test.sh
-
-      - name: hook-engram-project.test.sh
-        shell: bash
-        run: bash tests/hook-engram-project.test.sh
-
-      - name: Create GitHub pre-release
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --prerelease --generate-notes
