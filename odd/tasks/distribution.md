@@ -93,7 +93,7 @@ Engram mirror: topic `odd/distribution/tasks` (project `nerv`).
   stable>]`. `.github/workflows/ci.yml`: remove `push: develop`. Route: writer (writer trigger:
   4 non-trivial files). Checks: release suite green, `actionlint` clean, the six other `.ps1`
   suites unchanged.
-- [ ] T2 `get-nerv.sh` + `tests/get-nerv.test.sh` + the `install.ps1` portability fix.
+- [x] T2 DONE 2026-09-28 (writer on sonnet; parent spot check re-ran get-nerv 20/20 and install-apply-models 28/28, shellcheck clean, read main/delegation and confirmed in install.ps1 that registration, -RefreshCache, -Skills and -Configure compose in that order). Commit `b673c22`. RED 0/20 then GREEN 20/20; install fix RED 26/2 then GREEN 28/28. Bugs caught: fetching a tag leaves no local tag ref (explicit refs/tags refspec now); /dev/tty unusable in the sandbox, so `NERV_TTY_OVERRIDE`/`NERV_TTY_DEVICE` seams exist for tests. Accepted deviation: the settings-path test compares against Join-Path output instead of asserting "no backslash" because Windows normalizes separators. `get-nerv.sh` + `tests/get-nerv.test.sh` + the `install.ps1` portability fix.
   Bash (`#!/usr/bin/env bash`, `set -euo pipefail`), POSIX tools only plus `curl` or `wget`
   (whichever exists) for the API call, `git`, `pwsh`. Behaviour per Scope. Tests use a temporary
   `PATH` with stub executables (`git` is real; `pwsh`, `claude`, `curl` are stubs that record
@@ -138,9 +138,10 @@ Engram mirror: topic `odd/distribution/tasks` (project `nerv`).
 
 ## Progress log
 
+- 2026-09-28: T2 complete (`b673c22`), shell installer and install.ps1 portability; T3 (PowerShell installer) next.
 - 2026-09-28: T1 complete (`83689b1`), channels in release.ps1 and release.yml; T2 (shell installer) next.
 - 2026-09-28: feature document created; branch `feature/distribution` from `develop` (`aaa3daf`).
 
 ## Next step
 
-T2 (writer): `get-nerv.sh`, its suite, and the `install.ps1` SettingsPath fix, RED first.
+T3 (writer): `get-nerv.ps1` and its suite, RED first; then T4 docs.
