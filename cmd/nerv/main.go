@@ -1,5 +1,5 @@
 // Command nerv is the NERV Gentle-AI CLI: it materializes the embedded
-// plugin tree and reports version information.
+// plugin tree, configures NERV, and reports version information.
 package main
 
 import (
@@ -8,8 +8,10 @@ import (
 	"io"
 	"io/fs"
 	"os"
+	"time"
 
 	nerv "github.com/war-apps/nerv-gentle-ai"
+	"github.com/war-apps/nerv-gentle-ai/internal/env"
 	"github.com/war-apps/nerv-gentle-ai/internal/version"
 )
 
@@ -17,16 +19,38 @@ const usage = `Usage: nerv <command> [flags]
 
 Commands:
   version [--json]   Print the binary and plugin versions
+  configure [flags]  Configure NERV (non-interactive; see "nerv configure --help")
 `
 
+// options bundles nerv's external effects (the embedded plugin tree, the
+// process-launching/PATH-lookup seam, and the clock) so run can be
+// exercised end to end against fakes: main fills the real ones, tests fill
+// scripted ones.
+type options struct {
+	PluginFS fs.FS
+	Runner   env.Runner
+	Now      func() time.Time
+	LookPath func(string) (string, error)
+}
+
+func defaultOptions() options {
+	return options{
+		PluginFS: pluginFS(),
+		Runner:   env.ExecRunner{},
+		Now:      time.Now,
+		LookPath: env.LookPath,
+	}
+}
+
 func main() {
-	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
+	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr, defaultOptions()))
 }
 
 // run dispatches the given command-line arguments and returns the process
 // exit code. It never touches package-level state so it can be exercised
-// directly from tests.
-func run(args []string, stdout, stderr io.Writer) int {
+// directly from tests, with opts carrying every external effect a
+// subcommand might need.
+func run(args []string, stdout, stderr io.Writer, opts options) int {
 	if len(args) == 0 {
 		fmt.Fprint(stdout, usage)
 		return 0
@@ -34,14 +58,16 @@ func run(args []string, stdout, stderr io.Writer) int {
 
 	switch args[0] {
 	case "version":
-		return runVersion(args[1:], stdout, stderr)
+		return runVersion(args[1:], stdout, stderr, opts)
+	case "configure":
+		return runConfigure(args[1:], stdout, stderr, opts)
 	default:
 		fmt.Fprint(stderr, usage)
 		return 2
 	}
 }
 
-func runVersion(args []string, stdout, stderr io.Writer) int {
+func runVersion(args []string, stdout, stderr io.Writer, opts options) int {
 	jsonOutput := false
 	for _, arg := range args {
 		if arg == "--json" {
@@ -52,7 +78,7 @@ func runVersion(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 
-	pluginVersion, err := version.PluginVersion(pluginFS())
+	pluginVersion, err := version.PluginVersion(opts.PluginFS)
 	if err != nil {
 		fmt.Fprintf(stderr, "nerv: %v\n", err)
 		return 2
