@@ -249,6 +249,59 @@ else {
 }
 
 # ---------------------------------------------------------------------------
+# SettingsPath default: resolves under Get-NervHomeDir (preferring
+# $env:HOME over $env:USERPROFILE — the actual portability bug, since
+# USERPROFILE is unset on Linux/macOS) built with the literal child path
+# ".claude/settings.json" (forward slash in source, as required), joined
+# through PowerShell's own Join-Path — which normalizes to the platform's
+# native separator, so the expected value below is computed the same way
+# rather than hardcoding a slash direction. install.ps1 is invoked as a
+# child process (not dot-sourced) because the lazy default is computed in
+# the main body, which a dot-source skips; the missing-settings.json throw
+# still fires before any other side effect, so it doubles as a safe
+# assertion probe. The child is wrapped in a tiny try/catch probe script
+# that prints only $_.Exception.Message via Write-Output, instead of
+# letting the exception reach PowerShell 7's colored terminating-error
+# view — which echoes the unexpanded source line and word-wraps long
+# messages, both of which make plain substring/regex parsing unreliable.
+# ---------------------------------------------------------------------------
+$originalHomeEnv = $env:HOME
+$originalUserProfileEnv = $env:USERPROFILE
+$settingsHomeDir = Join-Path ([System.IO.Path]::GetTempPath()) ("nerv-settingspath-test-" + [Guid]::NewGuid().ToString("N"))
+New-Item -ItemType Directory -Path $settingsHomeDir -Force | Out-Null
+$settingsPathProbeScript = Join-Path $tempRoot "settings-path-probe.ps1"
+@'
+param([string]$InstallerPath, [string]$RepoPath)
+try {
+    & $InstallerPath -RepoPath $RepoPath
+}
+catch {
+    Write-Output $_.Exception.Message
+    exit 1
+}
+'@ | Set-Content -LiteralPath $settingsPathProbeScript -Encoding UTF8
+try {
+    $env:HOME = $settingsHomeDir
+    Remove-Item Env:\USERPROFILE -ErrorAction SilentlyContinue
+
+    $settingsPathOutput = & pwsh -NoProfile -File $settingsPathProbeScript -InstallerPath $installerPath -RepoPath $repoRoot 2>&1
+    $settingsPathExit = $LASTEXITCODE
+    $settingsPathText = (($settingsPathOutput | ForEach-Object { [string]$_ }) -join "`n").Trim()
+
+    $settingsPathMatch = [regex]::Match($settingsPathText, 'not found at: (?<path>.+)$')
+    $resolvedSettingsPath = if ($settingsPathMatch.Success) { $settingsPathMatch.Groups['path'].Value.Trim() } else { "" }
+    $expectedSettingsPath = Join-Path $settingsHomeDir ".claude/settings.json"
+
+    Report "settings-path-default-resolves-under-home" ($settingsPathExit -ne 0 -and $resolvedSettingsPath -eq $expectedSettingsPath) "resolved=[$resolvedSettingsPath] expected=[$expectedSettingsPath]"
+    Report "settings-path-default-prefers-home-over-userprofile" ($resolvedSettingsPath.StartsWith($settingsHomeDir)) "resolved=[$resolvedSettingsPath] home=[$settingsHomeDir]"
+}
+finally {
+    if ($null -ne $originalHomeEnv) { $env:HOME = $originalHomeEnv } else { Remove-Item Env:\HOME -ErrorAction SilentlyContinue }
+    if ($null -ne $originalUserProfileEnv) { $env:USERPROFILE = $originalUserProfileEnv } else { Remove-Item Env:\USERPROFILE -ErrorAction SilentlyContinue }
+    Remove-Item -LiteralPath $settingsHomeDir -Recurse -Force -ErrorAction SilentlyContinue
+}
+
+# ---------------------------------------------------------------------------
 # Cleanup
 # ---------------------------------------------------------------------------
 Remove-Item -LiteralPath $tempRoot -Recurse -Force -ErrorAction SilentlyContinue

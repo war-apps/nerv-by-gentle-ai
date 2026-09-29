@@ -13,7 +13,11 @@
 
 .PARAMETER SettingsPath
     Path to Claude Code's settings.json. Defaults to
-    "$env:USERPROFILE\.claude\settings.json".
+    "<Get-NervHomeDir>/.claude/settings.json" ($env:HOME when set, else
+    $env:USERPROFILE), using forward slashes so the default resolves
+    correctly on Linux and macOS as well as Windows. Get-NervHomeDir is
+    defined later in this script, so the default is computed lazily in the
+    main body rather than as this parameter's default value.
 
 .PARAMETER RepoPath
     Path to the NERV repo root (the directory containing .claude-plugin\
@@ -102,7 +106,7 @@
 
 [CmdletBinding()]
 param(
-    [string]$SettingsPath = (Join-Path $env:USERPROFILE ".claude\settings.json"),
+    [string]$SettingsPath,
 
     [string]$RepoPath = $(
         # Normal case: running in place at <repo>/plugin/tools/install.ps1 —
@@ -631,6 +635,14 @@ else {
 }
 
 $ErrorActionPreference = "Stop"
+
+if (-not $SettingsPath) {
+    # Lazy default: Get-NervHomeDir is defined above (functions section),
+    # so it is available here even though it is not usable as the
+    # parameter's own default-value expression, which runs before this
+    # script's function definitions exist in scope.
+    $SettingsPath = Join-Path (Get-NervHomeDir) ".claude/settings.json"
+}
 
 if (-not (Test-Path -LiteralPath $SettingsPath)) {
     throw "settings.json not found at: $SettingsPath"
