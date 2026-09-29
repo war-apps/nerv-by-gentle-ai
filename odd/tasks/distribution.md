@@ -109,7 +109,7 @@ Engram mirror: topic `odd/distribution/tasks` (project `nerv`).
   environment fallbacks when piped to `iex`. Uses `Invoke-RestMethod` against `NERV_API_BASE`,
   `git` for the checkout, then the same `install.ps1` delegation. Tests mirror T2 with stub
   functions/executables and a local bare repository. Route: writer.
-- [ ] T4 Docs. README: a new "Install" section at the top of Setup with the one-liners:
+- [x] T4 DONE 2026-09-28 (writer on sonnet; parent read the Install section, the channels table and the pre-release paragraph; flags cross-checked against both usage texts by the writer, no mismatch). Commit `9b42e45`. Docs. README: a new "Install" section at the top of Setup with the one-liners:
   Linux/macOS `curl -fsSL https://raw.githubusercontent.com/war-apps/nerv-gentle-ai/main/get-nerv.sh | bash`
   (and the `wget -qO-` form; `NERV_CHANNEL=alpha` prefix for channels), Windows
   `irm https://raw.githubusercontent.com/war-apps/nerv-gentle-ai/main/get-nerv.ps1 | iex` and the
@@ -138,6 +138,7 @@ Engram mirror: topic `odd/distribution/tasks` (project `nerv`).
 
 ## Progress log
 
+- 2026-09-28: T4 complete (`9b42e45`), README install and channels. All tasks done; push and PR chain pending user OK.
 - 2026-09-28: T3 complete (`2297889`), PowerShell installer; T4 docs next. Writer incident on the developer machine recorded in T3.
 - 2026-09-28: T2 complete (`b673c22`), shell installer and install.ps1 portability; T3 (PowerShell installer) next.
 - 2026-09-28: T1 complete (`83689b1`), channels in release.ps1 and release.yml; T2 (shell installer) next.
@@ -145,4 +146,4 @@ Engram mirror: topic `odd/distribution/tasks` (project `nerv`).
 
 ## Next step
 
-T4 (writer): README Install and Releases sections; then close the document and ask for the push and PR chain.
+Feature complete on `feature/distribution`. Pending user decisions: push and open the three chained PRs (PR 1/3: `83689b1`+`3e60c54`; PR 2/3: `b673c22`+`7bbbb29`; PR 3/3: `2297889`..HEAD). First real exercise of the `alpha` job happens on the first push to `develop` after PR 1/3 merges; the installers have never run against the real repository on a clean machine.
