@@ -104,7 +104,7 @@ Engram mirror: topic `odd/distribution/tasks` (project `nerv`).
   `install.ps1` fix: `SettingsPath` default from `Get-NervHomeDir` with forward slashes, plus a
   test in `tests/install-apply-models.test.ps1` or a new small case group asserting the default
   contains no backslash and resolves under `HOME` when `USERPROFILE` is unset. Route: writer.
-- [ ] T3 `get-nerv.ps1` + `tests/get-nerv.test.ps1`. PowerShell 7, same behaviour and the same
+- [x] T3 DONE 2026-09-28 (writer on sonnet; parent spot check re-ran get-nerv.ps1 suite 29/29 and read the function list, guard, delegation and API seams). Commit `2297889`. RED 0/1 then GREEN 29/29. Incident: an early buggy run of the writer executed the real installer against the developer machine (clone into ~/.nerv/src, settings.json marketplace path rewritten, plugin cache reinstalled, cache verification failed); backup settings.json.bak-nerv-20260928-215744 holds the correct path; remediation asked to the user. Lesson recorded: bootstrap tests must set NERV_REPO_URL/NERV_HOME/NERV_API_FIXTURE_DIR before any invocation and assert them, never rely on parameter binding alone. `get-nerv.ps1` + `tests/get-nerv.test.ps1`. PowerShell 7, same behaviour and the same
   environment variables, parameters `-Channel`, `-Dir`, `-NoConfigure` when invoked as a file,
   environment fallbacks when piped to `iex`. Uses `Invoke-RestMethod` against `NERV_API_BASE`,
   `git` for the checkout, then the same `install.ps1` delegation. Tests mirror T2 with stub
@@ -138,10 +138,11 @@ Engram mirror: topic `odd/distribution/tasks` (project `nerv`).
 
 ## Progress log
 
+- 2026-09-28: T3 complete (`2297889`), PowerShell installer; T4 docs next. Writer incident on the developer machine recorded in T3.
 - 2026-09-28: T2 complete (`b673c22`), shell installer and install.ps1 portability; T3 (PowerShell installer) next.
 - 2026-09-28: T1 complete (`83689b1`), channels in release.ps1 and release.yml; T2 (shell installer) next.
 - 2026-09-28: feature document created; branch `feature/distribution` from `develop` (`aaa3daf`).
 
 ## Next step
 
-T3 (writer): `get-nerv.ps1` and its suite, RED first; then T4 docs.
+T4 (writer): README Install and Releases sections; then close the document and ask for the push and PR chain.
