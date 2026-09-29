@@ -46,13 +46,18 @@ release:
     owner: war-apps
     name: nerv-gentle-ai
   prerelease: auto
+  # release.yml's "stable" job already created the GitHub Release (via
+  # `gh release create`) with generated notes before goreleaser runs;
+  # "append" makes goreleaser only upload the build artifacts/checksums to
+  # that existing release instead of replacing its notes.
+  mode: append
 
 # The brew formula is published only when the war-apps/homebrew-tap
 # repository and the HOMEBREW_TAP_TOKEN secret exist (see "Decisions
 # pending" in odd/tasks/go-cli.md). goreleaser has no built-in conditional
-# for a missing secret, so the release workflow skips this step entirely
-# (and therefore this whole goreleaser run's brew publish) until then by
-# gating the goreleaser invocation on the secret being present.
+# for a missing secret, so the release workflow passes --skip=homebrew to
+# this goreleaser invocation until then, computed from whether the secret
+# is present.
 brews:
   - repository:
       owner: war-apps
