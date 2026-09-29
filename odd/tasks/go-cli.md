@@ -94,7 +94,7 @@ Claude Code and runs the configuration wizard after installing. PowerShell leave
   `.goreleaser.yaml`, `ci.yml` switched to Go checks (the PowerShell suites keep running in CI until
   each is deleted), `.gitignore` for `dist/`. Tests: materialization on a temp dir (tree equality
   against the embedded FS, idempotence, path traversal guard), version output. Route: writer.
-- [~] P1 in progress. P1a DONE 2026-09-29 (writer on sonnet; parent spot check: gofmt/vet clean, 196 subtests, no os/exec imports, API read). Commit `4c7797d`. 86/86 pure PowerShell cases ported by name plus 48 own cases; accepted deviations: Roles() carries no per-role defaults (they come from agent frontmatter, file I/O, supplied by P1b/P2), ReadModelsOverrides is the raw scan (from:<phase> resolution is the caller's), both Resolve-NervRoleTarget (wizard selection) and the -SetModel spec parser ported under distinct names, `inherit` kept as a model alias because the script allows it. P1b-1 DONE 2026-09-29 (`0e477cc`; parent spot check: 10 packages ok, 53 subtests, HOME/USERPROFILE and os/exec confined to internal/env, one interface). 37 PowerShell cases ported by name, 16 CLI cases deferred to the commands, 3 PowerShell-runtime probes not applicable. P1b-2: the `nerv configure` command with file I/O, backups and the deletion of both scripts and suites. `internal/config` and `nerv configure` non-interactive. Port of `configure.ps1`
+- [x] P1 DONE 2026-09-29. P1b-2 (`1b2c944`; parent spot check: all packages ok, actionlint clean, binary exercised against a temp home: batch set, atomic refusal on an unknown key, backup, no-wizard notice): internal/configure with Store, Print, Set, SetModel, InitRepo, InstallCommands (45 tests) and `nerv configure` flags (10 tests); configure.ps1, configure-models.ps1, their forwarders and suites deleted, CI steps removed. Accepted deviations: modes are mutually exclusive per invocation; InitRepo uses `rev-parse --show-toplevel` and exit 1 as the script did; a missing user config is seeded with the script's two-line header. P1a DONE 2026-09-29 (writer on sonnet; parent spot check: gofmt/vet clean, 196 subtests, no os/exec imports, API read). Commit `4c7797d`. 86/86 pure PowerShell cases ported by name plus 48 own cases; accepted deviations: Roles() carries no per-role defaults (they come from agent frontmatter, file I/O, supplied by P1b/P2), ReadModelsOverrides is the raw scan (from:<phase> resolution is the caller's), both Resolve-NervRoleTarget (wizard selection) and the -SetModel spec parser ported under distinct names, `inherit` kept as a model alias because the script allows it. P1b-1 DONE 2026-09-29 (`0e477cc`; parent spot check: 10 packages ok, 53 subtests, HOME/USERPROFILE and os/exec confined to internal/env, one interface). 37 PowerShell cases ported by name, 16 CLI cases deferred to the commands, 3 PowerShell-runtime probes not applicable. P1b-2: the `nerv configure` command with file I/O, backups and the deletion of both scripts and suites. `internal/config` and `nerv configure` non-interactive. Port of `configure.ps1`
   (`-Print`, `-Set`, `-SetModel`, `-InitRepo`, `-InstallCommands`, `-Json`, exit codes, backups, no-op
   detection) and the catalogues in `configure-models.ps1`. Specification: `tests/configure.test.ps1`
   (169) and `tests/configure-models.test.ps1` (25), ported case by case; both `.ps1` files and their
@@ -148,6 +148,7 @@ Claude Code and runs the configuration wizard after installing. PowerShell leave
 
 ## Progress log
 
+- 2026-09-29: P1 complete (`1b2c944`), nerv configure non-interactive; first PowerShell deletions. P2 next.
 - 2026-09-29: P1b-1 complete (`0e477cc`), env/gentleai/models/skills; P1b-2 (`nerv configure`) next.
 - 2026-09-29: P1a complete (`4c7797d`), internal/config; P1b-1 next.
 - 2026-09-29: P0 complete (`d02eb0d`); P1 split into P1a (config editor and catalogues) and P1b (`nerv configure` command).
@@ -156,4 +157,4 @@ Claude Code and runs the configuration wizard after installing. PowerShell leave
 
 ## Next step
 
-P1b-2 (writer): `nerv configure` non-interactive with nerv.yaml file I/O and backups; delete configure.ps1, configure-models.ps1, their suites and forwarders; RED first.
+P2 (writer): internal/claude, internal/engram, internal/install and `nerv install|uninstall|apply-models|skills`; delete install.ps1, install-skills.ps1, forwarders and suites; RED first.
