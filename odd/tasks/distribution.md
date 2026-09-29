@@ -104,12 +104,12 @@ Engram mirror: topic `odd/distribution/tasks` (project `nerv`).
   `install.ps1` fix: `SettingsPath` default from `Get-NervHomeDir` with forward slashes, plus a
   test in `tests/install-apply-models.test.ps1` or a new small case group asserting the default
   contains no backslash and resolves under `HOME` when `USERPROFILE` is unset. Route: writer.
-- [ ] T3 `get-nerv.ps1` + `tests/get-nerv.test.ps1`. PowerShell 7, same behaviour and the same
+- [x] T3 DONE 2026-09-28 (writer on sonnet; parent spot check re-ran get-nerv.ps1 suite 29/29 and read the function list, guard, delegation and API seams). Commit `2297889`. RED 0/1 then GREEN 29/29. Incident: an early buggy run of the writer executed the real installer against the developer machine (clone into ~/.nerv/src, settings.json marketplace path rewritten, plugin cache reinstalled, cache verification failed); backup settings.json.bak-nerv-20260928-215744 holds the correct path; remediation asked to the user. Lesson recorded: bootstrap tests must set NERV_REPO_URL/NERV_HOME/NERV_API_FIXTURE_DIR before any invocation and assert them, never rely on parameter binding alone. `get-nerv.ps1` + `tests/get-nerv.test.ps1`. PowerShell 7, same behaviour and the same
   environment variables, parameters `-Channel`, `-Dir`, `-NoConfigure` when invoked as a file,
   environment fallbacks when piped to `iex`. Uses `Invoke-RestMethod` against `NERV_API_BASE`,
   `git` for the checkout, then the same `install.ps1` delegation. Tests mirror T2 with stub
   functions/executables and a local bare repository. Route: writer.
-- [ ] T4 Docs. README: a new "Install" section at the top of Setup with the one-liners:
+- [x] T4 DONE 2026-09-28 (writer on sonnet; parent read the Install section, the channels table and the pre-release paragraph; flags cross-checked against both usage texts by the writer, no mismatch). Commit `9b42e45`. Docs. README: a new "Install" section at the top of Setup with the one-liners:
   Linux/macOS `curl -fsSL https://raw.githubusercontent.com/war-apps/nerv-gentle-ai/main/get-nerv.sh | bash`
   (and the `wget -qO-` form; `NERV_CHANNEL=alpha` prefix for channels), Windows
   `irm https://raw.githubusercontent.com/war-apps/nerv-gentle-ai/main/get-nerv.ps1 | iex` and the
@@ -138,10 +138,13 @@ Engram mirror: topic `odd/distribution/tasks` (project `nerv`).
 
 ## Progress log
 
+- 2026-09-28: pushed and delivered as a feature-branch chain: PR #14 `feature/distribution-1-channels` → `develop` (`83689b1`..`3e60c54`, 677 lines), PR #15 `feature/distribution-2-shell-installer` → #14 branch (`b673c22`..`7bbbb29`, 1206 lines), PR #16 `feature/distribution` → #15 branch (`2297889`..HEAD, 1274 lines). Merge in order, retargeting each child with `gh api -X PATCH .../pulls/<n> -f base=develop`.
+- 2026-09-28: T4 complete (`9b42e45`), README install and channels. All tasks done; push and PR chain pending user OK.
+- 2026-09-28: T3 complete (`2297889`), PowerShell installer; T4 docs next. Writer incident on the developer machine recorded in T3.
 - 2026-09-28: T2 complete (`b673c22`), shell installer and install.ps1 portability; T3 (PowerShell installer) next.
 - 2026-09-28: T1 complete (`83689b1`), channels in release.ps1 and release.yml; T2 (shell installer) next.
 - 2026-09-28: feature document created; branch `feature/distribution` from `develop` (`aaa3daf`).
 
 ## Next step
 
-T3 (writer): `get-nerv.ps1` and its suite, RED first; then T4 docs.
+Delivered as PR #14, #15 and #16 (merge in order, retarget children to `develop`). First real exercise of the `alpha` job happens on the first push to `develop` after PR 1/3 merges; the installers have never run against the real repository on a clean machine.
