@@ -138,6 +138,7 @@ Engram mirror: topic `odd/distribution/tasks` (project `nerv`).
 
 ## Progress log
 
+- 2026-09-28: pushed and delivered as a feature-branch chain: PR #14 `feature/distribution-1-channels` → `develop` (`83689b1`..`3e60c54`, 677 lines), PR #15 `feature/distribution-2-shell-installer` → #14 branch (`b673c22`..`7bbbb29`, 1206 lines), PR #16 `feature/distribution` → #15 branch (`2297889`..HEAD, 1274 lines). Merge in order, retargeting each child with `gh api -X PATCH .../pulls/<n> -f base=develop`.
 - 2026-09-28: T4 complete (`9b42e45`), README install and channels. All tasks done; push and PR chain pending user OK.
 - 2026-09-28: T3 complete (`2297889`), PowerShell installer; T4 docs next. Writer incident on the developer machine recorded in T3.
 - 2026-09-28: T2 complete (`b673c22`), shell installer and install.ps1 portability; T3 (PowerShell installer) next.
@@ -146,4 +147,4 @@ Engram mirror: topic `odd/distribution/tasks` (project `nerv`).
 
 ## Next step
 
-Feature complete on `feature/distribution`. Pending user decisions: push and open the three chained PRs (PR 1/3: `83689b1`+`3e60c54`; PR 2/3: `b673c22`+`7bbbb29`; PR 3/3: `2297889`..HEAD). First real exercise of the `alpha` job happens on the first push to `develop` after PR 1/3 merges; the installers have never run against the real repository on a clean machine.
+Delivered as PR #14, #15 and #16 (merge in order, retarget children to `develop`). First real exercise of the `alpha` job happens on the first push to `develop` after PR 1/3 merges; the installers have never run against the real repository on a clean machine.
