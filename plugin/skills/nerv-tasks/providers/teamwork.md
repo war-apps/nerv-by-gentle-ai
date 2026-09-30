@@ -114,7 +114,7 @@ continue" behavior for an unmatched stage.
 
 Every procedure under `teamwork/procedures/` can also be
 installed verbatim as a `/task:*` slash command in
-`~/.claude/commands/task/` — the setup wizard (`tools/configure.ps1`)
+`~/.claude/commands/task/` — the setup wizard (`nerv configure`)
 offers to do this, and it never overwrites a file that already exists
 there. When both copies exist, the embedded procedure and the installed
 command must stay identical; the plugin copy under

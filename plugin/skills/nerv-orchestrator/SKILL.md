@@ -576,7 +576,7 @@ resolved one; a mismatch logs a `model_mismatch` warning event and never
 stops the pipeline. Effort cannot be passed per call — Claude Code honors
 `effort` only from the agent's cached frontmatter — so the resolved effort
 is informational at launch time and only takes effect once
-`pwsh tools/install.ps1 -ApplyModels` has written it into the cache. When
+`nerv apply-models` has written it into the cache. When
 the resolved effort differs from the role's cached frontmatter effort,
 Ikari logs one `effort_drift` event per role per session (payload: role,
 resolved, cached) and continues.

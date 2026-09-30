@@ -59,3 +59,7 @@ jobs:
       - name: hook-engram-project.test.sh
         shell: bash
         run: bash tests/hook-engram-project.test.sh
+
+      - name: install-sh.test.sh
+        shell: bash
+        run: bash tests/install-sh.test.sh
