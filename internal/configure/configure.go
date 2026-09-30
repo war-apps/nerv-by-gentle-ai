@@ -30,7 +30,7 @@ type Deps struct {
 	// this package never reads $HOME/$USERPROFILE itself.
 	Home string
 	// FS is the embedded plugin tree, typically nerv.PluginFS(), rooted
-	// so "agents/misato.md" and "tools/skills-manifest.json" are
+	// so "agents/misato.md" and "skills-manifest.json" are
 	// top-level entries.
 	FS fs.FS
 	// Runner launches "git" (InitRepo) and "gentle-ai"/PATH lookups

@@ -100,7 +100,7 @@ Claude Code and runs the configuration wizard after installing. PowerShell leave
   (169) and `tests/configure-models.test.ps1` (25), ported case by case; both `.ps1` files and their
   suites are deleted in this PR. Route: writer, possibly two sequential writers (config editor first,
   then the command).
-- [ ] P2 `internal/claude`, `internal/models`, `internal/skills`, `internal/gentleai`,
+- [x] P2 DONE 2026-09-29 (writer on sonnet; parent spot check: 14 packages ok, 198 subtests, actionlint clean, plugin/tools gone, usage read). Commit `3c94749`. End-to-end install and uninstall exercised by the writer against stubs on a temp home. Accepted deviations: settings.json is edited as a generic map, so unrelated keys keep their values but not their order (Claude Code rewrites that file with its own order anyway); cache verification compares the embedded plugin version, not a commit sha; `--no-configure` suppresses the hint until P3 wires the wizard; no `--manifest` override. `internal/claude`, `internal/models`, `internal/skills`, `internal/gentleai`,
   `internal/engram` and `nerv install|uninstall|apply-models|skills`. Port of `install.ps1` and
   `install-skills.ps1` (settings.json registration with backup and atomic write, materialize +
   register, `claude plugin uninstall/install` refresh with `installed_plugins.json` verification,
@@ -148,6 +148,7 @@ Claude Code and runs the configuration wizard after installing. PowerShell leave
 
 ## Progress log
 
+- 2026-09-29: P2 complete (`3c94749`), install/uninstall/apply-models/skills; only release*.ps1 and get-nerv.ps1 remain. P3 next.
 - 2026-09-29: P1 complete (`1b2c944`), nerv configure non-interactive; first PowerShell deletions. P2 next.
 - 2026-09-29: P1b-1 complete (`0e477cc`), env/gentleai/models/skills; P1b-2 (`nerv configure`) next.
 - 2026-09-29: P1a complete (`4c7797d`), internal/config; P1b-1 next.
@@ -157,4 +158,4 @@ Claude Code and runs the configuration wizard after installing. PowerShell leave
 
 ## Next step
 
-P2 (writer): internal/claude, internal/engram, internal/install and `nerv install|uninstall|apply-models|skills`; delete install.ps1, install-skills.ps1, forwarders and suites; RED first.
+P3 (writer): `internal/wizard` and interactive `nerv configure`, spec from `git show 4c7797d:plugin/tools/configure.ps1`; RED first.

@@ -27,14 +27,6 @@ jobs:
           fetch-depth: 0
           fetch-tags: true
 
-      - name: install-apply-models.test.ps1
-        shell: pwsh
-        run: pwsh -NoProfile -File tests/install-apply-models.test.ps1
-
-      - name: install-skills.test.ps1
-        shell: pwsh
-        run: pwsh -NoProfile -File tests/install-skills.test.ps1
-
       - name: release.test.ps1
         shell: pwsh
         run: pwsh -NoProfile -File tests/release.test.ps1
@@ -120,14 +112,6 @@ jobs:
           fetch-depth: 0
           fetch-tags: true
 
-      - name: install-apply-models.test.ps1
-        shell: pwsh
-        run: pwsh -NoProfile -File tests/install-apply-models.test.ps1
-
-      - name: install-skills.test.ps1
-        shell: pwsh
-        run: pwsh -NoProfile -File tests/install-skills.test.ps1
-
       - name: release.test.ps1
         shell: pwsh
         run: pwsh -NoProfile -File tests/release.test.ps1
@@ -201,14 +185,6 @@ jobs:
         with:
           fetch-depth: 0
           fetch-tags: true
-
-      - name: install-apply-models.test.ps1
-        shell: pwsh
-        run: pwsh -NoProfile -File tests/install-apply-models.test.ps1
-
-      - name: install-skills.test.ps1
-        shell: pwsh
-        run: pwsh -NoProfile -File tests/install-skills.test.ps1
 
       - name: release.test.ps1
         shell: pwsh
