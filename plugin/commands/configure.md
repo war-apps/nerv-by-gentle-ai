@@ -47,8 +47,20 @@ changes confirmed — never more.
 
    - **git** (split across two grouped questions, asked back to back):
      1. `git.base_branch` (free text), `git.worktree` (`ask` | `always` |
-        `never`), `git.worktree_pattern` (free text, pre-filled with the
-        current value, e.g. `.claude/worktrees/{slug}`).
+        `never`), `git.worktree_pattern` as a `default` / `herdr` / `custom`
+        choice, in that order (herdr's own repo/slug placeholders match
+        NERV's `{repo}`/`{slug}`):
+        - `default` — the catalogue default `.claude/worktrees/{slug}`,
+          e.g. `<repo-root>/.claude/worktrees/feature-tw-123-add-button`.
+        - `herdr` — offered only when `herdr` is on PATH: read
+          `[worktrees] directory` from herdr's own config.toml
+          (`%APPDATA%\herdr\config.toml` on Windows,
+          `~/.config/herdr/config.toml` elsewhere; default
+          `~/.herdr/worktrees` when the key is absent) and store
+          `<directory>/{repo}/{slug}`, e.g.
+          `D:\.worktrees\my-repo\feature-tw-123-add-button`.
+        - `custom` — free text using `{repo}`, `{slug}` (also `{branch}`,
+          `{prefix}`, `{id}`), pre-filled with the current value.
      2. `git.branch_pattern` (free text, e.g.
         `feature/{prefix}-{id}-{slug}`), `git.commit_ref_pattern` (free
         text, e.g. `({PREFIX}-{id})`).

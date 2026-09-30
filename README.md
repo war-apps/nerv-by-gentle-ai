@@ -308,6 +308,8 @@ git:
   base_branch: develop              # default base for the worktree offer
   worktree: ask                     # ask | always | never
   worktree_pattern: ".claude/worktrees/{slug}"   # where task worktrees are created; {slug} {branch} {prefix} {id} {repo}
+                                                  # `nerv configure`'s wizard offers default / herdr / custom; herdr
+                                                  # reuses its own [worktrees] directory as <directory>/{repo}/{slug}
   branch_pattern: "feature/{prefix}-{id}-{slug}"   # prefix comes from the provider (tw, gh, jira)
   commit_ref_pattern: "({PREFIX}-{id})"
 tasks:
