@@ -80,8 +80,8 @@ overwrites silently, and delegates gentle-ai's own bootstrap unchanged.
    role keeps the plugin default shown above. Mention that `from:
    <gentle-ai-phase>` is also accepted in place of an explicit `model`/
    `effort` pair (see README → Configuration schema → `models:`), and that
-   `effort` overrides only take effect after `pwsh tools/install.ps1
-   -ApplyModels` (user scope only — project-scope `models:` applies `model`
+   `effort` overrides only take effect after `nerv apply-models`
+   (user scope only — project-scope `models:` applies `model`
    only). If `.nerv/nerv.yaml` already exists, do **not** overwrite it
    without confirmation — show the diff between the existing file and the
    proposed one, and ask a single yes/no confirmation before writing.

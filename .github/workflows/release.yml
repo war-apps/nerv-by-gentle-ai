@@ -44,6 +44,10 @@ jobs:
         shell: bash
         run: bash tests/hook-engram-project.test.sh
 
+      - name: install-sh.test.sh
+        shell: bash
+        run: bash tests/install-sh.test.sh
+
       - name: Compute alpha pre-release
         id: prerelease
         shell: bash
@@ -131,6 +135,10 @@ jobs:
         shell: bash
         run: bash tests/hook-engram-project.test.sh
 
+      - name: install-sh.test.sh
+        shell: bash
+        run: bash tests/install-sh.test.sh
+
       - name: Compute rc pre-release
         id: prerelease
         shell: bash
@@ -205,6 +213,10 @@ jobs:
       - name: hook-engram-project.test.sh
         shell: bash
         run: bash tests/hook-engram-project.test.sh
+
+      - name: install-sh.test.sh
+        shell: bash
+        run: bash tests/install-sh.test.sh
 
       - name: Run release guard
         id: guard

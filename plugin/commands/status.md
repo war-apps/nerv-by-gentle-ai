@@ -65,7 +65,7 @@ short and imperative — this is a status check, not a narrative.
 
    Then print a closing line: `models: in sync` when every role's resolved
    effort matches its cached frontmatter effort, or `models: N role(s)
-   drift — run pwsh tools/install.ps1 -ApplyModels` otherwise (`N` = the
+   drift — run nerv apply-models` otherwise (`N` = the
    count of mismatched roles). Read-only — never write `nerv.yaml`,
    `state.json`, or any cached agent file.
 
