@@ -113,7 +113,7 @@ Claude Code and runs the configuration wizard after installing. PowerShell leave
   reader/writer, reusing P1's editor and catalogues; `nerv install` ends by running it unless
   `--no-configure` or stdin is not a terminal. Tests drive the prompts with scripted input. Route:
   writer.
-- [ ] P4 `internal/release` and `nerv release preview|apply|guard`. Port of `release.ps1` and
+- [x] P4 DONE 2026-09-29 (writer on sonnet; parent spot check: 16 packages ok, actionlint clean, no pwsh in workflows, tools/ gone, preview and guard exercised read-only, goreleaser step read). Commit `77a73fe`. 199 PowerShell cases ported (136 + 63, more than the document estimated). Accepted deviations: pure functions take file contents and an exists flag, file I/O lives in the command; guard adds `binary_consistent` (skipped for dev builds); no actionlint step in CI (run locally). Unverified: goreleaser in append mode after the stable tag and the `--skip=homebrew` conditional have never run on GitHub; the first stable release after this merges is the test, and goreleaser must find exactly one tag on the main HEAD. `internal/release` and `nerv release preview|apply|guard`. Port of `release.ps1` and
   `release-guard.ps1` (labels, `--pre-release-base current|next`, tag/base in JSON, changelog
   section, guard with notes extraction). Specification: `tests/release.test.ps1` (134) and
   `tests/release-guard.test.ps1` (54); scripts and suites deleted. `release.yml` calls
@@ -148,6 +148,7 @@ Claude Code and runs the configuration wizard after installing. PowerShell leave
 
 ## Progress log
 
+- 2026-09-29: P4 complete (`77a73fe`), release tooling in Go, goreleaser in the workflow; only get-nerv.ps1 remains. P5 next.
 - 2026-09-29: P3.1 safety fixes (`8051784`); P4 next.
 - 2026-09-29: P3 wizard committed (`3a3c044`); orchestrator incident on the dev machine during the spot check, remediated; P3.1 safety fixes next.
 - 2026-09-29: P2 complete (`3c94749`), install/uninstall/apply-models/skills; only release*.ps1 and get-nerv.ps1 remain. P3 next.
@@ -160,4 +161,4 @@ Claude Code and runs the configuration wizard after installing. PowerShell leave
 
 ## Next step
 
-P4 (writer): internal/release and `nerv release preview|apply|guard`, workflows on `go run`, goreleaser after the stable tag; delete release*.ps1, forwarders and suites; RED first.
+P5 (writer): plugin commands and SKILL references call `nerv`; `scripts/install.sh` downloads the binary; delete get-nerv.* and their suites; RED first for the script suite.

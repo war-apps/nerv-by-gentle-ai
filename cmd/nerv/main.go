@@ -24,6 +24,10 @@ Commands:
   uninstall [flags]    Uninstall NERV (see "nerv uninstall --help")
   apply-models [flags] Apply model/effort assignments to the cached agents
   skills [flags]       Install or verify skills (see "nerv skills --help")
+
+Maintainer commands:
+  release <preview|apply|guard> [flags]
+                       Release tooling for this repository (see "nerv release --help")
 `
 
 // options bundles nerv's external effects (the embedded plugin tree, the
@@ -96,6 +100,8 @@ func run(args []string, stdout, stderr io.Writer, opts options) int {
 		return runApplyModels(args[1:], stdout, stderr, opts)
 	case "skills":
 		return runSkills(args[1:], stdout, stderr, opts)
+	case "release":
+		return runRelease(args[1:], stdout, stderr, opts)
 	default:
 		fmt.Fprint(stderr, usage)
 		return 2
