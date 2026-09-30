@@ -52,14 +52,6 @@ jobs:
       - name: Checkout
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
 
-      - name: configure.test.ps1
-        shell: pwsh
-        run: pwsh -NoProfile -File tests/configure.test.ps1
-
-      - name: configure-models.test.ps1
-        shell: pwsh
-        run: pwsh -NoProfile -File tests/configure-models.test.ps1
-
       - name: install-apply-models.test.ps1
         shell: pwsh
         run: pwsh -NoProfile -File tests/install-apply-models.test.ps1

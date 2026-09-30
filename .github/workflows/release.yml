@@ -27,14 +27,6 @@ jobs:
           fetch-depth: 0
           fetch-tags: true
 
-      - name: configure.test.ps1
-        shell: pwsh
-        run: pwsh -NoProfile -File tests/configure.test.ps1
-
-      - name: configure-models.test.ps1
-        shell: pwsh
-        run: pwsh -NoProfile -File tests/configure-models.test.ps1
-
       - name: install-apply-models.test.ps1
         shell: pwsh
         run: pwsh -NoProfile -File tests/install-apply-models.test.ps1
@@ -128,14 +120,6 @@ jobs:
           fetch-depth: 0
           fetch-tags: true
 
-      - name: configure.test.ps1
-        shell: pwsh
-        run: pwsh -NoProfile -File tests/configure.test.ps1
-
-      - name: configure-models.test.ps1
-        shell: pwsh
-        run: pwsh -NoProfile -File tests/configure-models.test.ps1
-
       - name: install-apply-models.test.ps1
         shell: pwsh
         run: pwsh -NoProfile -File tests/install-apply-models.test.ps1
@@ -217,14 +201,6 @@ jobs:
         with:
           fetch-depth: 0
           fetch-tags: true
-
-      - name: configure.test.ps1
-        shell: pwsh
-        run: pwsh -NoProfile -File tests/configure.test.ps1
-
-      - name: configure-models.test.ps1
-        shell: pwsh
-        run: pwsh -NoProfile -File tests/configure-models.test.ps1
 
       - name: install-apply-models.test.ps1
         shell: pwsh

@@ -15,7 +15,7 @@ import (
 func TestRun_VersionPrintsBinaryAndPlugin(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 
-	code := run([]string{"version"}, &stdout, &stderr)
+	code := run([]string{"version"}, &stdout, &stderr, testOptions(t.TempDir()))
 
 	if code != 0 {
 		t.Fatalf("exit code = %d, want 0", code)
@@ -36,7 +36,7 @@ func TestRun_VersionPrintsBinaryAndPlugin(t *testing.T) {
 func TestRun_VersionJSON(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 
-	code := run([]string{"version", "--json"}, &stdout, &stderr)
+	code := run([]string{"version", "--json"}, &stdout, &stderr, testOptions(t.TempDir()))
 
 	if code != 0 {
 		t.Fatalf("exit code = %d, want 0", code)
@@ -67,7 +67,7 @@ func TestRun_VersionJSON(t *testing.T) {
 func TestRun_UnknownCommandPrintsUsageToStderrAndExits2(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 
-	code := run([]string{"bogus"}, &stdout, &stderr)
+	code := run([]string{"bogus"}, &stdout, &stderr, testOptions(t.TempDir()))
 
 	if code != 2 {
 		t.Fatalf("exit code = %d, want 2", code)
@@ -83,7 +83,7 @@ func TestRun_UnknownCommandPrintsUsageToStderrAndExits2(t *testing.T) {
 func TestRun_NoArgsPrintsUsageAndExits0(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 
-	code := run([]string{}, &stdout, &stderr)
+	code := run([]string{}, &stdout, &stderr, testOptions(t.TempDir()))
 
 	if code != 0 {
 		t.Fatalf("exit code = %d, want 0", code)
