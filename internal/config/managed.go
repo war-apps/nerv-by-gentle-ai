@@ -49,10 +49,45 @@ func ValidateManagedKey(key string) error {
 	return nil
 }
 
+// ErrInvalidWorktreePattern is returned by SetManagedValue for
+// git.worktree_pattern when value is empty or contains a ".." path
+// segment.
+type ErrInvalidWorktreePattern struct {
+	Value  string
+	Reason string
+}
+
+func (e *ErrInvalidWorktreePattern) Error() string {
+	return fmt.Sprintf("Invalid value '%s' for key 'git.worktree_pattern': %s.", e.Value, e.Reason)
+}
+
+// validateWorktreePattern applies git.worktree_pattern's own free-text
+// rules: non-empty, and no ".." path segment (checked on both "/" and "\"
+// separators, since the pattern may be written either way). Everything
+// else is the user's business.
+func validateWorktreePattern(value string) error {
+	if value == "" {
+		return &ErrInvalidWorktreePattern{Value: value, Reason: "must not be empty"}
+	}
+	normalized := strings.ReplaceAll(value, "\\", "/")
+	for _, segment := range strings.Split(normalized, "/") {
+		if segment == ".." {
+			return &ErrInvalidWorktreePattern{Value: value, Reason: "must not contain '..' path segments"}
+		}
+	}
+	return nil
+}
+
 // ValidateManagedValue reports an *ErrInvalidValue when key has an
-// enumerated allowed-values set and value is not one of them. A key with no
-// enumerated set (AllowedValues' ok == false) accepts any value.
+// enumerated allowed-values set and value is not one of them, or an
+// *ErrInvalidWorktreePattern for git.worktree_pattern's own free-text
+// rules. A key with no enumerated set and no special rule (AllowedValues'
+// ok == false) accepts any value.
 func ValidateManagedValue(key, value string) error {
+	if key == "git.worktree_pattern" {
+		return validateWorktreePattern(value)
+	}
+
 	allowed, ok := AllowedValues(key)
 	if !ok {
 		return nil

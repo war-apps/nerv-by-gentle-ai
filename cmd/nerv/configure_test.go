@@ -55,7 +55,7 @@ func TestRunConfigure_NoModeFlag_Terminal_RunsWizard(t *testing.T) {
 	// Real blank lines (not an exhausted reader — see wizard.ErrInputClosed)
 	// for every user-config prompt, so every value keeps its current
 	// default and the wizard completes instead of aborting.
-	opts.Stdin = strings.NewReader(strings.Repeat("\n", 27))
+	opts.Stdin = strings.NewReader(strings.Repeat("\n", 28))
 
 	code := run([]string{
 		"configure",

@@ -109,6 +109,9 @@ func TestPrint_ValuesAndDefaults(t *testing.T) {
 	if defaults["git.worktree"] != "ask" {
 		t.Errorf("defaults['git.worktree'] = %q, want ask", defaults["git.worktree"])
 	}
+	if defaults["git.worktree_pattern"] != ".claude/worktrees/{slug}" {
+		t.Errorf("defaults['git.worktree_pattern'] = %q, want .claude/worktrees/{slug}", defaults["git.worktree_pattern"])
+	}
 }
 
 // ---------------------------------------------------------------------------

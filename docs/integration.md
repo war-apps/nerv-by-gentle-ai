@@ -288,7 +288,8 @@ RDD review relay after every commit, detailed in "RDD per commit" above.
 
 **Activation.** A repo opts in by creating `.nerv/nerv.yaml` with
 `enabled: true` — `/nerv:init` writes it interactively (base branch,
-worktree policy, skill stacks, task-tracker provider), and `/nerv:configure`
+worktree policy, worktree location, skill stacks, task-tracker provider),
+and `/nerv:configure`
 revisits any of those choices afterwards. Without the marker a session
 behaves like plain gentle-ai; with it, SessionStart injects the NERV
 Gentle-AI orchestrator protocol and the session becomes Ikari.

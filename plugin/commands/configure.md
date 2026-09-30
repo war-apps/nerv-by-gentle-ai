@@ -45,11 +45,13 @@ changes confirmed — never more.
    wait.** A skipped or kept-as-shown answer produces no `-Set` for that
    key.
 
-   - **git** (one grouped question, 4 sub-questions): `git.base_branch`
-     (free text), `git.worktree` (`ask` | `always` | `never`),
-     `git.branch_pattern` (free text, e.g.
-     `feature/{prefix}-{id}-{slug}`), `git.commit_ref_pattern` (free text,
-     e.g. `({PREFIX}-{id})`).
+   - **git** (split across two grouped questions, asked back to back):
+     1. `git.base_branch` (free text), `git.worktree` (`ask` | `always` |
+        `never`), `git.worktree_pattern` (free text, pre-filled with the
+        current value, e.g. `.claude/worktrees/{slug}`).
+     2. `git.branch_pattern` (free text, e.g.
+        `feature/{prefix}-{id}-{slug}`), `git.commit_ref_pattern` (free
+        text, e.g. `({PREFIX}-{id})`).
    - **tasks** (split across grouped questions, in this order — omit a
      later one whose condition doesn't hold):
      1. General: `tasks.provider` (`teamwork` | `github-projects` |

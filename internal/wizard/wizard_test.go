@@ -34,6 +34,7 @@ const fixtureLF = "" +
 	"git:\n" +
 	"  base_branch: develop              # default base for the worktree offer\n" +
 	"  worktree: ask                     # ask | always | never\n" +
+	`  worktree_pattern: ".claude/worktrees/{slug}"   # where task worktrees are created; {slug} {branch} {prefix} {id}` + "\n" +
 	`  branch_pattern: "feature/{prefix}-{id}-{slug}"   # prefix comes from the provider (tw, gh, jira)` + "\n" +
 	`  commit_ref_pattern: "({PREFIX}-{id})"` + "\n" +
 	"tasks:\n" +
@@ -112,11 +113,11 @@ func TestRun_AllBlankAnswers_ByteIdenticalNoBackup(t *testing.T) {
 	opts := skipAll()
 	opts.Paths = paths
 
-	// git(4) + tasks(5) + tasks.providers.teamwork(11, since the fixture's
+	// git(5) + tasks(5) + tasks.providers.teamwork(11, since the fixture's
 	// provider stays "teamwork" on a blank answer) + skills(5) +
-	// critical_paths(1) + artifacts.commit(1) = 27 prompts, every one a
+	// critical_paths(1) + artifacts.commit(1) = 28 prompts, every one a
 	// real blank line (not exhaustion).
-	in := strings.NewReader(strings.Repeat("\n", 27))
+	in := strings.NewReader(strings.Repeat("\n", 28))
 
 	var out bytes.Buffer
 	summary, err := wizard.Run(deps, in, &out, opts)
@@ -203,10 +204,10 @@ func TestRun_ReaderEndsAtApplyAndRefreshPrompt_AbortsWithoutRunnerCall(t *testin
 
 	opts := wizard.Options{Paths: paths, SkipSkills: true, SkipModels: true, SkipRepos: true, SkipCommands: true}
 
-	// The 27 user-config prompts, every one a real blank line (no
+	// The 28 user-config prompts, every one a real blank line (no
 	// change, no write-confirmation asked) — then nothing left for the
 	// "Apply models to the plugin cache and refresh it now?" gate.
-	in := strings.NewReader(strings.Repeat("\n", 27))
+	in := strings.NewReader(strings.Repeat("\n", 28))
 
 	var out bytes.Buffer
 	_, err := wizard.Run(deps, in, &out, opts)
@@ -248,8 +249,8 @@ func TestRun_ModelsSection_CustomModelID_EOFAfterPrompt_AbortsWithoutWriteOrRunn
 
 	opts := wizard.Options{Paths: paths, SkipSkills: true, SkipRepos: true, SkipCommands: true, NoRefresh: true}
 
-	lines := make([]string, 0, 30)
-	for i := 0; i < 27; i++ { // user-config section: every prompt kept (no change, no write confirm consumed)
+	lines := make([]string, 0, 31)
+	for i := 0; i < 28; i++ { // user-config section: every prompt kept (no change, no write confirm consumed)
 		lines = append(lines, "")
 	}
 	lines = append(lines,
@@ -305,8 +306,8 @@ func TestRun_ModelsSection_CustomModelID_InvalidThenValid_AppliesOverride(t *tes
 
 	opts := wizard.Options{Paths: paths, SkipSkills: true, SkipRepos: true, SkipCommands: true, NoRefresh: true}
 
-	lines := make([]string, 0, 36)
-	for i := 0; i < 27; i++ {
+	lines := make([]string, 0, 37)
+	for i := 0; i < 28; i++ {
 		lines = append(lines, "")
 	}
 	lines = append(lines,
@@ -368,7 +369,7 @@ func TestRun_BaseBranchChange_RepoInitAndCommandsInstall(t *testing.T) {
 	opts := wizard.Options{Paths: paths, SkipSkills: true, SkipModels: true, NoRefresh: true}
 
 	lines := []string{"develop2"}
-	for i := 0; i < 26; i++ { // worktree..artifacts.commit: 26 more blanks
+	for i := 0; i < 27; i++ { // worktree..artifacts.commit: 27 more blanks
 		lines = append(lines, "")
 	}
 	lines = append(lines,
@@ -442,7 +443,7 @@ func TestRun_DeclineWrite_LeavesFileUntouched(t *testing.T) {
 	opts.Paths = paths
 
 	lines := []string{"develop2"}
-	for i := 0; i < 26; i++ {
+	for i := 0; i < 27; i++ {
 		lines = append(lines, "")
 	}
 	lines = append(lines, "n") // decline the write
@@ -483,15 +484,16 @@ func TestRun_NonTeamworkProvider_SkipsTeamworkPrompts(t *testing.T) {
 	opts.Paths = paths
 
 	lines := []string{
-		"",     // git.base_branch
-		"",     // git.worktree
-		"",     // git.branch_pattern
-		"",     // git.commit_ref_pattern
-		"none", // tasks.provider (CHANGED away from teamwork)
-		"",     // tasks.ask_when_missing
-		"",     // tasks.subtasks_per_wave
-		"",     // tasks.timer_store
-		"",     // tasks.rounding_minutes
+		"",                           // git.base_branch
+		"",                           // git.worktree
+		".claude/worktrees/{branch}", // git.worktree_pattern (CHANGED)
+		"",                           // git.branch_pattern
+		"",                           // git.commit_ref_pattern
+		"none",                       // tasks.provider (CHANGED away from teamwork)
+		"",                           // tasks.ask_when_missing
+		"",                           // tasks.subtasks_per_wave
+		"",                           // tasks.timer_store
+		"",                           // tasks.rounding_minutes
 		// no teamwork.* lines here
 		"", "", "", "", "", // skills x5
 		"",  // critical_paths
@@ -528,6 +530,10 @@ func TestRun_NonTeamworkProvider_SkipsTeamworkPrompts(t *testing.T) {
 			t.Errorf("expected %q preserved:\n%s", want, got)
 		}
 	}
+	// the new git.worktree_pattern key must land in the file when answered.
+	if !strings.Contains(string(got), `worktree_pattern: ".claude/worktrees/{branch}"`) {
+		t.Errorf("expected worktree_pattern to be updated:\n%s", got)
+	}
 }
 
 // ---------------------------------------------------------------------------
@@ -544,8 +550,8 @@ func TestRun_ModelsSection_MagiGroup(t *testing.T) {
 
 	opts := wizard.Options{Paths: paths, SkipSkills: true, SkipRepos: true, SkipCommands: true, NoRefresh: true}
 
-	lines := make([]string, 0, 33)
-	for i := 0; i < 27; i++ { // user-config section: every prompt kept (no change, no write confirm consumed)
+	lines := make([]string, 0, 34)
+	for i := 0; i < 28; i++ { // user-config section: every prompt kept (no change, no write confirm consumed)
 		lines = append(lines, "")
 	}
 	lines = append(lines,
