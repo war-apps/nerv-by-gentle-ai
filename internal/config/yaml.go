@@ -5,16 +5,11 @@
 // filesystem: callers read/write bytes and hand this package text.
 //
 // This package is a line-based, format-preserving editor over nerv.yaml —
-// never a general YAML parser/library — ported from the pure PowerShell
-// functions in plugin/tools/configure.ps1 and
-// plugin/tools/configure-models.ps1, which are its executable
-// specification (see tests/configure.test.ps1 and
-// tests/configure-models.test.ps1).
+// never a general YAML parser/library.
 package config
 
 import (
 	"regexp"
-	"strconv"
 	"strings"
 )
 
@@ -197,34 +192,6 @@ func scanBlockEnd(lines []string, start int, continue_ *regexp.Regexp) int {
 		break
 	}
 	return j
-}
-
-// ---------------------------------------------------------------------------
-// SubBlock (Get-NervYamlSubBlock)
-// ---------------------------------------------------------------------------
-
-// SubBlock returns the raw text of an indented "<key>:" sub-block inside
-// blockText (as returned by Document.Block) — the key line plus every
-// following blank, full-line-comment, or more-deeply-indented (> indent
-// spaces) line — or found=false when key is not present at exactly indent
-// spaces. Mirrors Get-NervYamlSubBlock.
-func SubBlock(blockText, key string, indent int) (text string, found bool) {
-	if blockText == "" {
-		return "", false
-	}
-	normalized := strings.ReplaceAll(blockText, "\r\n", "\n")
-	lines := strings.Split(normalized, "\n")
-	prefix := strings.Repeat(" ", indent)
-	pattern := regexp.MustCompile(`^` + prefix + regexp.QuoteMeta(key) + `:\s*(\||>)?[+-]?\s*(#.*)?$`)
-	deeper := regexp.MustCompile(`^\s{` + strconv.Itoa(indent+1) + `,}`)
-
-	for i := 0; i < len(lines); i++ {
-		if pattern.MatchString(lines[i]) {
-			j := scanBlockEnd(lines, i+1, deeper)
-			return strings.Join(lines[i:j], "\n"), true
-		}
-	}
-	return "", false
 }
 
 // ---------------------------------------------------------------------------

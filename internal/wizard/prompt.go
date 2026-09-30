@@ -6,14 +6,14 @@ import (
 	"fmt"
 	"io"
 	"regexp"
+	"slices"
 	"strings"
 )
 
-// maxInvalidAttempts bounds every re-prompt loop below at 3 attempts (as
-// configure.ps1's Get-NervChoiceOrDefault/Read-NervChoice would keep
-// looping forever on an interactive terminal): once exhausted, the prompt
-// falls back to its "keep current"/"no change" answer instead of spinning
-// on a scripted or exhausted reader.
+// maxInvalidAttempts bounds every re-prompt loop below at 3 attempts, so a
+// scripted or exhausted reader can never spin forever on invalid input:
+// once exhausted, the prompt falls back to its "keep current"/"no change"
+// answer instead.
 const maxInvalidAttempts = 3
 
 // ErrInputClosed is returned by ask, choose, menuChoice, and yesNo when
@@ -34,9 +34,8 @@ const maxInvalidAttempts = 3
 var ErrInputClosed = errors.New("input ended before the wizard finished; nothing was written")
 
 // session drives every prompt in one wizard run from a single shared
-// line-based reader, so answers are consumed in order exactly once —
-// mirroring configure.ps1's -AnswersFile index cursor
-// ($script:answerIndex).
+// line-based reader, so answers (whether typed live or supplied by an
+// --answers file) are consumed in order exactly once.
 type session struct {
 	in  *bufio.Scanner
 	out io.Writer
@@ -82,8 +81,7 @@ func (s *session) prompt(label string) string {
 // once the reader is exhausted — used only where a genuine mid-file blank
 // answer and "the file ran out" must resolve differently (the models
 // section's role-selection loop, where blank means "ask again" but
-// exhaustion must still terminate the loop). Mirrors the one place
-// configure-models.ps1's Read-NervAnswer passes a non-” DefaultWhenExhausted.
+// exhaustion must still terminate the loop).
 func (s *session) promptExhausted(label, defaultWhenExhausted string) string {
 	fmt.Fprintf(s.out, "%s ", label)
 	return strings.TrimSpace(s.readLineOr(defaultWhenExhausted))
@@ -140,7 +138,7 @@ func (s *session) choose(label string, allowed []string, current string) (string
 		if ans == "" {
 			return current, nil
 		}
-		if contains(allowed, ans) {
+		if slices.Contains(allowed, ans) {
 			return ans, nil
 		}
 		fmt.Fprintf(s.out, "Invalid input. Allowed: %s.\n", strings.Join(allowed, ", "))
@@ -165,7 +163,7 @@ func (s *session) menuChoice(label string, allowed []string) (value string, chos
 		if ans == "" {
 			return "", false, nil
 		}
-		if contains(allowed, ans) {
+		if slices.Contains(allowed, ans) {
 			return ans, true, nil
 		}
 		fmt.Fprintf(s.out, "Invalid input. Allowed: %s, or Enter to keep current.\n", strings.Join(allowed, ", "))
@@ -173,8 +171,7 @@ func (s *session) menuChoice(label string, allowed []string) (value string, chos
 	return "", false, nil
 }
 
-// yesRe matches a "yes" confirmation answer, case-insensitively. Mirrors
-// every `-match '(?i)^y(es)?$'` check in configure.ps1/configure-models.ps1.
+// yesRe matches a "yes" confirmation answer, case-insensitively.
 var yesRe = regexp.MustCompile(`(?i)^y(es)?$`)
 
 // yesNo prompts a [Y/n] (defaultYes) or [y/N] confirmation; a blank
@@ -197,13 +194,4 @@ func (s *session) yesNo(label string, defaultYes bool) (bool, error) {
 		return defaultYes, nil
 	}
 	return yesRe.MatchString(ans), nil
-}
-
-func contains(values []string, target string) bool {
-	for _, v := range values {
-		if v == target {
-			return true
-		}
-	}
-	return false
 }

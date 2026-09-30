@@ -1,9 +1,8 @@
 // Package release computes the next semantic version from Conventional
-// Commits, edits plugin.json and CHANGELOG.md the same way tools/release.ps1
-// and tools/release-guard.ps1 did, and checks release readiness. Every
-// function in this package is pure over its inputs except the thin git
-// access helpers in git.go, which run "git" through an injected
-// env.Runner.
+// Commits, edits plugin.json and CHANGELOG.md, and checks release
+// readiness. Every function in this package is pure over its inputs
+// except the thin git access helpers in git.go, which run "git" through
+// an injected env.Runner.
 package release
 
 import (

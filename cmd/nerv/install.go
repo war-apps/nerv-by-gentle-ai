@@ -71,10 +71,6 @@ func runInstall(args []string, stdout, stderr io.Writer, opts options) int {
 	err = install.Install(context.Background(), deps, install.Options{
 		RequireGentleAI: *requireGentleAI,
 		NoSkills:        *noSkills,
-		// cmd owns the hint-vs-wizard decision below, so the hint
-		// install.Install would otherwise print unconditionally is always
-		// suppressed here.
-		NoConfigure: true,
 	})
 	if code := mapInstallError(stdout, err); code != 0 {
 		return code
@@ -83,7 +79,7 @@ func runInstall(args []string, stdout, stderr io.Writer, opts options) int {
 	if *noConfigure {
 		return 0
 	}
-	if !stdinIsTerminal() {
+	if !opts.IsTerminal() {
 		fmt.Fprintln(stdout, "\nRun `nerv configure` to set up NERV.")
 		return 0
 	}
@@ -96,11 +92,7 @@ func runInstall(args []string, stdout, stderr io.Writer, opts options) int {
 		if errors.Is(err, wizard.ErrInputClosed) {
 			return 1
 		}
-		var refusal *configure.RefusalError
-		if errors.As(err, &refusal) {
-			return 1
-		}
-		return 2
+		return exitCodeFor(err)
 	}
 	return 0
 }
@@ -164,16 +156,11 @@ func runApplyModels(args []string, stdout, stderr io.Writer, opts options) int {
 
 // mapInstallError formats an Install/Uninstall/ApplyModels error to
 // stdout and returns the process exit code: 0 on success, 1 on a
-// *install.RefusalError, 2 on any other error. Mirrors
-// cmd/nerv/configure.go's emitMutation error handling.
+// *install.RefusalError, 2 on any other error, via exitCodeFor.
 func mapInstallError(stdout io.Writer, err error) int {
 	if err == nil {
 		return 0
 	}
 	fmt.Fprintf(stdout, "nerv: %v\n", err)
-	var refusal *install.RefusalError
-	if errors.As(err, &refusal) {
-		return 1
-	}
-	return 2
+	return exitCodeFor(err)
 }

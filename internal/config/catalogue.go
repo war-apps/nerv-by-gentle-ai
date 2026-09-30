@@ -9,11 +9,45 @@ type KeyDefault struct {
 	Value string
 }
 
+// StageOrder returns the Teamwork workflow stage names, in the canonical
+// order every stages: block and prompt list uses.
+func StageOrder() []string {
+	return []string{"inDev", "testing", "implemented", "blocked", "canceled", "pending", "analysis"}
+}
+
+// SkillsCategories returns the skills: block's consuming-role categories,
+// in the canonical order every skills prompt list and block uses.
+func SkillsCategories() []string {
+	return []string{"testing", "code", "best-practices", "architecture", "audit"}
+}
+
+// stageDefaults holds each Teamwork stage's built-in default value, keyed
+// by StageOrder's stage name.
+var stageDefaults = map[string]string{
+	"inDev":       "DESARROLLO",
+	"testing":     "TESTING",
+	"implemented": "IMPLEMENTA",
+	"blocked":     "BLOQUEA",
+	"canceled":    "CANCEL",
+	"pending":     "PENDIENTE",
+	"analysis":    "ANALISIS",
+}
+
+// skillsDefaults holds each skills category's built-in default stack,
+// keyed by SkillsCategories' category name.
+var skillsDefaults = map[string]string{
+	"testing":        "tdd, playwright-best-practices",
+	"code":           "dotnet-best-practices, typescript-best-practices",
+	"best-practices": "best-practices, solid-principles, clean-code-guard",
+	"architecture":   "hexagonal-architecture, c4-architecture",
+	"audit":          "security-review, clean-code-guard",
+}
+
 // Defaults returns the built-in default for every managed nerv.yaml key, in
 // catalogue order — the complete catalogue of keys SetManagedValue accepts.
 // Mirrors Get-NervConfigDefaults.
 func Defaults() []KeyDefault {
-	return []KeyDefault{
+	defaults := []KeyDefault{
 		{"git.base_branch", "develop"},
 		{"git.worktree", "ask"},
 		{"git.branch_pattern", "feature/{prefix}-{id}-{slug}"},
@@ -27,21 +61,18 @@ func Defaults() []KeyDefault {
 		{"tasks.providers.teamwork.assignee_id", ""},
 		{"tasks.providers.teamwork.default_project_id", ""},
 		{"tasks.providers.teamwork.default_tasklist_id", ""},
-		{"tasks.providers.teamwork.stages.inDev", "DESARROLLO"},
-		{"tasks.providers.teamwork.stages.testing", "TESTING"},
-		{"tasks.providers.teamwork.stages.implemented", "IMPLEMENTA"},
-		{"tasks.providers.teamwork.stages.blocked", "BLOQUEA"},
-		{"tasks.providers.teamwork.stages.canceled", "CANCEL"},
-		{"tasks.providers.teamwork.stages.pending", "PENDIENTE"},
-		{"tasks.providers.teamwork.stages.analysis", "ANALISIS"},
-		{"skills.testing", "tdd, playwright-best-practices"},
-		{"skills.code", "dotnet-best-practices, typescript-best-practices"},
-		{"skills.best-practices", "best-practices, solid-principles, clean-code-guard"},
-		{"skills.architecture", "hexagonal-architecture, c4-architecture"},
-		{"skills.audit", "security-review, clean-code-guard"},
-		{"critical_paths", "auth/, payments/, migrations/, infra/"},
-		{"artifacts.commit", "at-close"},
 	}
+	for _, stage := range StageOrder() {
+		defaults = append(defaults, KeyDefault{"tasks.providers.teamwork.stages." + stage, stageDefaults[stage]})
+	}
+	for _, cat := range SkillsCategories() {
+		defaults = append(defaults, KeyDefault{"skills." + cat, skillsDefaults[cat]})
+	}
+	defaults = append(defaults,
+		KeyDefault{"critical_paths", "auth/, payments/, migrations/, infra/"},
+		KeyDefault{"artifacts.commit", "at-close"},
+	)
+	return defaults
 }
 
 // DefaultValue returns key's built-in default and whether key is managed.
@@ -87,92 +118,10 @@ func AllowedValues(key string) (values []string, ok bool) {
 }
 
 // ---------------------------------------------------------------------------
-// Block formatters (Format-NervGitBlock, Format-NervTasksBlock,
-// Format-NervSkillsBlock, Format-NervCriticalPathsLine,
-// Format-NervArtifactsBlock, Format-NervProjectFile) — render text
-// byte-identical to the PowerShell functions' documented-syntax output.
+// Block formatters (Format-NervSkillsBlock, Format-NervCriticalPathsLine,
+// Format-NervProjectFile) — render text byte-identical to the PowerShell
+// functions' documented-syntax output.
 // ---------------------------------------------------------------------------
-
-// GitValues holds the fields Format-NervGitBlock's caller supplies.
-type GitValues struct {
-	BaseBranch       string
-	Worktree         string
-	BranchPattern    string
-	CommitRefPattern string
-}
-
-// FormatGitBlock renders the git: block in the documented syntax. Mirrors
-// Format-NervGitBlock.
-func FormatGitBlock(v GitValues) string {
-	lines := []string{
-		"git:",
-		"  base_branch: " + v.BaseBranch + "              # default base for the worktree offer",
-		"  worktree: " + v.Worktree + "                     # ask | always | never",
-		`  branch_pattern: "` + v.BranchPattern + `"   # prefix comes from the provider (tw, gh, jira)`,
-		`  commit_ref_pattern: "` + v.CommitRefPattern + `"`,
-	}
-	return strings.Join(lines, "\n")
-}
-
-// TasksValues holds the fields Format-NervTasksBlock's caller supplies.
-type TasksValues struct {
-	Provider                  string
-	AskWhenMissing            string
-	SubtasksPerWave           string
-	TimerStore                string
-	RoundingMinutes           string
-	TeamworkTaskRefPrefix     string
-	TeamworkAssigneeID        string
-	TeamworkDefaultProjectID  string
-	TeamworkDefaultTasklistID string
-	TeamworkStageInDev        string
-	TeamworkStageTesting      string
-	TeamworkStageImplemented  string
-	TeamworkStageBlocked      string
-	TeamworkStageCanceled     string
-	TeamworkStagePending      string
-	TeamworkStageAnalysis     string
-}
-
-// FormatTasksBlock renders the tasks: block in the documented syntax,
-// re-emitting providers.teamwork from v and keeping
-// providers.github-projects / providers.jira as the documented inline-map
-// placeholders. When sourcesRaw is non-empty, its raw sources: sub-block
-// text (as returned by SubBlock) is appended verbatim. Mirrors
-// Format-NervTasksBlock.
-func FormatTasksBlock(v TasksValues, sourcesRaw string) string {
-	stages := "inDev: " + v.TeamworkStageInDev +
-		", testing: " + v.TeamworkStageTesting +
-		", implemented: " + v.TeamworkStageImplemented +
-		", blocked: " + v.TeamworkStageBlocked +
-		", canceled: " + v.TeamworkStageCanceled +
-		", pending: " + v.TeamworkStagePending +
-		", analysis: " + v.TeamworkStageAnalysis
-
-	lines := []string{
-		"tasks:",
-		`  provider: ` + v.Provider + `                # teamwork | github-projects | jira | none ; "ask" when absent`,
-		"  ask_when_missing: " + v.AskWhenMissing + "            # preflight asks task + worktree + branch if no active task",
-		"  subtasks_per_wave: " + v.SubtasksPerWave,
-		"  timer_store: " + v.TimerStore,
-		"  rounding_minutes: " + v.RoundingMinutes,
-		"  providers:                        # one block per provider, only the enabled one is required",
-		"    teamwork:",
-		"      task_ref_prefix: " + v.TeamworkTaskRefPrefix + "           # {prefix} in branch_pattern / commit_ref_pattern",
-		"      assignee_id: " + v.TeamworkAssigneeID + "           # user scope",
-		"      default_project_id: " + v.TeamworkDefaultProjectID,
-		"      default_tasklist_id: " + v.TeamworkDefaultTasklistID,
-		"      stages: { " + stages + " }",
-		`    github-projects: { task_ref_prefix: gh, owner: "", project_number: 0 }    # later`,
-		`    jira: { task_ref_prefix: jira, site: "", project_key: "" }               # later`,
-	}
-
-	if sourcesRaw != "" {
-		lines = append(lines, yamlSplitLines(sourcesRaw)...)
-	}
-
-	return strings.Join(lines, "\n")
-}
 
 // SkillsValues holds the fields Format-NervSkillsBlock's caller supplies.
 type SkillsValues struct {
@@ -203,12 +152,6 @@ func FormatCriticalPathsLine(paths []string) string {
 	return "critical_paths: [" + strings.Join(paths, ", ") + "]            # Hyuga auto-critical"
 }
 
-// FormatArtifactsBlock renders the artifacts: block in the documented
-// syntax. Mirrors Format-NervArtifactsBlock.
-func FormatArtifactsBlock(commit string) string {
-	return "artifacts:\n  commit: " + commit + "                  # with-change | at-close | never (default: at-close)"
-}
-
 // ProjectValues holds the optional overrides Format-NervProjectFile's
 // caller supplies; an empty field is omitted from the rendered file.
 type ProjectValues struct {
@@ -216,7 +159,6 @@ type ProjectValues struct {
 	Provider   string
 	ProjectID  string
 	TasklistID string
-	Commit     string
 }
 
 // FormatProjectFile renders a project-scope .nerv/nerv.yaml text:
@@ -250,12 +192,7 @@ func FormatProjectFile(v ProjectValues) string {
 		}
 	}
 
-	if v.Commit != "" {
-		lines = append(lines, "", "artifacts:",
-			"  commit: "+v.Commit+"                  # with-change | at-close | never")
-	}
-
-	lines = append(lines, "", "# models:                           # optional: per-role model/effort overrides for this repo (see tools/configure-models.ps1 -Scope project)")
+	lines = append(lines, "", "# models:                           # optional: per-role model/effort overrides for this repo (see nerv configure --init-repo)")
 
 	return strings.Join(lines, "\n") + "\n"
 }

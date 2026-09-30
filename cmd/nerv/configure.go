@@ -49,9 +49,7 @@ Other flags:
 
 // stringList is a repeatable string flag: each --flag value appends an
 // entry instead of replacing the previous one, giving --set/--set-model
-// their documented "repeatable" behavior natively (unlike configure.ps1's
-// -Set/-SetModel, whose PowerShell array parameters needed the -Command
-// workaround documented in tests/configure.test.ps1's case group K).
+// their documented "repeatable" behavior.
 type stringList []string
 
 func (s *stringList) String() string { return strings.Join(*s, ",") }
@@ -167,9 +165,7 @@ func runConfigure(args []string, stdout, stderr io.Writer, opts options) int {
 // runConfigureWizard resolves the wizard's input source — --answers when
 // given, otherwise the real stdin when it is a terminal — and runs it, or
 // refuses when neither applies (a non-interactive invocation with no mode
-// flag and no --answers). Mirrors configure.ps1's own -AnswersFile-or-
-// Read-Host duality, adapted for a Go process that has no notion of "a
-// PowerShell host with no console" beyond stdin's own terminal-ness.
+// flag and no --answers).
 func runConfigureWizard(stdout io.Writer, deps configure.Deps, opts options, wizOpts wizard.Options, answersPath string) int {
 	var in io.Reader
 	switch {
@@ -180,7 +176,7 @@ func runConfigureWizard(stdout io.Writer, deps configure.Deps, opts options, wiz
 			return 2
 		}
 		in = reader
-	case stdinIsTerminal():
+	case opts.IsTerminal():
 		in = opts.Stdin
 	default:
 		fmt.Fprintln(stdout, "nerv configure: stdin is not a terminal; use --print, --set, --set-model, --init-repo, --install-commands, or --answers <file>.")
@@ -193,19 +189,14 @@ func runConfigureWizard(stdout io.Writer, deps configure.Deps, opts options, wiz
 		if errors.Is(err, wizard.ErrInputClosed) {
 			return 1
 		}
-		var refusal *configure.RefusalError
-		if errors.As(err, &refusal) {
-			return 1
-		}
-		return 2
+		return exitCodeFor(err)
 	}
 	return 0
 }
 
 // openAnswersFile reads path's whole content up front (small text files, one
 // answer per line). A missing file is treated as an empty answers file —
-// never an error — mirroring configure.ps1's own
-// `if (Test-Path $AnswersFile) { ... } else { $script:answerLines = @() }`.
+// never an error.
 func openAnswersFile(path string) (io.Reader, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -229,17 +220,13 @@ func writeJSON(w io.Writer, v any) {
 // emitMutation formats one of Set/SetModel/InitRepo/InstallCommands'
 // results (or its refusal/environment error) and returns the process exit
 // code: 0 on success, 1 on a *configure.RefusalError, 2 on any other error.
-// Every branch writes to stdout, mirroring configure.ps1's uniform use of
-// Write-Host (and ConvertTo-Json's own default stream) for every outcome —
-// success, refusal, or unexpected error alike.
+// Every branch writes to stdout, success, refusal, or unexpected error
+// alike, so scripting callers can consistently parse this command's
+// output from one stream.
 func emitMutation(stdout io.Writer, result configure.Result, err error, jsonOut bool) int {
 	if err != nil {
 		fmt.Fprintln(stdout, err.Error())
-		var refusal *configure.RefusalError
-		if errors.As(err, &refusal) {
-			return 1
-		}
-		return 2
+		return exitCodeFor(err)
 	}
 
 	if jsonOut {

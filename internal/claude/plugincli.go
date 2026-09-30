@@ -8,9 +8,9 @@ import (
 	"github.com/war-apps/nerv-gentle-ai/internal/env"
 )
 
-// PluginCLI drives Claude Code's "claude plugin" subcommand through an
-// injected env.Runner. Mirrors install.ps1's -RefreshCache
-// `& claude plugin <verb> nerv@nerv` calls.
+// PluginCLI drives Claude Code's "claude plugin" subcommand — the
+// uninstall/install pair that refreshes the plugin cache — through an
+// injected env.Runner.
 type PluginCLI struct {
 	Runner env.Runner
 }

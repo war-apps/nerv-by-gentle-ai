@@ -106,7 +106,7 @@ func TestInstall_HappyPath_RegistersMarketplaceAndVerifiesCache(t *testing.T) {
 	var stdout bytes.Buffer
 	deps := install.Deps{Home: home, FS: nerv.PluginFS(), Runner: runner, Now: fixedNow, LookPath: lookPathAll, Stdout: &stdout}
 
-	err := install.Install(context.Background(), deps, install.Options{NoSkills: true, NoConfigure: true})
+	err := install.Install(context.Background(), deps, install.Options{NoSkills: true})
 	if err != nil {
 		t.Fatalf("Install() error = %v; output:\n%s", err, stdout.String())
 	}
@@ -171,22 +171,7 @@ func TestInstall_HappyPath_RegistersMarketplaceAndVerifiesCache(t *testing.T) {
 	}
 }
 
-func TestInstall_NoConfigureSuppressesHint(t *testing.T) {
-	home := t.TempDir()
-	runner := baseRunner()
-	seedInstalledPlugins(t, home, pluginVersion(t))
-	var stdout bytes.Buffer
-	deps := install.Deps{Home: home, FS: nerv.PluginFS(), Runner: runner, Now: fixedNow, LookPath: lookPathAll, Stdout: &stdout}
-
-	if err := install.Install(context.Background(), deps, install.Options{NoSkills: true, NoConfigure: true}); err != nil {
-		t.Fatalf("Install() error = %v", err)
-	}
-	if strings.Contains(stdout.String(), "nerv configure") {
-		t.Errorf("expected no configure hint with NoConfigure, got:\n%s", stdout.String())
-	}
-}
-
-func TestInstall_WithoutNoConfigure_PrintsHint(t *testing.T) {
+func TestInstall_NeverPrintsConfigureHint(t *testing.T) {
 	home := t.TempDir()
 	runner := baseRunner()
 	seedInstalledPlugins(t, home, pluginVersion(t))
@@ -196,8 +181,8 @@ func TestInstall_WithoutNoConfigure_PrintsHint(t *testing.T) {
 	if err := install.Install(context.Background(), deps, install.Options{NoSkills: true}); err != nil {
 		t.Fatalf("Install() error = %v", err)
 	}
-	if !strings.Contains(stdout.String(), "nerv configure") {
-		t.Errorf("expected the configure hint, got:\n%s", stdout.String())
+	if strings.Contains(stdout.String(), "nerv configure") {
+		t.Errorf("expected no configure hint (cmd/nerv owns it), got:\n%s", stdout.String())
 	}
 }
 
@@ -213,7 +198,7 @@ func TestInstall_RequireGentleAI_MissingRefuses(t *testing.T) {
 	var stdout bytes.Buffer
 	deps := install.Deps{Home: home, FS: nerv.PluginFS(), Runner: runner, Now: fixedNow, LookPath: lookPathAll, Stdout: &stdout}
 
-	err := install.Install(context.Background(), deps, install.Options{RequireGentleAI: true, NoSkills: true, NoConfigure: true})
+	err := install.Install(context.Background(), deps, install.Options{RequireGentleAI: true, NoSkills: true})
 	if err == nil {
 		t.Fatal("Install() error = nil, want a refusal when gentle-ai is required but missing")
 	}
@@ -237,7 +222,7 @@ func TestInstall_GentleAIMissing_WithoutRequire_WarnsAndContinues(t *testing.T) 
 	var stdout bytes.Buffer
 	deps := install.Deps{Home: home, FS: nerv.PluginFS(), Runner: runner, Now: fixedNow, LookPath: lookPathAll, Stdout: &stdout}
 
-	err := install.Install(context.Background(), deps, install.Options{NoSkills: true, NoConfigure: true})
+	err := install.Install(context.Background(), deps, install.Options{NoSkills: true})
 	if err != nil {
 		t.Fatalf("Install() error = %v", err)
 	}
@@ -258,7 +243,7 @@ func TestInstall_CacheVersionMismatch_Refuses(t *testing.T) {
 	var stdout bytes.Buffer
 	deps := install.Deps{Home: home, FS: nerv.PluginFS(), Runner: runner, Now: fixedNow, LookPath: lookPathAll, Stdout: &stdout}
 
-	err := install.Install(context.Background(), deps, install.Options{NoSkills: true, NoConfigure: true})
+	err := install.Install(context.Background(), deps, install.Options{NoSkills: true})
 	if err == nil {
 		t.Fatal("Install() error = nil, want a refusal on cache version mismatch")
 	}
@@ -278,7 +263,7 @@ func TestInstall_InstalledPluginsMissingAfterInstall_Refuses(t *testing.T) {
 	var stdout bytes.Buffer
 	deps := install.Deps{Home: home, FS: nerv.PluginFS(), Runner: runner, Now: fixedNow, LookPath: lookPathAll, Stdout: &stdout}
 
-	err := install.Install(context.Background(), deps, install.Options{NoSkills: true, NoConfigure: true})
+	err := install.Install(context.Background(), deps, install.Options{NoSkills: true})
 	if err == nil {
 		t.Fatal("Install() error = nil, want a refusal when installed_plugins.json never appears")
 	}
@@ -299,7 +284,7 @@ func TestInstall_EngramNotOnPath_WarnsButSucceeds(t *testing.T) {
 	var stdout bytes.Buffer
 	deps := install.Deps{Home: home, FS: nerv.PluginFS(), Runner: runner, Now: fixedNow, LookPath: lookPathOnly("claude", "gentle-ai"), Stdout: &stdout}
 
-	err := install.Install(context.Background(), deps, install.Options{NoSkills: true, NoConfigure: true})
+	err := install.Install(context.Background(), deps, install.Options{NoSkills: true})
 	if err != nil {
 		t.Fatalf("Install() error = %v", err)
 	}
@@ -330,7 +315,7 @@ func TestInstall_AppliesModelOverridesToCache(t *testing.T) {
 	var stdout bytes.Buffer
 	deps := install.Deps{Home: home, FS: nerv.PluginFS(), Runner: runner, Now: fixedNow, LookPath: lookPathAll, Stdout: &stdout}
 
-	if err := install.Install(context.Background(), deps, install.Options{NoSkills: true, NoConfigure: true}); err != nil {
+	if err := install.Install(context.Background(), deps, install.Options{NoSkills: true}); err != nil {
 		t.Fatalf("Install() error = %v; output:\n%s", err, stdout.String())
 	}
 

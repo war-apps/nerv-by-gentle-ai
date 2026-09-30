@@ -154,7 +154,7 @@ func TestGitIntegration_TagsAndCommitsSince(t *testing.T) {
 	if len(tags) != 1 || tags[0] != "v0.1.0" {
 		t.Fatalf("Tags() = %v, want [v0.1.0]", tags)
 	}
-	if got := release.LastReleaseTag(tags, false); got != "v0.1.0" {
+	if got := release.LastReleaseTag(tags); got != "v0.1.0" {
 		t.Errorf("LastReleaseTag() = %q, want v0.1.0", got)
 	}
 

@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 )
@@ -24,15 +25,14 @@ type RoleCatalogue struct {
 }
 
 // Roles returns the role catalogue — the single source of truth shared by
-// the interactive wizard's role/group prompts and configure.ps1's
-// -SetModel role validation. Mirrors Get-NervRoleCatalogue.
+// the interactive wizard's role/group prompts and "nerv configure
+// --set-model"'s role validation.
 //
-// Deviation from the port brief: the PowerShell function returns only role
-// names and group membership, not a per-role plugin default model/effort —
-// those come from Get-NervPluginDefaults (tools/install.ps1), which reads
-// plugin/agents/*.md frontmatter off disk and is out of this
-// file-I/O-free package's scope (P2's internal/models). ModelTable below
-// takes the resolved defaults as a parameter instead.
+// It returns only role names and group membership, not a per-role plugin
+// default model/effort — those live in plugin/agents/*.md frontmatter on
+// disk, read by internal/models (out of this file-I/O-free package's
+// scope). ModelTable below takes the resolved defaults as a parameter
+// instead.
 func Roles() RoleCatalogue {
 	allRoles := []string{
 		"aoba", "asuka", "balthasar", "casper", "fuyutsuki", "hyuga", "kaji",
@@ -49,7 +49,7 @@ func Roles() RoleCatalogue {
 }
 
 // ErrUnknownRole is returned by ValidateRole for a role outside the
-// catalogue. Its message matches configure.ps1's -SetModel rejection text.
+// catalogue.
 type ErrUnknownRole struct {
 	Role string
 }
@@ -102,7 +102,7 @@ func ResolveRoleTarget(target string, allRoles []string, groups map[string][]str
 // blank line, preceded by a documented header comment. Mirrors
 // Format-NervModelsBlock.
 func FormatModelsBlock(overrides map[string]ModelOverride) string {
-	lines := []string{"models:                             # per-role model and effort (written by tools/configure-models.ps1)"}
+	lines := []string{"models:                             # per-role model and effort (written by nerv configure --set-model)"}
 
 	roles := make([]string, 0, len(overrides))
 	for role := range overrides {
@@ -146,16 +146,11 @@ var modelEntryRe = regexp.MustCompile(`^\s*([A-Za-z0-9_-]+):\s*\{([^}]*)\}\s*(#.
 
 // ReadModelsOverrides parses doc's models: block into a role -> override
 // map, keeping fields exactly as written (an unresolved from: phase name,
-// not the model/effort it resolves to). Mirrors the raw block scan half of
-// Read-NervModelsOverrides.
-//
-// Deviation from the port brief: the PowerShell function also cross-checks
-// the raw scan against Resolve-NervModelAssignments (tools/install.ps1) and
-// drops a role whose override doesn't validate there (e.g. an unresolved
-// from: phase) — that cross-check needs the resolved, file-sourced
-// assignment table and belongs to a package with filesystem access (P2/P3);
-// ModelTable below takes the resolved phase assignments as a parameter so
-// callers can apply the same display-time resolution.
+// not the model/effort it resolves to) — a raw scan only, with no
+// cross-check against the resolved, file-sourced phase assignment table
+// (that needs filesystem access, out of this package's scope). ModelTable
+// below takes the resolved phase assignments as a parameter so callers
+// can apply that display-time resolution themselves.
 func ReadModelsOverrides(doc *Document) map[string]ModelOverride {
 	result := map[string]ModelOverride{}
 
@@ -286,8 +281,7 @@ func ModelTableFromDocument(doc *Document, defaults map[string]ModelOverride, ph
 // ---------------------------------------------------------------------------
 
 // ErrInvalidModel is returned by ResolveModelSpec for a model token that is
-// neither a known alias nor a claude-... id. Its message matches
-// configure.ps1's -SetModel rejection text.
+// neither a known alias nor a claude-... id.
 type ErrInvalidModel struct {
 	Role  string
 	Model string
@@ -298,8 +292,7 @@ func (e *ErrInvalidModel) Error() string {
 }
 
 // ErrInvalidEffort is returned by ResolveModelSpec for an effort token
-// outside the known set. Its message matches configure.ps1's -SetModel
-// rejection text.
+// outside the known set.
 type ErrInvalidEffort struct {
 	Role   string
 	Effort string
@@ -310,21 +303,35 @@ func (e *ErrInvalidEffort) Error() string {
 }
 
 var (
-	modelAliasRe  = regexp.MustCompile(`^(sonnet|opus|haiku|fable|inherit)$`)
 	customModelRe = regexp.MustCompile(`^claude-.+$`)
 	fromSpecRe    = regexp.MustCompile(`(?i)^from:(.+)$`)
-	effortRe      = regexp.MustCompile(`^(low|medium|high|xhigh|max)$`)
 )
 
-// ResolveModelSpec parses one -SetModel "role=<spec>" value — model[/effort]
-// (a model alias — sonnet, opus, haiku, fable, inherit — or a claude-...
-// id, optionally with an effort of low|medium|high|xhigh|max), from:<phase>,
-// or default (case-insensitive, clears the role's override) — into the
-// override to apply for role and whether it clears the override entirely.
-// role is only used to format an error message. Mirrors the -SetModel
-// per-entry spec parsing/validation inlined in configure.ps1's
-// non-interactive body (that logic has no PowerShell function name of its
-// own, so there is no case group to port from; see models_test.go).
+// ModelAliases returns the known per-role model alias tokens, in
+// canonical menu order.
+func ModelAliases() []string {
+	return []string{"sonnet", "opus", "haiku", "fable", "inherit"}
+}
+
+// Efforts returns the known per-role effort tokens, in canonical menu
+// order.
+func Efforts() []string {
+	return []string{"low", "medium", "high", "xhigh", "max"}
+}
+
+// IsCustomModelID reports whether s looks like a raw "claude-..." model
+// id rather than one of ModelAliases()'s known aliases.
+func IsCustomModelID(s string) bool {
+	return customModelRe.MatchString(s)
+}
+
+// ResolveModelSpec parses one "--set-model role=<spec>" value —
+// model[/effort] (a model alias — sonnet, opus, haiku, fable, inherit —
+// or a claude-... id, optionally with an effort of
+// low|medium|high|xhigh|max), from:<phase>, or default (case-insensitive,
+// clears the role's override) — into the override to apply for role and
+// whether it clears the override entirely. role is only used to format an
+// error message.
 func ResolveModelSpec(role, spec string) (override ModelOverride, clear bool, err error) {
 	if strings.EqualFold(spec, "default") {
 		return ModelOverride{}, true, nil
@@ -340,10 +347,10 @@ func ResolveModelSpec(role, spec string) (override ModelOverride, clear bool, er
 		effortPart = parts[1]
 	}
 
-	if !modelAliasRe.MatchString(modelPart) && !customModelRe.MatchString(modelPart) {
+	if !slices.Contains(ModelAliases(), modelPart) && !IsCustomModelID(modelPart) {
 		return ModelOverride{}, false, &ErrInvalidModel{Role: role, Model: modelPart}
 	}
-	if effortPart != "" && !effortRe.MatchString(effortPart) {
+	if effortPart != "" && !slices.Contains(Efforts(), effortPart) {
 		return ModelOverride{}, false, &ErrInvalidEffort{Role: role, Effort: effortPart}
 	}
 

@@ -1,8 +1,7 @@
 // Package gentleai detects the gentle-ai CLI (presence, version, the 3.x
 // preflight rule) and reads its claude_phase_assignments state, without
 // ever touching a real process or the real home directory outside a
-// caller-supplied env.Runner / path. Mirrors the gentle-ai preflight in
-// install.ps1 (~594-631) and Get-NervPrerequisitesStatus in configure.ps1.
+// caller-supplied env.Runner / path.
 package gentleai
 
 import (
@@ -48,8 +47,8 @@ type PrerequisitesStatus struct {
 var versionRe = regexp.MustCompile(`\d+\.\d+\.\d+`)
 
 // CheckPreflight runs "gentle-ai --version" through runner and computes
-// the Preflight result. Mirrors Get-NervPrerequisitesStatus's gentle_ai
-// block and the informational preflight in install.ps1.
+// the Preflight result: Found, its parsed Version (when parseable), and
+// whether it satisfies NERV's 3.x requirement.
 func CheckPreflight(ctx context.Context, runner env.Runner) Preflight {
 	line, found := firstOutputLine(ctx, runner)
 	if !found {
@@ -64,25 +63,6 @@ func CheckPreflight(ctx context.Context, runner env.Runner) Preflight {
 	major := majorOf(match)
 	return Preflight{Found: true, Version: match, OK: major == 3}
 }
-
-// Version runs "gentle-ai --version" through runner and parses the first
-// MAJOR.MINOR.PATCH token in its output. err is non-nil when gentle-ai
-// could not be found, or produced no parseable version.
-func Version(ctx context.Context, runner env.Runner) (semver string, major int, err error) {
-	preflight := CheckPreflight(ctx, runner)
-	if !preflight.Found {
-		return "", 0, errNotFound
-	}
-	if preflight.Version == "" {
-		return "", 0, errUnparseable
-	}
-	return preflight.Version, majorOf(preflight.Version), nil
-}
-
-var (
-	errNotFound    = errors.New("gentle-ai not found")
-	errUnparseable = errors.New("gentle-ai --version output unparseable")
-)
 
 func majorOf(semver string) int {
 	major, _ := strconv.Atoi(strings.SplitN(semver, ".", 2)[0])

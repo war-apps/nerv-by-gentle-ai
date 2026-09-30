@@ -1,21 +1,27 @@
 package release
 
 import (
+	"encoding/json"
 	"fmt"
 	"regexp"
 )
 
-var pluginVersionReadPattern = regexp.MustCompile(`"version"\s*:\s*"([^"]*)"`)
-
 // PluginVersion reads the "version" field out of plugin.json content via a
-// targeted regex match, not a JSON parse. Ports Get-NervPluginVersion (the
-// file read itself is the caller's job).
+// JSON parse, the same approach internal/version.PluginVersion uses over an
+// fs.FS (this package's callers already hold the content as a string, so it
+// parses that string directly instead). The file read itself is the
+// caller's job.
 func PluginVersion(content string) (string, error) {
-	m := pluginVersionReadPattern.FindStringSubmatch(content)
-	if m == nil {
+	var manifest struct {
+		Version string `json:"version"`
+	}
+	if err := json.Unmarshal([]byte(content), &manifest); err != nil {
+		return "", fmt.Errorf("parsing plugin.json content: %w", err)
+	}
+	if manifest.Version == "" {
 		return "", fmt.Errorf(`no "version" field found in plugin.json content`)
 	}
-	return m[1], nil
+	return manifest.Version, nil
 }
 
 var pluginVersionWritePattern = regexp.MustCompile(`("version"\s*:\s*")([^"]*)(")`)

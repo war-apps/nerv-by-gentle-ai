@@ -15,42 +15,28 @@ import (
 
 func TestLastReleaseTag(t *testing.T) {
 	t.Run("none-returns-empty", func(t *testing.T) {
-		if got := release.LastReleaseTag(nil, false); got != "" {
+		if got := release.LastReleaseTag(nil); got != "" {
 			t.Errorf("LastReleaseTag(nil) = %q, want empty", got)
 		}
 	})
 
 	t.Run("semver-order-not-lexical", func(t *testing.T) {
 		tags := []string{"v0.9.0", "v0.10.0"}
-		if got := release.LastReleaseTag(tags, false); got != "v0.10.0" {
+		if got := release.LastReleaseTag(tags); got != "v0.10.0" {
 			t.Errorf("LastReleaseTag() = %q, want v0.10.0", got)
 		}
 	})
 
-	t.Run("prerelease-ignored-by-default", func(t *testing.T) {
+	t.Run("prerelease-tags-ignored", func(t *testing.T) {
 		tags := []string{"v0.9.0", "v0.10.0", "v1.0.0-rc.1"}
-		if got := release.LastReleaseTag(tags, false); got != "v0.10.0" {
+		if got := release.LastReleaseTag(tags); got != "v0.10.0" {
 			t.Errorf("LastReleaseTag() = %q, want v0.10.0", got)
-		}
-	})
-
-	t.Run("prerelease-included-when-requested", func(t *testing.T) {
-		tags := []string{"v0.9.0", "v0.10.0", "v1.0.0-rc.1"}
-		if got := release.LastReleaseTag(tags, true); got != "v1.0.0-rc.1" {
-			t.Errorf("LastReleaseTag() = %q, want v1.0.0-rc.1", got)
-		}
-	})
-
-	t.Run("stable-outranks-prerelease-of-same-base", func(t *testing.T) {
-		tags := []string{"v0.9.0", "v0.10.0", "v1.0.0-rc.1", "v1.0.0"}
-		if got := release.LastReleaseTag(tags, true); got != "v1.0.0" {
-			t.Errorf("LastReleaseTag() = %q, want v1.0.0", got)
 		}
 	})
 
 	t.Run("non-matching-tags-ignored", func(t *testing.T) {
 		tags := []string{"not-a-tag", "v1.x", "v1.0.0"}
-		if got := release.LastReleaseTag(tags, false); got != "v1.0.0" {
+		if got := release.LastReleaseTag(tags); got != "v1.0.0" {
 			t.Errorf("LastReleaseTag() = %q, want v1.0.0", got)
 		}
 	})

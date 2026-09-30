@@ -111,8 +111,8 @@ Requires Go 1.26+ (see "Requirements" above).
 
 ### What `nerv install` does
 
-1. Runs preflight checks (`git`, `claude`, and gentle-ai 3.x when
-   `--require-gentle-ai` is given).
+1. Runs a gentle-ai preflight check (warns if missing or not 3.x; refuses
+   with `--require-gentle-ai`).
 2. Materializes the embedded plugin under `~/.nerv/marketplace`.
 3. Registers that directory marketplace in Claude Code's `settings.json`.
 4. Refreshes the plugin cache (`claude plugin uninstall`/`install`).

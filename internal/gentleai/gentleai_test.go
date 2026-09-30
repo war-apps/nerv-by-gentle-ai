@@ -66,40 +66,6 @@ func TestCheckPreflight_FoundButUnparseableVersion(t *testing.T) {
 	}
 }
 
-func TestVersion_ParsesFirstSemverToken(t *testing.T) {
-	runner := &envtest.FakeRunner{Responses: map[string]envtest.Response{
-		"gentle-ai --version": {Stdout: "gentle-ai 3.7.0 (build abc123)\n"},
-	}}
-
-	semver, major, err := gentleai.Version(context.Background(), runner)
-	if err != nil {
-		t.Fatalf("Version() error = %v", err)
-	}
-	if semver != "3.7.0" || major != 3 {
-		t.Fatalf("Version() = (%q, %d), want (\"3.7.0\", 3)", semver, major)
-	}
-}
-
-func TestVersion_ErrorsWhenNotFound(t *testing.T) {
-	runner := &envtest.FakeRunner{}
-
-	_, _, err := gentleai.Version(context.Background(), runner)
-	if err == nil {
-		t.Fatal("Version() error = nil, want error when gentle-ai is not found")
-	}
-}
-
-func TestVersion_ErrorsWhenUnparseable(t *testing.T) {
-	runner := &envtest.FakeRunner{Responses: map[string]envtest.Response{
-		"gentle-ai --version": {Stdout: "garbage\n"},
-	}}
-
-	_, _, err := gentleai.Version(context.Background(), runner)
-	if err == nil {
-		t.Fatal("Version() error = nil, want error for an unparseable version")
-	}
-}
-
 // ---------------------------------------------------------------------------
 // PhaseAssignments — reads ~/.gentle-ai/state.json's claude_phase_assignments.
 // ---------------------------------------------------------------------------

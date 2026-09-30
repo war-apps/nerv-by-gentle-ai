@@ -4,18 +4,15 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"path/filepath"
 
 	"github.com/war-apps/nerv-gentle-ai/internal/claude"
+	"github.com/war-apps/nerv-gentle-ai/internal/paths"
 )
 
 // Uninstall removes NERV's settings.json registration (backed up and
 // written atomically, like Install's own registration step), tolerantly
 // runs "claude plugin uninstall nerv@nerv", and removes the materialized
-// <home>/.nerv/marketplace directory. Mirrors install.ps1's -Uninstall
-// branch plus the marketplace directory this package's embedded-plugin
-// model introduces (the old script had nothing to remove there, since it
-// registered the repo checkout itself).
+// <home>/.nerv/marketplace directory.
 func Uninstall(ctx context.Context, deps Deps) error {
 	path := settingsPath(deps)
 	previous, settings, err := loadOrInitSettings(path)
@@ -44,7 +41,7 @@ func Uninstall(ctx context.Context, deps Deps) error {
 		return fmt.Errorf("claude plugin uninstall failed: %w", err)
 	}
 
-	marketplaceDir := filepath.Join(deps.Home, ".nerv", "marketplace")
+	marketplaceDir := paths.Resolve(deps.Home).Marketplace
 	if _, statErr := os.Stat(marketplaceDir); statErr == nil {
 		if err := os.RemoveAll(marketplaceDir); err != nil {
 			return fmt.Errorf("removing %s: %w", marketplaceDir, err)

@@ -4,24 +4,20 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"path/filepath"
 
-	"github.com/war-apps/nerv-gentle-ai/internal/claude"
 	"github.com/war-apps/nerv-gentle-ai/internal/config"
-	"github.com/war-apps/nerv-gentle-ai/internal/configure"
+	"github.com/war-apps/nerv-gentle-ai/internal/configstore"
 	"github.com/war-apps/nerv-gentle-ai/internal/gentleai"
 	"github.com/war-apps/nerv-gentle-ai/internal/models"
+	"github.com/war-apps/nerv-gentle-ai/internal/paths"
 	"github.com/war-apps/nerv-gentle-ai/internal/version"
 )
 
 // ApplyModels applies the user-scope models: overrides (merged over the
 // plugin's own committed defaults, resolving any from:<phase> entry
 // against gentle-ai's state.json) to the cached agent frontmatter under
-// the embedded plugin's own version. Mirrors -ApplyModels/-RefreshCache's
-// shared Invoke-NervApplyModels tail in install.ps1, built entirely from
-// packages P1a/P1b already ported and tested: config.ModelTableFromDocument
-// does the default+override+from: merge that Resolve-NervModelAssignments
-// and Merge-NervModelAssignments used to do by hand.
+// the embedded plugin's own version. config.ModelTableFromDocument does
+// the whole default+override+from: merge.
 func ApplyModels(ctx context.Context, deps Deps) error {
 	pluginVersion, err := version.PluginVersion(deps.FS)
 	if err != nil {
@@ -33,16 +29,17 @@ func ApplyModels(ctx context.Context, deps Deps) error {
 func applyModelsForVersion(deps Deps, pluginVersion string) error {
 	fmt.Fprintf(deps.Stdout, "\n=== Applying model/effort assignments (nerv@nerv %s) ===\n", pluginVersion)
 
-	agentsDir := claude.CacheAgentsDir(deps.Home, pluginVersion)
+	p := paths.Resolve(deps.Home)
+
+	agentsDir := p.CacheAgentsDir(pluginVersion)
 	if _, err := os.Stat(agentsDir); os.IsNotExist(err) {
 		fmt.Fprintf(deps.Stdout, "Warning: plugin cache agents directory not found: %s. Install/refresh the plugin first.\n", agentsDir)
 		return nil
 	}
 
-	userConfigPath := filepath.Join(deps.Home, ".claude", "nerv", "nerv.yaml")
-	doc, _, err := (configure.Store{}).Load(userConfigPath)
+	doc, _, err := (configstore.Store{}).Load(p.UserConfig)
 	if err != nil {
-		return fmt.Errorf("reading %s: %w", userConfigPath, err)
+		return fmt.Errorf("reading %s: %w", p.UserConfig, err)
 	}
 
 	defaults, err := models.PluginDefaults(deps.FS)
@@ -50,8 +47,7 @@ func applyModelsForVersion(deps Deps, pluginVersion string) error {
 		return fmt.Errorf("reading plugin defaults: %w", err)
 	}
 
-	statePath := filepath.Join(deps.Home, ".gentle-ai", "state.json")
-	phaseAssignments, err := gentleai.PhaseAssignments(statePath)
+	phaseAssignments, err := gentleai.PhaseAssignments(p.State)
 	if err != nil {
 		// A malformed state.json degrades to unresolved from:<phase>
 		// display rather than failing the whole apply, matching

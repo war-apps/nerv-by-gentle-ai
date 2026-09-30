@@ -6,7 +6,8 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
-	"path/filepath"
+
+	"github.com/war-apps/nerv-gentle-ai/internal/paths"
 )
 
 // PluginInstallInfo is one plugin's recorded install path and version, as
@@ -19,11 +20,9 @@ type PluginInstallInfo struct {
 // InstalledPlugins reads path (typically
 // "<home>/.claude/plugins/installed_plugins.json") and returns the first
 // recorded entry for "nerv@nerv". A missing file reports found=false with
-// no error; malformed JSON is an error. Mirrors the readback in
-// install.ps1's -RefreshCache verification, generalized from
-// gitCommitSha to version (see the go-cli feature document's P2 "new
-// model": the embedded plugin has no git commit, so the cache is verified
-// by version instead).
+// no error; malformed JSON is an error. The embedded plugin has no git
+// commit, so cache verification compares this recorded Version instead of
+// a gitCommitSha.
 func InstalledPlugins(path string) (PluginInstallInfo, bool, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -54,5 +53,5 @@ func InstalledPlugins(path string) (PluginInstallInfo, bool, error) {
 // frontmatter for a given plugin version:
 // "<home>/.claude/plugins/cache/nerv/nerv/<version>/agents".
 func CacheAgentsDir(home, pluginVersion string) string {
-	return filepath.Join(home, ".claude", "plugins", "cache", "nerv", "nerv", pluginVersion, "agents")
+	return paths.Paths{Home: home}.CacheAgentsDir(pluginVersion)
 }

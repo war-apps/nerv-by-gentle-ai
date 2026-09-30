@@ -7,8 +7,7 @@ import (
 )
 
 // ErrUnknownKey is returned by SetManagedValue for a key outside the
-// managed catalogue. Its message matches configure.ps1's -Set rejection
-// text exactly (key order and wording).
+// managed catalogue.
 type ErrUnknownKey struct {
 	Key string
 }
@@ -18,8 +17,7 @@ func (e *ErrUnknownKey) Error() string {
 }
 
 // ErrInvalidValue is returned by SetManagedValue for a value outside a
-// managed key's enumerated allowed values. Its message matches
-// configure.ps1's -Set rejection text exactly.
+// managed key's enumerated allowed values.
 type ErrInvalidValue struct {
 	Key     string
 	Value   string
@@ -107,9 +105,7 @@ func ManagedValue(doc *Document, key string) (value string, ok bool) {
 // the key's current resolved value, writes it into doc — auto-vivifying
 // any missing parent block, the same way the interactive wizard does.
 // changed is false, with no document mutation, when validation fails or
-// value already matches the current one. Mirrors
-// Set-NervManagedConfigValue plus the validation configure.ps1's -Set
-// handler performs before calling it.
+// value already matches the current one.
 func SetManagedValue(doc *Document, key, value string) (changed bool, err error) {
 	if err := ValidateManagedKey(key); err != nil {
 		return false, err
@@ -133,7 +129,7 @@ func writeManagedValue(doc *Document, key, value string) {
 	if strings.HasPrefix(key, "tasks.providers.teamwork.stages.") {
 		stageName := strings.TrimPrefix(key, "tasks.providers.teamwork.stages.")
 		stagesRaw, _ := doc.Scalar("tasks.providers.teamwork.stages")
-		order := []string{"inDev", "testing", "implemented", "blocked", "canceled", "pending", "analysis"}
+		order := StageOrder()
 		parts := make([]string, 0, len(order))
 		for _, stage := range order {
 			var current string
@@ -153,7 +149,7 @@ func writeManagedValue(doc *Document, key, value string) {
 		category := strings.TrimPrefix(key, "skills.")
 
 		if !doc.KeyExists("skills") {
-			categories := []string{"testing", "code", "best-practices", "architecture", "audit"}
+			categories := SkillsCategories()
 			values := SkillsValues{}
 			for _, cat := range categories {
 				var v string

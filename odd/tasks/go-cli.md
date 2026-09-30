@@ -127,7 +127,7 @@ Claude Code and runs the configuration wizard after installing. PowerShell leave
 - [x] P6 DONE 2026-09-30 (writer on sonnet; parent spot check: eight top-level sections in the requested order, Claude Code only callout, no pwsh/ps1/get-nerv/tools/roadmap references, every relative link resolves, Install section read). Commit `ff42c5d`. Writer judgment calls accepted: a Go badge replaces the PowerShell badge; project-scope models are documented as hand-edited. To verify in R2: README says `nerv install` preflight checks `git`. Docs. README in the requested order and split into `docs/integration.md` and
   `docs/troubleshooting.md`; Status and Roadmap removed; "Claude Code only for now" note;
   `CONTRIBUTING.md`; CHANGELOG `Unreleased` untouched (release tooling writes it). Route: writer.
-- [~] P7: read-only review DONE 2026-09-30 (feature-dev:code-reviewer on opus; it could not run go test itself, so the parent ran the checks): 15 findings accepted. R1 (structural): release use case out of cmd/nerv, one refusal type and one exit-code mapping, atomicfile package, one home-path catalogue, Store moved below configure. R2 (cleanup): generated yaml comments and error messages naming deleted scripts and PowerShell flags, unused exported API and dead NoConfigure branch, stdinIsTerminal through options, duplicated helpers and catalogues, shared hook gate in bash, split runModelsSection. Principles pass. One bounded read-only review of the Go tree against KISS, DRY, YAGNI and
+- [x] P7 DONE 2026-09-30: R1 `9081a45`, R2 `9d99eec` (parent spot check after each: gofmt/vet clean, 20 packages, 309 then 301 tests with the 8 removed named against dead code, hook suites 11+17, installer suite 17/17, shellcheck clean, no PowerShell residue outside test names). Read-only review DONE 2026-09-30 (feature-dev:code-reviewer on opus; it could not run go test itself, so the parent ran the checks): 15 findings accepted. R1 (structural): release use case out of cmd/nerv, one refusal type and one exit-code mapping, atomicfile package, one home-path catalogue, Store moved below configure. R2 (cleanup): generated yaml comments and error messages naming deleted scripts and PowerShell flags, unused exported API and dead NoConfigure branch, stdinIsTerminal through options, duplicated helpers and catalogues, shared hook gate in bash, split runModelsSection. Principles pass. One bounded read-only review of the Go tree against KISS, DRY, YAGNI and
   SOLID (package boundaries, interface size, duplicated helpers, dead flags carried over from
   PowerShell) producing a short list; then one refactor slice for the accepted items, tests green
   before and after. Route: reviewer (read-only) then writer.
@@ -148,6 +148,8 @@ Claude Code and runs the configuration wizard after installing. PowerShell leave
 
 ## Progress log
 
+- 2026-09-30: pushed and delivered as a feature-branch chain of eight PRs, one per phase: #17 scaffold (→ develop), #18 configure, #19 install, #20 wizard, #21 release, #22 commands and installer, #23 docs, #24 refactors, each stacked on the previous. Merge in order, retargeting each child with `gh api -X PATCH .../pulls/<n> -f base=develop`.
+- 2026-09-30: P7 complete (R1 `9081a45`, R2 `9d99eec`). Feature complete; push and PR chain pending user OK.
 - 2026-09-30: P6 complete (`ff42c5d`), docs; P7 review done, R1 refactor next.
 - 2026-09-30: P5 complete (`4f6e56e`); the repository holds no PowerShell. P6 docs next.
 - 2026-09-29: P4 complete (`77a73fe`), release tooling in Go, goreleaser in the workflow; only get-nerv.ps1 remains. P5 next.
@@ -163,4 +165,4 @@ Claude Code and runs the configuration wizard after installing. PowerShell leave
 
 ## Next step
 
-P7 R1 (writer): structural refactor, behaviour preserving, tests green before and after; then R2.
+Delivered as PRs #17–#24 (merge in order, retarget children to `develop`). Pending user decisions: create `war-apps/homebrew-tap` and `HOMEBREW_TAP_TOKEN` before the first stable release; the first release after merge exercises goreleaser and the brew formula for the first time.

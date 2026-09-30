@@ -5,28 +5,71 @@ import (
 	"regexp"
 	"sort"
 	"strconv"
+	"strings"
 )
 
 var (
-	stableTagPattern     = regexp.MustCompile(`^v(\d+)\.(\d+)\.(\d+)$`)
-	preReleaseTagPattern = regexp.MustCompile(`^v(\d+)\.(\d+)\.(\d+)-rc\.(\d+)$`)
-	semverPrefixPattern  = regexp.MustCompile(`^(\d+)\.(\d+)\.(\d+)`)
-	labelPattern         = regexp.MustCompile(`^[a-z]+$`)
+	stableTagPattern    = regexp.MustCompile(`^v(\d+)\.(\d+)\.(\d+)$`)
+	semverPrefixPattern = regexp.MustCompile(`^(\d+)\.(\d+)\.(\d+)`)
+	exactVersionPattern = regexp.MustCompile(`^\d+\.\d+\.\d+$`)
+	labelPattern        = regexp.MustCompile(`^[a-z]+$`)
 )
 
-type tagCandidate struct {
-	tag                    string
-	major, minor, patch    int
-	releaseRank, preNumber int
+// IsExactSemver reports whether s is a bare "X.Y.Z" semver string, with no
+// prefix or suffix (e.g. a "--version" override, not a git tag).
+func IsExactSemver(s string) bool {
+	return exactVersionPattern.MatchString(s)
 }
 
-// LastReleaseTag returns the highest "vX.Y.Z" tag in tags, ordered by
-// semantic version (not lexically, so v0.10.0 outranks v0.9.0). Returns ""
-// when no matching tag exists. When includePreRelease is true, "vX.Y.Z-rc.N"
-// tags are also considered; a stable tag always outranks a pre-release tag
-// of the same base version. Ports Get-NervLastReleaseTag (the tag listing
-// itself lives in git.go's Tags).
-func LastReleaseTag(tags []string, includePreRelease bool) string {
+// IsValidPreReleaseLabel reports whether s is a valid pre-release label:
+// lowercase letters only (e.g. "alpha", "beta", "rc").
+func IsValidPreReleaseLabel(s string) bool {
+	return labelPattern.MatchString(s)
+}
+
+// PrefixOf returns the leading "X.Y.Z" semver prefix of s (dropping any
+// "-<label>.<n>" pre-release suffix), or s unchanged when no such prefix
+// exists.
+func PrefixOf(s string) string {
+	m := semverPrefixPattern.FindStringSubmatch(s)
+	if m == nil {
+		return s
+	}
+	return fmt.Sprintf("%s.%s.%s", m[1], m[2], m[3])
+}
+
+// Greater reports whether a is strictly greater than b as "X.Y.Z" semver
+// versions (comparing major, then minor, then patch numerically). Either
+// string having fewer than 3 dot-separated components compares as false.
+func Greater(a, b string) bool {
+	ap, bp := strings.Split(a, "."), strings.Split(b, ".")
+	if len(ap) < 3 || len(bp) < 3 {
+		return false
+	}
+	for i := 0; i < 3; i++ {
+		ai, _ := strconv.Atoi(ap[i])
+		bi, _ := strconv.Atoi(bp[i])
+		if ai > bi {
+			return true
+		}
+		if ai < bi {
+			return false
+		}
+	}
+	return false
+}
+
+type tagCandidate struct {
+	tag                 string
+	major, minor, patch int
+}
+
+// LastReleaseTag returns the highest stable "vX.Y.Z" tag in tags, ordered
+// by semantic version (not lexically, so v0.10.0 outranks v0.9.0). Returns
+// "" when no matching tag exists. Pre-release tags (e.g. "vX.Y.Z-rc.N")
+// are never considered here (the tag listing itself lives in git.go's
+// Tags).
+func LastReleaseTag(tags []string) string {
 	var candidates []tagCandidate
 	for _, t := range tags {
 		if t == "" {
@@ -34,25 +77,11 @@ func LastReleaseTag(tags []string, includePreRelease bool) string {
 		}
 		if m := stableTagPattern.FindStringSubmatch(t); m != nil {
 			candidates = append(candidates, tagCandidate{
-				tag:         t,
-				major:       atoi(m[1]),
-				minor:       atoi(m[2]),
-				patch:       atoi(m[3]),
-				releaseRank: 1,
+				tag:   t,
+				major: atoi(m[1]),
+				minor: atoi(m[2]),
+				patch: atoi(m[3]),
 			})
-			continue
-		}
-		if includePreRelease {
-			if m := preReleaseTagPattern.FindStringSubmatch(t); m != nil {
-				candidates = append(candidates, tagCandidate{
-					tag:         t,
-					major:       atoi(m[1]),
-					minor:       atoi(m[2]),
-					patch:       atoi(m[3]),
-					releaseRank: 0,
-					preNumber:   atoi(m[4]),
-				})
-			}
 		}
 	}
 
@@ -68,13 +97,7 @@ func LastReleaseTag(tags []string, includePreRelease bool) string {
 		if a.minor != b.minor {
 			return a.minor > b.minor
 		}
-		if a.patch != b.patch {
-			return a.patch > b.patch
-		}
-		if a.releaseRank != b.releaseRank {
-			return a.releaseRank > b.releaseRank
-		}
-		return a.preNumber > b.preNumber
+		return a.patch > b.patch
 	})
 
 	return candidates[0].tag

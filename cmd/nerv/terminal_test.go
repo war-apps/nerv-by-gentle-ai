@@ -22,7 +22,6 @@ import (
 // unit test cannot fake, so only the stdinIsTerminal seam's two outcomes
 // are covered here and in TestStdinIsTerminal_SeamTrue_ProceedsToWizard.
 func TestStdinIsTerminal_SeamFalse_RefusesWithoutTouchingRunner(t *testing.T) {
-	forceTerminal(t, false)
 	home := t.TempDir()
 	var stdout, stderr bytes.Buffer
 	opts := testOptions(home)
@@ -46,10 +45,10 @@ func TestStdinIsTerminal_SeamFalse_RefusesWithoutTouchingRunner(t *testing.T) {
 // when the seam reports true, "nerv configure" proceeds into the
 // interactive wizard instead of refusing.
 func TestStdinIsTerminal_SeamTrue_ProceedsToWizard(t *testing.T) {
-	forceTerminal(t, true)
 	home := t.TempDir()
 	var stdout, stderr bytes.Buffer
 	opts := testOptions(home)
+	opts.IsTerminal = func() bool { return true }
 	opts.Stdin = strings.NewReader(strings.Repeat("\n", 40))
 
 	code := run([]string{

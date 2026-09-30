@@ -15,20 +15,14 @@ import (
 
 func testOptions(home string) options {
 	return options{
-		PluginFS: nerv.PluginFS(),
-		Runner:   &envtest.FakeRunner{},
-		Now:      func() time.Time { return time.Date(2026, 9, 29, 12, 0, 0, 0, time.UTC) },
-		LookPath: func(string) (string, error) { return "", os.ErrNotExist },
-		Stdin:    strings.NewReader(""),
-		Home:     home,
+		PluginFS:   nerv.PluginFS(),
+		Runner:     &envtest.FakeRunner{},
+		Now:        func() time.Time { return time.Date(2026, 9, 29, 12, 0, 0, 0, time.UTC) },
+		LookPath:   func(string) (string, error) { return "", os.ErrNotExist },
+		Stdin:      strings.NewReader(""),
+		Home:       home,
+		IsTerminal: func() bool { return false },
 	}
-}
-
-func forceTerminal(t *testing.T, terminal bool) {
-	t.Helper()
-	prev := stdinIsTerminal
-	stdinIsTerminal = func() bool { return terminal }
-	t.Cleanup(func() { stdinIsTerminal = prev })
 }
 
 // ---------------------------------------------------------------------------
@@ -36,7 +30,6 @@ func forceTerminal(t *testing.T, terminal bool) {
 // ---------------------------------------------------------------------------
 
 func TestRunConfigure_NoModeFlag_NotATerminal_PrintsNoticeAndExits1(t *testing.T) {
-	forceTerminal(t, false)
 	var stdout, stderr bytes.Buffer
 	home := t.TempDir()
 
@@ -55,10 +48,10 @@ func TestRunConfigure_NoModeFlag_NotATerminal_PrintsNoticeAndExits1(t *testing.T
 // ---------------------------------------------------------------------------
 
 func TestRunConfigure_NoModeFlag_Terminal_RunsWizard(t *testing.T) {
-	forceTerminal(t, true)
 	var stdout, stderr bytes.Buffer
 	home := t.TempDir()
 	opts := testOptions(home)
+	opts.IsTerminal = func() bool { return true }
 	// Real blank lines (not an exhausted reader — see wizard.ErrInputClosed)
 	// for every user-config prompt, so every value keeps its current
 	// default and the wizard completes instead of aborting.
@@ -82,7 +75,6 @@ func TestRunConfigure_NoModeFlag_Terminal_RunsWizard(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestRunConfigure_Answers_DrivesWizard(t *testing.T) {
-	forceTerminal(t, false)
 	home := t.TempDir()
 	configPath := filepath.Join(home, ".claude", "nerv", "nerv.yaml")
 	if err := os.MkdirAll(filepath.Dir(configPath), 0o755); err != nil {
@@ -125,7 +117,6 @@ func TestRunConfigure_Answers_DrivesWizard(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestRunConfigure_Answers_MissingFileActsEmpty(t *testing.T) {
-	forceTerminal(t, false)
 	home := t.TempDir()
 
 	var stdout, stderr bytes.Buffer

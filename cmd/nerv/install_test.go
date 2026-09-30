@@ -97,11 +97,11 @@ func TestRunUninstall_HappyPath_Exits0(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestRunInstall_Terminal_NoNoConfigure_RunsWizard(t *testing.T) {
-	forceTerminal(t, true)
 	home := t.TempDir()
 	seedInstalledPluginsForCLI(t, home)
 	var stdout, stderr bytes.Buffer
 	opts := testOptions(home)
+	opts.IsTerminal = func() bool { return true }
 	opts.Runner = baseInstallRunner()
 	// Real blank lines (not an exhausted reader — see wizard.ErrInputClosed)
 	// for every prompt the full wizard asks, so every value keeps its
@@ -119,7 +119,6 @@ func TestRunInstall_Terminal_NoNoConfigure_RunsWizard(t *testing.T) {
 }
 
 func TestRunInstall_NotATerminal_NoNoConfigure_PrintsHintNotWizard(t *testing.T) {
-	forceTerminal(t, false)
 	home := t.TempDir()
 	seedInstalledPluginsForCLI(t, home)
 	var stdout, stderr bytes.Buffer
@@ -140,11 +139,11 @@ func TestRunInstall_NotATerminal_NoNoConfigure_PrintsHintNotWizard(t *testing.T)
 }
 
 func TestRunInstall_NoConfigure_SkipsHintAndWizard(t *testing.T) {
-	forceTerminal(t, true)
 	home := t.TempDir()
 	seedInstalledPluginsForCLI(t, home)
 	var stdout, stderr bytes.Buffer
 	opts := testOptions(home)
+	opts.IsTerminal = func() bool { return true }
 	opts.Runner = baseInstallRunner()
 
 	code := run([]string{"install", "--no-skills", "--no-configure"}, &stdout, &stderr, opts)
