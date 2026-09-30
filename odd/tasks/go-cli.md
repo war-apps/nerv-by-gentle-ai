@@ -119,7 +119,7 @@ Claude Code and runs the configuration wizard after installing. PowerShell leave
   `tests/release-guard.test.ps1` (54); scripts and suites deleted. `release.yml` calls
   `go run ./cmd/nerv release ...` and runs goreleaser after the stable tag (brew publish gated on
   the tap secret being present). Route: writer.
-- [ ] P5 Plugin commands and installers. `plugin/commands/{configure,init,status}.md` call `nerv`
+- [x] P5 DONE 2026-09-30 (first writer hung 21 h after writing the script and suite, stopped; a continuation writer finished: 3 test-fixture bugs fixed, script unchanged; parent spot check: 17/17, shellcheck, go test, actionlint clean, no .ps1 tracked). Commit `4f6e56e`. Lesson recorded in memory: installer suites run with `timeout` and stdin from /dev/null, and the parent checks file mtimes after 45 minutes. Plugin commands and installers. `plugin/commands/{configure,init,status}.md` call `nerv`
   instead of `pwsh ... .ps1` (repeated `--set`, no `-Command` workaround); `scripts/install.sh`
   (binary download + checksum + `nerv install`) with a bash suite on fixtures; `get-nerv.sh`,
   `get-nerv.ps1`, `tests/get-nerv.test.*` and any remaining `.ps1` deleted; `plugin/tools/` removed
@@ -148,6 +148,7 @@ Claude Code and runs the configuration wizard after installing. PowerShell leave
 
 ## Progress log
 
+- 2026-09-30: P5 complete (`4f6e56e`); the repository holds no PowerShell. P6 docs next.
 - 2026-09-29: P4 complete (`77a73fe`), release tooling in Go, goreleaser in the workflow; only get-nerv.ps1 remains. P5 next.
 - 2026-09-29: P3.1 safety fixes (`8051784`); P4 next.
 - 2026-09-29: P3 wizard committed (`3a3c044`); orchestrator incident on the dev machine during the spot check, remediated; P3.1 safety fixes next.
@@ -161,4 +162,4 @@ Claude Code and runs the configuration wizard after installing. PowerShell leave
 
 ## Next step
 
-P5 (writer): plugin commands and SKILL references call `nerv`; `scripts/install.sh` downloads the binary; delete get-nerv.* and their suites; RED first for the script suite.
+P6 (writer): README restructure and split, docs/integration.md, docs/troubleshooting.md, CONTRIBUTING.md, Claude Code only note; then P7.
