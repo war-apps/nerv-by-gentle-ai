@@ -1,0 +1,67 @@
+version: 2
+
+project_name: nerv
+
+builds:
+  - main: ./cmd/nerv
+    binary: nerv
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    flags:
+      - -trimpath
+    ldflags:
+      - >-
+        -s -w
+        -X github.com/war-apps/nerv-gentle-ai/internal/version.Binary={{ .Version }}
+
+archives:
+  - formats:
+      - tar.gz
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files:
+      # No LICENSE file exists in this repository yet; add it here once one
+      # is added.
+      - README.md
+
+checksum:
+  name_template: "checksums.txt"
+  algorithm: sha256
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^ci:"
+
+release:
+  github:
+    owner: war-apps
+    name: nerv-gentle-ai
+  prerelease: auto
+
+# The brew formula is published only when the war-apps/homebrew-tap
+# repository and the HOMEBREW_TAP_TOKEN secret exist (see "Decisions
+# pending" in odd/tasks/go-cli.md). goreleaser has no built-in conditional
+# for a missing secret, so the release workflow skips this step entirely
+# (and therefore this whole goreleaser run's brew publish) until then by
+# gating the goreleaser invocation on the secret being present.
+brews:
+  - repository:
+      owner: war-apps
+      name: homebrew-tap
+      token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
+    directory: Formula
+    name: nerv
+    homepage: "https://github.com/war-apps/nerv-gentle-ai"
+    description: "NERV Gentle-AI — governance overlay on gentle-ai."
+    # No LICENSE file exists in this repository yet, so no license is
+    # declared here; add one once a LICENSE file is added.
+    commit_msg_template: "chore: update nerv formula to {{ .Tag }}"
