@@ -148,6 +148,7 @@ Claude Code and runs the configuration wizard after installing. PowerShell leave
 
 ## Progress log
 
+- 2026-09-30: pushed and delivered as a feature-branch chain of eight PRs, one per phase: #17 scaffold (→ develop), #18 configure, #19 install, #20 wizard, #21 release, #22 commands and installer, #23 docs, #24 refactors, each stacked on the previous. Merge in order, retargeting each child with `gh api -X PATCH .../pulls/<n> -f base=develop`.
 - 2026-09-30: P7 complete (R1 `9081a45`, R2 `9d99eec`). Feature complete; push and PR chain pending user OK.
 - 2026-09-30: P6 complete (`ff42c5d`), docs; P7 review done, R1 refactor next.
 - 2026-09-30: P5 complete (`4f6e56e`); the repository holds no PowerShell. P6 docs next.
@@ -164,4 +165,4 @@ Claude Code and runs the configuration wizard after installing. PowerShell leave
 
 ## Next step
 
-Feature complete on `feature/go-cli`. Pending user decisions: push and the PR chain (one PR per phase recommended); create `war-apps/homebrew-tap` and `HOMEBREW_TAP_TOKEN` before the first stable release; the first release after merge exercises goreleaser and the brew formula for the first time.
+Delivered as PRs #17–#24 (merge in order, retarget children to `develop`). Pending user decisions: create `war-apps/homebrew-tap` and `HOMEBREW_TAP_TOKEN` before the first stable release; the first release after merge exercises goreleaser and the brew formula for the first time.
