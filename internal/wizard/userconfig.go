@@ -46,7 +46,7 @@ var skillsCategories = config.SkillsCategories()
 // and the --set batch use.
 var userConfigOrder = func() []string {
 	order := []string{
-		"git.base_branch", "git.worktree", "git.branch_pattern", "git.commit_ref_pattern",
+		"git.base_branch", "git.worktree", "git.worktree_pattern", "git.branch_pattern", "git.commit_ref_pattern",
 		"tasks.provider", "tasks.ask_when_missing", "tasks.subtasks_per_wave",
 		"tasks.timer_store", "tasks.rounding_minutes",
 	}
@@ -127,6 +127,7 @@ func runUserConfigSection(deps Deps, paths configure.Paths, s *session, out io.W
 	fmt.Fprintln(out, "-- git --")
 	askField("Base branch", "git.base_branch")
 	chooseField("Worktree policy", "git.worktree")
+	askField("Worktree path pattern", "git.worktree_pattern")
 	askField("Branch pattern", "git.branch_pattern")
 	askField("Commit ref pattern", "git.commit_ref_pattern")
 

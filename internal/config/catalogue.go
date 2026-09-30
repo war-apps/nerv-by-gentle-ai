@@ -50,6 +50,7 @@ func Defaults() []KeyDefault {
 	defaults := []KeyDefault{
 		{"git.base_branch", "develop"},
 		{"git.worktree", "ask"},
+		{"git.worktree_pattern", ".claude/worktrees/{slug}"},
 		{"git.branch_pattern", "feature/{prefix}-{id}-{slug}"},
 		{"git.commit_ref_pattern", "({PREFIX}-{id})"},
 		{"tasks.provider", "teamwork"},

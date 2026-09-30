@@ -106,15 +106,16 @@ func TestFormatProjectFile_GroupD(t *testing.T) {
 func TestDefaults(t *testing.T) {
 	defaults := config.Defaults()
 
-	t.Run("has-27-managed-keys", func(t *testing.T) {
-		if len(defaults) != 27 {
-			t.Errorf("got %d managed keys, want 27", len(defaults))
+	t.Run("has-28-managed-keys", func(t *testing.T) {
+		if len(defaults) != 28 {
+			t.Errorf("got %d managed keys, want 28", len(defaults))
 		}
 	})
 
 	wantSample := map[string]string{
 		"git.base_branch":                              "develop",
 		"git.worktree":                                 "ask",
+		"git.worktree_pattern":                         ".claude/worktrees/{slug}",
 		"git.branch_pattern":                           "feature/{prefix}-{id}-{slug}",
 		"git.commit_ref_pattern":                       "({PREFIX}-{id})",
 		"tasks.provider":                               "teamwork",

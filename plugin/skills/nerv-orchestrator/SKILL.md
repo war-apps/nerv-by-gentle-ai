@@ -185,7 +185,9 @@ contract) with these groups, in this order:
    - work without a task.
 2. **Worktree** — create a new git worktree, or work in place. Skip this
    group entirely when `git.worktree` is `always` or `never` (act on that
-   value instead of asking).
+   value instead of asking). The worktree path itself comes from
+   `git.worktree_pattern` (default `.claude/worktrees/{slug}`), never asked
+   here.
 3. **Branch name** — proposed from `git.branch_pattern` filled with
    `{prefix}` (lowercase `task_ref_prefix` of the chosen provider, e.g.
    `tw`), `{id}`, and `{slug}`; editable. With no task (`none`, or
@@ -198,7 +200,8 @@ After the answers:
 - `nerv:hyuga` runs `DISPATCH: tracker` (`createTask` if requested, then
   `start`) through the port (`nerv-tasks/SKILL.md`); skipped when the
   provider is `none` or the user chose to work without a task.
-- `nerv:aoba` creates the worktree and branch from the confirmed names.
+- `nerv:aoba` creates the worktree and branch from the confirmed names, at
+  the path resolved from `git.worktree_pattern`.
 - Ikari offers **once** to persist the resolved provider and base branch
   into the project `.nerv/nerv.yaml`; writes only on explicit "yes".
 

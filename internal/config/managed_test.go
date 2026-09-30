@@ -107,6 +107,14 @@ func TestManagedValue(t *testing.T) {
 		}
 	})
 
+	t.Run("worktree-pattern-falls-back-to-default-when-absent", func(t *testing.T) {
+		doc := config.Parse(fixtureLf)
+		got, ok := config.ManagedValue(doc, "git.worktree_pattern")
+		if !ok || got != ".claude/worktrees/{slug}" {
+			t.Errorf("got %q, %v", got, ok)
+		}
+	})
+
 	t.Run("unknown-key", func(t *testing.T) {
 		doc := config.Parse(fixtureLf)
 		if _, ok := config.ManagedValue(doc, "does.not.exist"); ok {
@@ -238,6 +246,54 @@ func TestSetManagedValue(t *testing.T) {
 		// unset categories must fall back to their catalogue defaults.
 		if !strings.Contains(got, "testing: [tdd, playwright-best-practices]") {
 			t.Errorf("unset categories missing default: %s", got)
+		}
+	})
+
+	t.Run("sets-worktree-pattern-creating-key-next-to-worktree-when-missing", func(t *testing.T) {
+		doc := config.Parse("enabled: true\ngit:\n  worktree: ask\n")
+		changed, err := config.SetManagedValue(doc, "git.worktree_pattern", ".claude/worktrees/{branch}")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if !changed {
+			t.Errorf("expected changed=true")
+		}
+		got := doc.String()
+		want := "enabled: true\ngit:\n  worktree: ask\n  worktree_pattern: \".claude/worktrees/{branch}\"\n"
+		if got != want {
+			t.Errorf("got %q, want %q", got, want)
+		}
+	})
+
+	t.Run("rejects-empty-worktree-pattern", func(t *testing.T) {
+		doc := config.Parse(fixtureLf)
+		_, err := config.SetManagedValue(doc, "git.worktree_pattern", "")
+		if err == nil {
+			t.Fatalf("expected error")
+		}
+		want := "Invalid value '' for key 'git.worktree_pattern': must not be empty."
+		if err.Error() != want {
+			t.Errorf("got %q, want %q", err.Error(), want)
+		}
+		var invalidPatternErr *config.ErrInvalidWorktreePattern
+		if !errors.As(err, &invalidPatternErr) {
+			t.Errorf("expected *config.ErrInvalidWorktreePattern, got %T", err)
+		}
+	})
+
+	t.Run("rejects-worktree-pattern-with-dotdot-segment", func(t *testing.T) {
+		doc := config.Parse(fixtureLf)
+		_, err := config.SetManagedValue(doc, "git.worktree_pattern", "../{slug}")
+		if err == nil {
+			t.Fatalf("expected error")
+		}
+		want := "Invalid value '../{slug}' for key 'git.worktree_pattern': must not contain '..' path segments."
+		if err.Error() != want {
+			t.Errorf("got %q, want %q", err.Error(), want)
+		}
+		var invalidPatternErr *config.ErrInvalidWorktreePattern
+		if !errors.As(err, &invalidPatternErr) {
+			t.Errorf("expected *config.ErrInvalidWorktreePattern, got %T", err)
 		}
 	})
 

@@ -180,9 +180,9 @@ The wizard walks through six sections:
    `npx skills add <repo> --skill <id> -g -a claude-code -y`; an
    already-present skill is never touched. `nerv skills --dry-run --json`
    previews the same check without the wizard.
-3. **User config** — asks `git` (base branch, worktree policy, branch and
-   commit-ref patterns), `tasks` (provider, ask-when-missing,
-   subtasks-per-wave, timer store, rounding minutes, and — when the
+3. **User config** — asks `git` (base branch, worktree policy, worktree
+   pattern, branch and commit-ref patterns), `tasks` (provider,
+   ask-when-missing, subtasks-per-wave, timer store, rounding minutes, and — when the
    provider is Teamwork — the ref prefix, assignee id, default
    project/tasklist ids, and the seven workflow-stage names), `skills`
    (one comma-separated stack per consuming role), `critical_paths`, and
@@ -304,6 +304,7 @@ artifacts:
 git:
   base_branch: develop              # default base for the worktree offer
   worktree: ask                     # ask | always | never
+  worktree_pattern: ".claude/worktrees/{slug}"   # where task worktrees are created; {slug} {branch} {prefix} {id}
   branch_pattern: "feature/{prefix}-{id}-{slug}"   # prefix comes from the provider (tw, gh, jira)
   commit_ref_pattern: "({PREFIX}-{id})"
 tasks:
