@@ -16,7 +16,7 @@ func TestRunSkills_DryRun_FreshDir_PrintsNineInstallLinesAndExitsZero(t *testing
 	var stdout, stderr bytes.Buffer
 	home := t.TempDir()
 
-	code := run([]string{"skills", "--home", home, "--dry-run"}, &stdout, &stderr, testOptions(home))
+	code := run([]string{"skills", "--dry-run"}, &stdout, &stderr, testOptions(home))
 
 	if code != 0 {
 		t.Fatalf("exit code = %d, want 0 (stderr=%q)", code, stderr.String())
@@ -36,7 +36,7 @@ func TestRunSkills_DryRun_OnlyTDD_PrintsExactlyOneLineAndExitsZero(t *testing.T)
 	var stdout, stderr bytes.Buffer
 	home := t.TempDir()
 
-	code := run([]string{"skills", "--home", home, "--only", "tdd", "--dry-run"}, &stdout, &stderr, testOptions(home))
+	code := run([]string{"skills", "--only", "tdd", "--dry-run"}, &stdout, &stderr, testOptions(home))
 
 	if code != 0 {
 		t.Fatalf("exit code = %d, want 0 (stderr=%q)", code, stderr.String())
@@ -56,7 +56,7 @@ func TestRunSkills_OnlyUnknownName_Exits1AndNamesIt(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	home := t.TempDir()
 
-	code := run([]string{"skills", "--home", home, "--only", "no-such-skill", "--dry-run"}, &stdout, &stderr, testOptions(home))
+	code := run([]string{"skills", "--only", "no-such-skill", "--dry-run"}, &stdout, &stderr, testOptions(home))
 
 	if code != 1 {
 		t.Fatalf("exit code = %d, want 1", code)
@@ -73,7 +73,7 @@ func TestRunSkills_JSON_SingleEntryIsArray(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	home := t.TempDir()
 
-	code := run([]string{"skills", "--home", home, "--only", "tdd", "--json", "--dry-run"}, &stdout, &stderr, testOptions(home))
+	code := run([]string{"skills", "--only", "tdd", "--json", "--dry-run"}, &stdout, &stderr, testOptions(home))
 
 	if code != 0 {
 		t.Fatalf("exit code = %d, want 0 (stderr=%q)", code, stderr.String())
@@ -95,7 +95,7 @@ func TestRunSkills_JSON_FullManifestHasAtLeast15EntriesAndParses(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	home := t.TempDir()
 
-	code := run([]string{"skills", "--home", home, "--json", "--dry-run"}, &stdout, &stderr, testOptions(home))
+	code := run([]string{"skills", "--json", "--dry-run"}, &stdout, &stderr, testOptions(home))
 
 	if code != 0 {
 		t.Fatalf("exit code = %d, want 0 (stderr=%q)", code, stderr.String())
@@ -106,5 +106,21 @@ func TestRunSkills_JSON_FullManifestHasAtLeast15EntriesAndParses(t *testing.T) {
 	}
 	if len(decoded) < 15 {
 		t.Errorf("len(decoded) = %d, want >= 15", len(decoded))
+	}
+}
+
+// ---------------------------------------------------------------------------
+// P3.1.3: "--home" is no longer a public flag on "nerv skills" — same
+// rationale as configure's own TestRunConfigure_HomeFlag_NoLongerAccepted.
+// ---------------------------------------------------------------------------
+
+func TestRunSkills_HomeFlag_NoLongerAccepted(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	home := t.TempDir()
+
+	code := run([]string{"skills", "--home", home, "--dry-run"}, &stdout, &stderr, testOptions(home))
+
+	if code != 2 {
+		t.Fatalf("exit code = %d, want 2 (a rejected unknown flag); stdout=%q", code, stdout.String())
 	}
 }

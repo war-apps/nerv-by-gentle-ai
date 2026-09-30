@@ -1,19 +1,34 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
 	"io"
+	"io/fs"
+	"os"
 	"strings"
 
 	"github.com/war-apps/nerv-gentle-ai/internal/configure"
+	"github.com/war-apps/nerv-gentle-ai/internal/wizard"
 )
 
 const configureUsage = `Usage: nerv configure [flags]
 
-Exactly one mode flag is required:
+With no mode flag, runs the interactive setup wizard (when stdin is a
+terminal, or when --answers is given):
+  --answers <file>          Drive the wizard from a file, one answer per
+                             line (blank line = keep the current value)
+                             instead of prompting
+  --skip-skills             Skip the required-skills install offer
+  --skip-models             Skip the per-role models editor
+  --skip-repos              Skip the repository init loop
+  --skip-commands           Skip the Teamwork /task:* commands install
+  --no-refresh              Skip the closing apply-models/cache-refresh step
+
+Otherwise, exactly one mode flag is required:
   --print                   Print the current configuration as JSON
   --set key=value           Set a managed config key (repeatable)
   --set-model role=spec     Set a role's model/effort override (repeatable);
@@ -30,10 +45,6 @@ With --init-repo:
 Other flags:
   --json                    Print the result as JSON (ignored by --print, which always does)
   --config <path>           Override the user-scope nerv.yaml path
-  --home <dir>              Override the resolved home directory
-
-The interactive wizard is not available yet in this build; pass exactly one
-mode flag above.
 `
 
 // stringList is a repeatable string flag: each --flag value appends an
@@ -66,7 +77,12 @@ func runConfigure(args []string, stdout, stderr io.Writer, opts options) int {
 	installCommands := fs.Bool("install-commands", false, "")
 	jsonOut := fs.Bool("json", false, "")
 	configOverride := fs.String("config", "", "")
-	homeOverride := fs.String("home", "", "")
+	answersFile := fs.String("answers", "", "")
+	skipSkills := fs.Bool("skip-skills", false, "")
+	skipModels := fs.Bool("skip-models", false, "")
+	skipRepos := fs.Bool("skip-repos", false, "")
+	skipCommands := fs.Bool("skip-commands", false, "")
+	noRefresh := fs.Bool("no-refresh", false, "")
 
 	if err := fs.Parse(args); err != nil {
 		fmt.Fprint(stderr, configureUsage)
@@ -94,7 +110,7 @@ func runConfigure(args []string, stdout, stderr io.Writer, opts options) int {
 		return 2
 	}
 
-	home, err := configure.ResolveHome(*homeOverride)
+	home, err := configure.ResolveHome(opts.Home)
 	if err != nil {
 		fmt.Fprintf(stdout, "nerv: %v\n", err)
 		return 2
@@ -136,9 +152,69 @@ func runConfigure(args []string, stdout, stderr io.Writer, opts options) int {
 		return emitMutation(stdout, result, err, *jsonOut)
 
 	default:
-		fmt.Fprintln(stdout, "nerv configure: the interactive wizard is not available yet in this build; pass --print, --set, --set-model, --init-repo, or --install-commands.")
+		wizOpts := wizard.Options{
+			Paths:        paths,
+			SkipSkills:   *skipSkills,
+			SkipModels:   *skipModels,
+			SkipRepos:    *skipRepos,
+			SkipCommands: *skipCommands,
+			NoRefresh:    *noRefresh,
+		}
+		return runConfigureWizard(stdout, deps, opts, wizOpts, *answersFile)
+	}
+}
+
+// runConfigureWizard resolves the wizard's input source — --answers when
+// given, otherwise the real stdin when it is a terminal — and runs it, or
+// refuses when neither applies (a non-interactive invocation with no mode
+// flag and no --answers). Mirrors configure.ps1's own -AnswersFile-or-
+// Read-Host duality, adapted for a Go process that has no notion of "a
+// PowerShell host with no console" beyond stdin's own terminal-ness.
+func runConfigureWizard(stdout io.Writer, deps configure.Deps, opts options, wizOpts wizard.Options, answersPath string) int {
+	var in io.Reader
+	switch {
+	case answersPath != "":
+		reader, err := openAnswersFile(answersPath)
+		if err != nil {
+			fmt.Fprintf(stdout, "nerv: %v\n", err)
+			return 2
+		}
+		in = reader
+	case stdinIsTerminal():
+		in = opts.Stdin
+	default:
+		fmt.Fprintln(stdout, "nerv configure: stdin is not a terminal; use --print, --set, --set-model, --init-repo, --install-commands, or --answers <file>.")
 		return 1
 	}
+
+	_, err := wizard.Run(deps, in, stdout, wizOpts)
+	if err != nil {
+		fmt.Fprintf(stdout, "nerv: %v\n", err)
+		if errors.Is(err, wizard.ErrInputClosed) {
+			return 1
+		}
+		var refusal *configure.RefusalError
+		if errors.As(err, &refusal) {
+			return 1
+		}
+		return 2
+	}
+	return 0
+}
+
+// openAnswersFile reads path's whole content up front (small text files, one
+// answer per line). A missing file is treated as an empty answers file —
+// never an error — mirroring configure.ps1's own
+// `if (Test-Path $AnswersFile) { ... } else { $script:answerLines = @() }`.
+func openAnswersFile(path string) (io.Reader, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return strings.NewReader(""), nil
+		}
+		return nil, err
+	}
+	return bytes.NewReader(data), nil
 }
 
 func writeJSON(w io.Writer, v any) {

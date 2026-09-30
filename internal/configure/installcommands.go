@@ -8,10 +8,13 @@ import (
 	"strings"
 )
 
-// proceduresDir is where the embedded plugin tree carries the Teamwork
+// ProceduresDir is where the embedded plugin tree carries the Teamwork
 // /task:* slash-command procedures, relative to deps.FS's root (i.e.
-// plugin/skills/nerv-tasks/providers/teamwork/procedures on disk).
-const proceduresDir = "skills/nerv-tasks/providers/teamwork/procedures"
+// plugin/skills/nerv-tasks/providers/teamwork/procedures on disk). Exported
+// so internal/wizard can check its existence itself before offering to
+// install the commands (see this package's InstallCommands, its own write
+// path).
+const ProceduresDir = "skills/nerv-tasks/providers/teamwork/procedures"
 
 // InstallCommands copies every "*.md" file from the embedded Teamwork
 // procedures directory into paths.CommandsDir, never overwriting a file
@@ -21,14 +24,14 @@ const proceduresDir = "skills/nerv-tasks/providers/teamwork/procedures"
 // not a failure. Mirrors configure.ps1's -InstallCommands handling
 // (~1395-1416).
 func InstallCommands(deps Deps, paths Paths) (Result, error) {
-	entries, err := fs.ReadDir(deps.FS, proceduresDir)
+	entries, err := fs.ReadDir(deps.FS, ProceduresDir)
 
 	warnings := emptyStrings()
 	written := emptyStrings()
 	changed := false
 
 	if err != nil {
-		warnings = append(warnings, fmt.Sprintf("Teamwork procedures not found at %s; skipping.", proceduresDir))
+		warnings = append(warnings, fmt.Sprintf("Teamwork procedures not found at %s; skipping.", ProceduresDir))
 	} else {
 		if err := os.MkdirAll(paths.CommandsDir, 0o755); err != nil {
 			return Result{}, err
@@ -42,7 +45,7 @@ func InstallCommands(deps Deps, paths Paths) (Result, error) {
 				warnings = append(warnings, fmt.Sprintf("Skipped (already exists): %s", entry.Name()))
 				continue
 			}
-			data, err := fs.ReadFile(deps.FS, proceduresDir+"/"+entry.Name())
+			data, err := fs.ReadFile(deps.FS, ProceduresDir+"/"+entry.Name())
 			if err != nil {
 				return Result{}, err
 			}

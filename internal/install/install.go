@@ -65,7 +65,7 @@ func Install(ctx context.Context, deps Deps, opts Options) error {
 	}
 
 	if !opts.NoConfigure {
-		fmt.Fprintln(deps.Stdout, "\nRun `nerv configure` to set up NERV (the interactive wizard is not available yet in this build; see `nerv configure --help`).")
+		fmt.Fprintln(deps.Stdout, "\nRun `nerv configure` to set up NERV.")
 	}
 
 	fmt.Fprintln(deps.Stdout, "\nRestart Claude Code for the change to take effect.")
@@ -150,6 +150,19 @@ func registerSettings(deps Deps, marketplaceDir string) error {
 		fmt.Fprintln(deps.Stdout, "settings.json updated and verified.")
 	}
 	return nil
+}
+
+// RefreshCache re-registers nerv@nerv in the Claude Code plugin cache
+// ("claude plugin uninstall/install") and verifies the cached version
+// matches the embedded plugin version. Exported for internal/wizard's
+// closing "apply and refresh" step, wrapping the same tail Install itself
+// runs after registering settings.json.
+func RefreshCache(ctx context.Context, deps Deps) error {
+	pluginVersion, err := version.PluginVersion(deps.FS)
+	if err != nil {
+		return fmt.Errorf("reading embedded plugin version: %w", err)
+	}
+	return refreshCache(ctx, deps, pluginVersion)
 }
 
 func refreshCache(ctx context.Context, deps Deps, pluginVersion string) error {
