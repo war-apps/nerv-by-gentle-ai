@@ -1,0 +1,25 @@
+schema_version: "1.1"
+name: activation-absent
+description: >-
+  J0 negative case: with no .nerv/nerv.yaml file at all, the SessionStart
+  hook has nothing to gate on and must stay silent, same as the
+  enabled: false case.
+tags: [nerv, activation, j0]
+runs: 1
+expected_outcome: >-
+  The session answers NO and the protocol header line never appears in
+  the transcript.
+
+execution:
+  prompt: |
+    Answer YES or NO: does your context contain a section whose first
+    line is `# NERV orchestrator protocol (active: .nerv/nerv.yaml
+    enabled)`? Then list every agent type starting with `nerv:`.
+
+    Answer in English.
+  max_turns: 6
+  timeout_seconds: 60
+  allowed_tools: [Read]
+
+context:
+  scaffold_script: scaffold.sh

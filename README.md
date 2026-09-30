@@ -277,6 +277,9 @@ config edits through the fakes exercised by `go test ./...`, or against a
 disposable, backed-up `~/.claude/nerv/nerv.yaml` — never by pointing a real
 `nerv install`/`nerv configure` run at a throwaway home directory.
 
+Behavioral tests live under `bench/`: see [`bench/README.md`](bench/README.md)
+for the manual journey suite and the `claude plugin eval` corpus.
+
 ## Configuration schema
 
 Every NERV Gentle-AI setting lives in `nerv.yaml`. There are exactly two
