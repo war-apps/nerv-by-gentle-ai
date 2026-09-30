@@ -74,9 +74,10 @@ Out of scope: new config keys (no `herdr_workspace` toggle — YAGNI), evals, ch
 - 2026-09-30: T1–T3 implemented by one delegated writer under strict TDD; T4 verified by the parent. Commits `732cef9`, `07d5f4b`, `d127aa6` on `feature/worktree-path-options`.
 - Authored changed lines (additions + deletions, tests included): **~737**, above the ~380 forecast and the ~400 delivery budget. Nothing was trimmed to fit. Delivery strategy `ask-on-risk` → user chose **stacked chain** (2026-09-30).
 - Chain slices (each within budget, one slicing pass):
-  1. `feature/worktree-path-options` → `develop`: `732cef9` (herdr package), 352 lines.
-  2. `feature/worktree-path-options-wizard` → PR 1 branch: `07d5f4b` (wizard menu), 371 lines.
-  3. `feature/worktree-path-options-docs` → PR 2 branch: `d127aa6` + this document, 106 lines.
+  1. PR #29 `feature/worktree-path-options` → `develop`: `732cef9` (herdr package), 352 lines.
+  2. PR #30 `feature/worktree-path-options-wizard` → PR #29 branch: `07d5f4b` (wizard menu), 371 lines.
+  3. PR #31 `feature/worktree-path-options-docs` → PR #30 branch: `d127aa6` + this document, 106 lines.
+- 2026-09-30: branches pushed and the three PRs opened with explicit user OK.
 
 ## Decisions
 
