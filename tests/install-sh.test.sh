@@ -288,8 +288,10 @@ write_curl_stub "$stub_dir_full/curl"
 # --- PATH variants derived from this test's own (real) PATH ---
 original_path="$PATH"
 path_no_claude="$(strip_dir_of "$original_path" claude)"
-path_base_no_tools="$(strip_dir_of "$(strip_dir_of "$original_path" claude)" curl)"
-path_normal="${stub_dir_full}:${path_base_no_tools}"
+# Only claude is stripped: the stub directory is prepended, so the curl
+# stub already shadows the real curl. Stripping curl's directory removed
+# /usr/bin on usrmerge Linux and macOS, where bash lives too (exit 127).
+path_normal="${stub_dir_full}:${path_no_claude}"
 
 # =============================================================================
 # Case: stable resolves v0.1.0 and installs it
