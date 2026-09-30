@@ -72,7 +72,11 @@ Out of scope: new config keys (no `herdr_workspace` toggle — YAGNI), evals, ch
 
 - 2026-09-30: exploration done (mapper report), branch created, this document written and mirrored.
 - 2026-09-30: T1–T3 implemented by one delegated writer under strict TDD; T4 verified by the parent. Commits `732cef9`, `07d5f4b`, `d127aa6` on `feature/worktree-path-options`.
-- Authored changed lines (additions + deletions, tests included): **~737**, above the ~380 forecast and the ~400 delivery budget. Nothing was trimmed to fit. Delivery strategy `ask-on-risk` → chain strategy pending the user's answer (natural slice: Go commits `732cef9`+`07d5f4b` / docs commit `d127aa6`).
+- Authored changed lines (additions + deletions, tests included): **~737**, above the ~380 forecast and the ~400 delivery budget. Nothing was trimmed to fit. Delivery strategy `ask-on-risk` → user chose **stacked chain** (2026-09-30).
+- Chain slices (each within budget, one slicing pass):
+  1. `feature/worktree-path-options` → `develop`: `732cef9` (herdr package), 352 lines.
+  2. `feature/worktree-path-options-wizard` → PR 1 branch: `07d5f4b` (wizard menu), 371 lines.
+  3. `feature/worktree-path-options-docs` → PR 2 branch: `d127aa6` + this document, 106 lines.
 
 ## Decisions
 
@@ -82,4 +86,4 @@ Out of scope: new config keys (no `herdr_workspace` toggle — YAGNI), evals, ch
 
 ## Next step
 
-Answer the delivery question (single PR vs chain), then open the PR(s) — push and PR remain the user's call.
+Push the three branches and open the stacked PRs in order (PR bodies prepared with Chain Context) — push and PR creation remain the user's call. After PR 1 merges, retarget PR 2 to `develop`; after PR 2 merges, retarget PR 3.
