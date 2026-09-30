@@ -1,0 +1,36 @@
+schema_version: "1.1"
+name: classification-full
+description: >-
+  J2 preflight/classification slice: a request touching two pilot domains
+  (backend + ci-cd/infra) must classify FULL per SKILL.md's
+  "Classification: LIGHT vs FULL" rules, without the session starting to
+  implement anything.
+tags: [nerv, classification, j2]
+runs: 1
+expected_outcome: >-
+  The session states classification FULL, names the MAGI agents it would
+  launch, and stops without editing any file.
+
+execution:
+  prompt: |
+    Context you already have, so preflight stays silent: task ref: none;
+    work in place on the current branch `main` (no worktree); branch:
+    main; base: main; pace: fast-forward; artifact store: openspec; PR
+    strategy: single-pr.
+
+    Do not implement anything: run only the NERV preflight and
+    classification, then stop and print the classification (LIGHT or
+    FULL), the path, and the agents you would launch next. Ask nothing.
+
+    Request: add a `multiply(a, b)` function to `src/calc.py` that
+    returns `a * b`, and add a GitHub Actions workflow at
+    `.github/workflows/ci.yml` that runs a test command on push. Follow
+    the NERV orchestrator protocol injected in this session.
+
+    Answer in English.
+  max_turns: 8
+  timeout_seconds: 120
+  allowed_tools: [Read, Glob, Grep, Skill]
+
+context:
+  scaffold_script: scaffold.sh

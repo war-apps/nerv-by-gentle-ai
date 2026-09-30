@@ -1,0 +1,35 @@
+schema_version: "1.1"
+name: classification-light
+description: >-
+  J1 preflight/classification slice: a single-domain, non-critical-path,
+  one-line request must classify LIGHT per SKILL.md's "Classification:
+  LIGHT vs FULL" rules, without the session starting to implement
+  anything.
+tags: [nerv, classification, j1]
+runs: 1
+expected_outcome: >-
+  The session states classification LIGHT, names the LIGHT-path agents it
+  would launch, and stops without editing any file.
+
+execution:
+  prompt: |
+    Context you already have, so preflight stays silent: task ref: none;
+    work in place on the current branch `main` (no worktree); branch:
+    main; base: main; pace: fast-forward; artifact store: openspec; PR
+    strategy: single-pr.
+
+    Do not implement anything: run only the NERV preflight and
+    classification, then stop and print the classification (LIGHT or
+    FULL), the path, and the agents you would launch next. Ask nothing.
+
+    Request: add a `farewell(name)` function to `src/greeter.py` that
+    returns `"Goodbye, {name}!"`. Follow the NERV orchestrator protocol
+    injected in this session.
+
+    Answer in English.
+  max_turns: 8
+  timeout_seconds: 120
+  allowed_tools: [Read, Glob, Grep, Skill]
+
+context:
+  scaffold_script: scaffold.sh
