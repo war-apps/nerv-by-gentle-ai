@@ -127,7 +127,14 @@ func runUserConfigSection(deps Deps, paths configure.Paths, s *session, out io.W
 	fmt.Fprintln(out, "-- git --")
 	askField("Base branch", "git.base_branch")
 	chooseField("Worktree policy", "git.worktree")
-	askField("Worktree path pattern", "git.worktree_pattern")
+	if sectionErr == nil {
+		v, err := worktreePatternField(deps, s, out, current("git.worktree_pattern"))
+		if err != nil {
+			sectionErr = err
+		} else {
+			answers["git.worktree_pattern"] = v
+		}
+	}
 	askField("Branch pattern", "git.branch_pattern")
 	askField("Commit ref pattern", "git.commit_ref_pattern")
 

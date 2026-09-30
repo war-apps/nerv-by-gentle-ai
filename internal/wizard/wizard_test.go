@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -58,6 +59,45 @@ const fixtureLF = "" +
 func fixedNow() time.Time { return time.Date(2026, 9, 29, 15, 4, 5, 0, time.UTC) }
 
 func lookPathNone(string) (string, error) { return "", os.ErrNotExist }
+
+// lookPathHerdr fakes herdr present on PATH, everything else absent.
+func lookPathHerdr(name string) (string, error) {
+	if name == "herdr" {
+		return "/usr/local/bin/herdr", nil
+	}
+	return "", os.ErrNotExist
+}
+
+// herdrGetenv fakes the environment lookup the git.worktree_pattern menu's
+// herdr detection uses: only APPDATA resolves (to appData), matching the
+// Windows config-path branch; every other name is unset.
+func herdrGetenv(appData string) func(string) string {
+	return func(name string) string {
+		if name == "APPDATA" {
+			return appData
+		}
+		return ""
+	}
+}
+
+// writeHerdrConfig writes a herdr config.toml under whichever location
+// internal/herdr.Detect resolves for runtime.GOOS on this test host,
+// mirroring its own config-path rule instead of assuming one OS.
+func writeHerdrConfig(t *testing.T, home, appData, content string) {
+	t.Helper()
+	var path string
+	if runtime.GOOS == "windows" {
+		path = filepath.Join(appData, "herdr", "config.toml")
+	} else {
+		path = filepath.Join(home, ".config", "herdr", "config.toml")
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
 
 func noRunner() *envtest.FakeRunner { return &envtest.FakeRunner{} }
 
@@ -486,7 +526,8 @@ func TestRun_NonTeamworkProvider_SkipsTeamworkPrompts(t *testing.T) {
 	lines := []string{
 		"",                           // git.base_branch
 		"",                           // git.worktree
-		".claude/worktrees/{branch}", // git.worktree_pattern (CHANGED)
+		"2",                          // git.worktree_pattern menu: custom (no herdr row: lookPathNone)
+		".claude/worktrees/{branch}", // git.worktree_pattern custom value (CHANGED)
 		"",                           // git.branch_pattern
 		"",                           // git.commit_ref_pattern
 		"none",                       // tasks.provider (CHANGED away from teamwork)
@@ -533,6 +574,208 @@ func TestRun_NonTeamworkProvider_SkipsTeamworkPrompts(t *testing.T) {
 	// the new git.worktree_pattern key must land in the file when answered.
 	if !strings.Contains(string(got), `worktree_pattern: ".claude/worktrees/{branch}"`) {
 		t.Errorf("expected worktree_pattern to be updated:\n%s", got)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// git.worktree_pattern menu: herdr detected renders default/herdr/custom
+// rows in that order, the resolved rows each with an "e.g." example, and
+// choosing herdr (row 2) writes its resolved pattern.
+// ---------------------------------------------------------------------------
+
+func TestRun_WorktreePatternMenu_HerdrDetected_ChoosesHerdr(t *testing.T) {
+	root := t.TempDir()
+	home := t.TempDir()
+	writeFixture(t, filepath.Join(root, "nerv.yaml"))
+	paths := testPaths(root, home)
+	appData := filepath.Join(home, "appdata")
+	writeHerdrConfig(t, home, appData, "[worktrees]\ndirectory = 'D:\\.worktrees'\n")
+	deps := configure.Deps{Home: home, FS: nerv.PluginFS(), Runner: noRunner(), Now: fixedNow, LookPath: lookPathHerdr, Getenv: herdrGetenv(appData)}
+
+	opts := skipAll()
+	opts.Paths = paths
+
+	lines := make([]string, 28)
+	lines[2] = "2" // git.worktree_pattern menu: herdr row (default=1, herdr=2, custom=3)
+	lines = append(lines, "y")
+
+	var out bytes.Buffer
+	summary, err := wizard.Run(deps, strings.NewReader(strings.Join(lines, "\n")), &out, opts)
+	if err != nil {
+		t.Fatalf("Run() error = %v; output:\n%s", err, out.String())
+	}
+	if !summary.Changed {
+		t.Fatalf("Changed = false, want true; output:\n%s", out.String())
+	}
+
+	output := out.String()
+	wantOrder := []string{"1) default", "2) herdr", "3) custom"}
+	lastIdx := -1
+	for _, want := range wantOrder {
+		idx := strings.Index(output, want)
+		if idx < 0 {
+			t.Fatalf("expected %q in menu output:\n%s", want, output)
+		}
+		if idx < lastIdx {
+			t.Fatalf("expected %q to appear after the previous row:\n%s", want, output)
+		}
+		lastIdx = idx
+	}
+	for _, want := range []string{
+		"e.g. <repo-root>/.claude/worktrees/feature-tw-123-add-button",
+		`e.g. D:\.worktrees\my-repo\feature-tw-123-add-button`,
+	} {
+		if !strings.Contains(output, want) {
+			t.Errorf("expected %q in menu output:\n%s", want, output)
+		}
+	}
+
+	got, err := os.ReadFile(paths.Config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(got), `worktree_pattern: "D:\.worktrees\{repo}\{slug}"`) {
+		t.Errorf("expected herdr pattern written:\n%s", got)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// git.worktree_pattern menu: herdr absent shows only default/custom (no
+// herdr row, custom shifts to "2"); choosing custom falls through to the
+// free-text prompt.
+// ---------------------------------------------------------------------------
+
+func TestRun_WorktreePatternMenu_HerdrAbsent_ChoosesCustom(t *testing.T) {
+	root := t.TempDir()
+	home := t.TempDir()
+	writeFixture(t, filepath.Join(root, "nerv.yaml"))
+	paths := testPaths(root, home)
+	deps := configure.Deps{Home: home, FS: nerv.PluginFS(), Runner: noRunner(), Now: fixedNow, LookPath: lookPathNone}
+
+	opts := skipAll()
+	opts.Paths = paths
+
+	lines := []string{
+		"",                   // git.base_branch
+		"",                   // git.worktree
+		"2",                  // git.worktree_pattern menu: custom (no herdr row)
+		"~/wt/{repo}/{slug}", // git.worktree_pattern custom value (CHANGED)
+	}
+	for i := 0; i < 25; i++ { // branch_pattern..artifacts.commit
+		lines = append(lines, "")
+	}
+	lines = append(lines, "y")
+
+	var out bytes.Buffer
+	summary, err := wizard.Run(deps, strings.NewReader(strings.Join(lines, "\n")), &out, opts)
+	if err != nil {
+		t.Fatalf("Run() error = %v; output:\n%s", err, out.String())
+	}
+	if !summary.Changed {
+		t.Fatalf("Changed = false, want true; output:\n%s", out.String())
+	}
+
+	output := out.String()
+	if strings.Contains(output, "herdr") {
+		t.Errorf("expected no herdr row when herdr is absent; output:\n%s", output)
+	}
+	if !strings.Contains(output, "2) custom") {
+		t.Errorf("expected custom to be row 2 when herdr is absent; output:\n%s", output)
+	}
+	if !strings.Contains(output, "Choice [1-2, blank keeps current]:") {
+		t.Errorf("expected a 2-row choice prompt; output:\n%s", output)
+	}
+
+	got, err := os.ReadFile(paths.Config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(got), `worktree_pattern: "~/wt/{repo}/{slug}"`) {
+		t.Errorf("expected custom pattern written:\n%s", got)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// git.worktree_pattern menu: a blank answer keeps the current value,
+// exactly like every other user-config field.
+// ---------------------------------------------------------------------------
+
+func TestRun_WorktreePatternMenu_Blank_KeepsCurrent(t *testing.T) {
+	root := t.TempDir()
+	home := t.TempDir()
+	writeFixture(t, filepath.Join(root, "nerv.yaml"))
+	paths := testPaths(root, home)
+	deps := configure.Deps{Home: home, FS: nerv.PluginFS(), Runner: noRunner(), Now: fixedNow, LookPath: lookPathNone}
+
+	opts := skipAll()
+	opts.Paths = paths
+
+	lines := []string{"develop2"} // git.base_branch (CHANGED, so the run still writes)
+	for i := 0; i < 27; i++ {     // git.worktree..artifacts.commit, all blank
+		lines = append(lines, "")
+	}
+	lines = append(lines, "y")
+
+	var out bytes.Buffer
+	summary, err := wizard.Run(deps, strings.NewReader(strings.Join(lines, "\n")), &out, opts)
+	if err != nil {
+		t.Fatalf("Run() error = %v; output:\n%s", err, out.String())
+	}
+	if !summary.Changed {
+		t.Fatalf("Changed = false, want true; output:\n%s", out.String())
+	}
+
+	got, err := os.ReadFile(paths.Config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(got), `worktree_pattern: ".claude/worktrees/{slug}"`) {
+		t.Errorf("expected worktree_pattern unchanged on blank:\n%s", got)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// git.worktree_pattern menu: choosing "1" (default) writes the catalogue
+// default, overwriting whatever pattern was previously configured.
+// ---------------------------------------------------------------------------
+
+func TestRun_WorktreePatternMenu_ChoosesDefault(t *testing.T) {
+	root := t.TempDir()
+	home := t.TempDir()
+	customized := strings.Replace(fixtureLF,
+		`worktree_pattern: ".claude/worktrees/{slug}"`,
+		`worktree_pattern: ".claude/worktrees/{branch}"`, 1)
+	if customized == fixtureLF {
+		t.Fatal("fixture replacement did not match; fixtureLF's worktree_pattern line changed shape")
+	}
+	if err := os.WriteFile(filepath.Join(root, "nerv.yaml"), []byte(customized), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	paths := testPaths(root, home)
+	deps := configure.Deps{Home: home, FS: nerv.PluginFS(), Runner: noRunner(), Now: fixedNow, LookPath: lookPathNone}
+
+	opts := skipAll()
+	opts.Paths = paths
+
+	lines := make([]string, 28)
+	lines[2] = "1" // git.worktree_pattern menu: default row
+	lines = append(lines, "y")
+
+	var out bytes.Buffer
+	summary, err := wizard.Run(deps, strings.NewReader(strings.Join(lines, "\n")), &out, opts)
+	if err != nil {
+		t.Fatalf("Run() error = %v; output:\n%s", err, out.String())
+	}
+	if !summary.Changed {
+		t.Fatalf("Changed = false, want true; output:\n%s", out.String())
+	}
+
+	got, err := os.ReadFile(paths.Config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(got), `worktree_pattern: ".claude/worktrees/{slug}"`) {
+		t.Errorf("expected the catalogue default to be written:\n%s", got)
 	}
 }
 

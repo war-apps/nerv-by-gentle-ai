@@ -39,6 +39,12 @@ type Deps struct {
 	Now func() time.Time
 	// LookPath resolves a tool's presence on PATH (Print's prerequisites).
 	LookPath func(name string) (string, error)
+	// Getenv resolves an environment variable (the wizard's herdr
+	// detection, for %APPDATA% on Windows). Optional: a nil Getenv is
+	// treated by callers as a no-op returning "", so existing Deps
+	// literals that predate this field keep compiling and behaving as
+	// before (herdr detection then falls back to its own defaults).
+	Getenv func(name string) string
 }
 
 // Paths is every filesystem location "nerv configure" reads or writes,
