@@ -6,7 +6,8 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
-	"path/filepath"
+
+	"github.com/war-apps/nerv-gentle-ai/internal/paths"
 )
 
 // PluginInstallInfo is one plugin's recorded install path and version, as
@@ -54,5 +55,5 @@ func InstalledPlugins(path string) (PluginInstallInfo, bool, error) {
 // frontmatter for a given plugin version:
 // "<home>/.claude/plugins/cache/nerv/nerv/<version>/agents".
 func CacheAgentsDir(home, pluginVersion string) string {
-	return filepath.Join(home, ".claude", "plugins", "cache", "nerv", "nerv", pluginVersion, "agents")
+	return paths.Paths{Home: home}.CacheAgentsDir(pluginVersion)
 }

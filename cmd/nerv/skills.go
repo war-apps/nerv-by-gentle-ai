@@ -5,10 +5,10 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"path/filepath"
 	"strings"
 
 	"github.com/war-apps/nerv-gentle-ai/internal/configure"
+	"github.com/war-apps/nerv-gentle-ai/internal/paths"
 	"github.com/war-apps/nerv-gentle-ai/internal/skills"
 )
 
@@ -67,7 +67,7 @@ func runSkills(args []string, stdout, stderr io.Writer, opts options) int {
 	}
 	filtered := &skills.Manifest{Schema: manifest.Schema, Skills: entries}
 
-	skillsDir := filepath.Join(home, ".claude", "skills")
+	skillsDir := paths.Resolve(home).SkillsDir
 	statuses := skills.Status(filtered, skillsDir)
 
 	if *jsonOut {

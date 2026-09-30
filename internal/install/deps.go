@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/war-apps/nerv-gentle-ai/internal/env"
+	"github.com/war-apps/nerv-gentle-ai/internal/refusal"
 )
 
 // Deps bundles every external effect Install/Uninstall/ApplyModels need,
@@ -62,10 +63,6 @@ type Options struct {
 // refresh to the expected version — that should exit 1, as opposed to an
 // unexpected environment failure (I/O, a malformed embedded plugin) that
 // should exit 2. Mirrors configure.RefusalError's role for "nerv
-// configure".
-type RefusalError struct {
-	Err error
-}
-
-func (e *RefusalError) Error() string { return e.Err.Error() }
-func (e *RefusalError) Unwrap() error { return e.Err }
+// configure"; both are aliases for the one shared refusal type (see
+// internal/refusal).
+type RefusalError = refusal.Error

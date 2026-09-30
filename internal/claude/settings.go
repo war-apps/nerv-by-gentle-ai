@@ -7,12 +7,11 @@ package claude
 import (
 	"bytes"
 	"encoding/json"
-	"errors"
 	"fmt"
-	"io/fs"
 	"os"
-	"path/filepath"
 	"time"
+
+	"github.com/war-apps/nerv-gentle-ai/internal/atomicfile"
 )
 
 // Settings is Claude Code's settings.json content, held as a generic map
@@ -145,84 +144,18 @@ func SaveSettings(path string, s *Settings, previous []byte, now time.Time) (wri
 		return false, "", nil
 	}
 
-	existed := false
-	if _, statErr := os.Stat(path); statErr == nil {
-		existed = true
-		backup = fmt.Sprintf("%s.bak-nerv-%s", path, now.Format("20060102-150405"))
-		if cpErr := copyFile(path, backup); cpErr != nil {
-			return false, "", cpErr
-		}
-	} else if !errors.Is(statErr, fs.ErrNotExist) {
-		return false, "", statErr
-	}
-
-	if err := atomicWriteVerified(path, newBytes); err != nil {
-		if existed {
-			_ = copyFile(backup, path)
-		}
+	backup, err = atomicfile.Save(path, newBytes, atomicfile.Options{
+		Now:          now,
+		BackupSuffix: "bak-nerv-",
+		Verify:       verifyJSON,
+	})
+	if err != nil {
 		return false, backup, err
 	}
-
 	return true, backup, nil
 }
 
-func copyFile(src, dst string) error {
-	data, err := os.ReadFile(src)
-	if err != nil {
-		return err
-	}
-	return os.WriteFile(dst, data, 0o644)
-}
-
-// atomicWriteVerified writes data to a temp file next to path, parses it
-// back to confirm it is valid JSON, renames it over path, then parses the
-// final file once more.
-func atomicWriteVerified(path string, data []byte) error {
-	dir := filepath.Dir(path)
-	if dir != "" {
-		if err := os.MkdirAll(dir, 0o755); err != nil {
-			return err
-		}
-	}
-
-	tmp, err := os.CreateTemp(dir, ".nerv-settings-*.tmp")
-	if err != nil {
-		return err
-	}
-	tmpPath := tmp.Name()
-
-	_, writeErr := tmp.Write(data)
-	closeErr := tmp.Close()
-	if writeErr != nil {
-		os.Remove(tmpPath)
-		return writeErr
-	}
-	if closeErr != nil {
-		os.Remove(tmpPath)
-		return closeErr
-	}
-
-	if err := verifyJSONFile(tmpPath); err != nil {
-		os.Remove(tmpPath)
-		return fmt.Errorf("temp settings file failed to parse-verify: %w", err)
-	}
-
-	if err := os.Rename(tmpPath, path); err != nil {
-		os.Remove(tmpPath)
-		return err
-	}
-
-	if err := verifyJSONFile(path); err != nil {
-		return fmt.Errorf("settings.json failed to parse-verify after swap: %w", err)
-	}
-	return nil
-}
-
-func verifyJSONFile(path string) error {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return err
-	}
+func verifyJSON(data []byte) error {
 	var v any
 	return json.Unmarshal(data, &v)
 }

@@ -4,13 +4,12 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"path/filepath"
 
-	"github.com/war-apps/nerv-gentle-ai/internal/claude"
 	"github.com/war-apps/nerv-gentle-ai/internal/config"
-	"github.com/war-apps/nerv-gentle-ai/internal/configure"
+	"github.com/war-apps/nerv-gentle-ai/internal/configstore"
 	"github.com/war-apps/nerv-gentle-ai/internal/gentleai"
 	"github.com/war-apps/nerv-gentle-ai/internal/models"
+	"github.com/war-apps/nerv-gentle-ai/internal/paths"
 	"github.com/war-apps/nerv-gentle-ai/internal/version"
 )
 
@@ -33,16 +32,17 @@ func ApplyModels(ctx context.Context, deps Deps) error {
 func applyModelsForVersion(deps Deps, pluginVersion string) error {
 	fmt.Fprintf(deps.Stdout, "\n=== Applying model/effort assignments (nerv@nerv %s) ===\n", pluginVersion)
 
-	agentsDir := claude.CacheAgentsDir(deps.Home, pluginVersion)
+	p := paths.Resolve(deps.Home)
+
+	agentsDir := p.CacheAgentsDir(pluginVersion)
 	if _, err := os.Stat(agentsDir); os.IsNotExist(err) {
 		fmt.Fprintf(deps.Stdout, "Warning: plugin cache agents directory not found: %s. Install/refresh the plugin first.\n", agentsDir)
 		return nil
 	}
 
-	userConfigPath := filepath.Join(deps.Home, ".claude", "nerv", "nerv.yaml")
-	doc, _, err := (configure.Store{}).Load(userConfigPath)
+	doc, _, err := (configstore.Store{}).Load(p.UserConfig)
 	if err != nil {
-		return fmt.Errorf("reading %s: %w", userConfigPath, err)
+		return fmt.Errorf("reading %s: %w", p.UserConfig, err)
 	}
 
 	defaults, err := models.PluginDefaults(deps.FS)
@@ -50,8 +50,7 @@ func applyModelsForVersion(deps Deps, pluginVersion string) error {
 		return fmt.Errorf("reading plugin defaults: %w", err)
 	}
 
-	statePath := filepath.Join(deps.Home, ".gentle-ai", "state.json")
-	phaseAssignments, err := gentleai.PhaseAssignments(statePath)
+	phaseAssignments, err := gentleai.PhaseAssignments(p.State)
 	if err != nil {
 		// A malformed state.json degrades to unresolved from:<phase>
 		// display rather than failing the whole apply, matching

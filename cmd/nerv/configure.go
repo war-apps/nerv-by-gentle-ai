@@ -193,11 +193,7 @@ func runConfigureWizard(stdout io.Writer, deps configure.Deps, opts options, wiz
 		if errors.Is(err, wizard.ErrInputClosed) {
 			return 1
 		}
-		var refusal *configure.RefusalError
-		if errors.As(err, &refusal) {
-			return 1
-		}
-		return 2
+		return exitCodeFor(err)
 	}
 	return 0
 }
@@ -235,11 +231,7 @@ func writeJSON(w io.Writer, v any) {
 func emitMutation(stdout io.Writer, result configure.Result, err error, jsonOut bool) int {
 	if err != nil {
 		fmt.Fprintln(stdout, err.Error())
-		var refusal *configure.RefusalError
-		if errors.As(err, &refusal) {
-			return 1
-		}
-		return 2
+		return exitCodeFor(err)
 	}
 
 	if jsonOut {

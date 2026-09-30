@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/war-apps/nerv-gentle-ai/internal/atomicfile"
 	"github.com/war-apps/nerv-gentle-ai/internal/config"
 )
 
@@ -63,7 +64,7 @@ func InitRepo(deps Deps, req InitRepoRequest) (Result, error) {
 			ProjectID:  req.ProjectID,
 			TasklistID: req.TasklistID,
 		})
-		if err := atomicWriteFile(repoConfigPath, []byte(text)); err != nil {
+		if _, err := atomicfile.Save(repoConfigPath, []byte(text), atomicfile.Options{}); err != nil {
 			return Result{}, err
 		}
 		written = append(written, repoConfigPath)

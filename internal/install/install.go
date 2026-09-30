@@ -5,11 +5,11 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
-	"path/filepath"
 
 	"github.com/war-apps/nerv-gentle-ai/internal/claude"
 	"github.com/war-apps/nerv-gentle-ai/internal/engram"
 	"github.com/war-apps/nerv-gentle-ai/internal/gentleai"
+	"github.com/war-apps/nerv-gentle-ai/internal/paths"
 	"github.com/war-apps/nerv-gentle-ai/internal/plugin"
 	"github.com/war-apps/nerv-gentle-ai/internal/skills"
 	"github.com/war-apps/nerv-gentle-ai/internal/version"
@@ -34,7 +34,7 @@ func Install(ctx context.Context, deps Deps, opts Options) error {
 		return err
 	}
 
-	marketplaceDir := filepath.Join(deps.Home, ".nerv", "marketplace")
+	marketplaceDir := paths.Resolve(deps.Home).Marketplace
 	matResult, err := plugin.Materialize(deps.FS, marketplaceDir)
 	if err != nil {
 		return fmt.Errorf("materializing plugin: %w", err)
@@ -101,7 +101,7 @@ func settingsPath(deps Deps) string {
 	if deps.SettingsPath != "" {
 		return deps.SettingsPath
 	}
-	return filepath.Join(deps.Home, ".claude", "settings.json")
+	return paths.Resolve(deps.Home).Settings
 }
 
 // loadOrInitSettings loads path, treating a missing file as an empty
@@ -179,7 +179,7 @@ func refreshCache(ctx context.Context, deps Deps, pluginVersion string) error {
 		return fmt.Errorf("cache not refreshed: %w", err)
 	}
 
-	installedPluginsPath := filepath.Join(deps.Home, ".claude", "plugins", "installed_plugins.json")
+	installedPluginsPath := paths.Resolve(deps.Home).InstalledPlugins
 	info, found, err := claude.InstalledPlugins(installedPluginsPath)
 	if err != nil {
 		return fmt.Errorf("reading %s: %w", installedPluginsPath, err)
@@ -216,7 +216,7 @@ func installSkills(ctx context.Context, deps Deps) {
 		return
 	}
 
-	skillsDir := filepath.Join(deps.Home, ".claude", "skills")
+	skillsDir := paths.Resolve(deps.Home).SkillsDir
 	statuses := skills.Status(manifest, skillsDir)
 	plan := skills.InstallPlan(statuses)
 

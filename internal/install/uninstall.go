@@ -4,9 +4,9 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"path/filepath"
 
 	"github.com/war-apps/nerv-gentle-ai/internal/claude"
+	"github.com/war-apps/nerv-gentle-ai/internal/paths"
 )
 
 // Uninstall removes NERV's settings.json registration (backed up and
@@ -44,7 +44,7 @@ func Uninstall(ctx context.Context, deps Deps) error {
 		return fmt.Errorf("claude plugin uninstall failed: %w", err)
 	}
 
-	marketplaceDir := filepath.Join(deps.Home, ".nerv", "marketplace")
+	marketplaceDir := paths.Resolve(deps.Home).Marketplace
 	if _, statErr := os.Stat(marketplaceDir); statErr == nil {
 		if err := os.RemoveAll(marketplaceDir); err != nil {
 			return fmt.Errorf("removing %s: %w", marketplaceDir, err)

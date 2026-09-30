@@ -15,10 +15,11 @@ package configure
 
 import (
 	"io/fs"
-	"path/filepath"
 	"time"
 
 	"github.com/war-apps/nerv-gentle-ai/internal/env"
+	"github.com/war-apps/nerv-gentle-ai/internal/paths"
+	"github.com/war-apps/nerv-gentle-ai/internal/refusal"
 )
 
 // Deps bundles configure's external effects so tests can inject fakes: no
@@ -70,17 +71,19 @@ func ResolveHome(override string) (string, error) {
 // ResolvePaths builds Paths from a resolved home directory and an optional
 // --config override (empty means the default `<home>/.claude/nerv/nerv.yaml`).
 // Mirrors configure.ps1's $userConfigPath/$statePathResolved resolution plus
-// the skills/commands directories used by -Print and -InstallCommands.
+// the skills/commands directories used by -Print and -InstallCommands. The
+// joins themselves live in the shared internal/paths catalogue.
 func ResolvePaths(home, configOverride string) Paths {
+	resolved := paths.Resolve(home)
 	config := configOverride
 	if config == "" {
-		config = filepath.Join(home, ".claude", "nerv", "nerv.yaml")
+		config = resolved.UserConfig
 	}
 	return Paths{
 		Config:      config,
-		State:       filepath.Join(home, ".gentle-ai", "state.json"),
-		SkillsDir:   filepath.Join(home, ".claude", "skills"),
-		CommandsDir: filepath.Join(home, ".claude", "commands", "task"),
+		State:       resolved.State,
+		SkillsDir:   resolved.SkillsDir,
+		CommandsDir: resolved.CommandsDir,
 	}
 }
 
@@ -110,13 +113,10 @@ type Result struct {
 // should exit 1, as opposed to an unexpected environment failure (I/O,
 // permissions, a missing home directory) that should exit 2. Mirrors
 // configure.ps1's distinction between its many `Write-Host "...";  exit 1`
-// rejections and its single outer `catch { ...; exit 2 }`.
-type RefusalError struct {
-	Err error
-}
-
-func (e *RefusalError) Error() string { return e.Err.Error() }
-func (e *RefusalError) Unwrap() error { return e.Err }
+// rejections and its single outer `catch { ...; exit 2 }`. It is an alias
+// for the one shared refusal type every nerv use case constructs (see
+// internal/refusal).
+type RefusalError = refusal.Error
 
 // missingUserConfigHeader seeds the in-memory working document when the
 // user-scope nerv.yaml does not exist yet, exactly as configure.ps1 does

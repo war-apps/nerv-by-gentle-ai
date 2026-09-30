@@ -5,14 +5,60 @@ import (
 	"regexp"
 	"sort"
 	"strconv"
+	"strings"
 )
 
 var (
 	stableTagPattern     = regexp.MustCompile(`^v(\d+)\.(\d+)\.(\d+)$`)
 	preReleaseTagPattern = regexp.MustCompile(`^v(\d+)\.(\d+)\.(\d+)-rc\.(\d+)$`)
 	semverPrefixPattern  = regexp.MustCompile(`^(\d+)\.(\d+)\.(\d+)`)
+	exactVersionPattern  = regexp.MustCompile(`^\d+\.\d+\.\d+$`)
 	labelPattern         = regexp.MustCompile(`^[a-z]+$`)
 )
+
+// IsExactSemver reports whether s is a bare "X.Y.Z" semver string, with no
+// prefix or suffix (e.g. a "--version" override, not a git tag).
+func IsExactSemver(s string) bool {
+	return exactVersionPattern.MatchString(s)
+}
+
+// IsValidPreReleaseLabel reports whether s is a valid pre-release label:
+// lowercase letters only (e.g. "alpha", "beta", "rc").
+func IsValidPreReleaseLabel(s string) bool {
+	return labelPattern.MatchString(s)
+}
+
+// PrefixOf returns the leading "X.Y.Z" semver prefix of s (dropping any
+// "-<label>.<n>" pre-release suffix), or s unchanged when no such prefix
+// exists.
+func PrefixOf(s string) string {
+	m := semverPrefixPattern.FindStringSubmatch(s)
+	if m == nil {
+		return s
+	}
+	return fmt.Sprintf("%s.%s.%s", m[1], m[2], m[3])
+}
+
+// Greater reports whether a is strictly greater than b as "X.Y.Z" semver
+// versions (comparing major, then minor, then patch numerically). Either
+// string having fewer than 3 dot-separated components compares as false.
+func Greater(a, b string) bool {
+	ap, bp := strings.Split(a, "."), strings.Split(b, ".")
+	if len(ap) < 3 || len(bp) < 3 {
+		return false
+	}
+	for i := 0; i < 3; i++ {
+		ai, _ := strconv.Atoi(ap[i])
+		bi, _ := strconv.Atoi(bp[i])
+		if ai > bi {
+			return true
+		}
+		if ai < bi {
+			return false
+		}
+	}
+	return false
+}
 
 type tagCandidate struct {
 	tag                    string

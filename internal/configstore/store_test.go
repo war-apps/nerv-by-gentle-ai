@@ -1,4 +1,4 @@
-package configure_test
+package configstore_test
 
 import (
 	"os"
@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/war-apps/nerv-gentle-ai/internal/config"
-	"github.com/war-apps/nerv-gentle-ai/internal/configure"
+	"github.com/war-apps/nerv-gentle-ai/internal/configstore"
 )
 
 // ---------------------------------------------------------------------------
@@ -18,7 +18,7 @@ import (
 func TestStore_Load_MissingFileReportsNotExists(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "nerv.yaml")
 
-	doc, exists, err := (configure.Store{}).Load(path)
+	doc, exists, err := (configstore.Store{}).Load(path)
 	if err != nil {
 		t.Fatalf("Load() error = %v", err)
 	}
@@ -36,7 +36,7 @@ func TestStore_Load_ExistingFile(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	doc, exists, err := (configure.Store{}).Load(path)
+	doc, exists, err := (configstore.Store{}).Load(path)
 	if err != nil {
 		t.Fatalf("Load() error = %v", err)
 	}
@@ -64,7 +64,7 @@ func TestStore_Save_NoopWhenBytesIdentical(t *testing.T) {
 	doc := config.Parse(string(original))
 	now := time.Date(2026, 9, 29, 12, 0, 0, 0, time.UTC)
 
-	written, backup, err := (configure.Store{}).Save(path, doc, original, now)
+	written, backup, err := (configstore.Store{}).Save(path, doc, original, now)
 	if err != nil {
 		t.Fatalf("Save() error = %v", err)
 	}
@@ -109,7 +109,7 @@ func TestStore_Save_WritesTimestampedBackupAndNewContent(t *testing.T) {
 	doc.SetScalar("git.base_branch", "develop2")
 	now := time.Date(2026, 9, 29, 12, 34, 56, 0, time.UTC)
 
-	written, backup, err := (configure.Store{}).Save(path, doc, original, now)
+	written, backup, err := (configstore.Store{}).Save(path, doc, original, now)
 	if err != nil {
 		t.Fatalf("Save() error = %v", err)
 	}
@@ -152,7 +152,7 @@ func TestStore_Save_CreatesParentDirWhenFileMissing(t *testing.T) {
 	doc := config.Parse("enabled: true\n")
 	now := time.Date(2026, 9, 29, 0, 0, 0, 0, time.UTC)
 
-	written, backup, err := (configure.Store{}).Save(path, doc, nil, now)
+	written, backup, err := (configstore.Store{}).Save(path, doc, nil, now)
 	if err != nil {
 		t.Fatalf("Save() error = %v", err)
 	}
