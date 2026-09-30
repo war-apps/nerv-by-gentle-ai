@@ -84,7 +84,7 @@ func runInstall(args []string, stdout, stderr io.Writer, opts options) int {
 		return 0
 	}
 
-	wizDeps := configure.Deps{Home: home, FS: opts.PluginFS, Runner: opts.Runner, Now: opts.Now, LookPath: opts.LookPath}
+	wizDeps := configure.Deps{Home: home, FS: opts.PluginFS, Runner: opts.Runner, Now: opts.Now, LookPath: opts.LookPath, Getenv: opts.Getenv}
 	wizPaths := configure.ResolvePaths(home, "")
 	wizOpts := wizard.Options{Paths: wizPaths, SettingsPath: opts.Settings}
 	if _, err := wizard.Run(wizDeps, opts.Stdin, stdout, wizOpts); err != nil {

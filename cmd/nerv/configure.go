@@ -114,7 +114,7 @@ func runConfigure(args []string, stdout, stderr io.Writer, opts options) int {
 		return 2
 	}
 	paths := configure.ResolvePaths(home, *configOverride)
-	deps := configure.Deps{Home: home, FS: opts.PluginFS, Runner: opts.Runner, Now: opts.Now, LookPath: opts.LookPath}
+	deps := configure.Deps{Home: home, FS: opts.PluginFS, Runner: opts.Runner, Now: opts.Now, LookPath: opts.LookPath, Getenv: opts.Getenv}
 
 	switch {
 	case *printMode:

@@ -39,6 +39,9 @@ type options struct {
 	Runner   env.Runner
 	Now      func() time.Time
 	LookPath func(string) (string, error)
+	// Getenv resolves an environment variable (the wizard's herdr
+	// detection, for %APPDATA% on Windows).
+	Getenv func(string) string
 	// Stdin is the wizard's interactive input source; tests inject a
 	// scripted reader instead of the real os.Stdin.
 	Stdin io.Reader
@@ -74,6 +77,7 @@ func defaultOptions() options {
 		Runner:     env.ExecRunner{},
 		Now:        time.Now,
 		LookPath:   env.LookPath,
+		Getenv:     os.Getenv,
 		Stdin:      os.Stdin,
 		IsTerminal: stdinIsTerminal,
 	}
