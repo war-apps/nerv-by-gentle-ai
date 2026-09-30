@@ -124,10 +124,10 @@ Claude Code and runs the configuration wizard after installing. PowerShell leave
   (binary download + checksum + `nerv install`) with a bash suite on fixtures; `get-nerv.sh`,
   `get-nerv.ps1`, `tests/get-nerv.test.*` and any remaining `.ps1` deleted; `plugin/tools/` removed
   from the plugin tree. Route: writer.
-- [ ] P6 Docs. README in the requested order and split into `docs/integration.md` and
+- [x] P6 DONE 2026-09-30 (writer on sonnet; parent spot check: eight top-level sections in the requested order, Claude Code only callout, no pwsh/ps1/get-nerv/tools/roadmap references, every relative link resolves, Install section read). Commit `ff42c5d`. Writer judgment calls accepted: a Go badge replaces the PowerShell badge; project-scope models are documented as hand-edited. To verify in R2: README says `nerv install` preflight checks `git`. Docs. README in the requested order and split into `docs/integration.md` and
   `docs/troubleshooting.md`; Status and Roadmap removed; "Claude Code only for now" note;
   `CONTRIBUTING.md`; CHANGELOG `Unreleased` untouched (release tooling writes it). Route: writer.
-- [ ] P7 Principles pass. One bounded read-only review of the Go tree against KISS, DRY, YAGNI and
+- [~] P7: read-only review DONE 2026-09-30 (feature-dev:code-reviewer on opus; it could not run go test itself, so the parent ran the checks): 15 findings accepted. R1 (structural): release use case out of cmd/nerv, one refusal type and one exit-code mapping, atomicfile package, one home-path catalogue, Store moved below configure. R2 (cleanup): generated yaml comments and error messages naming deleted scripts and PowerShell flags, unused exported API and dead NoConfigure branch, stdinIsTerminal through options, duplicated helpers and catalogues, shared hook gate in bash, split runModelsSection. Principles pass. One bounded read-only review of the Go tree against KISS, DRY, YAGNI and
   SOLID (package boundaries, interface size, duplicated helpers, dead flags carried over from
   PowerShell) producing a short list; then one refactor slice for the accepted items, tests green
   before and after. Route: reviewer (read-only) then writer.
@@ -148,6 +148,7 @@ Claude Code and runs the configuration wizard after installing. PowerShell leave
 
 ## Progress log
 
+- 2026-09-30: P6 complete (`ff42c5d`), docs; P7 review done, R1 refactor next.
 - 2026-09-30: P5 complete (`4f6e56e`); the repository holds no PowerShell. P6 docs next.
 - 2026-09-29: P4 complete (`77a73fe`), release tooling in Go, goreleaser in the workflow; only get-nerv.ps1 remains. P5 next.
 - 2026-09-29: P3.1 safety fixes (`8051784`); P4 next.
@@ -162,4 +163,4 @@ Claude Code and runs the configuration wizard after installing. PowerShell leave
 
 ## Next step
 
-P6 (writer): README restructure and split, docs/integration.md, docs/troubleshooting.md, CONTRIBUTING.md, Claude Code only note; then P7.
+P7 R1 (writer): structural refactor, behaviour preserving, tests green before and after; then R2.
