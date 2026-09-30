@@ -304,7 +304,7 @@ artifacts:
 git:
   base_branch: develop              # default base for the worktree offer
   worktree: ask                     # ask | always | never
-  worktree_pattern: ".claude/worktrees/{slug}"   # where task worktrees are created; {slug} {branch} {prefix} {id}
+  worktree_pattern: ".claude/worktrees/{slug}"   # where task worktrees are created; {slug} {branch} {prefix} {id} {repo}
   branch_pattern: "feature/{prefix}-{id}-{slug}"   # prefix comes from the provider (tw, gh, jira)
   commit_ref_pattern: "({PREFIX}-{id})"
 tasks:
