@@ -1,12 +1,10 @@
 // Package wizard implements the interactive half of "nerv configure": the
 // terminal setup wizard, driven over an injected io.Reader/io.Writer so it
-// can be scripted in tests exactly like plugin/tools/configure.ps1's own
-// -AnswersFile mode. It is the interactive port of configure.ps1's
-// prerequisites/required-skills/user-config/models/repos/slash-commands/
-// apply-and-refresh sections (see tests/configure.test.ps1's end-to-end
-// -AnswersFile scenarios, this package's executable specification), with
-// configure-models.ps1's interactive models editor folded in directly
-// instead of shelling out to a second script.
+// can be scripted in tests (and via a real --answers file) exactly the
+// same way. It walks prerequisites, required-skills, user-config, models,
+// repos, slash-commands, and apply-and-refresh sections in order, with
+// the per-role models editor folded directly into the models section
+// instead of shelling out to a separate command.
 //
 // Every nerv.yaml write goes through configure.Store, config.SetManagedValue
 // (via configure.Set), or config.SetModelsBlock — the same primitives
@@ -31,9 +29,9 @@ import (
 // configure use case shares. See configure.Deps's own doc comment.
 type Deps = configure.Deps
 
-// Options are the wizard's skip flags (configure.ps1's
-// -SkipSkills/-SkipModels/-SkipRepos/-SkipCommands/-NoRefresh) plus the
-// resolved Paths the section functions read and write.
+// Options are the wizard's --skip-skills/--skip-models/--skip-repos/
+// --skip-commands/--no-refresh flags plus the resolved Paths the section
+// functions read and write.
 type Options struct {
 	// Paths is the resolved set of filesystem locations the wizard reads
 	// and writes (see configure.ResolvePaths).
@@ -63,14 +61,10 @@ type Summary struct {
 // skills stacks, critical paths, artifacts), the optional per-role models
 // editor, the optional per-repo .nerv/nerv.yaml init loop, the optional
 // Teamwork /task:* commands install, and the closing apply/refresh step.
-// Mirrors plugin/tools/configure.ps1's interactive body (~1451-2089) plus
-// plugin/tools/configure-models.ps1's interactive body (~390-690, Section
-// 2's model editor, folded in directly instead of shelling out).
 //
-// Deviation from the port brief: configure.ps1 always prints its closing
-// "Restart Claude Code..." line unconditionally; Run prints it only when
-// Summary.Changed is true (this package's Goal explicitly calls for that
-// narrower condition).
+// Run prints its closing "Restart Claude Code..." line only when
+// Summary.Changed is true, rather than unconditionally — nothing worth
+// restarting for happened otherwise.
 func Run(deps Deps, in io.Reader, out io.Writer, opts Options) (Summary, error) {
 	s := newSession(in, out)
 	summary := Summary{}
@@ -169,9 +163,7 @@ func toolLine(found bool, yes, no string) string {
 // runApplyAndRefreshSection is Section 5: optionally applies the resolved
 // models: block to the plugin cache (install.ApplyModels) and refreshes
 // the "claude plugin" cache (install.RefreshCache) — the same tail
-// install.Install itself runs after registering settings.json. Mirrors
-// configure.ps1's "-- Section 5: Apply and refresh --" (~2077-2086), which
-// calls Invoke-NervApplyModels then `install.ps1 -RefreshCache`.
+// install.Install itself runs after registering settings.json.
 func runApplyAndRefreshSection(ctx context.Context, deps Deps, opts Options, s *session, out io.Writer) error {
 	fmt.Fprintln(out)
 	apply, err := s.yesNo("Apply models to the plugin cache and refresh it now?", true)

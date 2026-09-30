@@ -61,15 +61,21 @@ type options struct {
 	// default). No public "--settings" flag either, for the same reason
 	// as Home above: settable only here, only for tests.
 	Settings string
+	// IsTerminal reports whether stdin is attached to a real interactive
+	// terminal. Tests inject a fixed true/false; defaultOptions wires the
+	// real golang.org/x/term check, which a unit test cannot exercise
+	// directly (it depends on a real OS file descriptor/console).
+	IsTerminal func() bool
 }
 
 func defaultOptions() options {
 	return options{
-		PluginFS: pluginFS(),
-		Runner:   env.ExecRunner{},
-		Now:      time.Now,
-		LookPath: env.LookPath,
-		Stdin:    os.Stdin,
+		PluginFS:   pluginFS(),
+		Runner:     env.ExecRunner{},
+		Now:        time.Now,
+		LookPath:   env.LookPath,
+		Stdin:      os.Stdin,
+		IsTerminal: stdinIsTerminal,
 	}
 }
 

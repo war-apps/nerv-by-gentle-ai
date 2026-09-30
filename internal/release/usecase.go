@@ -38,8 +38,7 @@ type PreviewOptions struct {
 	PreReleaseBase string
 }
 
-// CommitPayload is one commit in a PreviewResult's Commits, matching
-// tools/release.ps1's ordered hashtable fields.
+// CommitPayload is one commit in a PreviewResult's Commits.
 type CommitPayload struct {
 	Sha      string `json:"sha"`
 	ShortSha string `json:"short_sha"`
@@ -47,9 +46,8 @@ type CommitPayload struct {
 	Body     string `json:"body"`
 }
 
-// PreviewResult is Preview/Apply's outcome, matching tools/release.ps1's
-// -Json output shape and field order: current, last_tag, bump, next, tag,
-// base, prerelease, commits, section, applied, written (written only
+// PreviewResult is Preview/Apply's outcome: current, last_tag, bump, next,
+// tag, base, prerelease, commits, section, applied, written (written only
 // present when applied).
 type PreviewResult struct {
 	Current    string          `json:"current"`
@@ -67,8 +65,7 @@ type PreviewResult struct {
 	// InspectedCommits and Since report on the "nothing to release" case
 	// (Next == nil): the caller formats its own text/JSON around them, but
 	// does not need to recompute them. Excluded from the JSON shape
-	// (json:"-") -- tools/release.ps1 never had them, so preview --json's
-	// output stays byte-for-byte the same as before.
+	// (json:"-") so preview --json's output carries only the fields above.
 	InspectedCommits int    `json:"-"`
 	Since            string `json:"-"`
 }
@@ -102,7 +99,7 @@ func compute(deps Deps, opts PreviewOptions, apply bool) (PreviewResult, error) 
 	if err != nil {
 		return PreviewResult{}, err
 	}
-	lastTag := LastReleaseTag(allTags, false)
+	lastTag := LastReleaseTag(allTags)
 
 	commits, err := CommitsSince(ctx, deps.Runner, deps.Repo, lastTag)
 	if err != nil {
@@ -179,8 +176,7 @@ func readPluginVersion(repo, pluginJSONPath string) (raw []byte, currentVersion 
 
 // resolveNextVersion picks the next version from opts.Version (an
 // explicit override), opts.PreRelease (a pre-release bump), or the
-// computed bumpKind -- in that priority order, matching
-// tools/release.ps1's own precedence.
+// computed bumpKind -- in that priority order.
 func resolveNextVersion(opts PreviewOptions, currentVersion, bumpKind string, allTags []string) (string, error) {
 	switch {
 	case opts.Version != "":
@@ -241,9 +237,9 @@ func applyVersion(pluginJSONPath, pluginJSONContent, nextVersion, changelogPath,
 	return []string{pluginJSONPath, changelogPath}, nil
 }
 
-// GuardResult is Guard's outcome, matching tools/release-guard.ps1's -Json
-// output shape, plus one field this Go port adds: BinaryConsistent (see
-// Guard's doc comment).
+// GuardResult is Guard's outcome: version, tag, changelog_section,
+// tag_exists, notes_path, ok, plus BinaryConsistent (see Guard's doc
+// comment).
 type GuardResult struct {
 	Version          string  `json:"version"`
 	Tag              string  `json:"tag"`
@@ -259,8 +255,7 @@ type GuardResult struct {
 	// binary running this guard was actually built from this tree.
 	BinaryConsistent *bool `json:"binary_consistent,omitempty"`
 	// Reason is the human-readable refusal reason, printed in text mode
-	// only -- excluded from the JSON shape (json:"-"), matching
-	// tools/release-guard.ps1's -Json output exactly.
+	// only -- excluded from the JSON shape (json:"-").
 	Reason string `json:"-"`
 }
 

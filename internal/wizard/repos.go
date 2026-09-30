@@ -18,10 +18,9 @@ import (
 // provider, and (for Teamwork) project/tasklist ids, then writing
 // .nerv/nerv.yaml through configure.InitRepo — the same write path
 // "nerv configure --init-repo" uses. baseBranch/provider are the
-// User-config section's own answers (Section 1's $gitBaseBranch/
-// $tasksProvider), used as this section's defaults regardless of whether
-// Section 1 actually wrote anything. Mirrors configure.ps1's
-// "-- Section 3: Repos --" (~1986-2040).
+// User-config section's own answers (Section 1's git base branch/task
+// provider), used as this section's defaults regardless of whether
+// Section 1 actually wrote anything.
 //
 // The path-exists/git-toplevel/already-initialized checks below duplicate
 // configure.InitRepo's own — necessary here because, unlike the

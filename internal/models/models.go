@@ -1,8 +1,6 @@
 // Package models reads the NERV agent role plugin defaults from the
 // embedded agent frontmatter and applies resolved model/effort
-// assignments back onto cached agent files on disk. Mirrors
-// Get-NervPluginDefaults, Merge-NervModelAssignments and
-// Set-NervAgentFrontmatter in tools/install.ps1.
+// assignments back onto cached agent files on disk.
 package models
 
 import (
@@ -82,20 +80,7 @@ func frontmatterDefaults(content []byte) (config.ModelOverride, bool) {
 }
 
 // ---------------------------------------------------------------------------
-// Resolve
-// ---------------------------------------------------------------------------
-
-// Resolve produces the effective per-role model/effort assignment —
-// source "default", "override", or "gentle-ai:<phase>" — by delegating
-// entirely to config.ModelTable (the plugin defaults, the raw nerv.yaml
-// overrides, and gentle-ai's phase assignments for from:<phase> display)
-// instead of reimplementing that merge here.
-func Resolve(defaults, overrides map[string]config.ModelOverride, phases map[string]config.PhaseAssignment) []config.ModelRow {
-	return config.ModelTable(defaults, overrides, phases)
-}
-
-// ---------------------------------------------------------------------------
-// ApplyToAgentFile / ApplyToDir
+// ApplyToDir
 // ---------------------------------------------------------------------------
 
 var (
@@ -105,25 +90,17 @@ var (
 	effortValueRe           = regexp.MustCompile(`^effort:(\s*)(\S+)(.*)$`)
 )
 
-// ApplyToAgentFile rewrites the model:/effort: lines of one agent file's
+// applyFrontmatter rewrites the model:/effort: lines of one agent file's
 // frontmatter (the region between the first two "---" lines) to model and
 // effort, preserving any trailing "# comment" on either line verbatim and
 // the file's own line-ending style (CRLF or LF). An empty model or effort
 // means "leave that key untouched" (matching config.ModelOverride's own
 // convention that an empty field is absent). changed is false, and out is
-// content unchanged, when: the frontmatter is malformed (missing opening
+// content unchanged, when the frontmatter is malformed (missing opening
 // or closing "---"), there is no model: key at all, or every requested
-// value already matches. Mirrors Set-NervAgentFrontmatter's per-file
-// rewrite, ported to operate on in-memory content instead of a directory.
-func ApplyToAgentFile(content []byte, model, effort string) (out []byte, changed bool) {
-	out, changed, _ = applyFrontmatter(content, model, effort)
-	return out, changed
-}
-
-// applyFrontmatter is ApplyToAgentFile's implementation, plus a third
-// result telling ApplyToDir whether the file was well-formed enough to
-// apply at all (ok=false covers malformed frontmatter and a missing
-// model: key — the cases Set-NervAgentFrontmatter counts as "skipped").
+// value already matches. ok is false when the file was not well-formed
+// enough to apply at all (malformed frontmatter or a missing model: key)
+// — ApplyToDir counts that as skipped rather than failing the whole run.
 func applyFrontmatter(content []byte, model, effort string) (out []byte, changed bool, ok bool) {
 	text := string(content)
 	eol := "\n"

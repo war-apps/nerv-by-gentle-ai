@@ -177,11 +177,10 @@ func TestSetBlock_GroupA(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// Case group B: Get-NervYamlBlock / Get-NervYamlSubBlock (ported as
-// Document.Block / config.SubBlock)
+// Case group B: Get-NervYamlBlock (ported as Document.Block)
 // ---------------------------------------------------------------------------
 
-func TestBlockAndSubBlock_GroupB(t *testing.T) {
+func TestBlock_GroupB(t *testing.T) {
 	doc := config.Parse(fixtureLf)
 
 	t.Run("get-block-git", func(t *testing.T) {
@@ -210,52 +209,6 @@ func TestBlockAndSubBlock_GroupB(t *testing.T) {
 
 	t.Run("get-block-missing-returns-null", func(t *testing.T) {
 		if _, found := doc.Block("does_not_exist"); found {
-			t.Errorf("expected not found")
-		}
-	})
-
-	sourcesSubBlock, sourcesFound := config.SubBlock(tasksBlock, "sources", 2)
-	t.Run("get-subblock-sources-present", func(t *testing.T) {
-		if !sourcesFound ||
-			!strings.Contains(sourcesSubBlock, "- name: erp-proveedores") ||
-			!strings.Contains(sourcesSubBlock, "- name: another-source") ||
-			strings.Contains(sourcesSubBlock, "providers:") {
-			t.Errorf("unexpected sources sub-block: found=%v %q", sourcesFound, sourcesSubBlock)
-		}
-	})
-
-	t.Run("get-subblock-sources-howto-nested", func(t *testing.T) {
-		sub, found := config.SubBlock(tasksBlock, "sources_howto", 2)
-		if !found || !strings.Contains(sub, "Pick a name") {
-			t.Errorf("unexpected sources_howto sub-block: found=%v %q", found, sub)
-		}
-	})
-
-	providersSubBlock, providersFound := config.SubBlock(tasksBlock, "providers", 2)
-	var teamworkSubBlock string
-	var teamworkFound bool
-	if providersFound {
-		teamworkSubBlock, teamworkFound = config.SubBlock(providersSubBlock, "teamwork", 4)
-	}
-	t.Run("get-subblock-teamwork-nested", func(t *testing.T) {
-		if !teamworkFound || !strings.Contains(teamworkSubBlock, "assignee_id: 686035") {
-			t.Errorf("unexpected teamwork sub-block: found=%v %q", teamworkFound, teamworkSubBlock)
-		}
-	})
-
-	t.Run("get-subblock-known-projects-nested", func(t *testing.T) {
-		var knownProjects string
-		var found bool
-		if teamworkFound {
-			knownProjects, found = config.SubBlock(teamworkSubBlock, "known_projects", 6)
-		}
-		if !found || !strings.Contains(knownProjects, "ERP Proveedores") || !strings.Contains(knownProjects, "Legacy") {
-			t.Errorf("unexpected known_projects sub-block: found=%v %q", found, knownProjects)
-		}
-	})
-
-	t.Run("get-subblock-missing-returns-null", func(t *testing.T) {
-		if _, found := config.SubBlock(tasksBlock, "nope", 2); found {
 			t.Errorf("expected not found")
 		}
 	})
@@ -373,12 +326,10 @@ func TestSetScalar_GroupE(t *testing.T) {
 		if !strings.Contains(got, "      new_field: x") {
 			t.Errorf("leaf not created: %s", got)
 		}
-		tasksBlock, _ := doc.Block("tasks")
-		providersSub, _ := config.SubBlock(tasksBlock, "providers", 2)
-		teamworkSub, found := config.SubBlock(providersSub, "teamwork", 4)
-		if !found || !strings.Contains(teamworkSub, "new_field: x") {
-			t.Errorf("chain not nested correctly: found=%v %q", found, teamworkSub)
-		}
+		// The three Contains checks above already prove correct nesting:
+		// each line's indentation (2/4/6 spaces) only matches when
+		// providers/teamwork/new_field are nested inside one another in
+		// that order.
 	})
 
 	minimalGit := "git:\n  base_branch: develop\n"

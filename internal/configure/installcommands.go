@@ -21,8 +21,7 @@ const ProceduresDir = "skills/nerv-tasks/providers/teamwork/procedures"
 // that already exists there — that case is reported as a warning, not an
 // error. A missing procedures directory (never expected in a real build,
 // since it ships inside the embedded plugin tree) is likewise a warning,
-// not a failure. Mirrors configure.ps1's -InstallCommands handling
-// (~1395-1416).
+// not a failure.
 func InstallCommands(deps Deps, paths Paths) (Result, error) {
 	entries, err := fs.ReadDir(deps.FS, ProceduresDir)
 

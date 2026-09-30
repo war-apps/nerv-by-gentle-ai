@@ -12,21 +12,34 @@ import (
 // managed-catalogue key and its prompt label.
 type teamworkField struct{ key, label string }
 
-var teamworkFields = []teamworkField{
-	{"tasks.providers.teamwork.task_ref_prefix", "Task ref prefix"},
-	{"tasks.providers.teamwork.assignee_id", "Assignee id"},
-	{"tasks.providers.teamwork.default_project_id", "Default project id"},
-	{"tasks.providers.teamwork.default_tasklist_id", "Default tasklist id"},
-	{"tasks.providers.teamwork.stages.inDev", "Stage: in development"},
-	{"tasks.providers.teamwork.stages.testing", "Stage: testing"},
-	{"tasks.providers.teamwork.stages.implemented", "Stage: implemented"},
-	{"tasks.providers.teamwork.stages.blocked", "Stage: blocked"},
-	{"tasks.providers.teamwork.stages.canceled", "Stage: canceled"},
-	{"tasks.providers.teamwork.stages.pending", "Stage: pending"},
-	{"tasks.providers.teamwork.stages.analysis", "Stage: analysis"},
+// teamworkStageLabels is each Teamwork stage's prompt label, keyed by
+// config.StageOrder's stage name.
+var teamworkStageLabels = map[string]string{
+	"inDev":       "Stage: in development",
+	"testing":     "Stage: testing",
+	"implemented": "Stage: implemented",
+	"blocked":     "Stage: blocked",
+	"canceled":    "Stage: canceled",
+	"pending":     "Stage: pending",
+	"analysis":    "Stage: analysis",
 }
 
-var skillsCategories = []string{"testing", "code", "best-practices", "architecture", "audit"}
+var teamworkFields = buildTeamworkFields()
+
+func buildTeamworkFields() []teamworkField {
+	fields := []teamworkField{
+		{"tasks.providers.teamwork.task_ref_prefix", "Task ref prefix"},
+		{"tasks.providers.teamwork.assignee_id", "Assignee id"},
+		{"tasks.providers.teamwork.default_project_id", "Default project id"},
+		{"tasks.providers.teamwork.default_tasklist_id", "Default tasklist id"},
+	}
+	for _, stage := range config.StageOrder() {
+		fields = append(fields, teamworkField{"tasks.providers.teamwork.stages." + stage, teamworkStageLabels[stage]})
+	}
+	return fields
+}
+
+var skillsCategories = config.SkillsCategories()
 
 // userConfigOrder is every key the user-config section can ask about, in
 // config.Defaults' catalogue display order — the order the change summary
@@ -47,9 +60,8 @@ var userConfigOrder = func() []string {
 }()
 
 // userConfigResult is runUserConfigSection's report: whether it wrote
-// anything, plus the answered git.base_branch/tasks.provider (used as the
-// Repos section's own defaults, exactly as configure.ps1's interactive
-// body threads $gitBaseBranch/$tasksProvider into Section 3 regardless of
+// anything, plus the answered git.base_branch/tasks.provider (threaded
+// into Section 3 as the Repos section's own defaults, regardless of
 // whether Section 1 actually wrote anything).
 type userConfigResult struct {
 	Changed    bool
@@ -61,8 +73,7 @@ type userConfigResult struct {
 // provider sub-fields when tasks.provider resolves to "teamwork"), the
 // five skills stacks, critical_paths, and artifacts.commit, then applies
 // every actually-changed answer in one configure.Set batch — one write,
-// one backup. Mirrors configure.ps1's "-- Section 1: User config --"
-// (~1548-1971).
+// one backup.
 func runUserConfigSection(deps Deps, paths configure.Paths, s *session, out io.Writer) (userConfigResult, error) {
 	fmt.Fprintln(out)
 	fmt.Fprintln(out, "--- User config ---")

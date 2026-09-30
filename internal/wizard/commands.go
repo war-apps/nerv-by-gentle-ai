@@ -10,8 +10,7 @@ import (
 
 // runCommandsSection is Section 4: an offer to copy the embedded Teamwork
 // /task:* procedures into paths.CommandsDir, through configure.InstallCommands
-// — the same write path "nerv configure --install-commands" uses. Mirrors
-// configure.ps1's "-- Section 4: Slash commands --" (~2042-2075).
+// — the same write path "nerv configure --install-commands" uses.
 func runCommandsSection(deps Deps, paths configure.Paths, s *session, out io.Writer) (bool, error) {
 	fmt.Fprintln(out)
 	fmt.Fprintln(out, "--- Slash commands ---")

@@ -22,7 +22,7 @@ func TestFormatModelsBlock_GroupA(t *testing.T) {
 	lines := strings.Split(block, "\n")
 
 	t.Run("format-header-line", func(t *testing.T) {
-		want := "models:                             # per-role model and effort (written by tools/configure-models.ps1)"
+		want := "models:                             # per-role model and effort (written by nerv configure --set-model)"
 		if lines[0] != want {
 			t.Errorf("got %q, want %q", lines[0], want)
 		}

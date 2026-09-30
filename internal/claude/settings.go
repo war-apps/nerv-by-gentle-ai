@@ -1,7 +1,6 @@
 // Package claude edits Claude Code's global settings.json (marketplace
 // registration and plugin enablement), drives the "claude plugin" CLI
-// through env.Runner, and reads installed_plugins.json. Mirrors the
-// settings-mutation and cache-refresh halves of tools/install.ps1.
+// through env.Runner, and reads installed_plugins.json.
 package claude
 
 import (
@@ -61,8 +60,7 @@ func (s *Settings) Bytes() ([]byte, error) {
 
 // RegisterMarketplace sets extraKnownMarketplaces.<name>.source to a
 // directory marketplace pointing at path, reporting whether the document
-// actually changed. Mirrors install.ps1's extraKnownMarketplaces.nerv
-// registration.
+// actually changed.
 func (s *Settings) RegisterMarketplace(name, path string) bool {
 	marketplaces, _ := s.data["extraKnownMarketplaces"].(map[string]any)
 	if marketplaces == nil {
@@ -104,7 +102,7 @@ func (s *Settings) EnablePlugin(id string) bool {
 
 // Unregister removes extraKnownMarketplaces[marketplaceName] and
 // enabledPlugins[pluginID] when present, reporting whether either was
-// actually removed. Mirrors install.ps1's -Uninstall branch.
+// actually removed.
 func (s *Settings) Unregister(marketplaceName, pluginID string) bool {
 	changed := false
 
@@ -132,9 +130,9 @@ func (s *Settings) Unregister(marketplaceName, pluginID string) bool {
 // "<path>.bak-nerv-<yyyyMMdd-HHmmss>" backup; when it does not exist yet,
 // no backup is written. The new content is then written to a temp file in
 // the same directory, parse-verified, renamed over path, and re-parsed
-// once more to confirm the swap landed cleanly — mirroring install.ps1's
-// write-verify-swap sequence. A write or verification failure restores
-// the backup (when one was taken) before returning the error.
+// once more to confirm the swap landed cleanly. A write or verification
+// failure restores the backup (when one was taken) before returning the
+// error.
 func SaveSettings(path string, s *Settings, previous []byte, now time.Time) (written bool, backup string, err error) {
 	newBytes, err := s.Bytes()
 	if err != nil {

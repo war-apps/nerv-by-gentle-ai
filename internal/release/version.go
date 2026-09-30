@@ -9,11 +9,10 @@ import (
 )
 
 var (
-	stableTagPattern     = regexp.MustCompile(`^v(\d+)\.(\d+)\.(\d+)$`)
-	preReleaseTagPattern = regexp.MustCompile(`^v(\d+)\.(\d+)\.(\d+)-rc\.(\d+)$`)
-	semverPrefixPattern  = regexp.MustCompile(`^(\d+)\.(\d+)\.(\d+)`)
-	exactVersionPattern  = regexp.MustCompile(`^\d+\.\d+\.\d+$`)
-	labelPattern         = regexp.MustCompile(`^[a-z]+$`)
+	stableTagPattern    = regexp.MustCompile(`^v(\d+)\.(\d+)\.(\d+)$`)
+	semverPrefixPattern = regexp.MustCompile(`^(\d+)\.(\d+)\.(\d+)`)
+	exactVersionPattern = regexp.MustCompile(`^\d+\.\d+\.\d+$`)
+	labelPattern        = regexp.MustCompile(`^[a-z]+$`)
 )
 
 // IsExactSemver reports whether s is a bare "X.Y.Z" semver string, with no
@@ -61,18 +60,16 @@ func Greater(a, b string) bool {
 }
 
 type tagCandidate struct {
-	tag                    string
-	major, minor, patch    int
-	releaseRank, preNumber int
+	tag                 string
+	major, minor, patch int
 }
 
-// LastReleaseTag returns the highest "vX.Y.Z" tag in tags, ordered by
-// semantic version (not lexically, so v0.10.0 outranks v0.9.0). Returns ""
-// when no matching tag exists. When includePreRelease is true, "vX.Y.Z-rc.N"
-// tags are also considered; a stable tag always outranks a pre-release tag
-// of the same base version. Ports Get-NervLastReleaseTag (the tag listing
-// itself lives in git.go's Tags).
-func LastReleaseTag(tags []string, includePreRelease bool) string {
+// LastReleaseTag returns the highest stable "vX.Y.Z" tag in tags, ordered
+// by semantic version (not lexically, so v0.10.0 outranks v0.9.0). Returns
+// "" when no matching tag exists. Pre-release tags (e.g. "vX.Y.Z-rc.N")
+// are never considered here (the tag listing itself lives in git.go's
+// Tags).
+func LastReleaseTag(tags []string) string {
 	var candidates []tagCandidate
 	for _, t := range tags {
 		if t == "" {
@@ -80,25 +77,11 @@ func LastReleaseTag(tags []string, includePreRelease bool) string {
 		}
 		if m := stableTagPattern.FindStringSubmatch(t); m != nil {
 			candidates = append(candidates, tagCandidate{
-				tag:         t,
-				major:       atoi(m[1]),
-				minor:       atoi(m[2]),
-				patch:       atoi(m[3]),
-				releaseRank: 1,
+				tag:   t,
+				major: atoi(m[1]),
+				minor: atoi(m[2]),
+				patch: atoi(m[3]),
 			})
-			continue
-		}
-		if includePreRelease {
-			if m := preReleaseTagPattern.FindStringSubmatch(t); m != nil {
-				candidates = append(candidates, tagCandidate{
-					tag:         t,
-					major:       atoi(m[1]),
-					minor:       atoi(m[2]),
-					patch:       atoi(m[3]),
-					releaseRank: 0,
-					preNumber:   atoi(m[4]),
-				})
-			}
 		}
 	}
 
@@ -114,13 +97,7 @@ func LastReleaseTag(tags []string, includePreRelease bool) string {
 		if a.minor != b.minor {
 			return a.minor > b.minor
 		}
-		if a.patch != b.patch {
-			return a.patch > b.patch
-		}
-		if a.releaseRank != b.releaseRank {
-			return a.releaseRank > b.releaseRank
-		}
-		return a.preNumber > b.preNumber
+		return a.patch > b.patch
 	})
 
 	return candidates[0].tag

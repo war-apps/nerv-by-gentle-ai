@@ -15,19 +15,26 @@ import (
 )
 
 var (
-	modelMenu  = map[string]string{"1": "sonnet", "2": "opus", "3": "haiku", "4": "fable", "5": "inherit"}
-	effortMenu = map[string]string{"1": "low", "2": "medium", "3": "high", "4": "xhigh", "5": "max"}
+	modelMenu  = menuOf(config.ModelAliases())
+	effortMenu = menuOf(config.Efforts())
 
-	resetRe         = regexp.MustCompile(`(?i)^reset\s*(.*)$`)
-	customModelIDRe = regexp.MustCompile(`^claude-.+$`)
+	resetRe = regexp.MustCompile(`(?i)^reset\s*(.*)$`)
 )
 
-// runModelsSection is Section 2 (configure.ps1's Section 2 launching
-// configure-models.ps1, folded in directly): an offer to edit per-role
-// model/effort overrides role by role or group by group ("magi", "pilots",
+// menuOf builds a "1"->tokens[0], "2"->tokens[1], ... menu-choice map, the
+// shape runModelsSection's numbered prompts read from.
+func menuOf(tokens []string) map[string]string {
+	menu := make(map[string]string, len(tokens))
+	for i, token := range tokens {
+		menu[strconv.Itoa(i+1)] = token
+	}
+	return menu
+}
+
+// runModelsSection is Section 2: an offer to edit per-role model/effort
+// overrides role by role or group by group ("magi", "pilots",
 // "kaji-passes", "all"), "reset <target>" to clear one, "done" to finish,
 // then one write through config.SetModelsBlock + configure.Store.Save.
-// Mirrors configure-models.ps1's interactive body (~480-688).
 func runModelsSection(deps Deps, paths configure.Paths, s *session, out io.Writer) (bool, error) {
 	fmt.Fprintln(out)
 	fmt.Fprintln(out, "--- Models ---")
@@ -54,11 +61,7 @@ func runModelsSection(deps Deps, paths configure.Paths, s *session, out io.Write
 	if err != nil {
 		phaseAssignments = map[string]config.PhaseAssignment{}
 	}
-	phaseNames := make([]string, 0, len(phaseAssignments))
-	for p := range phaseAssignments {
-		phaseNames = append(phaseNames, p)
-	}
-	sort.Strings(phaseNames)
+	phaseNames := sortedPhaseNames(phaseAssignments)
 
 	catalogue := config.Roles()
 	overrides := config.ReadModelsOverrides(doc)
@@ -67,152 +70,222 @@ func runModelsSection(deps Deps, paths configure.Paths, s *session, out io.Write
 		table := config.ModelTable(defaults, overrides, phaseAssignments)
 		printModelTable(out, table, paths.Config)
 
-		numberMap := make(map[string]string, len(table))
-		for i, row := range table {
-			numberMap[strconv.Itoa(i+1)] = row.Role
-		}
-
-		roleAnswer := strings.TrimSpace(s.promptExhausted(
-			`Role (name, number, magi | pilots | kaji-passes | all), "reset" to clear an override, "done" to finish:`, "done"))
-
-		if roleAnswer == "" {
-			continue
-		}
-		if strings.EqualFold(roleAnswer, "done") {
+		roles, done := selectRoles(s, out, catalogue, overrides, table)
+		if done {
 			break
 		}
-
-		if m := resetRe.FindStringSubmatch(roleAnswer); m != nil {
-			target := strings.TrimSpace(m[1])
-			if target == "" {
-				target = strings.TrimSpace(s.promptExhausted("Reset which role or group?", "done"))
-			}
-			if target == "" || strings.EqualFold(target, "done") {
-				continue
-			}
-			resetRoles := config.ResolveRoleTarget(target, catalogue.AllRoles, catalogue.Groups, numberMap)
-			if resetRoles == nil {
-				printUnknownRoleTarget(out, target, catalogue.AllRoles)
-				continue
-			}
-			for _, r := range resetRoles {
-				delete(overrides, r)
-			}
-			continue
-		}
-
-		roles := config.ResolveRoleTarget(roleAnswer, catalogue.AllRoles, catalogue.Groups, numberMap)
 		if roles == nil {
-			printUnknownRoleTarget(out, roleAnswer, catalogue.AllRoles)
 			continue
 		}
 
-		currentDisplay := "(varies)"
-		if len(roles) == 1 {
-			currentDisplay = "(none)"
-			for _, row := range table {
-				if row.Role == roles[0] {
-					currentDisplay = row.Model + "/" + row.Effort
-					break
-				}
-			}
-		}
+		currentDisplay := currentModelDisplay(roles, table)
 
-		modelChoice, chosen, err := s.menuChoice(
-			fmt.Sprintf("Model (1 sonnet, 2 opus, 3 haiku, 4 fable, 5 inherit, 6 custom id, 7 from gentle-ai phase, Enter keeps %s):", currentDisplay),
-			[]string{"1", "2", "3", "4", "5", "6", "7"})
+		newModel, newFrom, modelChoice, modelChosen, err := askModel(s, out, paths, phaseNames, phaseAssignments, currentDisplay)
 		if err != nil {
 			return false, err
 		}
 
-		var newModel, newFrom string
-		if chosen {
-			switch modelChoice {
-			case "6":
-				for {
-					customID, err := s.promptRequired("Custom model id (claude-...):")
-					if err != nil {
-						return false, err
-					}
-					if customID == "" {
-						// blank keeps the current model unchanged, mirroring
-						// every other model choice's blank-answer semantics.
-						chosen = false
-						break
-					}
-					if customModelIDRe.MatchString(customID) {
-						newModel = customID
-						break
-					}
-					fmt.Fprintln(out, "Invalid model id; must match ^claude-.+$")
-				}
-			case "7":
-				if len(phaseNames) == 0 {
-					fmt.Fprintf(out, "No gentle-ai phases found in %s.\n", paths.State)
-				} else {
-					fmt.Fprintln(out, "Phases:")
-					valid := make([]string, len(phaseNames))
-					for i, p := range phaseNames {
-						pa := phaseAssignments[p]
-						fmt.Fprintf(out, "  %d) %s (%s/%s)\n", i+1, p, pa.Model, pa.Effort)
-						valid[i] = strconv.Itoa(i + 1)
-					}
-					idx, ok, err := s.menuChoice("Phase number:", valid)
-					if err != nil {
-						return false, err
-					}
-					if ok {
-						n, _ := strconv.Atoi(idx)
-						newFrom = phaseNames[n-1]
-					}
-				}
-			default:
-				newModel = modelMenu[modelChoice]
-			}
-		}
-
-		effortLabel := fmt.Sprintf("Effort (1 low, 2 medium, 3 high, 4 xhigh, 5 max, Enter keeps %s):", currentDisplay)
-		if modelChoice == "7" && newFrom != "" {
-			effortLabel = "Effort (1 low, 2 medium, 3 high, 4 xhigh, 5 max, Enter keeps inherited):"
-		}
-		effortChoice, effortChosen, err := s.menuChoice(effortLabel, []string{"1", "2", "3", "4", "5"})
+		newEffort, _, err := askEffort(s, currentDisplay, modelChoice, newFrom)
 		if err != nil {
 			return false, err
 		}
-		var newEffort string
-		if effortChosen {
-			newEffort = effortMenu[effortChoice]
-		}
 
-		for _, r := range roles {
-			entry := overrides[r]
-
-			if chosen {
-				if modelChoice == "7" {
-					if newFrom != "" {
-						entry.From = newFrom
-						entry.Model = ""
-					}
-				} else {
-					entry.Model = newModel
-					entry.From = ""
-				}
-			}
-
-			if modelChoice == "7" && newFrom != "" {
-				entry.Effort = newEffort
-			} else if newEffort != "" {
-				entry.Effort = newEffort
-			}
-
-			if entry == (config.ModelOverride{}) {
-				delete(overrides, r)
-			} else {
-				overrides[r] = entry
-			}
-		}
+		applyToOverrides(overrides, roles, modelChosen, modelChoice, newModel, newFrom, newEffort)
 	}
 
+	return writeModelsBlock(deps, s, out, paths, doc, original, overrides, hadExistingBlock)
+}
+
+// sortedPhaseNames returns phaseAssignments' keys in sorted order, the
+// stable display/selection order the phase sub-menu (askModel's case "7")
+// and its numbering read from.
+func sortedPhaseNames(phaseAssignments map[string]config.PhaseAssignment) []string {
+	names := make([]string, 0, len(phaseAssignments))
+	for p := range phaseAssignments {
+		names = append(names, p)
+	}
+	sort.Strings(names)
+	return names
+}
+
+// currentModelDisplay is the "Enter keeps <this>" hint for a role
+// selection: the single role's own "model/effort" when exactly one role
+// is selected, or "(varies)" for a group covering more than one.
+func currentModelDisplay(roles []string, table []config.ModelRow) string {
+	if len(roles) != 1 {
+		return "(varies)"
+	}
+	for _, row := range table {
+		if row.Role == roles[0] {
+			return row.Model + "/" + row.Effort
+		}
+	}
+	return "(none)"
+}
+
+// selectRoles reads one role-selection prompt — a role name/number, a
+// group shortcut, "reset <target>", or "done" — and resolves it: done is
+// true once the user answers "done"; a reset target clears those roles'
+// overrides directly and returns (nil, false) to loop again; anything
+// else resolves to the roles a model/effort edit should apply to, or nil
+// (an unknown-target message already printed) to loop again.
+func selectRoles(s *session, out io.Writer, catalogue config.RoleCatalogue, overrides map[string]config.ModelOverride, table []config.ModelRow) (roles []string, done bool) {
+	numberMap := make(map[string]string, len(table))
+	for i, row := range table {
+		numberMap[strconv.Itoa(i+1)] = row.Role
+	}
+
+	roleAnswer := strings.TrimSpace(s.promptExhausted(
+		`Role (name, number, magi | pilots | kaji-passes | all), "reset" to clear an override, "done" to finish:`, "done"))
+
+	if roleAnswer == "" {
+		return nil, false
+	}
+	if strings.EqualFold(roleAnswer, "done") {
+		return nil, true
+	}
+
+	if m := resetRe.FindStringSubmatch(roleAnswer); m != nil {
+		target := strings.TrimSpace(m[1])
+		if target == "" {
+			target = strings.TrimSpace(s.promptExhausted("Reset which role or group?", "done"))
+		}
+		if target == "" || strings.EqualFold(target, "done") {
+			return nil, false
+		}
+		resetRoles := config.ResolveRoleTarget(target, catalogue.AllRoles, catalogue.Groups, numberMap)
+		if resetRoles == nil {
+			printUnknownRoleTarget(out, target, catalogue.AllRoles)
+			return nil, false
+		}
+		for _, r := range resetRoles {
+			delete(overrides, r)
+		}
+		return nil, false
+	}
+
+	roles = config.ResolveRoleTarget(roleAnswer, catalogue.AllRoles, catalogue.Groups, numberMap)
+	if roles == nil {
+		printUnknownRoleTarget(out, roleAnswer, catalogue.AllRoles)
+		return nil, false
+	}
+	return roles, false
+}
+
+// askModel prompts the model choice for the current selection
+// (currentDisplay is its "Enter keeps ..." hint), resolving a custom
+// model id or gentle-ai phase sub-prompt as needed. chosen is false when
+// the answer was blank (keep current model unchanged); modelChoice is the
+// raw menu answer ("" when blank), which askEffort and applyToOverrides
+// also need (case "7" drives the effort prompt's "inherited" wording and
+// From-vs-Model application).
+func askModel(s *session, out io.Writer, paths configure.Paths, phaseNames []string, phaseAssignments map[string]config.PhaseAssignment, currentDisplay string) (newModel, newFrom, modelChoice string, chosen bool, err error) {
+	modelChoice, chosen, err = s.menuChoice(
+		fmt.Sprintf("Model (1 sonnet, 2 opus, 3 haiku, 4 fable, 5 inherit, 6 custom id, 7 from gentle-ai phase, Enter keeps %s):", currentDisplay),
+		[]string{"1", "2", "3", "4", "5", "6", "7"})
+	if err != nil || !chosen {
+		return "", "", modelChoice, false, err
+	}
+
+	switch modelChoice {
+	case "6":
+		for {
+			customID, err := s.promptRequired("Custom model id (claude-...):")
+			if err != nil {
+				return "", "", modelChoice, false, err
+			}
+			if customID == "" {
+				// blank keeps the current model unchanged, mirroring
+				// every other model choice's blank-answer semantics.
+				return "", "", modelChoice, false, nil
+			}
+			if config.IsCustomModelID(customID) {
+				return customID, "", modelChoice, true, nil
+			}
+			fmt.Fprintln(out, "Invalid model id; must match ^claude-.+$")
+		}
+	case "7":
+		if len(phaseNames) == 0 {
+			fmt.Fprintf(out, "No gentle-ai phases found in %s.\n", paths.State)
+			return "", "", modelChoice, true, nil
+		}
+		fmt.Fprintln(out, "Phases:")
+		valid := make([]string, len(phaseNames))
+		for i, p := range phaseNames {
+			pa := phaseAssignments[p]
+			fmt.Fprintf(out, "  %d) %s (%s/%s)\n", i+1, p, pa.Model, pa.Effort)
+			valid[i] = strconv.Itoa(i + 1)
+		}
+		idx, ok, err := s.menuChoice("Phase number:", valid)
+		if err != nil {
+			return "", "", modelChoice, false, err
+		}
+		if !ok {
+			return "", "", modelChoice, true, nil
+		}
+		n, _ := strconv.Atoi(idx)
+		return "", phaseNames[n-1], modelChoice, true, nil
+	default:
+		return modelMenu[modelChoice], "", modelChoice, true, nil
+	}
+}
+
+// askEffort prompts the effort choice, using currentDisplay for the
+// "Enter keeps ..." label unless askModel just resolved a gentle-ai phase
+// (modelChoice=="7" with a non-empty newFrom), in which case the label
+// says "Enter keeps inherited" instead. chosen is false when the answer
+// was blank (keep current effort unchanged).
+func askEffort(s *session, currentDisplay, modelChoice, newFrom string) (newEffort string, chosen bool, err error) {
+	label := fmt.Sprintf("Effort (1 low, 2 medium, 3 high, 4 xhigh, 5 max, Enter keeps %s):", currentDisplay)
+	if modelChoice == "7" && newFrom != "" {
+		label = "Effort (1 low, 2 medium, 3 high, 4 xhigh, 5 max, Enter keeps inherited):"
+	}
+	effortChoice, chosen, err := s.menuChoice(label, []string{"1", "2", "3", "4", "5"})
+	if err != nil || !chosen {
+		return "", false, err
+	}
+	return effortMenu[effortChoice], true, nil
+}
+
+// applyToOverrides applies one resolved model/effort answer onto every
+// role in roles, deleting a role's override entirely once it goes back to
+// the zero value (matching config.ModelOverride's own "empty means
+// absent" convention).
+func applyToOverrides(overrides map[string]config.ModelOverride, roles []string, modelChosen bool, modelChoice, newModel, newFrom, newEffort string) {
+	for _, r := range roles {
+		entry := overrides[r]
+
+		if modelChosen {
+			if modelChoice == "7" {
+				if newFrom != "" {
+					entry.From = newFrom
+					entry.Model = ""
+				}
+			} else {
+				entry.Model = newModel
+				entry.From = ""
+			}
+		}
+
+		if modelChoice == "7" && newFrom != "" {
+			entry.Effort = newEffort
+		} else if newEffort != "" {
+			entry.Effort = newEffort
+		}
+
+		if entry == (config.ModelOverride{}) {
+			delete(overrides, r)
+		} else {
+			overrides[r] = entry
+		}
+	}
+}
+
+// writeModelsBlock renders overrides into a models: block (or clears an
+// existing one), asks for confirmation, and writes it through
+// config.SetModelsBlock + configure.Store.Save. The returned bool is
+// runModelsSection's own "did this section change anything" report.
+func writeModelsBlock(deps Deps, s *session, out io.Writer, paths configure.Paths, doc *config.Document, original []byte, overrides map[string]config.ModelOverride, hadExistingBlock bool) (bool, error) {
 	blockText := ""
 	if len(overrides) > 0 {
 		blockText = config.FormatModelsBlock(overrides)

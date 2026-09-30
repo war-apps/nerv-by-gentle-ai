@@ -27,8 +27,7 @@ type Store struct{}
 // Load reads path and wraps its content as a *config.Document. A missing
 // file is reported as exists=false with an empty Document, not an error —
 // callers seed the working document from their own missing-file header in
-// that case, mirroring configure.ps1's own $niExistingUserYaml resolution
-// (Test-Path ... else empty string).
+// that case.
 func (Store) Load(path string) (*config.Document, bool, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -44,12 +43,11 @@ func (Store) Load(path string) (*config.Document, bool, error) {
 // Load returned earlier in the same run): a no-op — no write, no backup —
 // when they are identical. Otherwise, when a file already exists at path,
 // it is copied to a timestamped "<path>.bak-configure-<yyyyMMdd-HHmmss>"
-// backup first (the suffix and format configure.ps1's non-interactive body
-// uses for every -Set/-SetModel write, regardless of which one touched the
-// file); when it does not exist yet, Save creates path's parent directory
-// instead. The new content is then written atomically (temp file + rename).
-// Mirrors the shared tail of configure.ps1's -Set/-SetModel handling
-// (~1329-1345).
+// backup first — the same suffix and format for every "nerv configure
+// --set"/"--set-model" write, regardless of which one touched the file;
+// when it does not exist yet, Save creates path's parent directory
+// instead. The new content is then written atomically (temp file +
+// rename).
 func (Store) Save(path string, doc *config.Document, previous []byte, now time.Time) (written bool, backup string, err error) {
 	newText := []byte(doc.String())
 	if bytes.Equal(newText, previous) {

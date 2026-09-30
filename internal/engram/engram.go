@@ -1,7 +1,6 @@
 // Package engram checks or creates the shared "nerv" Engram knowledge-base
 // project through the "engram" CLI, without ever failing the caller: every
-// problem surfaces as a warning message in the returned Result. Mirrors
-// the Engram step of tools/install.ps1 (~795-846).
+// problem surfaces as a warning message in the returned Result.
 package engram
 
 import (
@@ -57,7 +56,7 @@ func EnsureKnowledgeBase(ctx context.Context, runner env.Runner, lookPath func(n
 		return result
 	}
 
-	_, saveStderr, saveExitCode, saveErr := runner.Run(ctx, "engram", "save",
+	_, _, saveExitCode, saveErr := runner.Run(ctx, "engram", "save",
 		"NERV knowledge base", description,
 		"--project", projectName, "--type", "manual")
 	if saveErr != nil {
@@ -65,7 +64,6 @@ func EnsureKnowledgeBase(ctx context.Context, runner env.Runner, lookPath func(n
 		return result
 	}
 	if saveExitCode != 0 {
-		_ = saveStderr
 		result.Warnings = append(result.Warnings, "engram save exited with a non-zero code; could not create the 'nerv' Engram knowledge base.")
 		return result
 	}
@@ -74,9 +72,8 @@ func EnsureKnowledgeBase(ctx context.Context, runner env.Runner, lookPath func(n
 	return result
 }
 
-// projectListed reports whether any line of stdout's first whitespace
-// token equals name, mirroring install.ps1's per-line first-token scan of
-// "engram projects list" output.
+// projectListed reports whether any line of "engram projects list"
+// output's stdout has name as its first whitespace-separated token.
 func projectListed(stdout, name string) bool {
 	for _, line := range strings.Split(stdout, "\n") {
 		fields := strings.Fields(strings.TrimSpace(line))

@@ -12,10 +12,7 @@ import (
 // Uninstall removes NERV's settings.json registration (backed up and
 // written atomically, like Install's own registration step), tolerantly
 // runs "claude plugin uninstall nerv@nerv", and removes the materialized
-// <home>/.nerv/marketplace directory. Mirrors install.ps1's -Uninstall
-// branch plus the marketplace directory this package's embedded-plugin
-// model introduces (the old script had nothing to remove there, since it
-// registered the repo checkout itself).
+// <home>/.nerv/marketplace directory.
 func Uninstall(ctx context.Context, deps Deps) error {
 	path := settingsPath(deps)
 	previous, settings, err := loadOrInitSettings(path)

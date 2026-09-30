@@ -14,11 +14,10 @@ import (
 // this repository, not something an installed user runs.
 const releaseUsage = `Usage: nerv release <preview|apply|guard> [flags]
 
-Maintainer-only release tooling, replacing tools/release.ps1 and
-tools/release-guard.ps1: computes the next semantic version from
+Maintainer-only release tooling: computes the next semantic version from
 Conventional Commits since the last release tag (preview/apply), or checks
-release readiness before tagging (guard). Same output shapes and exit codes
-as the scripts (0 ok, 1 refused, 2 environment/git error).
+release readiness before tagging (guard). Exit codes: 0 ok, 1 refused,
+2 environment/git error.
 
 preview/apply flags:
   --repo <dir>                      Repository root (default ".")
@@ -127,8 +126,7 @@ func runReleaseCompute(args []string, stdout io.Writer, opts options, apply bool
 	return 0
 }
 
-// printReleaseComputeText renders preview/apply's human-readable output,
-// matching tools/release.ps1's own text report exactly.
+// printReleaseComputeText renders preview/apply's human-readable output.
 func printReleaseComputeText(stdout io.Writer, result release.PreviewResult, preRelease string, apply bool) {
 	fmt.Fprintf(stdout, "Current version : %s\n", result.Current)
 	lastTagDisplay := "(none)"

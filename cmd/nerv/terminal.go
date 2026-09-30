@@ -20,11 +20,9 @@ import (
 // uninstall/install` plus `npx skills add -g` on the developer machine
 // (2026-09-29 incident).
 //
-// Kept as a package-level function variable, the same seam every other
-// external effect in this codebase uses: no test should depend on the
-// real process's actual stdin, and the real x/term check itself cannot
-// be exercised from a unit test (it depends on a real OS file
-// descriptor/console) — only this seam's two outcomes are tested.
-var stdinIsTerminal = func() bool {
+// Wired into options.IsTerminal by defaultOptions; every other caller
+// goes through that field, so tests inject a fixed outcome instead of
+// depending on the real process's actual stdin.
+func stdinIsTerminal() bool {
 	return term.IsTerminal(int(os.Stdin.Fd()))
 }

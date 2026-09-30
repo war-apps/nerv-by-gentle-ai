@@ -16,11 +16,8 @@ import (
 // ApplyModels applies the user-scope models: overrides (merged over the
 // plugin's own committed defaults, resolving any from:<phase> entry
 // against gentle-ai's state.json) to the cached agent frontmatter under
-// the embedded plugin's own version. Mirrors -ApplyModels/-RefreshCache's
-// shared Invoke-NervApplyModels tail in install.ps1, built entirely from
-// packages P1a/P1b already ported and tested: config.ModelTableFromDocument
-// does the default+override+from: merge that Resolve-NervModelAssignments
-// and Merge-NervModelAssignments used to do by hand.
+// the embedded plugin's own version. config.ModelTableFromDocument does
+// the whole default+override+from: merge.
 func ApplyModels(ctx context.Context, deps Deps) error {
 	pluginVersion, err := version.PluginVersion(deps.FS)
 	if err != nil {

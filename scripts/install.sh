@@ -64,17 +64,15 @@ http_client() {
   fi
 }
 
-# fetch URL OUTFILE — downloads URL into OUTFILE with curl or wget.
+# fetch URL OUTFILE — downloads URL into OUTFILE with curl or wget. main
+# always runs check_prereqs (the single "curl or wget is required" check)
+# before any call path that reaches fetch.
 fetch() {
   local url="$1" outfile="$2" client
   client="$(http_client)"
   case "$client" in
     curl) curl -fsSL "$url" -o "$outfile" ;;
     wget) wget -qO "$outfile" "$url" ;;
-    *)
-      log_err "curl or wget is required to install nerv."
-      exit 1
-      ;;
   esac
 }
 
@@ -189,6 +187,8 @@ resolve_tag() {
 
   response_file="$(mktemp)"
 
+  # channel is one of stable|alpha|rc here: main validates it (the single
+  # "Unknown channel" check) before ever calling resolve_tag.
   case "$channel" in
     stable)
       fetch "${NERV_API_BASE}/releases/latest" "$response_file"
@@ -209,10 +209,6 @@ resolve_tag() {
         exit 1
       fi
       printf '%s' "$tag"
-      ;;
-    *)
-      log_err "Unknown channel: ${channel}. Use: stable, alpha, or rc."
-      exit 1
       ;;
   esac
 }

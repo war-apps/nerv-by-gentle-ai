@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/war-apps/nerv-gentle-ai/internal/atomicfile"
@@ -14,8 +15,8 @@ import (
 )
 
 // InitRepoRequest is --init-repo's parameters: the target directory plus
-// the optional per-repo overrides configure.ps1's -RepoBase/-RepoProvider/
-// -RepoProjectId/-RepoTasklistId carry.
+// the optional per-repo overrides (base branch, task provider, project id,
+// tasklist id).
 type InitRepoRequest struct {
 	Path       string
 	Base       string
@@ -28,9 +29,8 @@ type InitRepoRequest struct {
 // (config.FormatProjectFile) — never overwriting an existing project
 // config, reporting that case as a warning rather than an error. path must
 // exist and be inside a git working tree (resolved with
-// "git -C <path> rev-parse --show-toplevel", the same command
-// configure.ps1 uses); either failure is a refusal. Mirrors configure.ps1's
-// -InitRepo handling (~1347-1393).
+// "git -C <path> rev-parse --show-toplevel"); either failure is a
+// refusal.
 func InitRepo(deps Deps, req InitRepoRequest) (Result, error) {
 	if _, err := os.Stat(req.Path); err != nil {
 		return Result{}, &RefusalError{Err: fmt.Errorf("Path not found: %s", req.Path)}
@@ -38,8 +38,8 @@ func InitRepo(deps Deps, req InitRepoRequest) (Result, error) {
 
 	if req.Provider != "" {
 		allowed, _ := config.AllowedValues("tasks.provider")
-		if !contains(allowed, req.Provider) {
-			return Result{}, &RefusalError{Err: fmt.Errorf("Invalid -RepoProvider '%s'. Allowed: %s.", req.Provider, strings.Join(allowed, ", "))}
+		if !slices.Contains(allowed, req.Provider) {
+			return Result{}, &RefusalError{Err: fmt.Errorf("Invalid --repo-provider '%s'. Allowed: %s.", req.Provider, strings.Join(allowed, ", "))}
 		}
 	}
 
@@ -81,13 +81,4 @@ func InitRepo(deps Deps, req InitRepoRequest) (Result, error) {
 		ConfigPath: repoConfigPath,
 		Backup:     nil,
 	}, nil
-}
-
-func contains(values []string, target string) bool {
-	for _, v := range values {
-		if v == target {
-			return true
-		}
-	}
-	return false
 }

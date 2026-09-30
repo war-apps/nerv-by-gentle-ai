@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -25,11 +26,11 @@ Flags:
   --only name,...    Restrict processing to these skill names
 `
 
-// runSkills ports install-skills.ps1's CLI exactly: the human table (or
-// --json array, always an array even for one entry), --only rejecting an
-// unknown name with exit 1, --dry-run's "npx skills add ..." lines
-// (matching the printed remedy lines for gentle-ai gaps and the human
-// summary line), and the failure-count-driven exit code.
+// runSkills is "nerv skills"'s CLI: the human table (or --json array,
+// always an array even for one entry), --only rejecting an unknown name
+// with exit 1, --dry-run's "npx skills add ..." lines alongside the
+// printed remedy lines for gentle-ai gaps and the human summary line, and
+// the failure-count-driven exit code.
 func runSkills(args []string, stdout, stderr io.Writer, opts options) int {
 	fs := flag.NewFlagSet("skills", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
@@ -49,48 +50,45 @@ func runSkills(args []string, stdout, stderr io.Writer, opts options) int {
 		return 2
 	}
 
-	manifest, err := skills.LoadManifestFS(opts.PluginFS)
-	if err != nil {
-		fmt.Fprintf(stdout, "nerv: %v\n", err)
-		return 2
-	}
-
 	var onlyNames []string
 	if *only != "" {
 		onlyNames = strings.Split(*only, ",")
 	}
 
-	entries, err := skills.FilterOnly(manifest, onlyNames)
+	skillsDir := paths.Resolve(home).SkillsDir
+	report, err := skills.Run(context.Background(), opts.Runner, opts.PluginFS, skillsDir, skills.Options{
+		Only:   onlyNames,
+		DryRun: *dryRun,
+	})
 	if err != nil {
+		var manifestErr *skills.ErrManifest
+		if errors.As(err, &manifestErr) {
+			fmt.Fprintf(stdout, "nerv: %v\n", manifestErr.Err)
+			return 2
+		}
 		fmt.Fprintln(stdout, err.Error())
 		return 1
 	}
-	filtered := &skills.Manifest{Schema: manifest.Schema, Skills: entries}
-
-	skillsDir := paths.Resolve(home).SkillsDir
-	statuses := skills.Status(filtered, skillsDir)
 
 	if *jsonOut {
-		writeJSON(stdout, statuses)
+		writeJSON(stdout, report.Statuses)
 	} else {
 		fmt.Fprintf(stdout, "%-32s %-10s %-10s %s\n", "name", "kind", "installed", "action")
-		for _, s := range statuses {
+		for _, s := range report.Statuses {
 			fmt.Fprintf(stdout, "%-32s %-10s %-10v %s\n", s.Name, s.Kind, s.Installed, s.Action)
 		}
 	}
 
-	plan := skills.InstallPlan(statuses)
-
 	alreadyPresentCount := 0
-	for _, s := range statuses {
+	for _, s := range report.Statuses {
 		if s.Action == skills.ActionNone {
 			alreadyPresentCount++
 		}
 	}
 
-	gentleAiGapCount := len(plan.Remedies)
+	gentleAiGapCount := len(report.Plan.Remedies)
 	if !*jsonOut {
-		for _, remedy := range plan.Remedies {
+		for _, remedy := range report.Plan.Remedies {
 			fmt.Fprintln(stdout, remedy)
 		}
 	}
@@ -98,16 +96,15 @@ func runSkills(args []string, stdout, stderr io.Writer, opts options) int {
 	installedCount, failureCount := 0, 0
 	if *dryRun {
 		if !*jsonOut {
-			for _, step := range plan.Installs {
+			for _, step := range report.Plan.Installs {
 				fmt.Fprintf(stdout, "DryRun: npx %s\n", strings.Join(step.Args, " "))
 			}
 		}
 	} else {
-		result := skills.Install(context.Background(), opts.Runner, plan)
-		installedCount = result.Installed
-		failureCount = result.Failed
+		installedCount = report.Result.Installed
+		failureCount = report.Result.Failed
 		if !*jsonOut {
-			for _, name := range result.Failures {
+			for _, name := range report.Result.Failures {
 				fmt.Fprintf(stdout, "FAILED to install skill '%s'.\n", name)
 			}
 		}

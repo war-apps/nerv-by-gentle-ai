@@ -71,10 +71,6 @@ func runInstall(args []string, stdout, stderr io.Writer, opts options) int {
 	err = install.Install(context.Background(), deps, install.Options{
 		RequireGentleAI: *requireGentleAI,
 		NoSkills:        *noSkills,
-		// cmd owns the hint-vs-wizard decision below, so the hint
-		// install.Install would otherwise print unconditionally is always
-		// suppressed here.
-		NoConfigure: true,
 	})
 	if code := mapInstallError(stdout, err); code != 0 {
 		return code
@@ -83,7 +79,7 @@ func runInstall(args []string, stdout, stderr io.Writer, opts options) int {
 	if *noConfigure {
 		return 0
 	}
-	if !stdinIsTerminal() {
+	if !opts.IsTerminal() {
 		fmt.Fprintln(stdout, "\nRun `nerv configure` to set up NERV.")
 		return 0
 	}

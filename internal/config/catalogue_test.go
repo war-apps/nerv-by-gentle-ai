@@ -8,93 +8,9 @@ import (
 )
 
 // ---------------------------------------------------------------------------
-// Case group D: Format-* functions (Format-NervGitBlock, Format-NervTasksBlock,
-// Format-NervSkillsBlock, Format-NervCriticalPathsLine,
-// Format-NervArtifactsBlock, Format-NervProjectFile)
+// Case group D: Format-* functions (Format-NervSkillsBlock,
+// Format-NervCriticalPathsLine, Format-NervProjectFile)
 // ---------------------------------------------------------------------------
-
-func TestFormatGitBlock_GroupD(t *testing.T) {
-	got := config.FormatGitBlock(config.GitValues{
-		BaseBranch:       "develop",
-		Worktree:         "ask",
-		BranchPattern:    "feature/{prefix}-{id}-{slug}",
-		CommitRefPattern: "({PREFIX}-{id})",
-	})
-
-	t.Run("format-git-header", func(t *testing.T) {
-		if !strings.HasPrefix(got, "git:") {
-			t.Errorf("got %q", got)
-		}
-	})
-	t.Run("format-git-base-branch", func(t *testing.T) {
-		if !strings.Contains(got, "base_branch: develop") {
-			t.Errorf("got %q", got)
-		}
-	})
-	t.Run("format-git-worktree", func(t *testing.T) {
-		if !strings.Contains(got, "worktree: ask") {
-			t.Errorf("got %q", got)
-		}
-	})
-	t.Run("format-git-branch-pattern-quoted", func(t *testing.T) {
-		if !strings.Contains(got, `branch_pattern: "feature/{prefix}-{id}-{slug}"`) {
-			t.Errorf("got %q", got)
-		}
-	})
-}
-
-func TestFormatTasksBlock_GroupD(t *testing.T) {
-	sourcesRaw := "  sources:\n    - name: erp-proveedores\n      type: google-sheets"
-	got := config.FormatTasksBlock(config.TasksValues{
-		Provider:                  "teamwork",
-		AskWhenMissing:            "true",
-		SubtasksPerWave:           "false",
-		TimerStore:                "~/.claude/work/timers.json",
-		RoundingMinutes:           "15",
-		TeamworkTaskRefPrefix:     "tw",
-		TeamworkAssigneeID:        "686035",
-		TeamworkDefaultProjectID:  "1271726",
-		TeamworkDefaultTasklistID: "3951970",
-		TeamworkStageInDev:        "DESARROLLO",
-		TeamworkStageTesting:      "TESTING",
-		TeamworkStageImplemented:  "IMPLEMENTA",
-		TeamworkStageBlocked:      "BLOQUEA",
-		TeamworkStageCanceled:     "CANCEL",
-		TeamworkStagePending:      "PENDIENTE",
-		TeamworkStageAnalysis:     "ANALISIS",
-	}, sourcesRaw)
-
-	t.Run("format-tasks-header", func(t *testing.T) {
-		if !strings.HasPrefix(got, "tasks:") {
-			t.Errorf("got %q", got)
-		}
-	})
-	t.Run("format-tasks-provider", func(t *testing.T) {
-		if !strings.Contains(got, "provider: teamwork") {
-			t.Errorf("got %q", got)
-		}
-	})
-	t.Run("format-tasks-teamwork-block", func(t *testing.T) {
-		if !strings.Contains(got, "task_ref_prefix: tw") || !strings.Contains(got, "assignee_id: 686035") {
-			t.Errorf("got %q", got)
-		}
-	})
-	t.Run("format-tasks-stages", func(t *testing.T) {
-		if !strings.Contains(got, "inDev: DESARROLLO") || !strings.Contains(got, "analysis: ANALISIS") {
-			t.Errorf("got %q", got)
-		}
-	})
-	t.Run("format-tasks-other-providers-present", func(t *testing.T) {
-		if !strings.Contains(got, "github-projects:") || !strings.Contains(got, "jira:") {
-			t.Errorf("got %q", got)
-		}
-	})
-	t.Run("format-tasks-carries-sources-verbatim", func(t *testing.T) {
-		if !strings.Contains(got, sourcesRaw) {
-			t.Errorf("got %q", got)
-		}
-	})
-}
 
 func TestFormatSkillsBlock_GroupD(t *testing.T) {
 	got := config.FormatSkillsBlock(config.SkillsValues{
@@ -131,22 +47,12 @@ func TestFormatCriticalPathsLine_GroupD(t *testing.T) {
 	})
 }
 
-func TestFormatArtifactsBlock_GroupD(t *testing.T) {
-	t.Run("format-artifacts", func(t *testing.T) {
-		got := config.FormatArtifactsBlock("at-close")
-		if !strings.HasPrefix(got, "artifacts:") || !strings.Contains(got, "commit: at-close") {
-			t.Errorf("got %q", got)
-		}
-	})
-}
-
 func TestFormatProjectFile_GroupD(t *testing.T) {
 	got := config.FormatProjectFile(config.ProjectValues{
 		BaseBranch: "develop2",
 		Provider:   "teamwork",
 		ProjectID:  "111",
 		TasklistID: "222",
-		Commit:     "at-close",
 	})
 
 	t.Run("format-project-enabled", func(t *testing.T) {

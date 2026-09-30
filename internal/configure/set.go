@@ -10,7 +10,6 @@ import (
 // nerv.yaml: every entry is parsed and validated (ParseSetArg,
 // ValidateManagedKey, ValidateManagedValue) before anything is written —
 // the first invalid entry refuses the whole batch and touches nothing.
-// Mirrors configure.ps1's -Set handling (~1229-1259, 1329-1345).
 func Set(deps Deps, paths Paths, args []string) (Result, error) {
 	store := Store{}
 	doc, exists, err := store.Load(paths.Config)

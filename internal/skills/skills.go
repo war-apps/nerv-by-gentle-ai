@@ -1,7 +1,7 @@
 // Package skills reads the NERV skills manifest, computes each skill's
 // installed status against a Claude Code user-scope skills directory, and
 // runs the "npx skills add" installs for missing external skills through
-// env.Runner. Mirrors tools/install-skills.ps1.
+// env.Runner.
 package skills
 
 import (
@@ -210,9 +210,9 @@ type Plan struct {
 	Remedies []string
 }
 
-// InstallPlan turns Status's output into a Plan. Mirrors the per-status
-// dispatch in install-skills.ps1's body (install vs. verify-gentle-ai vs.
-// none).
+// InstallPlan turns Status's output into a Plan by dispatching each
+// status's Action: an install step for ActionInstall, a remedy message
+// for ActionVerifyGentleAI, nothing for ActionNone.
 func InstallPlan(statuses []SkillStatus) Plan {
 	var plan Plan
 	for _, s := range statuses {
@@ -233,9 +233,8 @@ func InstallPlan(statuses []SkillStatus) Plan {
 
 // FilterOnly restricts manifest's entries to the given names (manifest
 // order preserved), or returns manifest's full entry list when only is
-// empty. An empty error naming every unrecognized name is returned when
-// only contains a name absent from manifest. Mirrors the -Only validation
-// inlined in install-skills.ps1's body.
+// empty. An error naming every unrecognized name is returned when only
+// contains a name absent from manifest.
 func FilterOnly(manifest *Manifest, only []string) ([]SkillEntry, error) {
 	if len(only) == 0 {
 		return manifest.Skills, nil
@@ -255,7 +254,7 @@ func FilterOnly(manifest *Manifest, only []string) ([]SkillEntry, error) {
 		}
 	}
 	if len(unknown) > 0 {
-		return nil, fmt.Errorf("unknown skill name(s) for -Only: %s", strings.Join(unknown, ", "))
+		return nil, fmt.Errorf("unknown skill name(s) for --only: %s", strings.Join(unknown, ", "))
 	}
 
 	result := make([]SkillEntry, 0, len(only))
@@ -279,8 +278,9 @@ type InstallResult struct {
 }
 
 // Install runs "npx <args>" through runner for every step in plan.Installs,
-// counting a launch error or a non-zero exit as a failure. Mirrors the
-// -DryRun-less branch of install-skills.ps1's body.
+// counting a launch error or a non-zero exit as a failure. Callers that
+// support a dry-run mode skip calling Install entirely and render
+// plan.Installs instead.
 func Install(ctx context.Context, runner env.Runner, plan Plan) InstallResult {
 	var result InstallResult
 	for _, step := range plan.Installs {

@@ -24,11 +24,10 @@ const marketplaceName = "nerv"
 // settings.json, refreshing the plugin cache through "claude plugin
 // uninstall/install" and verifying it against the embedded version,
 // applying model/effort assignments to the cached agents, ensuring the
-// Engram "nerv" knowledge base, installing skills (unless opts.NoSkills),
-// and printing the configure hint (unless opts.NoConfigure). Every step's
-// progress is written to deps.Stdout as it runs. Mirrors install.ps1's
-// main body under the embedded-plugin model (see this package's doc
-// comment).
+// Engram "nerv" knowledge base, and installing skills (unless
+// opts.NoSkills). The closing "run nerv configure" hint is cmd/nerv's own
+// responsibility, not this package's. Every step's progress is written to
+// deps.Stdout as it runs.
 func Install(ctx context.Context, deps Deps, opts Options) error {
 	if err := preflightGentleAI(ctx, deps, opts.RequireGentleAI); err != nil {
 		return err
@@ -62,10 +61,6 @@ func Install(ctx context.Context, deps Deps, opts Options) error {
 
 	if !opts.NoSkills {
 		installSkills(ctx, deps)
-	}
-
-	if !opts.NoConfigure {
-		fmt.Fprintln(deps.Stdout, "\nRun `nerv configure` to set up NERV.")
 	}
 
 	fmt.Fprintln(deps.Stdout, "\nRestart Claude Code for the change to take effect.")
@@ -210,23 +205,19 @@ func ensureEngram(ctx context.Context, deps Deps) {
 func installSkills(ctx context.Context, deps Deps) {
 	fmt.Fprintln(deps.Stdout, "\n=== Installing required skills ===")
 
-	manifest, err := skills.LoadManifestFS(deps.FS)
+	skillsDir := paths.Resolve(deps.Home).SkillsDir
+	report, err := skills.Run(ctx, deps.Runner, deps.FS, skillsDir, skills.Options{})
 	if err != nil {
 		fmt.Fprintf(deps.Stdout, "Warning: could not read the skills manifest: %v\n", err)
 		return
 	}
 
-	skillsDir := paths.Resolve(deps.Home).SkillsDir
-	statuses := skills.Status(manifest, skillsDir)
-	plan := skills.InstallPlan(statuses)
-
-	for _, remedy := range plan.Remedies {
+	for _, remedy := range report.Plan.Remedies {
 		fmt.Fprintln(deps.Stdout, remedy)
 	}
 
-	result := skills.Install(ctx, deps.Runner, plan)
-	fmt.Fprintf(deps.Stdout, "skills: %d installed, %d failed\n", result.Installed, result.Failed)
-	if result.Failed > 0 {
+	fmt.Fprintf(deps.Stdout, "skills: %d installed, %d failed\n", report.Result.Installed, report.Result.Failed)
+	if report.Result.Failed > 0 {
 		fmt.Fprintln(deps.Stdout, "Warning: install-skills reported failures; see the lines above.")
 	}
 }

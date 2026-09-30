@@ -21,10 +21,8 @@ type OrderedEntry struct {
 }
 
 // OrderedValues is a key/value list that marshals as a JSON object in list
-// order, so PrintResult.Values/Defaults render in config.Defaults' catalogue
-// order — matching configure.ps1's `[ordered]@{}` — instead of Go's default
-// (and PowerShell's own ConvertFrom-Json-independent) alphabetical map
-// ordering.
+// order, so PrintResult.Values/Defaults render in config.Defaults'
+// catalogue order instead of Go's default alphabetical map ordering.
 type OrderedValues []OrderedEntry
 
 // MarshalJSON implements json.Marshaler.
@@ -91,8 +89,7 @@ type SkillStatus struct {
 }
 
 // PrintResult is --print's JSON payload: `{ config_path, exists,
-// prerequisites, values, defaults, models, skills_status }`. Mirrors
-// configure.ps1's $printPayload.
+// prerequisites, values, defaults, models, skills_status }`.
 type PrintResult struct {
 	ConfigPath    string        `json:"config_path"`
 	Exists        bool          `json:"exists"`
@@ -106,8 +103,7 @@ type PrintResult struct {
 // Print computes --print's payload: every managed key's current resolved
 // value and built-in default, the resolved per-role model/effort table, the
 // skills manifest's installed status, and gentle-ai/engram/claude
-// prerequisite detection. It never writes anything. Mirrors
-// configure.ps1's -Print handling (~1175-1211).
+// prerequisite detection. It never writes anything.
 func Print(deps Deps, paths Paths) (PrintResult, error) {
 	doc, exists, err := (Store{}).Load(paths.Config)
 	if err != nil {
@@ -128,9 +124,9 @@ func Print(deps Deps, paths Paths) (PrintResult, error) {
 		return PrintResult{}, err
 	}
 
-	// A malformed or unreadable state.json is silently ignored, exactly as
-	// configure.ps1's own try/catch around it: -Print degrades to
-	// unresolved from:<phase> display rather than failing the whole call.
+	// A malformed or unreadable state.json is silently ignored: --print
+	// degrades to unresolved from:<phase> display rather than failing the
+	// whole call.
 	phaseAssignments, phaseErr := gentleai.PhaseAssignments(paths.State)
 	if phaseErr != nil {
 		phaseAssignments = map[string]config.PhaseAssignment{}
@@ -153,8 +149,7 @@ func Print(deps Deps, paths Paths) (PrintResult, error) {
 			})
 		}
 	case errors.Is(manifestErr, fs.ErrNotExist):
-		// No manifest at all: skills_status stays empty, matching
-		// configure.ps1's Test-Path guard around Read-NervSkillsManifest.
+		// No manifest at all: skills_status stays empty.
 	default:
 		return PrintResult{}, manifestErr
 	}
