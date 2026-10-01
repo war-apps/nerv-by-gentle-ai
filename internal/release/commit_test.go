@@ -4,7 +4,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/war-apps/nerv-gentle-ai/internal/release"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/release"
 )
 
 func c(subject, body string) release.Commit {

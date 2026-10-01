@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/war-apps/nerv-gentle-ai/internal/claude"
-	"github.com/war-apps/nerv-gentle-ai/internal/env/envtest"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/claude"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/env/envtest"
 )
 
 func TestPluginCLI_Uninstall_Success(t *testing.T) {

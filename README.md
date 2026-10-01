@@ -70,13 +70,13 @@ activation, and pipeline diagrams.
 **Linux and macOS:**
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/war-apps/nerv-gentle-ai/main/scripts/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/war-apps/nerv-by-gentle-ai/main/scripts/install.sh | bash
 ```
 
 or with `wget`:
 
 ```bash
-wget -qO- https://raw.githubusercontent.com/war-apps/nerv-gentle-ai/main/scripts/install.sh | bash
+wget -qO- https://raw.githubusercontent.com/war-apps/nerv-by-gentle-ai/main/scripts/install.sh | bash
 ```
 
 Environment options (export before running, or prefix the command):
@@ -89,7 +89,7 @@ resolution entirely).
 **Windows:**
 
 ```bash
-go install github.com/war-apps/nerv-gentle-ai/cmd/nerv@latest
+go install github.com/war-apps/nerv-by-gentle-ai/cmd/nerv@latest
 nerv install
 ```
 
@@ -252,7 +252,7 @@ defaults, never committed), project scope `<repo>/.nerv/nerv.yaml`
 
 ### Developer workflow
 
-1. `git clone https://github.com/war-apps/nerv-gentle-ai.git` (the folder
+1. `git clone https://github.com/war-apps/nerv-by-gentle-ai.git` (the folder
    path is registered as a local plugin marketplace, so keep the clone
    where it will stay).
 2. `go build ./cmd/nerv`

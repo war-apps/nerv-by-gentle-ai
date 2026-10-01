@@ -5,8 +5,8 @@ import (
 	"os"
 	"testing"
 
-	"github.com/war-apps/nerv-gentle-ai/internal/engram"
-	"github.com/war-apps/nerv-gentle-ai/internal/env/envtest"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/engram"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/env/envtest"
 )
 
 func lookPathFound(string) (string, error) { return "/usr/local/bin/engram", nil }

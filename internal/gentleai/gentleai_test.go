@@ -6,9 +6,9 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/war-apps/nerv-gentle-ai/internal/config"
-	"github.com/war-apps/nerv-gentle-ai/internal/env/envtest"
-	"github.com/war-apps/nerv-gentle-ai/internal/gentleai"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/config"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/env/envtest"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/gentleai"
 )
 
 // ---------------------------------------------------------------------------

@@ -4,7 +4,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/war-apps/nerv-gentle-ai/internal/paths"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/paths"
 )
 
 func TestResolve_JoinsEveryPathUnderHome(t *testing.T) {

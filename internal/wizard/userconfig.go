@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/war-apps/nerv-gentle-ai/internal/config"
-	"github.com/war-apps/nerv-gentle-ai/internal/configure"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/config"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/configure"
 )
 
 // teamworkField is one "-- tasks.providers.teamwork --" prompt: its

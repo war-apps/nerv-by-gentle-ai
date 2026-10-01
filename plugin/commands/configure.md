@@ -22,8 +22,8 @@ changes confirmed — never more.
    ```
 
    If `nerv` is not on PATH, tell the user to install it — `curl -fsSL
-   https://raw.githubusercontent.com/war-apps/nerv-gentle-ai/main/scripts/install.sh
-   | bash`, or `go install github.com/war-apps/nerv-gentle-ai/cmd/nerv@latest`
+   https://raw.githubusercontent.com/war-apps/nerv-by-gentle-ai/main/scripts/install.sh
+   | bash`, or `go install github.com/war-apps/nerv-by-gentle-ai/cmd/nerv@latest`
    — and stop. Do not fall back to reading or writing `nerv.yaml` by hand.
 
    From the returned JSON print a compact summary: `config_path` and

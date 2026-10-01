@@ -5,12 +5,12 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/war-apps/nerv-gentle-ai/internal/config"
-	"github.com/war-apps/nerv-gentle-ai/internal/configstore"
-	"github.com/war-apps/nerv-gentle-ai/internal/gentleai"
-	"github.com/war-apps/nerv-gentle-ai/internal/models"
-	"github.com/war-apps/nerv-gentle-ai/internal/paths"
-	"github.com/war-apps/nerv-gentle-ai/internal/version"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/config"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/configstore"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/gentleai"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/models"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/paths"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/version"
 )
 
 // ApplyModels applies the user-scope models: overrides (merged over the

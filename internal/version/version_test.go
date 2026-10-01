@@ -4,7 +4,7 @@ import (
 	"testing"
 	"testing/fstest"
 
-	"github.com/war-apps/nerv-gentle-ai/internal/version"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/version"
 )
 
 func TestPluginVersion_ReadsVersionFromManifest(t *testing.T) {

@@ -10,7 +10,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/war-apps/nerv-gentle-ai/internal/atomicfile"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/atomicfile"
 )
 
 // Settings is Claude Code's settings.json content, held as a generic map

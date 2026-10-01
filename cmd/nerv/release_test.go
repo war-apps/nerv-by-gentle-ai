@@ -12,8 +12,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/war-apps/nerv-gentle-ai/internal/env/envtest"
-	"github.com/war-apps/nerv-gentle-ai/internal/version"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/env/envtest"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/version"
 )
 
 // ---------------------------------------------------------------------------

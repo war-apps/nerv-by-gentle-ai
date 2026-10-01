@@ -5,7 +5,7 @@ import (
 	"io"
 	"io/fs"
 
-	"github.com/war-apps/nerv-gentle-ai/internal/configure"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/configure"
 )
 
 // runCommandsSection is Section 4: an offer to copy the embedded Teamwork

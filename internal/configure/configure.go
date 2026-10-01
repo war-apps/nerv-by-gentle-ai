@@ -15,9 +15,9 @@ import (
 	"io/fs"
 	"time"
 
-	"github.com/war-apps/nerv-gentle-ai/internal/env"
-	"github.com/war-apps/nerv-gentle-ai/internal/paths"
-	"github.com/war-apps/nerv-gentle-ai/internal/refusal"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/env"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/paths"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/refusal"
 )
 
 // Deps bundles configure's external effects so tests can inject fakes: no

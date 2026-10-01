@@ -7,10 +7,10 @@ import (
 	"errors"
 	"io/fs"
 
-	"github.com/war-apps/nerv-gentle-ai/internal/config"
-	"github.com/war-apps/nerv-gentle-ai/internal/gentleai"
-	"github.com/war-apps/nerv-gentle-ai/internal/models"
-	"github.com/war-apps/nerv-gentle-ai/internal/skills"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/config"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/gentleai"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/models"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/skills"
 )
 
 // OrderedEntry is one key/value pair of PrintResult.Values or

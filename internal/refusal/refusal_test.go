@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/war-apps/nerv-gentle-ai/internal/refusal"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/refusal"
 )
 
 func TestError_UnwrapsAndFormats(t *testing.T) {

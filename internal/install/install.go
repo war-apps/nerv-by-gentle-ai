@@ -6,13 +6,13 @@ import (
 	"fmt"
 	"io/fs"
 
-	"github.com/war-apps/nerv-gentle-ai/internal/claude"
-	"github.com/war-apps/nerv-gentle-ai/internal/engram"
-	"github.com/war-apps/nerv-gentle-ai/internal/gentleai"
-	"github.com/war-apps/nerv-gentle-ai/internal/paths"
-	"github.com/war-apps/nerv-gentle-ai/internal/plugin"
-	"github.com/war-apps/nerv-gentle-ai/internal/skills"
-	"github.com/war-apps/nerv-gentle-ai/internal/version"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/claude"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/engram"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/gentleai"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/paths"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/plugin"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/skills"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/version"
 )
 
 const pluginID = "nerv@nerv"

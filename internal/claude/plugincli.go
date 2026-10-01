@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/war-apps/nerv-gentle-ai/internal/env"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/env"
 )
 
 // PluginCLI drives Claude Code's "claude plugin" subcommand — the

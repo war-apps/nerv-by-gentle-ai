@@ -8,8 +8,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/war-apps/nerv-gentle-ai/internal/config"
-	"github.com/war-apps/nerv-gentle-ai/internal/herdr"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/config"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/herdr"
 )
 
 // exampleRepo and exampleSlug are the placeholder {repo}/{slug} values

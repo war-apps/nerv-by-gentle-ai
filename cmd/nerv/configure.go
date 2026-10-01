@@ -11,8 +11,8 @@ import (
 	"os"
 	"strings"
 
-	"github.com/war-apps/nerv-gentle-ai/internal/configure"
-	"github.com/war-apps/nerv-gentle-ai/internal/wizard"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/configure"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/wizard"
 )
 
 const configureUsage = `Usage: nerv configure [flags]

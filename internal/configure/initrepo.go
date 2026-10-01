@@ -10,8 +10,8 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/war-apps/nerv-gentle-ai/internal/atomicfile"
-	"github.com/war-apps/nerv-gentle-ai/internal/config"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/atomicfile"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/config"
 )
 
 // InitRepoRequest is --init-repo's parameters: the target directory plus

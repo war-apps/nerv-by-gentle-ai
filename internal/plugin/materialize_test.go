@@ -10,8 +10,8 @@ import (
 	"testing"
 	"testing/fstest"
 
-	nerv "github.com/war-apps/nerv-gentle-ai"
-	"github.com/war-apps/nerv-gentle-ai/internal/plugin"
+	nerv "github.com/war-apps/nerv-by-gentle-ai"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/plugin"
 )
 
 func sampleSrc() fstest.MapFS {

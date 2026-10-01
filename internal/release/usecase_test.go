@@ -9,9 +9,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/war-apps/nerv-gentle-ai/internal/env/envtest"
-	"github.com/war-apps/nerv-gentle-ai/internal/refusal"
-	"github.com/war-apps/nerv-gentle-ai/internal/release"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/env/envtest"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/refusal"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/release"
 )
 
 // ---------------------------------------------------------------------------

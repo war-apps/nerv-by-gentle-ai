@@ -225,8 +225,8 @@ corrupt_checksum() {
   printf '%s  %s\n' "$zeros" "$archive" >"${fixtures_dir}/downloads/${tag}/checksums.txt"
 }
 
-TEST_API_BASE="https://fixture.test/repos/war-apps/nerv-gentle-ai"
-TEST_DOWNLOAD_BASE="https://fixture.test/repos/war-apps/nerv-gentle-ai/releases/download"
+TEST_API_BASE="https://fixture.test/repos/war-apps/nerv-by-gentle-ai"
+TEST_DOWNLOAD_BASE="https://fixture.test/repos/war-apps/nerv-by-gentle-ai/releases/download"
 TEST_OS="linux"
 TEST_ARCH="amd64"
 
