@@ -41,7 +41,7 @@ matching the "Nerv by Gentle-AI" display name, and move every reference with it.
   replacement plus the `cd` line in CONTRIBUTING).
 - [x] T2 Rename the GitHub repository and update the local `origin` remote (reordered before
   delivery after review).
-- [ ] T3 Deliver: PR to `develop`, CI green, merge; refresh the plugin cache from `develop`.
+- [x] T3 Deliver: PR to `develop`, CI green, merge; refresh the plugin cache from `develop`.
 
 ## Acceptance criteria
 
@@ -66,7 +66,11 @@ matching the "Nerv by Gentle-AI" display name, and move every reference with it.
 - 2026-10-01: T2 done — `gh repo rename nerv-by-gentle-ai`; `origin` now
   `https://github.com/war-apps/nerv-by-gentle-ai.git`; the API resolves the old name to the new
   one. The repository is private, so unauthenticated URLs return 404 for both names.
+- 2026-10-01: T3 — PR #40 to `develop`, CI green ("Go checks", "Test suites", the latter also
+  covering `install-sh.test.sh`), merged; plugin cache refreshed from `develop` with
+  `go run ./cmd/nerv install --no-configure`.
 
 ## Next step
 
-T3.
+Feature complete. The next release publishes the new module path; until then the installed
+`nerv` 0.2.0 binary keeps working, and `go install` must use the new path once that release is out.
