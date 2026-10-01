@@ -1,4 +1,4 @@
-// Command nerv is the NERV Gentle-AI CLI: it materializes the embedded
+// Command nerv is the Nerv by Gentle-AI CLI: it materializes the embedded
 // plugin tree, configures NERV, and reports version information.
 package main
 

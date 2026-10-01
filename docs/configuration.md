@@ -1,6 +1,6 @@
 # Configuration schema
 
-Every NERV Gentle-AI setting lives in `nerv.yaml`. There are exactly two
+Every Nerv by Gentle-AI setting lives in `nerv.yaml`. There are exactly two
 copies, same schema: user scope `~/.claude/nerv/nerv.yaml` (personal
 defaults, never committed) and project scope `<repo>/.nerv/nerv.yaml`
 (committed). Project overrides user key by key; a missing key falls back

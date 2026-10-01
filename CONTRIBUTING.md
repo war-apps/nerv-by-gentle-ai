@@ -1,8 +1,8 @@
-# Contributing to NERV Gentle-AI
+# Contributing to Nerv by Gentle-AI
 
 ## Welcome and scope
 
-Thank you for your interest in contributing to NERV Gentle-AI — a
+Thank you for your interest in contributing to Nerv by Gentle-AI — a
 governance overlay plugin for Claude Code, distributed as a single Go
 binary (`nerv`) plus the plugin tree it embeds.
 

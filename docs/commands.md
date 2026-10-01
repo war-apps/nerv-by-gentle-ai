@@ -1,6 +1,6 @@
 # Commands
 
-NERV Gentle-AI has two command surfaces: Claude Code slash commands
+Nerv by Gentle-AI has two command surfaces: Claude Code slash commands
 (`/nerv:*`, run from inside a Claude Code session) and the `nerv` CLI binary
 (run from a shell, including from inside the slash commands themselves).
 

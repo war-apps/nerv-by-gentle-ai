@@ -40,7 +40,7 @@ Engram mirror: topic `odd/marketplace-sync-and-rename/tasks` (project `nerv`).
 - [x] T1 Installer syncs the `nerv` marketplace through the CLI before the cache refresh
   (route: delegated direct, writer trigger: `internal/install/install.go`,
   `internal/claude/plugincli.go` and their tests).
-- [ ] T2 Display name "NERV Gentle-AI" becomes "Nerv by Gentle-AI" in docs, manifests, command
+- [x] T2 Display name "NERV Gentle-AI" becomes "Nerv by Gentle-AI" in docs, manifests, command
   descriptions and Go doc comments (route: direct inline, mechanical replacement).
 
 ## Acceptance criteria
@@ -57,8 +57,14 @@ Engram mirror: topic `odd/marketplace-sync-and-rename/tasks` (project `nerv`).
   `marketplace add` call). Native review of the RED commit granted and approved (lineage
   `review-407d88d813612945`, lens reliability), acknowledged. GREEN: `PluginCLI.AddMarketplace`
   plus the call in `refreshCache` (covers `Install` and `RefreshCache`); `go test ./...`,
-  `go vet ./...`, `gofmt -l .` clean.
+  `go vet ./...`, `gofmt -l .` clean. Committed `cb9a1a9`; assess: medium, `under_budget`
+  (pending in the slice).
+- 2026-10-01: T2 done — 40 occurrences in 11 files (docs, README, CONTRIBUTING, both plugin
+  manifests, `/nerv:configure` description, `assets.go`, `cmd/nerv/main.go`), including three
+  wrapped across a line break. Identifiers untouched; `odd/tasks/` history untouched. JSON
+  manifests parse; `go test ./...`, `go vet ./...`, `gofmt -l .` clean.
 
 ## Next step
 
-T2.
+All tasks done. Assess the slice for native review, then push the branch and open the PR to
+`develop` (user decision).
