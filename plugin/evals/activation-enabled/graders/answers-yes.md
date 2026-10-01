@@ -1,6 +1,6 @@
 ---
 type: regex
-pattern: "^\\s*YES\\b"
+pattern: "^[\\s*_]*YES\\b"
 target: last_message
 arm: both
 ---
