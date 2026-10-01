@@ -331,3 +331,84 @@ func TestInstall_AppliesModelOverridesToCache(t *testing.T) {
 		t.Errorf("aoba.md effort not overridden, content:\n%s", content)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Marketplace sync: "claude plugin install" resolves marketplaces from
+// known_marketplaces.json, not settings.json, so the installer must
+// register the materialized directory through the CLI first.
+// ---------------------------------------------------------------------------
+
+func callLines(runner *envtest.FakeRunner) []string {
+	var lines []string
+	for _, c := range runner.Calls {
+		lines = append(lines, c.Name+" "+strings.Join(c.Args, " "))
+	}
+	return lines
+}
+
+func indexOf(lines []string, want string) int {
+	for i, l := range lines {
+		if l == want {
+			return i
+		}
+	}
+	return -1
+}
+
+func TestInstall_AddsMarketplaceBeforeInstallingPlugin(t *testing.T) {
+	home := t.TempDir()
+	runner := baseRunner()
+	seedInstalledPlugins(t, home, pluginVersion(t))
+	var stdout bytes.Buffer
+	deps := install.Deps{Home: home, FS: nerv.PluginFS(), Runner: runner, Now: fixedNow, LookPath: lookPathAll, Stdout: &stdout}
+
+	if err := install.Install(context.Background(), deps, install.Options{NoSkills: true}); err != nil {
+		t.Fatalf("Install() error = %v; output:\n%s", err, stdout.String())
+	}
+
+	lines := callLines(runner)
+	add := indexOf(lines, "claude plugin marketplace add "+filepath.Join(home, ".nerv", "marketplace"))
+	uninstall := indexOf(lines, "claude plugin uninstall nerv@nerv")
+	installed := indexOf(lines, "claude plugin install nerv@nerv")
+	if add < 0 {
+		t.Fatalf("no marketplace add call; calls: %s", strings.Join(lines, " | "))
+	}
+	if add > uninstall || add > installed {
+		t.Errorf("marketplace add must run before uninstall/install; calls: %s", strings.Join(lines, " | "))
+	}
+}
+
+func TestInstall_MarketplaceAddFailure_StopsBeforeInstall(t *testing.T) {
+	home := t.TempDir()
+	runner := baseRunner()
+	runner.Responses["claude plugin marketplace add "+filepath.Join(home, ".nerv", "marketplace")] =
+		envtest.Response{Stderr: "invalid marketplace\n", ExitCode: 1}
+	var stdout bytes.Buffer
+	deps := install.Deps{Home: home, FS: nerv.PluginFS(), Runner: runner, Now: fixedNow, LookPath: lookPathAll, Stdout: &stdout}
+
+	err := install.Install(context.Background(), deps, install.Options{NoSkills: true})
+	if err == nil {
+		t.Fatal("Install() error = nil, want an error when the marketplace add fails")
+	}
+	if !strings.Contains(err.Error(), "invalid marketplace") {
+		t.Errorf("error = %v, want it to carry the CLI output", err)
+	}
+	if indexOf(callLines(runner), "claude plugin install nerv@nerv") >= 0 {
+		t.Error("claude plugin install ran despite the marketplace add failure")
+	}
+}
+
+func TestRefreshCache_AddsMarketplace(t *testing.T) {
+	home := t.TempDir()
+	runner := baseRunner()
+	seedInstalledPlugins(t, home, pluginVersion(t))
+	var stdout bytes.Buffer
+	deps := install.Deps{Home: home, FS: nerv.PluginFS(), Runner: runner, Now: fixedNow, LookPath: lookPathAll, Stdout: &stdout}
+
+	if err := install.RefreshCache(context.Background(), deps); err != nil {
+		t.Fatalf("RefreshCache() error = %v; output:\n%s", err, stdout.String())
+	}
+	if indexOf(callLines(runner), "claude plugin marketplace add "+filepath.Join(home, ".nerv", "marketplace")) < 0 {
+		t.Errorf("no marketplace add call; calls: %s", strings.Join(callLines(runner), " | "))
+	}
+}
