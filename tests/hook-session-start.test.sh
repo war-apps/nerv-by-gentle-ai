@@ -75,15 +75,18 @@ assert_empty() {
 # assert_active CASE_NAME OUT_FILE EXIT
 assert_active() {
   local case_name="$1" out_file="$2" exit_code="$3"
-  local out first_line
+  local out first_line byte_count
   out="$(cat "$out_file")"
   first_line="$(head -n 1 "$out_file")"
+  byte_count="$(wc -c <"$out_file" | tr -d ' ')"
   if [ "$exit_code" -eq 0 ] \
     && [ "$first_line" = "# NERV orchestrator protocol (active: .nerv/nerv.yaml enabled)" ] \
-    && grep -q 'name: nerv-orchestrator' "$out_file"; then
+    && [ "$byte_count" -lt 10000 ] \
+    && grep -q 'nerv:nerv-orchestrator' "$out_file" \
+    && ! grep -q 'name: nerv-orchestrator' "$out_file"; then
     report "$case_name" 0
   else
-    report "$case_name" 1 "expected active header + skill body + exit 0, got exit=${exit_code} first_line=[${first_line}]"
+    report "$case_name" 1 "expected active header + Skill-tool instruction + no skill body + stdout <10000 bytes + exit 0, got exit=${exit_code} bytes=${byte_count} first_line=[${first_line}]"
   fi
 }
 
