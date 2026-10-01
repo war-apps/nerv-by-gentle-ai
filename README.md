@@ -276,185 +276,35 @@ for the manual journey suite and the `claude plugin eval` corpus.
 
 ## Configuration schema
 
-Every NERV Gentle-AI setting lives in `nerv.yaml`. There are exactly two
-copies, same schema: user scope `~/.claude/nerv/nerv.yaml` (personal
-defaults, never committed) and project scope `<repo>/.nerv/nerv.yaml`
-(committed). Project overrides user key by key; a missing key falls back
-to the user file, then to the built-in default.
+Every NERV Gentle-AI setting lives in `nerv.yaml`, in two scope copies
+(user `~/.claude/nerv/nerv.yaml` and project `<repo>/.nerv/nerv.yaml`,
+project overriding user key by key) with sections for skills, per-role
+model/effort overrides, critical paths, artifacts, git, and tasks.
 
-```yaml
-# ~/.claude/nerv/nerv.yaml (user) and <repo>/.nerv/nerv.yaml (project): same schema
-enabled: true                       # project scope only: activates NERV in this repo
-skills:                             # stacks per consuming role; names must exist in .atl/skill-registry.md
-  testing: [tdd, playwright-best-practices]                        # ritsuko, kaworu, maya
-  code: [dotnet-best-practices, typescript-best-practices]         # pilots
-  best-practices: [best-practices, solid-principles, clean-code-guard]  # balthasar
-  architecture: [hexagonal-architecture, c4-architecture]          # melchor
-  audit: [security-review, clean-code-guard]                       # kaji passes
-models:                             # per-role model and effort; project overrides user, key by key
-  misato: { model: fable, effort: high }
-  melchor: { from: jd-judge-b }     # inherit gentle-ai's assignment for that phase (state.json)
-  aoba: { model: sonnet, effort: low }
-critical_paths: [auth/, payments/, migrations/, infra/]            # Hyuga auto-critical
-artifacts:
-  commit: at-close                  # with-change | at-close | never (default: at-close)
-git:
-  base_branch: develop              # default base for the worktree offer
-  worktree: ask                     # ask | always | never
-  worktree_pattern: ".claude/worktrees/{slug}"   # where task worktrees are created; {slug} {branch} {prefix} {id} {repo}
-                                                  # `nerv configure`'s wizard offers default / herdr / custom; herdr
-                                                  # reuses its own [worktrees] directory as <directory>/{repo}/{slug}
-  branch_pattern: "feature/{prefix}-{id}-{slug}"   # prefix comes from the provider (tw, gh, jira)
-  commit_ref_pattern: "({PREFIX}-{id})"
-tasks:
-  provider: teamwork                # teamwork | github-projects | jira | none ; "ask" when absent
-  ask_when_missing: true            # preflight asks task + worktree + branch if no active task
-  subtasks_per_wave: false
-  providers:                        # one block per provider, only the enabled one is required
-    teamwork:
-      task_ref_prefix: tw           # {prefix} in branch_pattern / commit_ref_pattern
-      assignee_id: 686035           # user scope
-      project_id: 1271726           # project scope
-      tasklist_id: 3951970          # project scope
-      stages: { inDev: DESARROLLO, testing: TESTING, implemented: IMPLEMENTA, blocked: BLOQUEA, canceled: CANCEL, pending: PENDIENTE, analysis: ANALISIS }
-    github-projects: { task_ref_prefix: gh, owner: "", project_number: 0 }    # later
-    jira: { task_ref_prefix: jira, site: "", project_key: "" }               # later
-  sources:                          # extra work sources for listings (replaces ~/.claude/work/sources.md)
-    - { name: erp-proveedores, type: google-sheets, ... }
-```
-
-`models:` assigns a per-role `model` and `effort` override, with project
-overriding user key by key like every other section — each entry is an
-inline map, one role per line, with `model`, `effort`, or `from` keys;
-`from: <gentle-ai-phase>` inherits that phase's `model`/`effort` from
-`~/.gentle-ai/state.json`'s `claude_phase_assignments`, and an explicit
-`model`/`effort` on the same line wins over the inherited one. A role
-absent from both `models:` files keeps the plugin default (see
-[docs/integration.md](docs/integration.md#roles)). `model` and `effort` are
-applied differently, because Claude Code itself treats them differently:
-`model` is a per-call launch parameter, so Ikari reads the resolved
-`models:` map (both scopes merged) and passes it to every agent launch —
-it takes effect immediately, no reinstall needed. `effort` is honored only
-from the launched agent file's own frontmatter, so it can only be applied
-by rewriting the cached agent files themselves: `nerv apply-models` reads
-`models:` from the **user-scope** file only (`~/.claude/nerv/nerv.yaml`)
-and rewrites `model:`/`effort:` in each affected `<role>.md` under the
-plugin cache. Project-scope `models:` therefore applies to `model` only —
-`effort` is not applicable at project scope, since project config cannot
-reach into a user's local plugin cache. `nerv install` runs this same apply
-step automatically at the end of its own cache refresh.
-`/nerv:status` reports the resolved `models:` table (both scopes merged)
-and warns when the cached agent frontmatter has drifted from it, so a
-pending `nerv apply-models` run is visible without inspecting the cache by
-hand.
-
-### Configuring models and effort
-
-The wizard's **Models** section (see "Setup" above) prints the resolved
-table (role, model, effort, source — `override`, `gentle-ai:<phase>`, or
-`default`), then lets you edit it role by role, or by group (`magi`,
-`pilots`, `kaji-passes`, `all`), until you type `done`. For each role it
-asks for a model (`sonnet`/`opus`/`haiku`/`fable`/`inherit`, a custom
-`claude-...` id, or `from:` a gentle-ai phase listed from
-`~/.gentle-ai/state.json`) and an effort (`low`/`medium`/`high`/`xhigh`/
-`max`), with Enter keeping the current value; `reset <role|group>` clears
-an override back to the plugin default. Confirming writes the block to the
-user-scope `nerv.yaml`, after backing up the file to
-`<path>.bak-models-<yyyyMMdd-HHmmss>`, then offers to run
-`nerv apply-models` immediately.
-
-Non-interactively, `nerv configure --set-model role=model[/effort]` (or
-`role=from:<gentle-ai-phase>`, or `role=default` to clear an override)
-applies one role's override at a time to the same user-scope file; pass it
-repeatedly for a batch. This always edits the user-scope file — project
-scope has no dedicated command, since project-scope `models:` only ever
-affects `model` (see above). Edit the project `.nerv/nerv.yaml` `models:`
-block by hand for that case, using the same inline-map syntax and `from:`
-behavior described above.
-
-You can also skip both the wizard and `--set-model`, and edit the
-`models:` block by hand in either `nerv.yaml`, then run
-`nerv apply-models` yourself. Either way, restart Claude Code afterwards
-for the change to take effect.
+See [docs/configuration.md](docs/configuration.md) for the full schema,
+example YAML, and how to configure per-role models and effort (wizard,
+`nerv configure --set-model`, or hand-editing).
 
 ## Documentation
 
+- [docs/commands.md](docs/commands.md) — every command you can run: the
+  Claude Code slash commands and the `nerv` CLI, with usage and examples.
 - [docs/integration.md](docs/integration.md) — how NERV Gentle-AI
   integrates with gentle-ai, the agent roles table, and operations
   (activation, artifacts, task tracker, Engram project detection).
+- [docs/configuration.md](docs/configuration.md) — the `nerv.yaml`
+  configuration schema and how to configure per-role models and effort.
+- [docs/releases.md](docs/releases.md) — versioning, release channels,
+  and how to cut a release.
 - [docs/troubleshooting.md](docs/troubleshooting.md) — known limitations
   and troubleshooting.
 
 ## Releases
 
-**Versioning.** The plugin follows [SemVer](https://semver.org/). The
-`version` in `plugin/.claude-plugin/plugin.json`, the git tag `vX.Y.Z`,
-the matching `## [X.Y.Z]` section in `CHANGELOG.md`, and the `nerv version`
-binary version (injected at build time from the tag by goreleaser) all
-agree. This is not cosmetic: Claude Code detects plugin updates by
-comparing `plugin.json`'s `version` string, so a release that does not
-bump it is invisible to every installed user; `nerv release guard` asserts
-the binary and plugin versions agree before a release is allowed to ship.
+The plugin follows [SemVer](https://semver.org/), with versions computed
+from Conventional Commits and published automatically per Gitflow branch
+(`develop` → alpha, `release/*` → rc, `main` → stable), plus the guard
+checks and CI that gate a release.
 
-**How the version is computed.** `nerv release preview`/`apply` derives the
-next version from the [Conventional Commits](https://www.conventionalcommits.org/)
-reachable since the last `vX.Y.Z` tag: `feat` bumps minor, `fix`/`perf`
-bump patch, a `!` before the colon or a `BREAKING CHANGE:` footer bumps
-major, and every other type (`docs`, `chore`, `test`, `refactor`, `ci`,
-`build`, `style`) contributes no bump on its own.
-
-**Channels.** Every push to a Gitflow branch publishes automatically —
-nothing to run by hand:
-
-| Branch push | Publishes |
-|---|---|
-| `develop` | `vX.Y.Z-alpha.N` pre-release — version computed from Conventional Commits since the last stable tag; nothing is published when there is nothing releasable. |
-| `release/*` | `vX.Y.Z-rc.N` pre-release — version taken from `plugin.json` on that branch. |
-| `main` (merge) | Stable `vX.Y.Z` release — the matching `CHANGELOG.md` section becomes the release notes, and goreleaser publishes the linux/darwin amd64/arm64 binaries and their checksums. |
-
-**Cutting a release (Gitflow).**
-
-1. `git checkout -b release/X.Y.Z develop`
-2. `go run ./cmd/nerv release preview` — review the computed version and
-   changelog section.
-3. `go run ./cmd/nerv release apply` (or `--version X.Y.Z` to override the
-   computed bump) — writes `plugin.json` and inserts the section into
-   `CHANGELOG.md`.
-4. Review `CHANGELOG.md`, then commit `chore(release): X.Y.Z`.
-5. Open the PR to `main`. On merge, the Release workflow runs the full
-   suite plus `nerv release guard`, creates the tag and the GitHub Release
-   with that changelog section as its notes, runs goreleaser to publish
-   the binaries/checksums/formula, and opens the back-merge PR to
-   `develop` — merge that PR to close the loop.
-
-Hotfixes follow the same steps from `hotfix/X.Y.Z` branched off `main`
-instead of `develop`.
-
-**Pre-releases.** Pre-releases are automatic (see "Channels" above): the
-`release.yml` workflow itself computes the version, creates the tag, and
-publishes the GitHub pre-release when it sees the push — a `release/*`
-push runs the `rc` job and a `develop` push runs the `alpha` job, neither
-going through `main` nor through goreleaser (goreleaser only runs on the
-stable release, after the tag is created). There is nothing to run by hand
-and no tag to push yourself; `nerv release preview --pre-release
-alpha|rc` is what the workflow calls internally.
-
-**What the guard refuses, and how to recover.** `nerv release guard` fails
-the Release workflow before it tags or publishes anything when the version
-in `plugin.json` is already tagged, `CHANGELOG.md` has no matching
-`## [X.Y.Z]` section, or the binary version and the embedded plugin
-version disagree. If the Release job fails *after* the tag was already
-pushed (e.g. the GitHub Release step itself failed), create the release by
-hand with `gh release create vX.Y.Z --notes-file <section>` — re-running
-the workflow will refuse, since the guard sees the tag already exists.
-
-**CI.** `.github/workflows/ci.yml` runs `gofmt -l`, `go vet ./...`, and
-`go test ./...`, plus the two hook suites
-(`tests/hook-session-start.test.sh`, `tests/hook-engram-project.test.sh`)
-and `tests/install-sh.test.sh`, on every pull request targeting `develop`
-or `main`.
-
-**Marketplace consumers.** A marketplace added from GitHub serves the
-repository's default branch. For users to receive released versions
-rather than in-progress `develop` content, the default branch must be
-`main`, or the marketplace entry must pin an explicit `ref`.
+See [docs/releases.md](docs/releases.md) for versioning, channels, cutting
+a release, pre-releases, the release guard, CI, and marketplace notes.
