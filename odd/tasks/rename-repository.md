@@ -30,16 +30,18 @@ matching the "Nerv by Gentle-AI" display name, and move every reference with it.
 - Unchanged: the plugin and marketplace id `nerv@nerv`, the `nerv` binary, the `.nerv`
   directories, the Engram project key `nerv`, and dated history in `odd/tasks/` and the changelog.
 - The local clone folder keeps its name; only its `origin` remote URL changes.
-- The GitHub rename runs after the PR merges, so `develop` already carries the new paths.
+- The GitHub rename runs before the PR merges (review finding R4-rename-ordering-window): GitHub
+  redirects old to new, never new to old, so renaming first keeps both the old `develop`/`main`
+  content and the new paths resolving.
 
 ## Tasks
 
 - [x] T1 Replace the slug in module path, imports, release config, scripts, tests and docs
   (route: direct inline, mechanical `war-apps/nerv-gentle-ai` → `war-apps/nerv-by-gentle-ai`
   replacement plus the `cd` line in CONTRIBUTING).
-- [ ] T2 Deliver: PR to `develop`, CI green, merge.
-- [ ] T3 Rename the GitHub repository, update the local `origin` remote, refresh the plugin
-  cache from `develop`.
+- [x] T2 Rename the GitHub repository and update the local `origin` remote (reordered before
+  delivery after review).
+- [ ] T3 Deliver: PR to `develop`, CI green, merge; refresh the plugin cache from `develop`.
 
 ## Acceptance criteria
 
@@ -55,8 +57,16 @@ matching the "Nerv by Gentle-AI" display name, and move every reference with it.
   `/nerv:configure`). No `nerv-gentle-ai` remains outside `odd/tasks/`. `go build`, `go vet`,
   `go test ./...` green, `gofmt -l .` empty. `bash tests/install-sh.test.sh`: 0 passed, 17 failed
   (exit 127, a missing command on this machine), identical on the base before the change, so
-  environmental; CI's "Test suites" job covers it.
+  environmental; CI's "Test suites" job covers it. Committed `3228875`.
+- 2026-10-01: native review of `868440d..3228875` (high risk, four lenses, lineage
+  `review-276f54ee4bba1537`) approved and acknowledged. Advisory, non-blocking: R4 rename
+  ordering window (adopted: rename before merge), R4 old `go install` path (covered by the
+  `BREAKING CHANGE` footer in the release notes), R3 install-sh unverified locally (merge only
+  on green CI).
+- 2026-10-01: T2 done — `gh repo rename nerv-by-gentle-ai`; `origin` now
+  `https://github.com/war-apps/nerv-by-gentle-ai.git`; the API resolves the old name to the new
+  one. The repository is private, so unauthenticated URLs return 404 for both names.
 
 ## Next step
 
-T2.
+T3.
