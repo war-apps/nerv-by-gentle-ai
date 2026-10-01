@@ -66,5 +66,5 @@ Engram mirror: topic `odd/marketplace-sync-and-rename/tasks` (project `nerv`).
 
 ## Next step
 
-All tasks done. Assess the slice for native review, then push the branch and open the PR to
-`develop` (user decision).
+Delivered as PR #39 to `develop` (296 changed lines). After the merge, refresh the installed
+plugin cache so the new display name and the marketplace sync take effect.
