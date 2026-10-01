@@ -67,12 +67,6 @@ activation, and pipeline diagrams.
 
 ## Install
 
-**macOS:**
-
-```bash
-brew install war-apps/tap/nerv
-```
-
 **Linux and macOS:**
 
 ```bash
@@ -129,8 +123,8 @@ exit 1 when gentle-ai is missing or not 3.x).
 
 ### Updating
 
-Re-run the install method you used (`brew upgrade war-apps/tap/nerv`, the
-`scripts/install.sh` one-liner, or `go install ...@latest` on Windows), then
+Re-run the install method you used (the `scripts/install.sh` one-liner, or
+`go install ...@latest` on Windows), then
 run `nerv install` again to refresh the plugin cache and re-apply
 configuration.
 
@@ -416,7 +410,7 @@ nothing to run by hand:
 |---|---|
 | `develop` | `vX.Y.Z-alpha.N` pre-release — version computed from Conventional Commits since the last stable tag; nothing is published when there is nothing releasable. |
 | `release/*` | `vX.Y.Z-rc.N` pre-release — version taken from `plugin.json` on that branch. |
-| `main` (merge) | Stable `vX.Y.Z` release — the matching `CHANGELOG.md` section becomes the release notes, and goreleaser publishes the linux/darwin amd64/arm64 binaries, their checksums, and the Homebrew formula (when the `war-apps/homebrew-tap` repository and `HOMEBREW_TAP_TOKEN` secret exist; otherwise the formula publish step is skipped). |
+| `main` (merge) | Stable `vX.Y.Z` release — the matching `CHANGELOG.md` section becomes the release notes, and goreleaser publishes the linux/darwin amd64/arm64 binaries and their checksums. |
 
 **Cutting a release (Gitflow).**
 

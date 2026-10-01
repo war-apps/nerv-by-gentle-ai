@@ -166,3 +166,5 @@ Claude Code and runs the configuration wizard after installing. PowerShell leave
 ## Next step
 
 Delivered as PRs #17–#24 (merge in order, retarget children to `develop`). Pending user decisions: create `war-apps/homebrew-tap` and `HOMEBREW_TAP_TOKEN` before the first stable release; the first release after merge exercises goreleaser and the brew formula for the first time.
+
+Update 2026-09-30: decision reversed — Homebrew distribution dropped (no tap, no `HOMEBREW_TAP_TOKEN`, no `brews` stanza, no `--skip=homebrew`); macOS installs through the `scripts/install.sh` one-liner (curl or wget) like Linux. See branch `feature/drop-homebrew`.

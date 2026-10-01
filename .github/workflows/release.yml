@@ -263,29 +263,13 @@ jobs:
           set -euo pipefail
           gh release create "$TAG" --title "$TAG" --notes-file "$NOTES_PATH"
 
-      - name: Determine Homebrew publish eligibility
-        id: brew
-        shell: bash
-        env:
-          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
-        run: |
-          set -euo pipefail
-          if [ -n "$HOMEBREW_TAP_TOKEN" ]; then
-            echo "skip_homebrew=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "skip_homebrew=true" >> "$GITHUB_OUTPUT"
-          fi
-
       - name: Publish binaries with goreleaser
         uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7.2.3
         with:
           version: v2.15.2
-          args: >-
-            release --clean
-            ${{ steps.brew.outputs.skip_homebrew == 'true' && '--skip=homebrew' || '' }}
+          args: release --clean
         env:
           GITHUB_TOKEN: ${{ github.token }}
-          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
 
       - name: Open back-merge PR (main -> develop)
         shell: bash

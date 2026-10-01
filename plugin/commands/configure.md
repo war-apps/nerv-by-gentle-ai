@@ -21,8 +21,7 @@ changes confirmed — never more.
    nerv configure --print --json
    ```
 
-   If `nerv` is not on PATH, tell the user to install it — `brew install
-   war-apps/tap/nerv`, `curl -fsSL
+   If `nerv` is not on PATH, tell the user to install it — `curl -fsSL
    https://raw.githubusercontent.com/war-apps/nerv-gentle-ai/main/scripts/install.sh
    | bash`, or `go install github.com/war-apps/nerv-gentle-ai/cmd/nerv@latest`
    — and stop. Do not fall back to reading or writing `nerv.yaml` by hand.
