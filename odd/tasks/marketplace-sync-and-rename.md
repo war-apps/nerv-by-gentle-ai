@@ -37,7 +37,7 @@ Engram mirror: topic `odd/marketplace-sync-and-rename/tasks` (project `nerv`).
 
 ## Tasks
 
-- [ ] T1 Installer syncs the `nerv` marketplace through the CLI before the cache refresh
+- [x] T1 Installer syncs the `nerv` marketplace through the CLI before the cache refresh
   (route: delegated direct, writer trigger: `internal/install/install.go`,
   `internal/claude/plugincli.go` and their tests).
 - [ ] T2 Display name "NERV Gentle-AI" becomes "Nerv by Gentle-AI" in docs, manifests, command
@@ -53,7 +53,12 @@ Engram mirror: topic `odd/marketplace-sync-and-rename/tasks` (project `nerv`).
 ## Progress
 
 - 2026-10-01: branch created, document written.
+- 2026-10-01: T1 RED committed (`10b9137`, failures observed: `AddMarketplace` undefined, no
+  `marketplace add` call). Native review of the RED commit granted and approved (lineage
+  `review-407d88d813612945`, lens reliability), acknowledged. GREEN: `PluginCLI.AddMarketplace`
+  plus the call in `refreshCache` (covers `Install` and `RefreshCache`); `go test ./...`,
+  `go vet ./...`, `gofmt -l .` clean.
 
 ## Next step
 
-T1.
+T2.
