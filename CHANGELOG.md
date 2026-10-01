@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-10-01
+
+### Added
+- alpha and rc release channels driven by develop and release branches (83689b1)
+- get-nerv.sh one-line installer for Linux and macOS with channel selection (b673c22)
+- get-nerv.ps1 one-line installer for Windows with channel selection (2297889)
+- Go module with the embedded plugin, materialization and nerv version (d02eb0d)
+- internal/config ports the nerv.yaml editor, catalogues and model specs to Go (4c7797d)
+- environment packages for the nerv binary (runner, gentle-ai, models, skills) (0e477cc)
+- nerv configure replaces configure.ps1 and configure-models.ps1 (1b2c944)
+- nerv install, uninstall, apply-models and skills replace install.ps1 and install-skills.ps1 (3c94749)
+- interactive configuration wizard as nerv configure and the end of nerv install (3a3c044)
+- nerv release replaces release.ps1 and release-guard.ps1; goreleaser publishes the binaries (77a73fe)
+- plugin commands call the nerv binary and scripts/install.sh installs it (4f6e56e)
+- configurable worktree location through git.worktree_pattern (98a700c)
+- initial claude plugin eval corpus for the NERV plugin (1a708d1)
+- herdr: detect herdr and resolve its worktrees directory (732cef9)
+- configure: offer default / herdr / custom worktree path pattern menu (07d5f4b)
+
+### Changed
+- release use case, refusal type, atomic writes, paths and store extracted (9081a45)
+- remove the port's residue and unify the duplicated helpers (9d99eec)
+- skills: split the orchestrator protocol into a core and reference files (14e1d97)
+
+### Fixed
+- wizard safety after the spot-check incident (8051784)
+- installer suite keeps the interpreter's directory on usrmerge systems (d69747a)
+- hooks: print a short activation header instead of the full protocol (c2e0c85)
+- evals: tolerate markdown emphasis and grade the header body line (17077cb)
+
 ## [0.1.0] - 2026-09-28
 
 ### Added
