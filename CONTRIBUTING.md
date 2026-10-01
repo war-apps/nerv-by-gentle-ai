@@ -89,7 +89,7 @@ while testing; exercise them through the fakes in `go test ./...` instead.
 
 ## Releases
 
-See [README.md](README.md#releases) for versioning, channels, and cutting
+See [docs/releases.md](docs/releases.md) for versioning, channels, and cutting
 a release.
 
 ## Code of conduct
