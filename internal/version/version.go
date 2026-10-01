@@ -11,7 +11,7 @@ import (
 // Binary is the nerv binary version. It defaults to "dev" for local builds
 // and is overridden at release time with:
 //
-//	-ldflags "-X github.com/war-apps/nerv-gentle-ai/internal/version.Binary=<tag>"
+//	-ldflags "-X github.com/war-apps/nerv-by-gentle-ai/internal/version.Binary=<tag>"
 var Binary = "dev"
 
 // Info bundles the binary and plugin versions together for callers that

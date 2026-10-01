@@ -4,7 +4,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/war-apps/nerv-gentle-ai/internal/herdr"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/herdr"
 )
 
 func notFound(string) ([]byte, error) { return nil, errors.New("not found") }

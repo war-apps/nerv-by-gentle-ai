@@ -4,7 +4,7 @@ import (
 	"context"
 	"io/fs"
 
-	"github.com/war-apps/nerv-gentle-ai/internal/env"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/env"
 )
 
 // Options configures one Run invocation.

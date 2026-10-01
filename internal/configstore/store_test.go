@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/war-apps/nerv-gentle-ai/internal/config"
-	"github.com/war-apps/nerv-gentle-ai/internal/configstore"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/config"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/configstore"
 )
 
 // ---------------------------------------------------------------------------

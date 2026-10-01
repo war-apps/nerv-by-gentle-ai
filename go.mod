@@ -1,4 +1,4 @@
-module github.com/war-apps/nerv-gentle-ai
+module github.com/war-apps/nerv-by-gentle-ai
 
 go 1.26.0
 

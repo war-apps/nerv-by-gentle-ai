@@ -3,7 +3,7 @@ package configure
 import (
 	"fmt"
 
-	"github.com/war-apps/nerv-gentle-ai/internal/config"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/config"
 )
 
 // SetModel applies one or more "role=<spec>" per-role model/effort override

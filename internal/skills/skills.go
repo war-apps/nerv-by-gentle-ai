@@ -13,7 +13,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/war-apps/nerv-gentle-ai/internal/env"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/env"
 )
 
 // SchemaID is the manifest schema this package understands.

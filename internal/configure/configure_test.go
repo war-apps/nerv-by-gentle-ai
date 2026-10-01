@@ -4,7 +4,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/war-apps/nerv-gentle-ai/internal/configure"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/configure"
 )
 
 func TestResolveHome_UsesOverrideWhenGiven(t *testing.T) {

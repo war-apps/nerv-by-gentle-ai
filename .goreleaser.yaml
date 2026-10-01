@@ -18,7 +18,7 @@ builds:
     ldflags:
       - >-
         -s -w
-        -X github.com/war-apps/nerv-gentle-ai/internal/version.Binary={{ .Version }}
+        -X github.com/war-apps/nerv-by-gentle-ai/internal/version.Binary={{ .Version }}
 
 archives:
   - formats:
@@ -44,7 +44,7 @@ changelog:
 release:
   github:
     owner: war-apps
-    name: nerv-gentle-ai
+    name: nerv-by-gentle-ai
   prerelease: auto
   # release.yml's "stable" job already created the GitHub Release (via
   # `gh release create`) with generated notes before goreleaser runs;

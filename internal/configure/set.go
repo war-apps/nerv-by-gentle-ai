@@ -3,7 +3,7 @@ package configure
 import (
 	"fmt"
 
-	"github.com/war-apps/nerv-gentle-ai/internal/config"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/config"
 )
 
 // Set applies one or more "key=value" managed-key changes to the user-scope

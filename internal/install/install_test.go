@@ -12,10 +12,10 @@ import (
 	"testing"
 	"time"
 
-	nerv "github.com/war-apps/nerv-gentle-ai"
-	"github.com/war-apps/nerv-gentle-ai/internal/env/envtest"
-	"github.com/war-apps/nerv-gentle-ai/internal/install"
-	"github.com/war-apps/nerv-gentle-ai/internal/version"
+	nerv "github.com/war-apps/nerv-by-gentle-ai"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/env/envtest"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/install"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/version"
 )
 
 func fixedNow() time.Time { return time.Date(2026, 9, 29, 15, 4, 5, 0, time.UTC) }

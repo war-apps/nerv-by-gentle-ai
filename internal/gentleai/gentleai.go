@@ -15,8 +15,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/war-apps/nerv-gentle-ai/internal/config"
-	"github.com/war-apps/nerv-gentle-ai/internal/env"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/config"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/env"
 )
 
 // Preflight is the result of checking gentle-ai's presence and version.

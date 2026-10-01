@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/war-apps/nerv-gentle-ai/internal/atomicfile"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/atomicfile"
 )
 
 func TestSave_NoBackupWhenFileDidNotExist(t *testing.T) {

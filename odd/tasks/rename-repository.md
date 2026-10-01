@@ -34,7 +34,7 @@ matching the "Nerv by Gentle-AI" display name, and move every reference with it.
 
 ## Tasks
 
-- [ ] T1 Replace the slug in module path, imports, release config, scripts, tests and docs
+- [x] T1 Replace the slug in module path, imports, release config, scripts, tests and docs
   (route: direct inline, mechanical `war-apps/nerv-gentle-ai` → `war-apps/nerv-by-gentle-ai`
   replacement plus the `cd` line in CONTRIBUTING).
 - [ ] T2 Deliver: PR to `develop`, CI green, merge.
@@ -50,7 +50,13 @@ matching the "Nerv by Gentle-AI" display name, and move every reference with it.
 ## Progress
 
 - 2026-10-01: branch created, document written.
+- 2026-10-01: T1 done — 84 files, 174 lines replaced (imports, `go.mod`, goreleaser owner/name
+  and ldflag, `internal/version` doc, `install.sh`, install test fixtures, README, CONTRIBUTING,
+  `/nerv:configure`). No `nerv-gentle-ai` remains outside `odd/tasks/`. `go build`, `go vet`,
+  `go test ./...` green, `gofmt -l .` empty. `bash tests/install-sh.test.sh`: 0 passed, 17 failed
+  (exit 127, a missing command on this machine), identical on the base before the change, so
+  environmental; CI's "Test suites" job covers it.
 
 ## Next step
 
-T1.
+T2.

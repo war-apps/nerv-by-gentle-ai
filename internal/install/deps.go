@@ -13,8 +13,8 @@ import (
 	"io/fs"
 	"time"
 
-	"github.com/war-apps/nerv-gentle-ai/internal/env"
-	"github.com/war-apps/nerv-gentle-ai/internal/refusal"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/env"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/refusal"
 )
 
 // Deps bundles every external effect Install/Uninstall/ApplyModels need,

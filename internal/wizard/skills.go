@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/war-apps/nerv-gentle-ai/internal/configure"
-	"github.com/war-apps/nerv-gentle-ai/internal/skills"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/configure"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/skills"
 )
 
 // offerSkillsInstall is Section 0b: offers to install the skills the

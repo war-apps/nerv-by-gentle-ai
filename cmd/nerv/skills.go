@@ -8,9 +8,9 @@ import (
 	"io"
 	"strings"
 
-	"github.com/war-apps/nerv-gentle-ai/internal/configure"
-	"github.com/war-apps/nerv-gentle-ai/internal/paths"
-	"github.com/war-apps/nerv-gentle-ai/internal/skills"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/configure"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/paths"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/skills"
 )
 
 const skillsUsage = `Usage: nerv skills [flags]

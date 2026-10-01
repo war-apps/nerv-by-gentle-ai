@@ -20,9 +20,9 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/war-apps/nerv-gentle-ai/internal/configure"
-	"github.com/war-apps/nerv-gentle-ai/internal/gentleai"
-	"github.com/war-apps/nerv-gentle-ai/internal/install"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/configure"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/gentleai"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/install"
 )
 
 // Deps is the wizard's external effects — the same seam every other

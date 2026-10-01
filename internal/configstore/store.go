@@ -13,8 +13,8 @@ import (
 	"os"
 	"time"
 
-	"github.com/war-apps/nerv-gentle-ai/internal/atomicfile"
-	"github.com/war-apps/nerv-gentle-ai/internal/config"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/atomicfile"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/config"
 )
 
 // Store reads and writes the user-scope nerv.yaml on the real filesystem.

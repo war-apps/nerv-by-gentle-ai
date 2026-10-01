@@ -3,8 +3,8 @@
 # macOS.
 #
 # Usage:
-#   curl -fsSL https://raw.githubusercontent.com/war-apps/nerv-gentle-ai/main/scripts/install.sh | bash
-#   wget -qO- https://raw.githubusercontent.com/war-apps/nerv-gentle-ai/main/scripts/install.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/war-apps/nerv-by-gentle-ai/main/scripts/install.sh | bash
+#   wget -qO- https://raw.githubusercontent.com/war-apps/nerv-by-gentle-ai/main/scripts/install.sh | bash
 #
 # Downloads the nerv release archive matching this platform from the
 # requested channel, verifies its checksum, installs the "nerv" binary,
@@ -24,9 +24,9 @@
 #
 # Test seams (tests/install-sh.test.sh only, never needed by end users):
 #   NERV_API_BASE       GitHub API base used to resolve releases
-#                        (default: https://api.github.com/repos/war-apps/nerv-gentle-ai)
+#                        (default: https://api.github.com/repos/war-apps/nerv-by-gentle-ai)
 #   NERV_DOWNLOAD_BASE  release download base
-#                        (default: https://github.com/war-apps/nerv-gentle-ai/releases/download)
+#                        (default: https://github.com/war-apps/nerv-by-gentle-ai/releases/download)
 #   NERV_OS / NERV_ARCH  override the detected platform with an
 #                        already-normalized value (linux|darwin,
 #                        amd64|arm64) instead of probing "uname -s"/"-m"
@@ -40,8 +40,8 @@
 #                        tty)
 set -euo pipefail
 
-NERV_API_BASE_DEFAULT="https://api.github.com/repos/war-apps/nerv-gentle-ai"
-NERV_DOWNLOAD_BASE_DEFAULT="https://github.com/war-apps/nerv-gentle-ai/releases/download"
+NERV_API_BASE_DEFAULT="https://api.github.com/repos/war-apps/nerv-by-gentle-ai"
+NERV_DOWNLOAD_BASE_DEFAULT="https://github.com/war-apps/nerv-by-gentle-ai/releases/download"
 
 # Set by main() and read by its EXIT trap. Deliberately a global, not a
 # local of main(): a local referenced by a trap that ends up firing inside
@@ -110,7 +110,7 @@ detect_platform() {
     linux | darwin) ;;
     *)
       log_err "Unsupported OS: ${NERV_DETECTED_OS}. Only Linux and macOS have prebuilt nerv binaries."
-      log_err "Install with: go install github.com/war-apps/nerv-gentle-ai/cmd/nerv@latest"
+      log_err "Install with: go install github.com/war-apps/nerv-by-gentle-ai/cmd/nerv@latest"
       exit 1
       ;;
   esac
@@ -119,7 +119,7 @@ detect_platform() {
     amd64 | arm64) ;;
     *)
       log_err "Unsupported architecture: ${NERV_DETECTED_ARCH}. Only amd64 and arm64 have prebuilt nerv binaries."
-      log_err "Install with: go install github.com/war-apps/nerv-gentle-ai/cmd/nerv@latest"
+      log_err "Install with: go install github.com/war-apps/nerv-by-gentle-ai/cmd/nerv@latest"
       exit 1
       ;;
   esac
