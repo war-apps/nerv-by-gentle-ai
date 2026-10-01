@@ -1,6 +1,6 @@
 ---
 type: regex
-pattern: "^\\s*NO\\b"
+pattern: "^[\\s*_]*NO\\b"
 target: last_message
 arm: both
 ---
