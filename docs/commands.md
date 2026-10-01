@@ -232,8 +232,11 @@ go run ./cmd/nerv release guard --notes CHANGELOG_SECTION.md
 ## Automatic (hooks)
 
 Two hooks run on every `SessionStart` (`startup`, `resume`, `clear`, or
-`compact`), with no command to type: `nerv-session-start.sh` resolves and
-injects NERV's activation/routing state for the session, and
+`compact`), with no command to type: `nerv-session-start.sh` resolves
+whether NERV is enabled and prints a short activation header — Claude
+Code caps hook stdout at 10,000 characters, so the hook cannot inject the
+full protocol itself; the header has the session load the orchestrator
+skill instead — and
 `nerv-engram-project.sh` ensures the Engram project context for the
 current repository is set up. See
 [`plugin/hooks/hooks.json`](../plugin/hooks/hooks.json).
@@ -241,8 +244,9 @@ current repository is set up. See
 ## Not commands: skills and agents
 
 `nerv-orchestrator` and `nerv-tasks` are Claude Code **skills**, not
-commands you type. The orchestrator skill is injected automatically at
-session start in repos where NERV is enabled, and governs how the session
+commands you type. The SessionStart activation header has the session
+invoke the orchestrator skill with the Skill tool in repos where NERV is
+enabled, and it governs how the session
 routes work to the named agents (Ikari, Misato, the MAGI, the pilots,
 Hyuga, Kaji, and so on); `nerv-tasks` is the provider-agnostic task-tracking
 port that only the Hyuga agent calls. You never invoke either by name —
