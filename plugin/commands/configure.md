@@ -6,7 +6,7 @@ argument-hint: [git | tasks | skills | models | repo | commands | all]
 # /nerv:configure
 
 Configure NERV Gentle-AI through guided questions instead of hand-editing
-`nerv.yaml` or invoking `tools/configure.ps1` yourself. Reads the current
+`nerv.yaml` or invoking `nerv configure` flags yourself. Reads the current
 state first, asks only about the sections in scope, and writes exactly the
 changes confirmed — never more.
 
@@ -18,13 +18,13 @@ changes confirmed — never more.
 2. **Read current state.** Run:
 
    ```
-   pwsh -NoProfile -File "${CLAUDE_PLUGIN_ROOT}/tools/configure.ps1" -Print
+   nerv configure --print --json
    ```
 
-   If the script is missing or the invocation fails to start (not merely a
-   non-zero exit with parseable JSON), tell the user the plugin cache looks
-   stale — suggest `pwsh tools/install.ps1 -RefreshCache` — and stop. Do
-   not fall back to reading or writing `nerv.yaml` by hand.
+   If `nerv` is not on PATH, tell the user to install it — `curl -fsSL
+   https://raw.githubusercontent.com/war-apps/nerv-gentle-ai/main/scripts/install.sh
+   | bash`, or `go install github.com/war-apps/nerv-gentle-ai/cmd/nerv@latest`
+   — and stop. Do not fall back to reading or writing `nerv.yaml` by hand.
 
    From the returned JSON print a compact summary: `config_path` and
    whether it `exists`; `prerequisites` (`gentle_ai`, `engram`, `claude`);
@@ -44,11 +44,25 @@ changes confirmed — never more.
    wait.** A skipped or kept-as-shown answer produces no `-Set` for that
    key.
 
-   - **git** (one grouped question, 4 sub-questions): `git.base_branch`
-     (free text), `git.worktree` (`ask` | `always` | `never`),
-     `git.branch_pattern` (free text, e.g.
-     `feature/{prefix}-{id}-{slug}`), `git.commit_ref_pattern` (free text,
-     e.g. `({PREFIX}-{id})`).
+   - **git** (split across two grouped questions, asked back to back):
+     1. `git.base_branch` (free text), `git.worktree` (`ask` | `always` |
+        `never`), `git.worktree_pattern` as a `default` / `herdr` / `custom`
+        choice, in that order (herdr's own repo/slug placeholders match
+        NERV's `{repo}`/`{slug}`):
+        - `default` — the catalogue default `.claude/worktrees/{slug}`,
+          e.g. `<repo-root>/.claude/worktrees/feature-tw-123-add-button`.
+        - `herdr` — offered only when `herdr` is on PATH: read
+          `[worktrees] directory` from herdr's own config.toml
+          (`%APPDATA%\herdr\config.toml` on Windows,
+          `~/.config/herdr/config.toml` elsewhere; default
+          `~/.herdr/worktrees` when the key is absent) and store
+          `<directory>/{repo}/{slug}`, e.g.
+          `D:\.worktrees\my-repo\feature-tw-123-add-button`.
+        - `custom` — free text using `{repo}`, `{slug}` (also `{branch}`,
+          `{prefix}`, `{id}`), pre-filled with the current value.
+     2. `git.branch_pattern` (free text, e.g.
+        `feature/{prefix}-{id}-{slug}`), `git.commit_ref_pattern` (free
+        text, e.g. `({PREFIX}-{id})`).
    - **tasks** (split across grouped questions, in this order — omit a
      later one whose condition doesn't hold):
      1. General: `tasks.provider` (`teamwork` | `github-projects` |
@@ -99,44 +113,37 @@ changes confirmed — never more.
      procedures into `~/.claude/commands/task/` (never overwriting an
      existing file there)?
 
-4. **Apply.** `-Set` and `-SetModel` each take a PowerShell array, not a
-   repeated flag: a repeated named parameter is rejected by PowerShell in
-   every launch mode, and `-File` cannot carry more than one `-Set` value
-   either (a comma-separated string binds as a single element, which is
-   what keeps a comma-separated value like `skills.testing=tdd,
-   playwright-best-practices` safe inside one element). Pass every key of
-   a batch as one quoted, comma-separated array literal to `-Command`
-   instead. For each section with at least one changed answer:
+4. **Apply.** `--set` and `--set-model` are repeatable flags — pass every
+   changed key of a batch as its own `--set`/`--set-model` occurrence on one
+   invocation. For each section with at least one changed answer:
    - **git / tasks / skills / critical_paths / artifacts**: collect every
      changed key from steps above into one call —
-     `pwsh -NoProfile -Command "& '${CLAUDE_PLUGIN_ROOT}/tools/configure.ps1' -Set 'key=value','key2=value2' -Json"`.
+     `nerv configure --set key=value --set key2=value2 --json`.
      An unknown key anywhere in the batch exits 1 with nothing written —
      surface that verbatim and stop applying further keys from the same
      batch until fixed.
    - **models**: one call per confirmed batch —
-     `pwsh -NoProfile -Command "& '${CLAUDE_PLUGIN_ROOT}/tools/configure.ps1' -SetModel 'role=model[/effort]','role2=from:<phase>' -Json"`.
-   - **repo**: `pwsh -NoProfile -File "${CLAUDE_PLUGIN_ROOT}/tools/configure.ps1" -InitRepo <path> -RepoBase <base> -RepoProvider <provider> [-RepoProjectId <id> -RepoTasklistId <id>] -Json`.
+     `nerv configure --set-model role=model[/effort] --set-model role2=from:<phase> --json`.
+   - **repo**: `nerv configure --init-repo <path> --repo-base <base> --repo-provider <provider> [--repo-project-id <id> --repo-tasklist-id <id>] --json`.
      This never overwrites an existing `.nerv/nerv.yaml`; if one is already
      present, the result carries a `warnings` entry saying so — report it
      and move on without asking again.
-   - **commands** (only on a yes): `pwsh -NoProfile -File "${CLAUDE_PLUGIN_ROOT}/tools/configure.ps1" -InstallCommands -Json`.
+   - **commands** (only on a yes): `nerv configure --install-commands --json`.
 
    Read each call's JSON result (`changed`, `changes`, `written`,
    `warnings`, `backup`, `config_path`) and hold it for the final summary. A section with no
    changed answers makes no call at all.
 
-5. **Skills install.** Run
-   `pwsh -NoProfile -File "${CLAUDE_PLUGIN_ROOT}/tools/install-skills.ps1" -DryRun -Json`
+5. **Skills install.** Run `nerv skills --dry-run --json`
    and list any skill reported missing (`installed: false`). Ask once, as a single yes/no
-   question, whether to install them now. On yes, run the same command
-   without `-DryRun`; on no, leave it and mention it can be re-run later.
+   question, whether to install them now. On yes, run `nerv skills --json`;
+   on no, leave it and mention it can be re-run later.
    Skip this step entirely when `skills` was not in scope.
 
 6. **Finish.**
-   - If any `-SetModel` call changed something, or the user asks for it,
-     run `pwsh -NoProfile -File "${CLAUDE_PLUGIN_ROOT}/tools/install.ps1" -ApplyModels`.
-   - Offer to also run
-     `pwsh -NoProfile -File "${CLAUDE_PLUGIN_ROOT}/tools/install.ps1" -RefreshCache`
+   - If any `--set-model` call changed something, or the user asks for it,
+     run `nerv apply-models`.
+   - Offer to also run `nerv install --no-configure --no-skills`
      (one yes/no question) when any plugin-cache-affecting change was made.
    - Print a final table of every applied change (section, key, old →
      new value) across all the JSON results from step 4, each result's
@@ -144,15 +151,14 @@ changes confirmed — never more.
      take effect."
 
    Never run `gentle-ai install`. Never edit `nerv.yaml` by hand. Never
-   write to any path other than the ones `configure.ps1`,
-   `install-skills.ps1`, or `install.ps1` themselves report writing.
+   write to any path other than the ones `nerv configure`, `nerv skills`,
+   `nerv apply-models`, or `nerv install` themselves report writing.
 
 ## Non-interactive use
 
 Under `claude -p` this command cannot ask questions. In that mode, run only
-steps 1–2, print the `-Print` summary as-is, and print the exact `-Set` /
-`-SetModel` / `-InitRepo` / `-InstallCommands` syntax the user would need
-to run themselves to make the same changes — do not guess an answer for
-any question and do not apply anything. For `-Set` and `-SetModel`, print
-the `-Command` form shown in step 4 above (a quoted array literal), never
-a repeated `-Set`/`-SetModel` flag.
+steps 1–2, print the `--print` summary as-is, and print the exact `--set` /
+`--set-model` / `--init-repo` / `--install-commands` syntax the user would
+need to run themselves to make the same changes — do not guess an answer
+for any question and do not apply anything. For `--set` and `--set-model`,
+print the repeated-flag form shown in step 4 above.

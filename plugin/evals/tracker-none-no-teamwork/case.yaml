@@ -1,0 +1,34 @@
+schema_version: "1.1"
+name: tracker-none-no-teamwork
+description: >-
+  J5 "tracker none" variant: with tasks.provider: none and
+  git.worktree: never, the session must never call a Teamwork MCP tool
+  and must not offer a worktree or mention a Teamwork task.
+tags: [nerv, tasks, j5]
+runs: 1
+expected_outcome: >-
+  The session resolves to work without a task tracker, stays on the
+  current branch with no worktree, and never calls a Teamwork tool.
+
+execution:
+  prompt: |
+    Context you already have, so preflight stays silent: task ref: none;
+    work in place on the current branch `main` (no worktree); branch:
+    main; base: main; pace: fast-forward; artifact store: openspec; PR
+    strategy: single-pr.
+
+    Do not implement anything yet: run only the NERV preflight, then stop
+    and state what you resolved for task tracking, worktree and branch.
+    Ask nothing further.
+
+    Request: I want to start work on adding a `farewell(name)` function
+    to `src/greeter.py`. Follow the NERV orchestrator protocol injected
+    in this session.
+
+    Answer in English.
+  max_turns: 8
+  timeout_seconds: 120
+  allowed_tools: [Read, Glob, Grep, Skill]
+
+context:
+  scaffold_script: scaffold.sh

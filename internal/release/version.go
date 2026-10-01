@@ -1,0 +1,185 @@
+package release
+
+import (
+	"fmt"
+	"regexp"
+	"sort"
+	"strconv"
+	"strings"
+)
+
+var (
+	stableTagPattern    = regexp.MustCompile(`^v(\d+)\.(\d+)\.(\d+)$`)
+	semverPrefixPattern = regexp.MustCompile(`^(\d+)\.(\d+)\.(\d+)`)
+	exactVersionPattern = regexp.MustCompile(`^\d+\.\d+\.\d+$`)
+	labelPattern        = regexp.MustCompile(`^[a-z]+$`)
+)
+
+// IsExactSemver reports whether s is a bare "X.Y.Z" semver string, with no
+// prefix or suffix (e.g. a "--version" override, not a git tag).
+func IsExactSemver(s string) bool {
+	return exactVersionPattern.MatchString(s)
+}
+
+// IsValidPreReleaseLabel reports whether s is a valid pre-release label:
+// lowercase letters only (e.g. "alpha", "beta", "rc").
+func IsValidPreReleaseLabel(s string) bool {
+	return labelPattern.MatchString(s)
+}
+
+// PrefixOf returns the leading "X.Y.Z" semver prefix of s (dropping any
+// "-<label>.<n>" pre-release suffix), or s unchanged when no such prefix
+// exists.
+func PrefixOf(s string) string {
+	m := semverPrefixPattern.FindStringSubmatch(s)
+	if m == nil {
+		return s
+	}
+	return fmt.Sprintf("%s.%s.%s", m[1], m[2], m[3])
+}
+
+// Greater reports whether a is strictly greater than b as "X.Y.Z" semver
+// versions (comparing major, then minor, then patch numerically). Either
+// string having fewer than 3 dot-separated components compares as false.
+func Greater(a, b string) bool {
+	ap, bp := strings.Split(a, "."), strings.Split(b, ".")
+	if len(ap) < 3 || len(bp) < 3 {
+		return false
+	}
+	for i := 0; i < 3; i++ {
+		ai, _ := strconv.Atoi(ap[i])
+		bi, _ := strconv.Atoi(bp[i])
+		if ai > bi {
+			return true
+		}
+		if ai < bi {
+			return false
+		}
+	}
+	return false
+}
+
+type tagCandidate struct {
+	tag                 string
+	major, minor, patch int
+}
+
+// LastReleaseTag returns the highest stable "vX.Y.Z" tag in tags, ordered
+// by semantic version (not lexically, so v0.10.0 outranks v0.9.0). Returns
+// "" when no matching tag exists. Pre-release tags (e.g. "vX.Y.Z-rc.N")
+// are never considered here (the tag listing itself lives in git.go's
+// Tags).
+func LastReleaseTag(tags []string) string {
+	var candidates []tagCandidate
+	for _, t := range tags {
+		if t == "" {
+			continue
+		}
+		if m := stableTagPattern.FindStringSubmatch(t); m != nil {
+			candidates = append(candidates, tagCandidate{
+				tag:   t,
+				major: atoi(m[1]),
+				minor: atoi(m[2]),
+				patch: atoi(m[3]),
+			})
+		}
+	}
+
+	if len(candidates) == 0 {
+		return ""
+	}
+
+	sort.SliceStable(candidates, func(i, j int) bool {
+		a, b := candidates[i], candidates[j]
+		if a.major != b.major {
+			return a.major > b.major
+		}
+		if a.minor != b.minor {
+			return a.minor > b.minor
+		}
+		return a.patch > b.patch
+	})
+
+	return candidates[0].tag
+}
+
+func atoi(s string) int {
+	n, _ := strconv.Atoi(s)
+	return n
+}
+
+// nextPreReleaseNumber is 1 + the highest existing "v<base>-<label>.N" tag
+// in existingTags for that exact base version and label (other labels or
+// base versions never interfere). Ports Get-NervNextPreReleaseNumber.
+func nextPreReleaseNumber(base, label string, existingTags []string) int {
+	pattern := regexp.MustCompile(`^v` + regexp.QuoteMeta(base) + `-` + regexp.QuoteMeta(label) + `\.(\d+)$`)
+	maxN := 0
+	for _, t := range existingTags {
+		if t == "" {
+			continue
+		}
+		if m := pattern.FindStringSubmatch(t); m != nil {
+			if n := atoi(m[1]); n > maxN {
+				maxN = n
+			}
+		}
+	}
+	return maxN + 1
+}
+
+// NextVersion computes the next semver string from current + bump. Returns
+// "" when bump is "none" and preRelease is empty. Ports Get-NervNextVersion.
+//
+// preReleaseBase selects what preRelease bumps from when preRelease is
+// given: "next" (default, empty string also means "next") uses current
+// bumped by bump; "current" uses current as-is (never requires a
+// releasable bump).
+func NextVersion(current, bump, preRelease, preReleaseBase string, existingTags []string) (string, error) {
+	if preRelease != "" && !labelPattern.MatchString(preRelease) {
+		return "", fmt.Errorf("invalid pre-release label %q; expected lowercase letters only (e.g. 'alpha', 'beta', 'rc')", preRelease)
+	}
+
+	if preReleaseBase == "" {
+		preReleaseBase = "next"
+	}
+
+	if preRelease != "" && preReleaseBase == "current" {
+		m := semverPrefixPattern.FindStringSubmatch(current)
+		if m == nil {
+			return "", fmt.Errorf("current version %q is not valid semver", current)
+		}
+		base := fmt.Sprintf("%s.%s.%s", m[1], m[2], m[3])
+		n := nextPreReleaseNumber(base, preRelease, existingTags)
+		return fmt.Sprintf("%s-%s.%d", base, preRelease, n), nil
+	}
+
+	if bump == "none" {
+		return "", nil
+	}
+
+	m := semverPrefixPattern.FindStringSubmatch(current)
+	if m == nil {
+		return "", fmt.Errorf("current version %q is not valid semver", current)
+	}
+	major, minor, patch := atoi(m[1]), atoi(m[2]), atoi(m[3])
+
+	switch bump {
+	case "major":
+		major++
+		minor, patch = 0, 0
+	case "minor":
+		minor++
+		patch = 0
+	case "patch":
+		patch++
+	}
+
+	bumpedBase := fmt.Sprintf("%d.%d.%d", major, minor, patch)
+
+	if preRelease != "" {
+		n := nextPreReleaseNumber(bumpedBase, preRelease, existingTags)
+		return fmt.Sprintf("%s-%s.%d", bumpedBase, preRelease, n), nil
+	}
+
+	return bumpedBase, nil
+}

@@ -10,10 +10,13 @@
 # Must never fail the session: always exits 0, errors go to stderr only.
 
 main() {
-  local dir plugin_root
+  local self_dir
+  self_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  # shellcheck source=nerv-common.sh
+  source "${self_dir}/nerv-common.sh"
+
+  local dir
   dir="${CLAUDE_PROJECT_DIR:-$PWD}"
-  plugin_root="${CLAUDE_PLUGIN_ROOT:-$(cd "$(dirname "$0")/.." && pwd 2>/dev/null)}"
-  : "$plugin_root" # reserved input, not otherwise used by detection below
 
   local project_name="" source_label="" determined=0
 
@@ -65,12 +68,10 @@ main() {
     echo "Engram project: ${project_name} (source: ${source_label})"
   fi
 
-  # --- NERV activation gate (same CRLF-tolerant regex as
-  # nerv-session-start.sh), only for the knowledge-base guidance below ---
-  local nerv_config="${root}/.nerv/nerv.yaml"
+  # --- NERV activation gate (shared with nerv-session-start.sh via
+  # nerv-common.sh), only for the knowledge-base guidance below ---
   local nerv_enabled=0
-  if [ -f "$nerv_config" ] \
-    && tr -d '\r' < "$nerv_config" 2>/dev/null | grep -Eq '^[[:space:]]*enabled:[[:space:]]*true[[:space:]]*(#.*)?$'; then
+  if nerv_repo_enabled "$root"; then
     nerv_enabled=1
   fi
 

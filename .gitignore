@@ -2,3 +2,5 @@
 .DS_Store
 Thumbs.db
 .atl/
+dist/
+plugin/evals/results/

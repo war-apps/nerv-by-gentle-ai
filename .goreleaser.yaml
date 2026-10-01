@@ -1,0 +1,53 @@
+version: 2
+
+project_name: nerv
+
+builds:
+  - main: ./cmd/nerv
+    binary: nerv
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    flags:
+      - -trimpath
+    ldflags:
+      - >-
+        -s -w
+        -X github.com/war-apps/nerv-gentle-ai/internal/version.Binary={{ .Version }}
+
+archives:
+  - formats:
+      - tar.gz
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files:
+      # No LICENSE file exists in this repository yet; add it here once one
+      # is added.
+      - README.md
+
+checksum:
+  name_template: "checksums.txt"
+  algorithm: sha256
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^ci:"
+
+release:
+  github:
+    owner: war-apps
+    name: nerv-gentle-ai
+  prerelease: auto
+  # release.yml's "stable" job already created the GitHub Release (via
+  # `gh release create`) with generated notes before goreleaser runs;
+  # "append" makes goreleaser only upload the build artifacts/checksums to
+  # that existing release instead of replacing its notes.
+  mode: append

@@ -1,0 +1,25 @@
+schema_version: "1.1"
+name: activation-enabled
+description: >-
+  J0 positive case: with .nerv/nerv.yaml enabled: true, the SessionStart
+  hook must inject the NERV orchestrator protocol and every nerv: agent
+  type must be listed.
+tags: [nerv, activation, j0]
+runs: 1
+expected_outcome: >-
+  The session answers YES to having the NERV protocol header in context
+  and lists nerv:aoba plus the other 17 shipped nerv: agent types.
+
+execution:
+  prompt: |
+    Answer YES or NO: does your context contain a section whose first
+    line is `# NERV orchestrator protocol (active: .nerv/nerv.yaml
+    enabled)`? Then list every agent type starting with `nerv:`.
+
+    Answer in English.
+  max_turns: 6
+  timeout_seconds: 60
+  allowed_tools: [Read]
+
+context:
+  scaffold_script: scaffold.sh

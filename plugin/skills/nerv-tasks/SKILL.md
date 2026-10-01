@@ -115,7 +115,8 @@ run:
 1. **Preflight**: after Ikari's grouped question is answered, run
    `createTask` if the user chose to create one, then `start(taskRef)`.
    Aoba creates the worktree and branch with the confirmed names, using the
-   task's `taskRef` to build `git.branch_pattern`.
+   task's `taskRef` to build `git.branch_pattern`, and the path resolved
+   from `git.worktree_pattern`.
 2. **Per-wave subtasks** (FULL only, optional): `createSubtask(parentRef, ...)`
    for each wave when `tasks.subtasks_per_wave: true`.
 3. **Testing gate**: `moveStage(taskRef, testing)` when Maya's full quality

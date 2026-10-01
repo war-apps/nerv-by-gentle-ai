@@ -1,35 +1,51 @@
 #!/usr/bin/env bash
 # nerv-session-start.sh
 #
-# SessionStart hook for the NERV plugin. Injects the NERV orchestrator
-# (Ikari) protocol into the session ONLY when the current repo has opted in
-# via ".nerv/nerv.yaml" with "enabled: true". Every other repo must see no
-# output from this hook — NERV stays fully invisible outside opted-in repos.
+# SessionStart hook for the NERV plugin. When the current repo has opted in
+# via ".nerv/nerv.yaml" with "enabled: true", prints a short activation
+# header that tells the session to load the NERV orchestrator (Ikari)
+# protocol itself, via the Skill tool. Every other repo must see no output
+# from this hook — NERV stays fully invisible outside opted-in repos.
+#
+# The header is intentionally short: Claude Code caps a hook's stdout at
+# 10,000 characters, and the full protocol (plugin/skills/nerv-orchestrator/
+# SKILL.md) is far larger. Printing the whole skill body here would be
+# silently truncated, so the hook instead points the session at the skill
+# and lets the Skill tool load it in full, on demand, including after any
+# context compaction.
 #
 # Must never fail the session: always exits 0, even on error.
 
 main() {
+  local self_dir
+  self_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  # shellcheck source=nerv-common.sh
+  source "${self_dir}/nerv-common.sh"
+
   local project_dir
   project_dir="${CLAUDE_PROJECT_DIR:-$PWD}"
 
-  local config_file="${project_dir}/.nerv/nerv.yaml"
+  nerv_repo_enabled "$project_dir" || return 0
 
-  [ -f "$config_file" ] || return 0
+  local plugin_root="${CLAUDE_PLUGIN_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
+  local skill_file="${plugin_root}/skills/nerv-orchestrator/SKILL.md"
 
-  # Strip CRLF line endings before matching, then check for an "enabled: true"
-  # key (allowing surrounding whitespace) on its own line.
-  if tr -d '\r' < "$config_file" | grep -Eq '^[[:space:]]*enabled:[[:space:]]*true[[:space:]]*(#.*)?$'; then
-    local plugin_root="${CLAUDE_PLUGIN_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
-    local skill_file="${plugin_root}/skills/nerv-orchestrator/SKILL.md"
-
-    if [ ! -r "$skill_file" ]; then
-      echo "nerv-session-start: protocol skill not found at ${skill_file}; injecting nothing" >&2
-      return 0
-    fi
-
-    echo "# NERV orchestrator protocol (active: .nerv/nerv.yaml enabled)"
-    cat "$skill_file"
+  # The skill file must exist for the header's instruction to resolve, even
+  # though the header itself never reads or prints its contents.
+  if [ ! -r "$skill_file" ]; then
+    echo "nerv-session-start: protocol skill not found at ${skill_file}; injecting nothing" >&2
+    return 0
   fi
+
+  cat <<'HEADER'
+# NERV orchestrator protocol (active: .nerv/nerv.yaml enabled)
+
+NERV is enabled in this repository. This session is the NERV orchestrator (Ikari).
+
+Before your first response in this session, and again after every context compaction, invoke the skill `nerv:nerv-orchestrator` with the Skill tool and follow it as the orchestrator protocol. Do not answer, route, classify, or delegate before it is loaded. If the Skill tool refuses or the skill is missing, say so plainly and continue under the gentle-ai rules; never pretend NERV is active.
+
+The protocol keeps its run-time sections in reference files under the skill's `references/` folder; load each one at the point the protocol names it, not up front.
+HEADER
 
   return 0
 }
