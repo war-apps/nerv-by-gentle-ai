@@ -1,11 +1,11 @@
 ---
-description: Configure NERV Gentle-AI (user config, models, skills, repository) through guided questions — no script invocation by hand
+description: Configure Nerv by Gentle-AI (user config, models, skills, repository) through guided questions — no script invocation by hand
 argument-hint: [git | tasks | skills | models | repo | commands | all]
 ---
 
 # /nerv:configure
 
-Configure NERV Gentle-AI through guided questions instead of hand-editing
+Configure Nerv by Gentle-AI through guided questions instead of hand-editing
 `nerv.yaml` or invoking `nerv configure` flags yourself. Reads the current
 state first, asks only about the sections in scope, and writes exactly the
 changes confirmed — never more.

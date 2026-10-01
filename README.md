@@ -1,4 +1,4 @@
-# NERV Gentle-AI
+# Nerv by Gentle-AI
 
 <p align="center">
   <a href="https://github.com/Gentleman-Programming/gentle-ai"><img alt="gentle-ai 3.x" src="https://img.shields.io/badge/gentle--ai-3.x-6f42c1?style=for-the-badge"></a>
@@ -19,28 +19,28 @@
   <a href="https://github.com/Gentleman-Programming/gentle-ai"><img alt="Built with Gentle-AI" src="https://raw.githubusercontent.com/Gentleman-Programming/gentle-ai/main/docs/assets/brand/built-with-gentle-ai.png"></a>
 </p>
 
-NERV Gentle-AI is a Claude Code plugin implementing an Evangelion-named
+Nerv by Gentle-AI is a Claude Code plugin implementing an Evangelion-named
 multi-agent governance workflow. Ikari orchestrates a cast of named
 agents through it; see [docs/integration.md](docs/integration.md#roles) for
 what each one does and when it runs.
 
-NERV Gentle-AI brings governance that a plain implementation loop lacks: a
+Nerv by Gentle-AI brings governance that a plain implementation loop lacks: a
 per-task MAGI vote gated by criticality, a governance veto on new
 skills/scripts/commands, a mandatory quality gate before any audit, a
 multi-pass audit compiler with a ranked user issue gate, an append-only
 deliberation log, and a run summary reporting tokens, time, and model per
 agent.
 
-**Claude Code only, for now.** NERV Gentle-AI targets Claude Code; OpenCode,
+**Claude Code only, for now.** Nerv by Gentle-AI targets Claude Code; OpenCode,
 Codex and Pi are not supported yet.
 
 ## Relation to gentle-ai
 
-NERV Gentle-AI is an **overlay**, not a fork. It reuses gentle-ai's native
+Nerv by Gentle-AI is an **overlay**, not a fork. It reuses gentle-ai's native
 engine and contracts unchanged — the SDD artifact pipeline, RDD
 (receipt-driven review), the skill registry and resolver, strict TDD,
 delivery budgeting with chained PRs, and the lossless blocking-prompt
-contract — and expresses NERV Gentle-AI's own governance on top. NERV
+contract — and expresses Nerv by Gentle-AI's own governance on top. Nerv by
 Gentle-AI never modifies any gentle-ai file: nothing is ever written
 under `~/.claude/agents` or `~/.claude/skills`, so `gentle-ai sync` cannot
 see or touch it.
@@ -51,7 +51,7 @@ activation, and pipeline diagrams.
 ## Requirements
 
 - **gentle-ai 3.x** — major version 3 is required; minor and patch are free.
-  Tested against 3.7.0. 4.x is untested and not supported until NERV
+  Tested against 3.7.0. 4.x is untested and not supported until Nerv by
   Gentle-AI's contracts are re-verified against it.
 - Claude Code with plugin marketplaces support (2.1+).
 - git — only needed to contribute to this repository (cloning, building,
@@ -140,7 +140,7 @@ and removes the materialized marketplace directory.
 ## Setup
 
 After installing (see "Install" above, or "Manual setup" below for the
-git-clone path), configure NERV Gentle-AI with the guided wizard:
+git-clone path), configure Nerv by Gentle-AI with the guided wizard:
 
 ```
 nerv configure
@@ -276,7 +276,7 @@ for the manual journey suite and the `claude plugin eval` corpus.
 
 ## Configuration schema
 
-Every NERV Gentle-AI setting lives in `nerv.yaml`, in two scope copies
+Every Nerv by Gentle-AI setting lives in `nerv.yaml`, in two scope copies
 (user `~/.claude/nerv/nerv.yaml` and project `<repo>/.nerv/nerv.yaml`,
 project overriding user key by key) with sections for skills, per-role
 model/effort overrides, critical paths, artifacts, git, and tasks.
@@ -289,7 +289,7 @@ example YAML, and how to configure per-role models and effort (wizard,
 
 - [docs/commands.md](docs/commands.md) — every command you can run: the
   Claude Code slash commands and the `nerv` CLI, with usage and examples.
-- [docs/integration.md](docs/integration.md) — how NERV Gentle-AI
+- [docs/integration.md](docs/integration.md) — how Nerv by Gentle-AI
   integrates with gentle-ai, the agent roles table, and operations
   (activation, artifacts, task tracker, Engram project detection).
 - [docs/configuration.md](docs/configuration.md) — the `nerv.yaml`

@@ -1,4 +1,4 @@
-# How NERV Gentle-AI integrates with gentle-ai
+# How Nerv by Gentle-AI integrates with gentle-ai
 
 ### Layering
 
@@ -34,14 +34,14 @@ flowchart TB
     NERVP -.reads only.-> GA
 ```
 
-NERV Gentle-AI sits strictly above gentle-ai and below the repo it
+Nerv by Gentle-AI sits strictly above gentle-ai and below the repo it
 governs: Claude Code loads gentle-ai first (`CLAUDE.md`, its hooks, the
 `gentle-ai` binary, and the agents/skills it writes under `~/.claude`),
-NERV Gentle-AI's plugin cache layers its own hook, agents, skills, and
-commands on top, and the repo carries only NERV Gentle-AI's own state
+Nerv by Gentle-AI's plugin cache layers its own hook, agents, skills, and
+commands on top, and the repo carries only Nerv by Gentle-AI's own state
 (`.nerv/nerv.yaml`, the `nerv/` subfolder of each change). `gentle-ai
-sync` never sees NERV Gentle-AI's files because NERV Gentle-AI never
-writes into the gentle-ai box, and NERV Gentle-AI never writes into it
+sync` never sees Nerv by Gentle-AI's files because Nerv by Gentle-AI never
+writes into the gentle-ai box, and Nerv by Gentle-AI never writes into it
 either — it only reads from it.
 
 ### Activation
@@ -72,7 +72,7 @@ sequenceDiagram
 ```
 
 Every session start runs gentle-ai's own `review stop-hook` first, then
-NERV Gentle-AI's `nerv-session-start.sh`. The NERV Gentle-AI hook checks
+Nerv by Gentle-AI's `nerv-session-start.sh`. The Nerv by Gentle-AI hook checks
 `.nerv/nerv.yaml` for `enabled: true`; only then does it print a short
 activation header — Claude Code caps hook stdout at 10,000 characters,
 well under the full protocol's size, so the hook cannot inject the
@@ -117,14 +117,14 @@ flowchart LR
     NotUsed -.NERV roles author those artifacts instead.-> Superseded
 ```
 
-NERV Gentle-AI calls a large slice of gentle-ai's native engine completely
+Nerv by Gentle-AI calls a large slice of gentle-ai's native engine completely
 unchanged (SDD's read-only/mechanical steps, the whole RDD lifecycle, the
 delivery and skill-resolution skills, the persistence and lossless-prompt
 contracts). It supersedes exactly one thing — gentle-ai's ODD
 Implementation Routing — with its own LIGHT/FULL classification and
 pipelines, only in repos carrying the `.nerv/nerv.yaml` marker. It never
 touches the authoring half of SDD (`sdd-propose` through `sdd-verify`);
-NERV Gentle-AI's own roles (Misato, Ritsuko, the MAGI, the pilots) author
+Nerv by Gentle-AI's own roles (Misato, Ritsuko, the MAGI, the pilots) author
 the equivalent artifacts instead.
 
 ### LIGHT pipeline
@@ -242,7 +242,7 @@ After every Aoba work-unit commit, Ikari assesses that commit against the
 last reviewed boundary. When review is due, Ikari relays gentle-ai's native
 consent envelope to the user losslessly and verbatim — never deciding on
 their behalf. On a grant, the native lenses run, a bounded correction from
-a NERV Gentle-AI pilot applies only if one is required, and an
+a Nerv by Gentle-AI pilot applies only if one is required, and an
 acknowledged receipt is
 logged as `rdd_receipt`; on a decline, the run continues under ordinary
 repository policy. Ikari itself never enables or disables the RDD switch.
@@ -298,7 +298,7 @@ worktree policy, worktree location, skill stacks, task-tracker provider),
 and `/nerv:configure`
 revisits any of those choices afterwards. Without the marker a session
 behaves like plain gentle-ai; with it, SessionStart prints an activation
-header that has the session invoke the NERV Gentle-AI orchestrator skill,
+header that has the session invoke the Nerv by Gentle-AI orchestrator skill,
 and the session becomes Ikari.
 
 **LIGHT vs. FULL.** Ikari classifies each request LIGHT (one pilot domain,
@@ -319,7 +319,7 @@ open the orchestrator lock carries `waiting_on: user`, so the 15-minute
 staleness rule does not apply to it: a resume from another session must
 ask before taking over, however long the gate stays open.
 
-**Artifacts.** NERV Gentle-AI writes only under
+**Artifacts.** Nerv by Gentle-AI writes only under
 `openspec/changes/{change}/nerv/` (deliberation log, exploration, test
 plan, votes, veto ruling, waves,
 Maya reports, audit rounds, run summary) plus the shared gentle-ai SDD
@@ -330,7 +330,7 @@ ever written under `~/.claude/agents` or `~/.claude/skills`.
 
 **Artifacts commit policy.** `artifacts.commit` controls when the `nerv/`
 folder is committed: `with-change` (each work-unit commit includes its own
-NERV Gentle-AI artifacts), `at-close` (default — artifacts land in one
+Nerv by Gentle-AI artifacts), `at-close` (default — artifacts land in one
 `docs: nerv artifacts for {change}` commit when the run closes), or
 `never` (artifacts stay untracked; the user commits them manually, if
 ever).
@@ -357,7 +357,7 @@ instead of asking.
 ### Engram project detection
 
 A second SessionStart hook, `plugin/hooks/nerv-engram-project.sh`, runs in
-**every** session — unlike the NERV Gentle-AI activation hook above, it is
+**every** session — unlike the Nerv by Gentle-AI activation hook above, it is
 not gated behind `.nerv/nerv.yaml` — to tell the session which Engram
 project to pass
 on every memory write. It detects the project in this order:
@@ -375,17 +375,17 @@ on every memory write. It detects the project in this order:
 3. Otherwise, undetermined.
 
 Inside a NERV-enabled repo (`.nerv/nerv.yaml` with `enabled: true`), the
-hook also prints a reminder that NERV Gentle-AI keeps a shared knowledge
+hook also prints a reminder that Nerv by Gentle-AI keeps a shared knowledge
 base in the Engram project named `nerv` — precedents (Misato rulings,
 Fuyutsuki vetoes,
 MAGI vote results, Kaji audit findings) mirrored from every NERV-governed
 repository under topic keys `nerv/kb/{repo}/{change}/{artifact}`, read
 before deciding and written back after. When detection is undetermined in
-a NERV Gentle-AI repo, the hook falls back to `project: "nerv"` for that
+a Nerv by Gentle-AI repo, the hook falls back to `project: "nerv"` for that
 session's
 writes instead of leaving it unresolved.
 
-Outside a NERV Gentle-AI repo, an undetermined detection is never
+Outside a Nerv by Gentle-AI repo, an undetermined detection is never
 silently guessed:
 the hook asks the session to pose one question to the user — general
 knowledge under the `root` project, or a specific named project — before
