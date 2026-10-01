@@ -94,9 +94,10 @@ overwrites silently, and delegates gentle-ai's own bootstrap unchanged.
 
 6. **Summarize.** Print what was written (`.nerv/nerv.yaml` path and its
    resolved keys) and remind the user that no restart is required for the
-   file itself, but the SessionStart hook only injects the full
-   `nerv-orchestrator` protocol on the **next** session start — this session
-   keeps running under whatever routing was already active.
+   file itself, but the SessionStart hook only prints the activation
+   header that loads the `nerv-orchestrator` skill on the **next** session
+   start — this session keeps running under whatever routing was already
+   active.
 
 Do not modify any file this command does not own. Do not launch any agent
 other than `sdd-init`, and only when step 5's condition is met.

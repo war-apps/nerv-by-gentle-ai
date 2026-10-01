@@ -53,28 +53,34 @@ sequenceDiagram
     participant GA as gentle-ai review stop-hook
     participant NS as nerv-session-start.sh
     participant Cfg as .nerv/nerv.yaml
-    participant Skill as nerv-orchestrator/SKILL.md
     participant Sess as Session
+    participant Skill as nerv:nerv-orchestrator skill
 
     CC->>Hook: SessionStart event
     Hook->>GA: run gentle-ai review stop-hook
     Hook->>NS: run nerv-session-start.sh
     NS->>Cfg: check enabled: true
     alt marker present
-        NS->>Skill: read SKILL.md
-        NS->>Sess: inject protocol verbatim
+        NS->>Sess: print activation header
+        Sess->>Skill: invoke with the Skill tool
+        Skill->>Sess: load core SKILL.md (references/ on demand)
         Sess->>Sess: session becomes Ikari
     else marker absent
-        NS->>Sess: inject nothing
+        NS->>Sess: print nothing
         Sess->>Sess: gentle-ai ODD routing stays in charge
     end
 ```
 
 Every session start runs gentle-ai's own `review stop-hook` first, then
 NERV Gentle-AI's `nerv-session-start.sh`. The NERV Gentle-AI hook checks
-`.nerv/nerv.yaml` for `enabled: true`; only then does it read and inject
-`nerv-orchestrator/SKILL.md` verbatim, which is the moment the session
-becomes Ikari. Without the marker the hook injects nothing at all, and
+`.nerv/nerv.yaml` for `enabled: true`; only then does it print a short
+activation header — Claude Code caps hook stdout at 10,000 characters,
+well under the full protocol's size, so the hook cannot inject the
+protocol body itself. The header instructs the session to invoke the
+`nerv:nerv-orchestrator` skill with the Skill tool, which is the moment
+the session becomes Ikari; the skill's core stays under 500 lines and
+loads its run-time sections from `references/` only at the phase that
+names them. Without the marker the hook prints nothing at all, and
 gentle-ai's own ODD Implementation Routing stays in charge of the session.
 
 ### Reuse map
@@ -291,8 +297,9 @@ RDD review relay after every commit, detailed in "RDD per commit" above.
 worktree policy, worktree location, skill stacks, task-tracker provider),
 and `/nerv:configure`
 revisits any of those choices afterwards. Without the marker a session
-behaves like plain gentle-ai; with it, SessionStart injects the NERV
-Gentle-AI orchestrator protocol and the session becomes Ikari.
+behaves like plain gentle-ai; with it, SessionStart prints an activation
+header that has the session invoke the NERV Gentle-AI orchestrator skill,
+and the session becomes Ikari.
 
 **LIGHT vs. FULL.** Ikari classifies each request LIGHT (one pilot domain,
 no new skills/scripts/commands) or FULL (multiple domains, a critical path,
