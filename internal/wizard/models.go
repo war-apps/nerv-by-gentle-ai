@@ -25,11 +25,6 @@ var (
 	groupOrder = []string{"magi", "pilots", "kaji-passes", "all"}
 )
 
-// purposeWidth is the "WHAT IT DOES" column width; longer purposes are
-// truncated to it. It is the only capped column: role, model, effort and
-// source size to their longest value, so a long custom model id or source
-// widens the row.
-const purposeWidth = 42
 
 // menuOf builds a "1"->tokens[0], "2"->tokens[1], ... menu-choice map, the
 // shape runModelsSection's numbered prompts read from.
@@ -368,14 +363,19 @@ func writeModelsBlock(deps Deps, s *session, out io.Writer, paths configure.Path
 
 // printModelTable prints the resolved table (with each role's purpose and
 // gentle-ai equivalent) followed by a legend for the group shortcuts the
-// role prompt accepts. The role, model, effort and source columns size to
-// their longest value, so a custom model id or a long gentle-ai source
-// never shifts the purpose column.
+// role prompt accepts. Every column sizes to its longest value (the purpose
+// column to the longest catalogue purpose), so no purpose is cut off and a
+// custom model id or a long gentle-ai source never shifts the columns after
+// it; such values widen the row instead.
 func printModelTable(out io.Writer, table []config.ModelRow, configPath string) {
 	catalogue := config.Roles()
 	fmt.Fprintln(out)
 	fmt.Fprintf(out, "Config: %s\n", configPath)
 	roleW, modelW, effortW, sourceW := len("ROLE"), len("MODEL"), len("EFFORT"), len("SOURCE")
+	purposeW := len("WHAT IT DOES")
+	for _, info := range catalogue.Info {
+		purposeW = max(purposeW, len(info.Purpose))
+	}
 	for _, row := range table {
 		roleW = max(roleW, len(row.Role))
 		modelW = max(modelW, len(row.Model))
@@ -383,7 +383,7 @@ func printModelTable(out io.Writer, table []config.ModelRow, configPath string) 
 		sourceW = max(sourceW, len(row.Source))
 	}
 	fmt.Fprintf(out, "    %-*s %-*s %-*s %-*s %-*s %s\n", roleW, "ROLE", modelW, "MODEL", effortW, "EFFORT",
-		sourceW, "SOURCE", purposeWidth, "WHAT IT DOES", "GENTLE-AI")
+		sourceW, "SOURCE", purposeW, "WHAT IT DOES", "GENTLE-AI")
 	for i, row := range table {
 		info := catalogue.Info[row.Role]
 		equivalent := info.GentleAIEquivalent
@@ -391,7 +391,7 @@ func printModelTable(out io.Writer, table []config.ModelRow, configPath string) 
 			equivalent = "-"
 		}
 		fmt.Fprintf(out, "%2d) %-*s %-*s %-*s %-*s %-*s %s\n", i+1, roleW, row.Role, modelW, row.Model,
-			effortW, row.Effort, sourceW, row.Source, purposeWidth, truncate(info.Purpose, purposeWidth), equivalent)
+			effortW, row.Effort, sourceW, row.Source, purposeW, info.Purpose, equivalent)
 	}
 	fmt.Fprintln(out)
 	fmt.Fprintln(out, "Groups:")
@@ -401,14 +401,6 @@ func printModelTable(out io.Writer, table []config.ModelRow, configPath string) 
 	fmt.Fprintln(out)
 }
 
-// truncate shortens s to at most width runes, ending in "..." when cut.
-func truncate(s string, width int) string {
-	r := []rune(s)
-	if len(r) <= width {
-		return s
-	}
-	return string(r[:width-3]) + "..."
-}
 
 func printUnknownRoleTarget(out io.Writer, target string, allRoles []string) {
 	fmt.Fprintf(out, "Unknown role/group/number: %s. Valid roles: %s; groups: magi, pilots, kaji-passes, all.\n",
