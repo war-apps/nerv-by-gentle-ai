@@ -465,3 +465,21 @@ func TestInstall_SkillsStep_RunsAndReportsGentleAISync(t *testing.T) {
 		t.Errorf("output lacks the sync line:\n%s", stdout.String())
 	}
 }
+
+func TestInstall_SkillsStep_FailedGentleAISync_WarnsWithDiagnostic(t *testing.T) {
+	home := t.TempDir()
+	runner := baseRunner()
+	runner.Responses["gentle-ai"] = envtest.Response{ExitCode: 1, Stderr: "boom: no such agent\n"}
+	seedInstalledPlugins(t, home, pluginVersion(t))
+	var stdout bytes.Buffer
+	deps := install.Deps{Home: home, FS: nerv.PluginFS(), Runner: runner, Now: fixedNow, LookPath: lookPathAll, Stdout: &stdout}
+
+	if err := install.Install(context.Background(), deps, install.Options{}); err != nil {
+		t.Fatalf("Install() error = %v; output:\n%s", err, stdout.String())
+	}
+
+	warning := "Warning: gentle-ai sync failed; the gentle-ai skills may still be missing.\n  boom: no such agent\n"
+	if !strings.Contains(stdout.String(), warning) {
+		t.Errorf("output lacks the warning with its diagnostic:\n%s", stdout.String())
+	}
+}

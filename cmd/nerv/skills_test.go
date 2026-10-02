@@ -3,8 +3,11 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
+
+	"github.com/war-apps/nerv-by-gentle-ai/internal/env/envtest"
 )
 
 // These cases port the 10 CLI cases install-skills.test.ps1's case groups
@@ -142,5 +145,47 @@ func TestRunSkills_DryRun_PrintsOneGentleAISyncLine(t *testing.T) {
 	}
 	if syncLines != 1 {
 		t.Errorf("sync lines = %d, want 1; stdout:\n%s", syncLines, stdout.String())
+	}
+}
+
+func TestRunSkills_Run_PrintsTheGentleAISyncLine(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	home := t.TempDir()
+
+	code := run([]string{"skills"}, &stdout, &stderr, testOptions(home))
+
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0 (stderr=%q)", code, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "\n-> gentle-ai sync --agents claude-code --skills ") {
+		t.Errorf("stdout lacks the sync line:\n%s", stdout.String())
+	}
+	if strings.Contains(stdout.String(), "Warning: gentle-ai sync failed") {
+		t.Errorf("stdout has a sync failure warning for a successful sync:\n%s", stdout.String())
+	}
+}
+
+func TestRunSkills_FailedSync_PrintsWarningWithDiagnostic(t *testing.T) {
+	cases := map[string]envtest.Response{
+		"non-zero exit": {ExitCode: 1, Stderr: "boom: no such agent\n"},
+		"launch error":  {Err: errors.New("boom: no such agent")},
+	}
+	for name, resp := range cases {
+		t.Run(name, func(t *testing.T) {
+			var stdout, stderr bytes.Buffer
+			home := t.TempDir()
+			opts := testOptions(home)
+			opts.Runner = &envtest.FakeRunner{Responses: map[string]envtest.Response{"gentle-ai": resp}}
+
+			code := run([]string{"skills", "--only", "work-unit-commits"}, &stdout, &stderr, opts)
+
+			if code != 0 {
+				t.Fatalf("exit code = %d, want 0 (stderr=%q)", code, stderr.String())
+			}
+			warning := "Warning: gentle-ai sync failed; the gentle-ai skills may still be missing.\n  boom: no such agent\n"
+			if !strings.Contains(stdout.String(), warning) {
+				t.Errorf("stdout lacks the warning with its diagnostic:\n%s", stdout.String())
+			}
+		})
 	}
 }
