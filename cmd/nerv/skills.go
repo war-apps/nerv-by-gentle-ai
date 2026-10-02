@@ -58,11 +58,16 @@ func runSkills(args []string, stdout, stderr io.Writer, opts options) int {
 		onlyNames = strings.Split(*only, ",")
 	}
 
+	// --json keeps stdout machine-readable: no prompt, so no sync.
+	var confirm func([]string) bool
+	if !*jsonOut {
+		confirm = syncConfirmer(opts, stdout)
+	}
 	skillsDir := paths.Resolve(home).SkillsDir
 	report, err := skills.Run(context.Background(), opts.Runner, opts.PluginFS, skillsDir, skills.Options{
 		Only:        onlyNames,
 		DryRun:      *dryRun,
-		ConfirmSync: syncConfirmer(opts, stdout),
+		ConfirmSync: confirm,
 	})
 	if err != nil {
 		var manifestErr *skills.ErrManifest

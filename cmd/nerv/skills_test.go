@@ -277,3 +277,25 @@ func TestRunSkills_NotATerminal_NoPromptNoSync_RemedyStays(t *testing.T) {
 		t.Errorf("stdout lacks the remedy:\n%s", stdout.String())
 	}
 }
+
+func TestRunSkills_JSON_NeverPromptsOrSyncs(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	opts := testOptions(t.TempDir())
+	runner := &envtest.FakeRunner{}
+	opts.Runner = runner
+	opts.IsTerminal = func() bool { return true }
+	opts.Stdin = strings.NewReader("y\n")
+
+	code := run([]string{"skills", "--only", "work-unit-commits", "--json"}, &stdout, &stderr, opts)
+
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0 (stderr=%q)", code, stderr.String())
+	}
+	if n := countSyncCalls(runner); n != 0 {
+		t.Errorf("sync ran %d times with --json, want 0", n)
+	}
+	var decoded []map[string]any
+	if err := json.Unmarshal(stdout.Bytes(), &decoded); err != nil {
+		t.Errorf("stdout is not clean JSON: %v\n%s", err, stdout.String())
+	}
+}

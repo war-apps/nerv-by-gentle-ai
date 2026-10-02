@@ -51,7 +51,7 @@ Engram mirror: topic `odd/skills-gentle-ai-sync/tasks`.
   writer trigger: `internal/skills`, `internal/install`, `internal/wizard`, `cmd/nerv` and tests).
   RED commit, then GREEN commit.
 
-- [ ] T5 (added 2026-10-02, review R1-001/R4-001 + user decision "Preguntar si es interactivo")
+- [x] T5 (added 2026-10-02, review R1-001/R4-001 + user decision "Preguntar si es interactivo")
   the sync asks first: interactive callers (stdin is a terminal: `nerv install`, the wizard,
   `nerv skills`) confirm before running it, naming the skills and warning that gentle-ai sync
   rewrites its managed files (e.g. `~/.claude/CLAUDE.md`); without a terminal it never runs and
@@ -100,6 +100,14 @@ Engram mirror: topic `odd/skills-gentle-ai-sync/tasks`.
 - 2026-10-02: native review of the branch (high, four lenses, lineage `review-bb8c0dd3ef748cc3`)
   approved and acknowledged. R1/R4 flagged the unprompted sync rewriting gentle-ai managed user
   files; the user chose "ask when interactive" → T5.
+
+- 2026-10-02: T5 RED `be14117` (observed: build failures, `ConfirmSync` undefined in
+  `skills.Options` and `install.Deps`; caller and wizard tests failing), GREEN `4871a2e`:
+  `skills.Options.ConfirmSync`, `SyncResult.Declined`, shared `skills.SyncPrompt` and
+  `skills.RenderSync` (three copies removed), `syncConfirmer` in `cmd/nerv/terminal.go` (nil
+  without a terminal; byte-wise stdin read, default No), wizard prompt via `yesNo`, positional
+  refresh assumption documented, README and `docs/commands.md` updated. Follow-up: `--json`
+  never prompts. Route: delegated direct.
 
 ## Next step
 
