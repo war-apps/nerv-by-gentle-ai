@@ -216,3 +216,77 @@ func TestRunApplyModels_HomeFlag_NoLongerAccepted(t *testing.T) {
 		t.Fatalf("exit code = %d, want 2 (a rejected unknown flag); stdout=%q", code, stdout.String())
 	}
 }
+
+// ---------------------------------------------------------------------------
+// The skills step asks before the gentle-ai sync, only in a terminal.
+// ---------------------------------------------------------------------------
+
+func TestRunInstall_SkillsStep_Terminal_ConfirmYes_RunsSync(t *testing.T) {
+	home := t.TempDir()
+	seedInstalledPluginsForCLI(t, home)
+	var stdout, stderr bytes.Buffer
+	opts := testOptions(home)
+	runner := baseInstallRunner()
+	opts.Runner = runner
+	opts.IsTerminal = func() bool { return true }
+	opts.Stdin = strings.NewReader("y\n")
+
+	code := run([]string{"install", "--no-configure"}, &stdout, &stderr, opts)
+
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0; stdout:\n%s\nstderr:\n%s", code, stdout.String(), stderr.String())
+	}
+	if n := countSyncCalls(runner); n != 1 {
+		t.Errorf("sync ran %d times, want once; stdout:\n%s", n, stdout.String())
+	}
+	if !strings.Contains(stdout.String(), "managed files") {
+		t.Errorf("stdout lacks the prompt warning about managed files:\n%s", stdout.String())
+	}
+}
+
+func TestRunInstall_SkillsStep_Terminal_ConfirmNo_SkipsSync(t *testing.T) {
+	home := t.TempDir()
+	seedInstalledPluginsForCLI(t, home)
+	var stdout, stderr bytes.Buffer
+	opts := testOptions(home)
+	runner := baseInstallRunner()
+	opts.Runner = runner
+	opts.IsTerminal = func() bool { return true }
+	opts.Stdin = strings.NewReader("\n")
+
+	code := run([]string{"install", "--no-configure"}, &stdout, &stderr, opts)
+
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0; stdout:\n%s\nstderr:\n%s", code, stdout.String(), stderr.String())
+	}
+	if n := countSyncCalls(runner); n != 0 {
+		t.Errorf("sync ran %d times, want 0", n)
+	}
+	if !strings.Contains(stdout.String(), "gentle-ai sync skipped") || !strings.Contains(stdout.String(), "Remedy: run 'gentle-ai install'") {
+		t.Errorf("stdout lacks the skipped line or the remedy:\n%s", stdout.String())
+	}
+}
+
+func TestRunInstall_SkillsStep_NotATerminal_NoPromptNoSync(t *testing.T) {
+	home := t.TempDir()
+	seedInstalledPluginsForCLI(t, home)
+	var stdout, stderr bytes.Buffer
+	opts := testOptions(home)
+	runner := baseInstallRunner()
+	opts.Runner = runner
+
+	code := run([]string{"install", "--no-configure"}, &stdout, &stderr, opts)
+
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0; stdout:\n%s\nstderr:\n%s", code, stdout.String(), stderr.String())
+	}
+	if n := countSyncCalls(runner); n != 0 {
+		t.Errorf("sync ran %d times without a terminal, want 0", n)
+	}
+	if strings.Contains(stdout.String(), "managed files") || strings.Contains(stdout.String(), "gentle-ai sync skipped") {
+		t.Errorf("stdout has a prompt or skipped line without a terminal:\n%s", stdout.String())
+	}
+	if !strings.Contains(stdout.String(), "Remedy: run 'gentle-ai install'") {
+		t.Errorf("stdout lacks the remedy:\n%s", stdout.String())
+	}
+}
