@@ -5,8 +5,8 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/war-apps/nerv-gentle-ai/internal/env"
-	"github.com/war-apps/nerv-gentle-ai/internal/env/envtest"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/env"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/env/envtest"
 )
 
 // Compile-time proof FakeRunner satisfies env.Runner without importing it

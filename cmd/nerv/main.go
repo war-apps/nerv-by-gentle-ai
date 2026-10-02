@@ -1,4 +1,4 @@
-// Command nerv is the NERV Gentle-AI CLI: it materializes the embedded
+// Command nerv is the Nerv by Gentle-AI CLI: it materializes the embedded
 // plugin tree, configures NERV, and reports version information.
 package main
 
@@ -10,9 +10,9 @@ import (
 	"os"
 	"time"
 
-	nerv "github.com/war-apps/nerv-gentle-ai"
-	"github.com/war-apps/nerv-gentle-ai/internal/env"
-	"github.com/war-apps/nerv-gentle-ai/internal/version"
+	nerv "github.com/war-apps/nerv-by-gentle-ai"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/env"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/version"
 )
 
 const usage = `Usage: nerv <command> [flags]

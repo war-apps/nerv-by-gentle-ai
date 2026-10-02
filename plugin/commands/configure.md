@@ -1,11 +1,11 @@
 ---
-description: Configure NERV Gentle-AI (user config, models, skills, repository) through guided questions — no script invocation by hand
+description: Configure Nerv by Gentle-AI (user config, models, skills, repository) through guided questions — no script invocation by hand
 argument-hint: [git | tasks | skills | models | repo | commands | all]
 ---
 
 # /nerv:configure
 
-Configure NERV Gentle-AI through guided questions instead of hand-editing
+Configure Nerv by Gentle-AI through guided questions instead of hand-editing
 `nerv.yaml` or invoking `nerv configure` flags yourself. Reads the current
 state first, asks only about the sections in scope, and writes exactly the
 changes confirmed — never more.
@@ -22,8 +22,8 @@ changes confirmed — never more.
    ```
 
    If `nerv` is not on PATH, tell the user to install it — `curl -fsSL
-   https://raw.githubusercontent.com/war-apps/nerv-gentle-ai/main/scripts/install.sh
-   | bash`, or `go install github.com/war-apps/nerv-gentle-ai/cmd/nerv@latest`
+   https://raw.githubusercontent.com/war-apps/nerv-by-gentle-ai/main/scripts/install.sh
+   | bash`, or `go install github.com/war-apps/nerv-by-gentle-ai/cmd/nerv@latest`
    — and stop. Do not fall back to reading or writing `nerv.yaml` by hand.
 
    From the returned JSON print a compact summary: `config_path` and

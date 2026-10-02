@@ -13,8 +13,8 @@ import (
 	"io/fs"
 	"time"
 
-	"github.com/war-apps/nerv-gentle-ai/internal/env"
-	"github.com/war-apps/nerv-gentle-ai/internal/refusal"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/env"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/refusal"
 )
 
 // Deps bundles every external effect Install/Uninstall/ApplyModels need,
@@ -39,6 +39,11 @@ type Deps struct {
 	Now func() time.Time
 	// LookPath resolves a tool's presence on PATH (engram detection).
 	LookPath func(name string) (string, error)
+	// ConfirmSync, when set, is asked before the skills step runs the
+	// gentle-ai sync (which also rewrites gentle-ai's managed files). Nil
+	// means no sync: non-interactive callers leave it unset. Injected so this
+	// package never reads os.Stdin.
+	ConfirmSync func(skills []string) bool
 	// Stdout receives this package's step-by-step progress log.
 	Stdout io.Writer
 }

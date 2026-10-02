@@ -1,4 +1,4 @@
-// Package nerv embeds the NERV Gentle-AI plugin tree so it can be
+// Package nerv embeds the Nerv by Gentle-AI plugin tree so it can be
 // materialized on disk by the nerv CLI without a network round trip.
 package nerv
 

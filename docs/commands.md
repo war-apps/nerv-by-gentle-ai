@@ -1,6 +1,6 @@
 # Commands
 
-NERV Gentle-AI has two command surfaces: Claude Code slash commands
+Nerv by Gentle-AI has two command surfaces: Claude Code slash commands
 (`/nerv:*`, run from inside a Claude Code session) and the `nerv` CLI binary
 (run from a shell, including from inside the slash commands themselves).
 
@@ -176,14 +176,19 @@ nerv apply-models
 
 Installs or verifies the Claude Code user-scope skills the NERV plugin
 defaults reference: external ones via `npx skills add ... -g`, gentle-ai
-ones verified only.
+ones via one `gentle-ai sync --agents claude-code --skills ...` for all the
+missing ones. In a terminal it asks first (default No), naming the missing
+skills and warning that `gentle-ai sync` also rewrites gentle-ai's managed
+files (e.g. `~/.claude/CLAUDE.md`); a declined or failed sync, or a run
+without a terminal (which never syncs), leaves a remedy line per skill still
+missing. `nerv install` and the wizard's skills step follow the same rule.
 
 ```
 Usage: nerv skills [flags]
 
 Flags:
-  --dry-run          Print the exact npx command for each missing skill
-                      instead of running it
+  --dry-run          Print the exact npx and gentle-ai commands for the
+                      missing skills instead of running them
   --json             Print the computed status as a JSON array
   --only name,...    Restrict processing to these skill names
 ```

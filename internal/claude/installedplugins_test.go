@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/war-apps/nerv-gentle-ai/internal/claude"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/claude"
 )
 
 func TestInstalledPlugins_MissingFile(t *testing.T) {

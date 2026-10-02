@@ -7,7 +7,7 @@ import (
 	"io/fs"
 	"os"
 
-	"github.com/war-apps/nerv-gentle-ai/internal/paths"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/paths"
 )
 
 // PluginInstallInfo is one plugin's recorded install path and version, as

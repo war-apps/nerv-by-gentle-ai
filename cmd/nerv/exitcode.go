@@ -1,6 +1,6 @@
 package main
 
-import "github.com/war-apps/nerv-gentle-ai/internal/refusal"
+import "github.com/war-apps/nerv-by-gentle-ai/internal/refusal"
 
 // exitCodeFor maps a use-case error to the process exit code every nerv
 // subcommand uses: 0 for nil, 1 for a *refusal.Error (an unknown key, an

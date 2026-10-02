@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	nerv "github.com/war-apps/nerv-gentle-ai"
-	"github.com/war-apps/nerv-gentle-ai/internal/env/envtest"
+	nerv "github.com/war-apps/nerv-by-gentle-ai"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/env/envtest"
 )
 
 func testOptions(home string) options {

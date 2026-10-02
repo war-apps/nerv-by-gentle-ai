@@ -1,7 +1,7 @@
 // Package skills reads the NERV skills manifest, computes each skill's
 // installed status against a Claude Code user-scope skills directory, and
-// runs the "npx skills add" installs for missing external skills through
-// env.Runner.
+// runs the "npx skills add" installs for missing external skills, and one
+// "gentle-ai sync" for missing gentle-ai skills, through env.Runner.
 package skills
 
 import (
@@ -13,7 +13,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/war-apps/nerv-gentle-ai/internal/env"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/env"
 )
 
 // SchemaID is the manifest schema this package understands.
@@ -202,27 +202,50 @@ type InstallStep struct {
 	Args []string
 }
 
+// SyncStep is the single "gentle-ai sync" invocation that provides every
+// missing gentle-ai skill. Skills lists them in manifest order.
+type SyncStep struct {
+	Skills []string
+	Args   []string
+}
+
+// SyncArgs builds the argv for "gentle-ai <args>" that provides the named
+// gentle-ai skills to Claude Code: sync --agents claude-code --skills a,b.
+// gentle-ai has no skills-only command, so sync is the narrowest entry point.
+func SyncArgs(names []string) []string {
+	return []string{"sync", "--agents", "claude-code", "--skills", strings.Join(names, ",")}
+}
+
 // Plan is what to do about every skill whose Status action is not "none":
-// run Installs' npx invocations, and surface Remedies to the user for the
-// gentle-ai gaps this package never tries to install itself.
+// run Installs' npx invocations, run Sync (nil when no gentle-ai skill is
+// missing) to provide the gentle-ai gaps, and surface Remedies to the user
+// for the gentle-ai gaps that remain after it.
 type Plan struct {
 	Installs []InstallStep
+	Sync     *SyncStep
 	Remedies []string
 }
 
 // InstallPlan turns Status's output into a Plan by dispatching each
 // status's Action: an install step for ActionInstall, a remedy message
-// for ActionVerifyGentleAI, nothing for ActionNone.
+// (and a share of the one sync step) for ActionVerifyGentleAI, nothing for
+// ActionNone. Remedies assume the sync has not provided anything yet; Run
+// recomputes them afterwards.
 func InstallPlan(statuses []SkillStatus) Plan {
 	var plan Plan
+	var missing []string
 	for _, s := range statuses {
 		switch s.Action {
 		case ActionInstall:
 			plan.Installs = append(plan.Installs, InstallStep{Name: s.Name, Args: InstallArgs(s.Repo, s.Skill)})
 		case ActionVerifyGentleAI:
+			missing = append(missing, s.Name)
 			plan.Remedies = append(plan.Remedies, fmt.Sprintf(
 				"Remedy: run 'gentle-ai install' (or 'gentle-ai sync') to provide gentle-ai skill '%s'.", s.Name))
 		}
+	}
+	if len(missing) > 0 {
+		plan.Sync = &SyncStep{Skills: missing, Args: SyncArgs(missing)}
 	}
 	return plan
 }
@@ -293,4 +316,54 @@ func Install(ctx context.Context, runner env.Runner, plan Plan) InstallResult {
 		result.Installed++
 	}
 	return result
+}
+
+// SyncResult is the outcome of the gentle-ai sync step: Ran is false when
+// nothing was missing, DryRun, or the sync was not confirmed (Declined is then
+// true only when a confirmation was asked and refused), Failed is true for a launch error or a
+// non-zero exit, and Output is then a short diagnostic (the launch error, or
+// the last lines of stderr, falling back to stdout); empty on success.
+type SyncResult struct {
+	Ran      bool
+	Declined bool
+	Failed   bool
+	Output   string
+}
+
+// syncDiagnosticLines is how many trailing output lines Sync keeps.
+const syncDiagnosticLines = 2
+
+// Sync runs "gentle-ai <step.Args>" through runner. A nil step is a no-op.
+// A failure is only reported, never an error: the remedies stay in place.
+func Sync(ctx context.Context, runner env.Runner, step *SyncStep) SyncResult {
+	if step == nil {
+		return SyncResult{}
+	}
+	stdout, stderr, exitCode, err := runner.Run(ctx, "gentle-ai", step.Args...)
+	if err == nil && exitCode == 0 {
+		return SyncResult{Ran: true}
+	}
+	if err != nil {
+		return SyncResult{Ran: true, Failed: true, Output: err.Error()}
+	}
+	output := stderr
+	if strings.TrimSpace(output) == "" {
+		output = stdout
+	}
+	return SyncResult{Ran: true, Failed: true, Output: tailLines(output, syncDiagnosticLines)}
+}
+
+// tailLines returns the last n non-empty lines of text, trimmed and joined by
+// newlines.
+func tailLines(text string, n int) string {
+	var lines []string
+	for _, line := range strings.Split(text, "\n") {
+		if line = strings.TrimSpace(line); line != "" {
+			lines = append(lines, line)
+		}
+	}
+	if len(lines) > n {
+		lines = lines[len(lines)-n:]
+	}
+	return strings.Join(lines, "\n")
 }

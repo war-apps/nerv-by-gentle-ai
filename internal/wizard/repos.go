@@ -9,8 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/war-apps/nerv-gentle-ai/internal/config"
-	"github.com/war-apps/nerv-gentle-ai/internal/configure"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/config"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/configure"
 )
 
 // runReposSection is Section 3: an "Initialize a repository for NERV now?

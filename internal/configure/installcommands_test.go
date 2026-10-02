@@ -6,8 +6,8 @@ import (
 	"testing"
 	"testing/fstest"
 
-	nerv "github.com/war-apps/nerv-gentle-ai"
-	"github.com/war-apps/nerv-gentle-ai/internal/configure"
+	nerv "github.com/war-apps/nerv-by-gentle-ai"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/configure"
 )
 
 // ---------------------------------------------------------------------------

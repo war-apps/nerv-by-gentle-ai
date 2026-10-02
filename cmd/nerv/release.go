@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/war-apps/nerv-gentle-ai/internal/release"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/release"
 )
 
 // releaseUsage documents the maintainer-only "nerv release" subcommands.

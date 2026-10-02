@@ -8,9 +8,9 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/war-apps/nerv-gentle-ai/internal/env"
-	"github.com/war-apps/nerv-gentle-ai/internal/refusal"
-	"github.com/war-apps/nerv-gentle-ai/internal/version"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/env"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/refusal"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/version"
 )
 
 // Deps bundles the release use cases' external effects: the repository

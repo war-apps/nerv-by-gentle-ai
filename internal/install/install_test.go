@@ -12,10 +12,10 @@ import (
 	"testing"
 	"time"
 
-	nerv "github.com/war-apps/nerv-gentle-ai"
-	"github.com/war-apps/nerv-gentle-ai/internal/env/envtest"
-	"github.com/war-apps/nerv-gentle-ai/internal/install"
-	"github.com/war-apps/nerv-gentle-ai/internal/version"
+	nerv "github.com/war-apps/nerv-by-gentle-ai"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/env/envtest"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/install"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/version"
 )
 
 func fixedNow() time.Time { return time.Date(2026, 9, 29, 15, 4, 5, 0, time.UTC) }
@@ -329,5 +329,213 @@ func TestInstall_AppliesModelOverridesToCache(t *testing.T) {
 	}
 	if !strings.Contains(string(content), "effort: low") {
 		t.Errorf("aoba.md effort not overridden, content:\n%s", content)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Marketplace sync: "claude plugin install" resolves marketplaces from
+// known_marketplaces.json, not settings.json, so the installer must
+// register the materialized directory through the CLI first.
+// ---------------------------------------------------------------------------
+
+func callLines(runner *envtest.FakeRunner) []string {
+	var lines []string
+	for _, c := range runner.Calls {
+		lines = append(lines, c.Name+" "+strings.Join(c.Args, " "))
+	}
+	return lines
+}
+
+func indexOf(lines []string, want string) int {
+	for i, l := range lines {
+		if l == want {
+			return i
+		}
+	}
+	return -1
+}
+
+func TestInstall_AddsMarketplaceBeforeInstallingPlugin(t *testing.T) {
+	home := t.TempDir()
+	runner := baseRunner()
+	seedInstalledPlugins(t, home, pluginVersion(t))
+	var stdout bytes.Buffer
+	deps := install.Deps{Home: home, FS: nerv.PluginFS(), Runner: runner, Now: fixedNow, LookPath: lookPathAll, Stdout: &stdout}
+
+	if err := install.Install(context.Background(), deps, install.Options{NoSkills: true}); err != nil {
+		t.Fatalf("Install() error = %v; output:\n%s", err, stdout.String())
+	}
+
+	lines := callLines(runner)
+	add := indexOf(lines, "claude plugin marketplace add "+filepath.Join(home, ".nerv", "marketplace"))
+	uninstall := indexOf(lines, "claude plugin uninstall nerv@nerv")
+	installed := indexOf(lines, "claude plugin install nerv@nerv")
+	if add < 0 {
+		t.Fatalf("no marketplace add call; calls: %s", strings.Join(lines, " | "))
+	}
+	if add > uninstall || add > installed {
+		t.Errorf("marketplace add must run before uninstall/install; calls: %s", strings.Join(lines, " | "))
+	}
+}
+
+func TestInstall_MarketplaceAddFailure_StopsBeforeInstall(t *testing.T) {
+	home := t.TempDir()
+	runner := baseRunner()
+	runner.Responses["claude plugin marketplace add "+filepath.Join(home, ".nerv", "marketplace")] =
+		envtest.Response{Stderr: "invalid marketplace\n", ExitCode: 1}
+	var stdout bytes.Buffer
+	deps := install.Deps{Home: home, FS: nerv.PluginFS(), Runner: runner, Now: fixedNow, LookPath: lookPathAll, Stdout: &stdout}
+
+	err := install.Install(context.Background(), deps, install.Options{NoSkills: true})
+	if err == nil {
+		t.Fatal("Install() error = nil, want an error when the marketplace add fails")
+	}
+	if !strings.Contains(err.Error(), "invalid marketplace") {
+		t.Errorf("error = %v, want it to carry the CLI output", err)
+	}
+	if indexOf(callLines(runner), "claude plugin install nerv@nerv") >= 0 {
+		t.Error("claude plugin install ran despite the marketplace add failure")
+	}
+}
+
+func TestRefreshCache_AddsMarketplace(t *testing.T) {
+	home := t.TempDir()
+	runner := baseRunner()
+	seedInstalledPlugins(t, home, pluginVersion(t))
+	var stdout bytes.Buffer
+	deps := install.Deps{Home: home, FS: nerv.PluginFS(), Runner: runner, Now: fixedNow, LookPath: lookPathAll, Stdout: &stdout}
+
+	if err := install.RefreshCache(context.Background(), deps); err != nil {
+		t.Fatalf("RefreshCache() error = %v; output:\n%s", err, stdout.String())
+	}
+	lines := callLines(runner)
+	add := indexOf(lines, "claude plugin marketplace add "+filepath.Join(home, ".nerv", "marketplace"))
+	uninstall := indexOf(lines, "claude plugin uninstall nerv@nerv")
+	installed := indexOf(lines, "claude plugin install nerv@nerv")
+	if add < 0 {
+		t.Fatalf("no marketplace add call; calls: %s", strings.Join(lines, " | "))
+	}
+	if add > uninstall || add > installed {
+		t.Errorf("marketplace add must run before uninstall/install; calls: %s", strings.Join(lines, " | "))
+	}
+}
+
+func TestRefreshCache_MarketplaceAddFailure_StopsBeforeInstall(t *testing.T) {
+	home := t.TempDir()
+	runner := baseRunner()
+	runner.Responses["claude plugin marketplace add "+filepath.Join(home, ".nerv", "marketplace")] =
+		envtest.Response{Stderr: "invalid marketplace\n", ExitCode: 1}
+	var stdout bytes.Buffer
+	deps := install.Deps{Home: home, FS: nerv.PluginFS(), Runner: runner, Now: fixedNow, LookPath: lookPathAll, Stdout: &stdout}
+
+	err := install.RefreshCache(context.Background(), deps)
+	if err == nil {
+		t.Fatal("RefreshCache() error = nil, want an error when the marketplace add fails")
+	}
+	if !strings.Contains(err.Error(), "invalid marketplace") {
+		t.Errorf("error = %v, want it to carry the CLI output", err)
+	}
+	lines := callLines(runner)
+	if indexOf(lines, "claude plugin install nerv@nerv") >= 0 {
+		t.Errorf("claude plugin install ran despite the marketplace add failure; calls: %s", strings.Join(lines, " | "))
+	}
+}
+
+func TestInstall_SkillsStep_RunsAndReportsGentleAISync(t *testing.T) {
+	home := t.TempDir()
+	runner := baseRunner()
+	seedInstalledPlugins(t, home, pluginVersion(t))
+	var stdout bytes.Buffer
+	deps := install.Deps{Home: home, FS: nerv.PluginFS(), Runner: runner, Now: fixedNow, LookPath: lookPathAll, Stdout: &stdout, ConfirmSync: func([]string) bool { return true }}
+
+	if err := install.Install(context.Background(), deps, install.Options{}); err != nil {
+		t.Fatalf("Install() error = %v; output:\n%s", err, stdout.String())
+	}
+
+	syncCalls := 0
+	for _, l := range callLines(runner) {
+		if strings.HasPrefix(l, "gentle-ai sync --agents claude-code --skills ") {
+			syncCalls++
+		}
+	}
+	if syncCalls != 1 {
+		t.Errorf("gentle-ai sync ran %d times, want once; calls: %s", syncCalls, strings.Join(callLines(runner), " | "))
+	}
+	if !strings.Contains(stdout.String(), "-> gentle-ai sync --agents claude-code --skills ") {
+		t.Errorf("output lacks the sync line:\n%s", stdout.String())
+	}
+}
+
+func TestInstall_SkillsStep_FailedGentleAISync_WarnsWithDiagnostic(t *testing.T) {
+	home := t.TempDir()
+	runner := baseRunner()
+	runner.Responses["gentle-ai"] = envtest.Response{ExitCode: 1, Stderr: "boom: no such agent\n"}
+	seedInstalledPlugins(t, home, pluginVersion(t))
+	var stdout bytes.Buffer
+	deps := install.Deps{Home: home, FS: nerv.PluginFS(), Runner: runner, Now: fixedNow, LookPath: lookPathAll, Stdout: &stdout, ConfirmSync: func([]string) bool { return true }}
+
+	if err := install.Install(context.Background(), deps, install.Options{}); err != nil {
+		t.Fatalf("Install() error = %v; output:\n%s", err, stdout.String())
+	}
+
+	warning := "Warning: gentle-ai sync failed; the gentle-ai skills may still be missing.\n  boom: no such agent\n"
+	if !strings.Contains(stdout.String(), warning) {
+		t.Errorf("output lacks the warning with its diagnostic:\n%s", stdout.String())
+	}
+}
+
+func countSyncCalls(runner *envtest.FakeRunner) int {
+	n := 0
+	for _, l := range callLines(runner) {
+		if strings.HasPrefix(l, "gentle-ai sync ") {
+			n++
+		}
+	}
+	return n
+}
+
+func TestInstall_SkillsStep_DeclinedSync_SkipsItAndKeepsRemedies(t *testing.T) {
+	home := t.TempDir()
+	runner := baseRunner()
+	seedInstalledPlugins(t, home, pluginVersion(t))
+	var stdout bytes.Buffer
+	asked := false
+	deps := install.Deps{Home: home, FS: nerv.PluginFS(), Runner: runner, Now: fixedNow, LookPath: lookPathAll, Stdout: &stdout,
+		ConfirmSync: func([]string) bool { asked = true; return false }}
+
+	if err := install.Install(context.Background(), deps, install.Options{}); err != nil {
+		t.Fatalf("Install() error = %v; output:\n%s", err, stdout.String())
+	}
+
+	if !asked {
+		t.Error("ConfirmSync was never called")
+	}
+	if n := countSyncCalls(runner); n != 0 {
+		t.Errorf("gentle-ai sync ran %d times after a decline, want 0", n)
+	}
+	if !strings.Contains(stdout.String(), "gentle-ai sync skipped") || !strings.Contains(stdout.String(), "Remedy: run 'gentle-ai install'") {
+		t.Errorf("output lacks the skipped line or the remedies:\n%s", stdout.String())
+	}
+}
+
+func TestInstall_SkillsStep_NoConfirmHook_NeverSyncsAndStaysQuiet(t *testing.T) {
+	home := t.TempDir()
+	runner := baseRunner()
+	seedInstalledPlugins(t, home, pluginVersion(t))
+	var stdout bytes.Buffer
+	deps := install.Deps{Home: home, FS: nerv.PluginFS(), Runner: runner, Now: fixedNow, LookPath: lookPathAll, Stdout: &stdout}
+
+	if err := install.Install(context.Background(), deps, install.Options{}); err != nil {
+		t.Fatalf("Install() error = %v; output:\n%s", err, stdout.String())
+	}
+
+	if n := countSyncCalls(runner); n != 0 {
+		t.Errorf("gentle-ai sync ran %d times without a hook, want 0", n)
+	}
+	if strings.Contains(stdout.String(), "gentle-ai sync skipped") {
+		t.Errorf("output has a skipped line for a non-interactive run:\n%s", stdout.String())
+	}
+	if !strings.Contains(stdout.String(), "Remedy: run 'gentle-ai install'") {
+		t.Errorf("output lacks the remedies:\n%s", stdout.String())
 	}
 }

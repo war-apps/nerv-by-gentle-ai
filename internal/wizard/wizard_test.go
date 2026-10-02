@@ -10,11 +10,11 @@ import (
 	"testing"
 	"time"
 
-	nerv "github.com/war-apps/nerv-gentle-ai"
-	"github.com/war-apps/nerv-gentle-ai/internal/config"
-	"github.com/war-apps/nerv-gentle-ai/internal/configure"
-	"github.com/war-apps/nerv-gentle-ai/internal/env/envtest"
-	"github.com/war-apps/nerv-gentle-ai/internal/wizard"
+	nerv "github.com/war-apps/nerv-by-gentle-ai"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/config"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/configure"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/env/envtest"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/wizard"
 )
 
 // fixtureLF mirrors the real nerv.yaml shape (every managed key at its

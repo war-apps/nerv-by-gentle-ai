@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/war-apps/nerv-gentle-ai/internal/env"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/env"
 )
 
 const gitLogFormat = "%H%x1f%h%x1f%s%x1f%b%x1e"

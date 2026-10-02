@@ -59,7 +59,7 @@
   delivery-budget heuristic so each fits.
 - **The `sdd-archive` agent refuses to launch.** gentle-ai's SDD dispatcher
   refuses `sdd-archive` outside a native SDD session (it wants an
-  interactive AskUserQuestion preflight NERV Gentle-AI doesn't run). NERV
+  interactive AskUserQuestion preflight Nerv by Gentle-AI doesn't run). Nerv by
   Gentle-AI archives
   mechanically instead — Aoba runs `git mv` plus
   `gentle-ai sdd-archive-compose` per delta spec.
@@ -70,7 +70,7 @@
   closed waves.
 - **Commits carry a stray `Co-Authored-By` trailer.** The harness
   attribution reminder some environments inject is ignored by Aoba on
-  purpose — NERV Gentle-AI commits never carry AI attribution trailers; a
+  purpose — Nerv by Gentle-AI commits never carry AI attribution trailers; a
   gatekeeper
   check greps the commit message for this before it lands.
 - **`createTask` blocks with "tasklist not found."** A stale
@@ -80,5 +80,5 @@
   elsewhere.
 - **Extra reviewer sessions appear on every tool use.** That's the
   `security-guidance` plugin's own hook (installed independently), not
-  NERV Gentle-AI. NERV Gentle-AI's own review relay only runs after an
+  Nerv by Gentle-AI. Nerv by Gentle-AI's own review relay only runs after an
   Aoba work-unit commit.

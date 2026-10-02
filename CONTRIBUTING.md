@@ -1,8 +1,8 @@
-# Contributing to NERV Gentle-AI
+# Contributing to Nerv by Gentle-AI
 
 ## Welcome and scope
 
-Thank you for your interest in contributing to NERV Gentle-AI — a
+Thank you for your interest in contributing to Nerv by Gentle-AI — a
 governance overlay plugin for Claude Code, distributed as a single Go
 binary (`nerv`) plus the plugin tree it embeds.
 
@@ -20,8 +20,8 @@ OpenCode, Codex, and Pi support is out of scope until it lands deliberately.
 ## Getting started
 
 ```bash
-git clone https://github.com/war-apps/nerv-gentle-ai.git
-cd nerv-gentle-ai
+git clone https://github.com/war-apps/nerv-by-gentle-ai.git
+cd nerv-by-gentle-ai
 go build ./cmd/nerv
 go test ./...
 ```

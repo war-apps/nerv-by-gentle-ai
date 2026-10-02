@@ -6,13 +6,13 @@ import (
 	"fmt"
 	"io/fs"
 
-	"github.com/war-apps/nerv-gentle-ai/internal/claude"
-	"github.com/war-apps/nerv-gentle-ai/internal/engram"
-	"github.com/war-apps/nerv-gentle-ai/internal/gentleai"
-	"github.com/war-apps/nerv-gentle-ai/internal/paths"
-	"github.com/war-apps/nerv-gentle-ai/internal/plugin"
-	"github.com/war-apps/nerv-gentle-ai/internal/skills"
-	"github.com/war-apps/nerv-gentle-ai/internal/version"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/claude"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/engram"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/gentleai"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/paths"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/plugin"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/skills"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/version"
 )
 
 const pluginID = "nerv@nerv"
@@ -148,8 +148,8 @@ func registerSettings(deps Deps, marketplaceDir string) error {
 }
 
 // RefreshCache re-registers nerv@nerv in the Claude Code plugin cache
-// ("claude plugin uninstall/install") and verifies the cached version
-// matches the embedded plugin version. Exported for internal/wizard's
+// ("claude plugin marketplace add", then "uninstall/install") and verifies
+// the cached version matches the embedded plugin version. Exported for internal/wizard's
 // closing "apply and refresh" step, wrapping the same tail Install itself
 // runs after registering settings.json.
 func RefreshCache(ctx context.Context, deps Deps) error {
@@ -163,6 +163,12 @@ func RefreshCache(ctx context.Context, deps Deps) error {
 func refreshCache(ctx context.Context, deps Deps, pluginVersion string) error {
 	fmt.Fprintln(deps.Stdout, "\n=== Refreshing plugin cache (nerv@nerv) ===")
 	cli := claude.PluginCLI{Runner: deps.Runner}
+
+	marketplaceDir := paths.Resolve(deps.Home).Marketplace
+	fmt.Fprintf(deps.Stdout, "-> claude plugin marketplace add %s\n", marketplaceDir)
+	if _, err := cli.AddMarketplace(ctx, marketplaceDir); err != nil {
+		return fmt.Errorf("cache not refreshed: %w", err)
+	}
 
 	fmt.Fprintln(deps.Stdout, "-> claude plugin uninstall nerv@nerv")
 	if _, err := cli.Uninstall(ctx, pluginID); err != nil {
@@ -206,12 +212,13 @@ func installSkills(ctx context.Context, deps Deps) {
 	fmt.Fprintln(deps.Stdout, "\n=== Installing required skills ===")
 
 	skillsDir := paths.Resolve(deps.Home).SkillsDir
-	report, err := skills.Run(ctx, deps.Runner, deps.FS, skillsDir, skills.Options{})
+	report, err := skills.Run(ctx, deps.Runner, deps.FS, skillsDir, skills.Options{ConfirmSync: deps.ConfirmSync})
 	if err != nil {
 		fmt.Fprintf(deps.Stdout, "Warning: could not read the skills manifest: %v\n", err)
 		return
 	}
 
+	skills.RenderSync(deps.Stdout, report)
 	for _, remedy := range report.Plan.Remedies {
 		fmt.Fprintln(deps.Stdout, remedy)
 	}

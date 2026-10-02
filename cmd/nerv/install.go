@@ -7,9 +7,9 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/war-apps/nerv-gentle-ai/internal/configure"
-	"github.com/war-apps/nerv-gentle-ai/internal/install"
-	"github.com/war-apps/nerv-gentle-ai/internal/wizard"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/configure"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/install"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/wizard"
 )
 
 const installUsage = `Usage: nerv install [flags]
@@ -65,6 +65,7 @@ func runInstall(args []string, stdout, stderr io.Writer, opts options) int {
 		Runner:       opts.Runner,
 		Now:          opts.Now,
 		LookPath:     opts.LookPath,
+		ConfirmSync:  syncConfirmer(opts, stdout),
 		Stdout:       stdout,
 	}
 
