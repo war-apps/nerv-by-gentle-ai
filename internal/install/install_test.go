@@ -446,7 +446,7 @@ func TestInstall_SkillsStep_RunsAndReportsGentleAISync(t *testing.T) {
 	runner := baseRunner()
 	seedInstalledPlugins(t, home, pluginVersion(t))
 	var stdout bytes.Buffer
-	deps := install.Deps{Home: home, FS: nerv.PluginFS(), Runner: runner, Now: fixedNow, LookPath: lookPathAll, Stdout: &stdout}
+	deps := install.Deps{Home: home, FS: nerv.PluginFS(), Runner: runner, Now: fixedNow, LookPath: lookPathAll, Stdout: &stdout, ConfirmSync: func([]string) bool { return true }}
 
 	if err := install.Install(context.Background(), deps, install.Options{}); err != nil {
 		t.Fatalf("Install() error = %v; output:\n%s", err, stdout.String())
@@ -472,7 +472,7 @@ func TestInstall_SkillsStep_FailedGentleAISync_WarnsWithDiagnostic(t *testing.T)
 	runner.Responses["gentle-ai"] = envtest.Response{ExitCode: 1, Stderr: "boom: no such agent\n"}
 	seedInstalledPlugins(t, home, pluginVersion(t))
 	var stdout bytes.Buffer
-	deps := install.Deps{Home: home, FS: nerv.PluginFS(), Runner: runner, Now: fixedNow, LookPath: lookPathAll, Stdout: &stdout}
+	deps := install.Deps{Home: home, FS: nerv.PluginFS(), Runner: runner, Now: fixedNow, LookPath: lookPathAll, Stdout: &stdout, ConfirmSync: func([]string) bool { return true }}
 
 	if err := install.Install(context.Background(), deps, install.Options{}); err != nil {
 		t.Fatalf("Install() error = %v; output:\n%s", err, stdout.String())
@@ -481,5 +481,61 @@ func TestInstall_SkillsStep_FailedGentleAISync_WarnsWithDiagnostic(t *testing.T)
 	warning := "Warning: gentle-ai sync failed; the gentle-ai skills may still be missing.\n  boom: no such agent\n"
 	if !strings.Contains(stdout.String(), warning) {
 		t.Errorf("output lacks the warning with its diagnostic:\n%s", stdout.String())
+	}
+}
+
+func countSyncCalls(runner *envtest.FakeRunner) int {
+	n := 0
+	for _, l := range callLines(runner) {
+		if strings.HasPrefix(l, "gentle-ai sync ") {
+			n++
+		}
+	}
+	return n
+}
+
+func TestInstall_SkillsStep_DeclinedSync_SkipsItAndKeepsRemedies(t *testing.T) {
+	home := t.TempDir()
+	runner := baseRunner()
+	seedInstalledPlugins(t, home, pluginVersion(t))
+	var stdout bytes.Buffer
+	asked := false
+	deps := install.Deps{Home: home, FS: nerv.PluginFS(), Runner: runner, Now: fixedNow, LookPath: lookPathAll, Stdout: &stdout,
+		ConfirmSync: func([]string) bool { asked = true; return false }}
+
+	if err := install.Install(context.Background(), deps, install.Options{}); err != nil {
+		t.Fatalf("Install() error = %v; output:\n%s", err, stdout.String())
+	}
+
+	if !asked {
+		t.Error("ConfirmSync was never called")
+	}
+	if n := countSyncCalls(runner); n != 0 {
+		t.Errorf("gentle-ai sync ran %d times after a decline, want 0", n)
+	}
+	if !strings.Contains(stdout.String(), "gentle-ai sync skipped") || !strings.Contains(stdout.String(), "Remedy: run 'gentle-ai install'") {
+		t.Errorf("output lacks the skipped line or the remedies:\n%s", stdout.String())
+	}
+}
+
+func TestInstall_SkillsStep_NoConfirmHook_NeverSyncsAndStaysQuiet(t *testing.T) {
+	home := t.TempDir()
+	runner := baseRunner()
+	seedInstalledPlugins(t, home, pluginVersion(t))
+	var stdout bytes.Buffer
+	deps := install.Deps{Home: home, FS: nerv.PluginFS(), Runner: runner, Now: fixedNow, LookPath: lookPathAll, Stdout: &stdout}
+
+	if err := install.Install(context.Background(), deps, install.Options{}); err != nil {
+		t.Fatalf("Install() error = %v; output:\n%s", err, stdout.String())
+	}
+
+	if n := countSyncCalls(runner); n != 0 {
+		t.Errorf("gentle-ai sync ran %d times without a hook, want 0", n)
+	}
+	if strings.Contains(stdout.String(), "gentle-ai sync skipped") {
+		t.Errorf("output has a skipped line for a non-interactive run:\n%s", stdout.String())
+	}
+	if !strings.Contains(stdout.String(), "Remedy: run 'gentle-ai install'") {
+		t.Errorf("output lacks the remedies:\n%s", stdout.String())
 	}
 }

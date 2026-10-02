@@ -18,7 +18,8 @@ const skillsUsage = `Usage: nerv skills [flags]
 Installs or verifies the Claude Code user-scope skills the NERV plugin
 defaults reference: external ones via "npx skills add ... -g", gentle-ai
 ones via "gentle-ai sync --agents claude-code --skills ..." (one run for
-all the missing ones).
+all the missing ones, after a confirmation in a terminal; without one the
+sync never runs and the remedies are printed).
 
 Flags:
   --dry-run          Print the exact npx and gentle-ai commands for the
@@ -57,10 +58,16 @@ func runSkills(args []string, stdout, stderr io.Writer, opts options) int {
 		onlyNames = strings.Split(*only, ",")
 	}
 
+	// --json keeps stdout machine-readable: no prompt, so no sync.
+	var confirm func([]string) bool
+	if !*jsonOut {
+		confirm = syncConfirmer(opts, stdout)
+	}
 	skillsDir := paths.Resolve(home).SkillsDir
 	report, err := skills.Run(context.Background(), opts.Runner, opts.PluginFS, skillsDir, skills.Options{
-		Only:   onlyNames,
-		DryRun: *dryRun,
+		Only:        onlyNames,
+		DryRun:      *dryRun,
+		ConfirmSync: confirm,
 	})
 	if err != nil {
 		var manifestErr *skills.ErrManifest
@@ -90,15 +97,7 @@ func runSkills(args []string, stdout, stderr io.Writer, opts options) int {
 
 	gentleAiGapCount := len(report.Plan.Remedies)
 	if !*jsonOut {
-		if report.Sync.Ran {
-			fmt.Fprintf(stdout, "-> gentle-ai %s\n", strings.Join(report.Plan.Sync.Args, " "))
-			if report.Sync.Failed {
-				fmt.Fprintln(stdout, "Warning: gentle-ai sync failed; the gentle-ai skills may still be missing.")
-				if report.Sync.Output != "" {
-					fmt.Fprintf(stdout, "  %s\n", strings.ReplaceAll(report.Sync.Output, "\n", "\n  "))
-				}
-			}
-		}
+		skills.RenderSync(stdout, report)
 		for _, remedy := range report.Plan.Remedies {
 			fmt.Fprintln(stdout, remedy)
 		}

@@ -51,6 +51,14 @@ Engram mirror: topic `odd/skills-gentle-ai-sync/tasks`.
   writer trigger: `internal/skills`, `internal/install`, `internal/wizard`, `cmd/nerv` and tests).
   RED commit, then GREEN commit.
 
+- [x] T5 (added 2026-10-02, review R1-001/R4-001 + user decision "Preguntar si es interactivo")
+  the sync asks first: interactive callers (stdin is a terminal: `nerv install`, the wizard,
+  `nerv skills`) confirm before running it, naming the skills and warning that gentle-ai sync
+  rewrites its managed files (e.g. `~/.claude/CLAUDE.md`); without a terminal it never runs and
+  the remedy stays. Also: one shared renderer for the sync result (R2-001), a wizard rendering
+  test (R3), document the positional refresh assumption (R2-002), and docs describe the prompt
+  and its side effect (R3-sync-side-effects-undocumented). Route: delegated direct.
+
 ## Acceptance criteria
 
 - Tests prove: sync runs once with the exact args only when gentle-ai skills are missing; a skill
@@ -89,7 +97,36 @@ Engram mirror: topic `odd/skills-gentle-ai-sync/tasks`.
   three callers. Wizard rendering untested (its tests skip skills). `go test ./...`,
   `go vet ./...`, `gofmt -l .` clean.
 
+- 2026-10-02: native review of the branch (high, four lenses, lineage `review-bb8c0dd3ef748cc3`)
+  approved and acknowledged. R1/R4 flagged the unprompted sync rewriting gentle-ai managed user
+  files; the user chose "ask when interactive" → T5.
+
+- 2026-10-02: T5 RED `be14117` (observed: build failures, `ConfirmSync` undefined in
+  `skills.Options` and `install.Deps`; caller and wizard tests failing), GREEN `4871a2e`:
+  `skills.Options.ConfirmSync`, `SyncResult.Declined`, shared `skills.SyncPrompt` and
+  `skills.RenderSync` (three copies removed), `syncConfirmer` in `cmd/nerv/terminal.go` (nil
+  without a terminal; byte-wise stdin read, default No), wizard prompt via `yesNo`, positional
+  refresh assumption documented, README and `docs/commands.md` updated. Follow-up: `--json`
+  never prompts. Route: delegated direct.
+
+- 2026-10-02: the selectorless preflight range from `main` (99 files, 2,293 lines) stopped with
+  `lens_context_budget_exceeded` (no authority created). Re-scoped to the T5 slice
+  `262cbaf..HEAD` (16 files, 716 lines, medium, reliability lens, base-ref selector): approved and
+  acknowledged. Advisory, not taken: a test for the wizard's confirmation-input-closed path, and
+  a possible second sync prompt in the wizard after declining in the `nerv install` skills step.
+
+- 2026-10-02: delivery — user chose to split the ~1,340-line branch; chain strategy "stacked to
+  develop". Slices (cherry-picked from `feature/skills-gentle-ai-sync`, final tree identical,
+  every slice green on `go test`/`go vet`/`gofmt`):
+  1. `feature/skills-sync-1-herdr-refresh` → `develop`: plan, T1 RefreshCache tests, T3 herdr
+     focus (~95 lines).
+  2. `feature/skills-sync-2-sync-core` → slice 1: T2 RED/GREEN and smoke test (~408 lines).
+  3. `feature/skills-sync-3-sync-hardening` → slice 2: T4 RED/GREEN (~243 lines).
+  4. `feature/skills-sync-4-sync-confirm` → slice 3: T5 RED/GREEN, `--json` fix (~730 lines;
+     `size:exception` requested — the RED commit alone is 479 lines of tests and splitting RED
+     from GREEN would break the TDD unit).
+
 ## Next step
 
-Native review of the branch, then PR to `develop`; after the merge, refresh the plugin cache so
-the herdr focus change reaches the installed plugin.
+Merge the chain in order, retargeting each child to `develop` when its parent merges; after the
+last merge, refresh the plugin cache so the herdr focus change reaches the installed plugin.

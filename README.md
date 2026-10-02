@@ -113,7 +113,12 @@ Requires Go 1.26+ (see "Requirements" above).
 5. Applies model/effort assignments to the cached agents.
 6. Ensures the Engram `nerv` knowledge-base project exists (skipped when
    `engram` is not on PATH).
-7. Installs the skills the plugin defaults reference.
+7. Installs the skills the plugin defaults reference. Missing external
+   skills go through `npx skills add`. Missing gentle-ai skills need
+   `gentle-ai sync --agents claude-code --skills ...`; in a terminal
+   `nerv install` asks first (default No), because that sync also rewrites
+   gentle-ai's own managed files (e.g. `~/.claude/CLAUDE.md`). Without a
+   terminal it never runs and a remedy line per missing skill is printed.
 8. Runs the interactive configuration wizard when stdin is a terminal, or
    prints the `nerv configure` hint otherwise.
 
@@ -172,8 +177,11 @@ The wizard walks through six sections:
 2. **Required skills** (`--skip-skills`) — installs the missing external
    skills the plugin defaults reference, via
    `npx skills add <repo> --skill <id> -g -a claude-code -y`; an
-   already-present skill is never touched. `nerv skills --dry-run --json`
-   previews the same check without the wizard.
+   already-present skill is never touched. Missing gentle-ai skills are
+   provided by `gentle-ai sync` only after a confirmation (default No) that
+   warns the sync also rewrites gentle-ai's managed files (e.g.
+   `~/.claude/CLAUDE.md`). `nerv skills --dry-run --json` previews the same
+   check without the wizard.
 3. **User config** — asks `git` (base branch, worktree policy, worktree
    pattern, branch and commit-ref patterns), `tasks` (provider,
    ask-when-missing, subtasks-per-wave, timer store, rounding minutes, and — when the

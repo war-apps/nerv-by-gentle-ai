@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"strings"
 
 	"github.com/war-apps/nerv-by-gentle-ai/internal/configure"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/skills"
@@ -30,21 +29,27 @@ func offerSkillsInstall(ctx context.Context, deps Deps, paths configure.Paths, s
 		return nil
 	}
 
-	report, err := skills.Run(ctx, deps.Runner, deps.FS, paths.SkillsDir, skills.Options{})
+	// A prompt error (closed input) aborts the wizard after Run returns, like
+	// every other wizard prompt; the sync is declined meanwhile.
+	var confirmErr error
+	confirm := func(names []string) bool {
+		ok, err := s.yesNo(skills.SyncPrompt(names), false)
+		if err != nil {
+			confirmErr = err
+			return false
+		}
+		return ok
+	}
+	report, err := skills.Run(ctx, deps.Runner, deps.FS, paths.SkillsDir, skills.Options{ConfirmSync: confirm})
+	if confirmErr != nil {
+		return confirmErr
+	}
 	if err != nil {
 		fmt.Fprintf(out, "Warning: could not read the skills manifest: %v\n", err)
 		return nil
 	}
 
-	if report.Sync.Ran {
-		fmt.Fprintf(out, "-> gentle-ai %s\n", strings.Join(report.Plan.Sync.Args, " "))
-		if report.Sync.Failed {
-			fmt.Fprintln(out, "Warning: gentle-ai sync failed; the gentle-ai skills may still be missing.")
-			if report.Sync.Output != "" {
-				fmt.Fprintf(out, "  %s\n", strings.ReplaceAll(report.Sync.Output, "\n", "\n  "))
-			}
-		}
-	}
+	skills.RenderSync(out, report)
 	for _, remedy := range report.Plan.Remedies {
 		fmt.Fprintln(out, remedy)
 	}

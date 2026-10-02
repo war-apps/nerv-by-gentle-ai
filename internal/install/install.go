@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
-	"strings"
 
 	"github.com/war-apps/nerv-by-gentle-ai/internal/claude"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/engram"
@@ -213,21 +212,13 @@ func installSkills(ctx context.Context, deps Deps) {
 	fmt.Fprintln(deps.Stdout, "\n=== Installing required skills ===")
 
 	skillsDir := paths.Resolve(deps.Home).SkillsDir
-	report, err := skills.Run(ctx, deps.Runner, deps.FS, skillsDir, skills.Options{})
+	report, err := skills.Run(ctx, deps.Runner, deps.FS, skillsDir, skills.Options{ConfirmSync: deps.ConfirmSync})
 	if err != nil {
 		fmt.Fprintf(deps.Stdout, "Warning: could not read the skills manifest: %v\n", err)
 		return
 	}
 
-	if report.Sync.Ran {
-		fmt.Fprintf(deps.Stdout, "-> gentle-ai %s\n", strings.Join(report.Plan.Sync.Args, " "))
-		if report.Sync.Failed {
-			fmt.Fprintln(deps.Stdout, "Warning: gentle-ai sync failed; the gentle-ai skills may still be missing.")
-			if report.Sync.Output != "" {
-				fmt.Fprintf(deps.Stdout, "  %s\n", strings.ReplaceAll(report.Sync.Output, "\n", "\n  "))
-			}
-		}
-	}
+	skills.RenderSync(deps.Stdout, report)
 	for _, remedy := range report.Plan.Remedies {
 		fmt.Fprintln(deps.Stdout, remedy)
 	}

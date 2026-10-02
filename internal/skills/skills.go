@@ -319,13 +319,15 @@ func Install(ctx context.Context, runner env.Runner, plan Plan) InstallResult {
 }
 
 // SyncResult is the outcome of the gentle-ai sync step: Ran is false when
-// nothing was missing (or DryRun), Failed is true for a launch error or a
+// nothing was missing, DryRun, or the sync was not confirmed (Declined is then
+// true only when a confirmation was asked and refused), Failed is true for a launch error or a
 // non-zero exit, and Output is then a short diagnostic (the launch error, or
 // the last lines of stderr, falling back to stdout); empty on success.
 type SyncResult struct {
-	Ran    bool
-	Failed bool
-	Output string
+	Ran      bool
+	Declined bool
+	Failed   bool
+	Output   string
 }
 
 // syncDiagnosticLines is how many trailing output lines Sync keeps.

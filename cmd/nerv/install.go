@@ -65,6 +65,7 @@ func runInstall(args []string, stdout, stderr io.Writer, opts options) int {
 		Runner:       opts.Runner,
 		Now:          opts.Now,
 		LookPath:     opts.LookPath,
+		ConfirmSync:  syncConfirmer(opts, stdout),
 		Stdout:       stdout,
 	}
 
