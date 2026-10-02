@@ -11,8 +11,9 @@ import (
 
 // Uninstall removes NERV's settings.json registration (backed up and
 // written atomically, like Install's own registration step), tolerantly
-// runs "claude plugin uninstall nerv@nerv", and removes the materialized
-// <home>/.nerv/marketplace directory.
+// runs "claude plugin uninstall nerv@nerv" and "claude plugin marketplace
+// remove nerv", and removes the materialized <home>/.nerv/marketplace
+// directory.
 func Uninstall(ctx context.Context, deps Deps) error {
 	path := settingsPath(deps)
 	previous, settings, err := loadOrInitSettings(path)
@@ -39,6 +40,11 @@ func Uninstall(ctx context.Context, deps Deps) error {
 	fmt.Fprintln(deps.Stdout, "-> claude plugin uninstall nerv@nerv")
 	if _, err := cli.Uninstall(ctx, pluginID); err != nil {
 		return fmt.Errorf("claude plugin uninstall failed: %w", err)
+	}
+
+	fmt.Fprintf(deps.Stdout, "-> claude plugin marketplace remove %s\n", marketplaceName)
+	if _, err := cli.RemoveMarketplace(ctx, marketplaceName); err != nil {
+		return fmt.Errorf("claude plugin marketplace remove failed: %w", err)
 	}
 
 	marketplaceDir := paths.Resolve(deps.Home).Marketplace
