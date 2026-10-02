@@ -25,7 +25,6 @@ var (
 	groupOrder = []string{"magi", "pilots", "kaji-passes", "all"}
 )
 
-
 // menuOf builds a "1"->tokens[0], "2"->tokens[1], ... menu-choice map, the
 // shape runModelsSection's numbered prompts read from.
 func menuOf(tokens []string) map[string]string {
@@ -400,7 +399,6 @@ func printModelTable(out io.Writer, table []config.ModelRow, configPath string) 
 	}
 	fmt.Fprintln(out)
 }
-
 
 func printUnknownRoleTarget(out io.Writer, target string, allRoles []string) {
 	fmt.Fprintf(out, "Unknown role/group/number: %s. Valid roles: %s; groups: magi, pilots, kaji-passes, all.\n",
