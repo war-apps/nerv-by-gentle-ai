@@ -65,6 +65,11 @@ later.
   regression tests. `go test ./...`, `go vet ./...`, `gofmt -l .` clean;
   `tests/hook-session-start.test.sh` 12 passed, 0 failed.
 
+- 2026-10-02: native review of `c39b309..HEAD` (medium, reliability lens) approved and
+  acknowledged. Accepted R3-hyuga-unknown-provider-rule: `agents/hyuga.md` now lists the
+  unknown-provider case among its `blocked` statuses.
+
 ## Next step
 
-Native review, then PR.
+PR to `develop`; after the merge, refresh the plugin cache (also carries the role catalogue
+commands from #49).
