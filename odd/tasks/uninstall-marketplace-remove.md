@@ -62,6 +62,11 @@ in `~/.claude/plugins/known_marketplaces.json` pointing at the deleted `~/.nerv/
   failure (re-run already finishes the job), the task-doc note and RefreshCache ordering
   assertions from the earlier review.
 
+- 2026-10-02: second native review (lineage `review-7d95d74a622ae2cb`) approved and
+  acknowledged; stale scope wording fixed (`5ff4571`). Advisory not taken: uninstall stops if
+  the CLI ever changes its not-found wording (fails loudly, re-run finishes); RefreshCache
+  ordering assertions.
+
 ## Next step
 
-PR to `develop`.
+Delivered as a PR to `develop`; after the merge, nothing else is pending for this feature.
