@@ -65,8 +65,7 @@ changes confirmed — never more.
         text, e.g. `({PREFIX}-{id})`).
    - **tasks** (split across grouped questions, in this order — omit a
      later one whose condition doesn't hold):
-     1. General: `tasks.provider` (`teamwork` | `github-projects` |
-        `jira` | `none`), `tasks.ask_when_missing` (yes/no),
+     1. General: `tasks.provider` (`teamwork` | `none`), `tasks.ask_when_missing` (yes/no),
         `tasks.subtasks_per_wave` (yes/no), `tasks.timer_store` (free
         text path).
      2. General, continued: `tasks.rounding_minutes` (free text, e.g.

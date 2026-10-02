@@ -19,7 +19,7 @@ overwrites silently, and delegates gentle-ai's own bootstrap unchanged.
    `AskUserQuestion` when representable, plain-text fallback otherwise, per
    the Lossless Blocking Prompts contract). Do not ask about a key already
    resolved from either file. Candidate groups:
-   - **Task provider**: `teamwork` | `github-projects` | `jira` | `none`.
+   - **Task provider**: `teamwork` | `none`.
      Omit this group entirely if `tasks.provider` already resolves.
    - **Teamwork project/tasklist** (only when the chosen or already-
      resolved provider is `teamwork` and `tasks.providers.teamwork.

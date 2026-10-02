@@ -37,10 +37,10 @@ const fixtureLF = "" +
 	"  base_branch: develop              # default base for the worktree offer\n" +
 	"  worktree: ask                     # ask | always | never\n" +
 	`  worktree_pattern: ".claude/worktrees/{slug}"   # where task worktrees are created; {slug} {branch} {prefix} {id}` + "\n" +
-	`  branch_pattern: "feature/{prefix}-{id}-{slug}"   # prefix comes from the provider (tw, gh, jira)` + "\n" +
+	`  branch_pattern: "feature/{prefix}-{id}-{slug}"   # prefix comes from the provider (tw)` + "\n" +
 	`  commit_ref_pattern: "({PREFIX}-{id})"` + "\n" +
 	"tasks:\n" +
-	`  provider: teamwork                # teamwork | github-projects | jira | none ; "ask" when absent` + "\n" +
+	`  provider: teamwork                # teamwork | none ; "ask" when absent` + "\n" +
 	"  ask_when_missing: true            # preflight asks task + worktree + branch if no active task\n" +
 	"  subtasks_per_wave: false\n" +
 	"  timer_store: ~/.claude/work/timers.json\n" +
@@ -52,8 +52,6 @@ const fixtureLF = "" +
 	"      default_project_id: 1271726\n" +
 	"      default_tasklist_id: 3951970\n" +
 	"      stages: { inDev: DESARROLLO, testing: TESTING, implemented: IMPLEMENTA, blocked: BLOQUEA, canceled: CANCEL, pending: PENDIENTE, analysis: ANALISIS }\n" +
-	`    github-projects: { task_ref_prefix: gh, owner: "", project_number: 0 }    # later` + "\n" +
-	`    jira: { task_ref_prefix: jira, site: "", project_key: "" }               # later` + "\n" +
 	"artifacts:\n" +
 	"  commit: at-close                  # with-change | at-close | never (default: at-close)\n"
 

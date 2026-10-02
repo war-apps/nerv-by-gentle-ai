@@ -4,7 +4,7 @@ package configure_test
 // skills, critical_paths, artifacts, git, and tasks: containing
 // providers.teamwork (task_ref_prefix, assignee_id, default_project_id,
 // default_tasklist_id, stages, and a known_projects: list the wizard has no
-// field for), providers.github-projects/jira, a sources: list, and a
+// field for), a sources: list, and a
 // sources_howto: literal block nested under tasks: — plus trailing comments
 // on several scalar lines. Deliberately out of the documented key order, to
 // exercise the scan-based (not order-dependent) block functions. Group G's
@@ -26,10 +26,10 @@ const richFixtureLF = "" +
 	"git:\n" +
 	"  base_branch: develop              # default base for the worktree offer\n" +
 	"  worktree: ask                     # ask | always | never\n" +
-	"  branch_pattern: \"feature/{prefix}-{id}-{slug}\"   # prefix comes from the provider (tw, gh, jira)\n" +
+	"  branch_pattern: \"feature/{prefix}-{id}-{slug}\"   # prefix comes from the provider (tw)\n" +
 	"  commit_ref_pattern: \"({PREFIX}-{id})\"\n" +
 	"tasks:\n" +
-	"  provider: teamwork                # teamwork | github-projects | jira | none ; \"ask\" when absent\n" +
+	"  provider: teamwork                # teamwork | none ; \"ask\" when absent\n" +
 	"  ask_when_missing: true            # preflight asks task + worktree + branch if no active task\n" +
 	"  subtasks_per_wave: false\n" +
 	"  timer_store: ~/.claude/work/timers.json\n" +
@@ -54,8 +54,6 @@ const richFixtureLF = "" +
 	"        - id: 1500000\n" +
 	"          name: Legacy\n" +
 	"          note: \"read-only archive, do not assign\"\n" +
-	"    github-projects: { task_ref_prefix: gh, owner: \"\", project_number: 0 }    # later\n" +
-	"    jira: { task_ref_prefix: jira, site: \"\", project_key: \"\" }               # later\n" +
 	"  sources:                          # extra work sources for listings (replaces ~/.claude/work/sources.md)\n" +
 	"    - name: erp-proveedores\n" +
 	"      type: google-sheets\n" +
@@ -84,10 +82,10 @@ const inlineFixtureLF = "" +
 	"git:\n" +
 	"  base_branch: develop              # default base for the worktree offer\n" +
 	"  worktree: ask                     # ask | always | never\n" +
-	"  branch_pattern: \"feature/{prefix}-{id}-{slug}\"   # prefix comes from the provider (tw, gh, jira)\n" +
+	"  branch_pattern: \"feature/{prefix}-{id}-{slug}\"   # prefix comes from the provider (tw)\n" +
 	"  commit_ref_pattern: \"({PREFIX}-{id})\"\n" +
 	"tasks:\n" +
-	"  provider: teamwork                # teamwork | github-projects | jira | none ; \"ask\" when absent\n" +
+	"  provider: teamwork                # teamwork | none ; \"ask\" when absent\n" +
 	"  ask_when_missing: true            # preflight asks task + worktree + branch if no active task\n" +
 	"  subtasks_per_wave: false\n" +
 	"  timer_store: ~/.claude/work/timers.json\n" +
@@ -98,9 +96,7 @@ const inlineFixtureLF = "" +
 	"      assignee_id: 686035           # user scope\n" +
 	"      default_project_id: 1271726\n" +
 	"      default_tasklist_id: 3951970\n" +
-	"      stages: { inDev: DESARROLLO, testing: TESTING, implemented: IMPLEMENTA, blocked: BLOQUEA, canceled: CANCEL, pending: PENDIENTE, analysis: ANALISIS }\n" +
-	"    github-projects: { task_ref_prefix: gh, owner: \"\", project_number: 0 }    # later\n" +
-	"    jira: { task_ref_prefix: jira, site: \"\", project_key: \"\" }               # later\n"
+	"      stages: { inDev: DESARROLLO, testing: TESTING, implemented: IMPLEMENTA, blocked: BLOQUEA, canceled: CANCEL, pending: PENDIENTE, analysis: ANALISIS }\n"
 
 // diffLineCount counts how many lines differ (position by position, after
 // splitting on "\n") between a and b — the same byte-exact, order-sensitive

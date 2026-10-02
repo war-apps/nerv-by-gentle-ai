@@ -176,7 +176,7 @@ func TestAllowedValues(t *testing.T) {
 		want []string
 	}{
 		{"git.worktree", []string{"ask", "always", "never"}},
-		{"tasks.provider", []string{"teamwork", "github-projects", "jira", "none"}},
+		{"tasks.provider", []string{"teamwork", "none"}},
 		{"tasks.ask_when_missing", []string{"true", "false"}},
 		{"tasks.subtasks_per_wave", []string{"true", "false"}},
 		{"artifacts.commit", []string{"with-change", "at-close", "never"}},
@@ -195,4 +195,19 @@ func TestAllowedValues(t *testing.T) {
 			t.Errorf("expected git.base_branch to have no enumerated allowed values")
 		}
 	})
+}
+
+func TestValidateManagedValue_RemovedTaskProviders(t *testing.T) {
+	for _, value := range []string{"github-projects", "jira"} {
+		t.Run(value, func(t *testing.T) {
+			if err := config.ValidateManagedValue("tasks.provider", value); err == nil {
+				t.Errorf("ValidateManagedValue(tasks.provider, %q) = nil, want an error", value)
+			}
+		})
+	}
+	for _, value := range []string{"teamwork", "none"} {
+		if err := config.ValidateManagedValue("tasks.provider", value); err != nil {
+			t.Errorf("ValidateManagedValue(tasks.provider, %q) = %v, want nil", value, err)
+		}
+	}
 }

@@ -30,8 +30,11 @@ port operation or a provider file directly:
 Resolve the provider from the merged configuration (user `~/.claude/nerv/nerv.yaml`
 overridden key-by-key by project `<repo>/.nerv/nerv.yaml`) at `tasks.provider`:
 
-- A concrete value (`teamwork`, `github-projects`, `jira`) selects the
-  adapter file `providers/<value>.md`. Hyuga loads exactly that one file.
+- A concrete value (`teamwork`) selects the adapter file
+  `providers/<value>.md`. Hyuga loads exactly that one file. When the value
+  names a provider with no adapter file, Hyuga returns `status: blocked`
+  naming that value and the allowed ones (`teamwork`, `none`); it never
+  falls back to another provider.
 - `none` means no tracker calls of any kind: no port operation runs, and no
   local timer is started or stopped either — `start`/`stop`/`logTime` are
   timer-and-tracker operations together (see §5), so `none` disables the
@@ -142,3 +145,17 @@ the selected adapter marks `not_implemented`, Hyuga returns `status: blocked`
 naming that exact operation and provider, and stops — it never substitutes a
 different op, silently skips the step, or guesses at the provider's native
 API.
+
+## 8. Adding a provider
+
+The port is open to new trackers. To add one:
+
+1. Write the adapter file `providers/<name>.md`. It implements every
+   operation in §3 and §4 or declares each missing one `not_implemented`, as
+   §7 requires, and states its `task_ref_prefix` (the `{PREFIX}` in
+   `{PREFIX}-{id}` task refs).
+2. Add `<name>` to `AllowedValues("tasks.provider")` in
+   `internal/config/catalogue.go` and to its test in
+   `internal/config/catalogue_test.go`.
+3. Document its `tasks.providers.<name>.*` sub-keys in
+   `docs/configuration.md`.
