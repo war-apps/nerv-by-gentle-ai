@@ -115,7 +115,18 @@ Engram mirror: topic `odd/skills-gentle-ai-sync/tasks`.
   acknowledged. Advisory, not taken: a test for the wizard's confirmation-input-closed path, and
   a possible second sync prompt in the wizard after declining in the `nerv install` skills step.
 
+- 2026-10-02: delivery — user chose to split the ~1,340-line branch; chain strategy "stacked to
+  develop". Slices (cherry-picked from `feature/skills-gentle-ai-sync`, final tree identical,
+  every slice green on `go test`/`go vet`/`gofmt`):
+  1. `feature/skills-sync-1-herdr-refresh` → `develop`: plan, T1 RefreshCache tests, T3 herdr
+     focus (~95 lines).
+  2. `feature/skills-sync-2-sync-core` → slice 1: T2 RED/GREEN and smoke test (~408 lines).
+  3. `feature/skills-sync-3-sync-hardening` → slice 2: T4 RED/GREEN (~243 lines).
+  4. `feature/skills-sync-4-sync-confirm` → slice 3: T5 RED/GREEN, `--json` fix (~730 lines;
+     `size:exception` requested — the RED commit alone is 479 lines of tests and splitting RED
+     from GREEN would break the TDD unit).
+
 ## Next step
 
-PR to `develop`; after the merge, refresh the plugin cache so the herdr focus change reaches the
-installed plugin.
+Merge the chain in order, retargeting each child to `develop` when its parent merges; after the
+last merge, refresh the plugin cache so the herdr focus change reaches the installed plugin.
