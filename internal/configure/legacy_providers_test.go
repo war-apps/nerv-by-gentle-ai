@@ -83,7 +83,6 @@ const (
 	removedGithub   = "tasks.providers.github-projects"
 	removedJira     = "tasks.providers.jira"
 	removedProvider = "tasks.provider (jira)"
-	jiraProviderRow = "  provider: jira                    # teamwork | none\n"
 )
 
 // withoutLegacyBlocks is fixture with the legacy sub-blocks removed.
@@ -96,7 +95,17 @@ func withoutLegacyBlocks(t *testing.T, fixture string) string {
 // legacy sub-blocks removed: what any write must leave behind.
 func withoutLegacyProvider(t *testing.T, fixture string) string {
 	t.Helper()
-	return replaceOnce(t, withoutLegacyBlocks(t, fixture), jiraProviderRow, "")
+	lines := strings.SplitAfter(withoutLegacyBlocks(t, fixture), "\n")
+	kept := make([]string, 0, len(lines))
+	for _, l := range lines {
+		if !strings.HasPrefix(l, "  provider: jira") {
+			kept = append(kept, l)
+		}
+	}
+	if len(kept) != len(lines)-1 {
+		t.Fatalf("want exactly one provider: jira line in the fixture")
+	}
+	return strings.Join(kept, "")
 }
 
 func assertRemoved(t *testing.T, got []string, want ...string) {

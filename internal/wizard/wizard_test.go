@@ -1100,8 +1100,7 @@ func TestRun_LegacyProviderSettings_AreStrippedOnSave(t *testing.T) {
 			cleaned := strings.Replace(fixture, legacyProviderLines, "", 1)
 			wantLine := "Removed legacy task provider settings: tasks.providers.github-projects, tasks.providers.jira"
 			if provider == "jira" {
-				cleaned = strings.Replace(cleaned, "  provider: jira                    #", "\x00", 1)
-				cleaned = removeLineWith(cleaned, "\x00")
+				cleaned = removeLineWith(cleaned, "  provider: jira")
 				wantLine = "Removed legacy task provider settings: tasks.provider (jira), tasks.providers.github-projects, tasks.providers.jira"
 			}
 			if !strings.Contains(out.String(), wantLine) {

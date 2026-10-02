@@ -223,6 +223,9 @@ func runUserConfigSection(deps Deps, paths configure.Paths, s *session, out io.W
 	if setResult.Changed {
 		fmt.Fprintf(out, "Written: %s\n", paths.Config)
 	}
+	if line := configure.RemovedLine(setResult.Removed); line != "" {
+		fmt.Fprintln(out, line)
+	}
 	result.Changed = setResult.Changed
 	return result, nil
 }

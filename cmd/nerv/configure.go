@@ -246,6 +246,9 @@ func emitMutation(stdout io.Writer, result configure.Result, err error, jsonOut 
 			fmt.Fprintf(stdout, "  %s\n", w)
 		}
 	}
+	if line := configure.RemovedLine(result.Removed); line != "" {
+		fmt.Fprintln(stdout, line)
+	}
 	for _, w := range result.Warnings {
 		fmt.Fprintf(stdout, "Warning: %s\n", w)
 	}
