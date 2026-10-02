@@ -294,8 +294,11 @@ Ikari appends the `tracker_event` log entry (`{op, taskRef, result}`)
 itself; logging it is not Hyuga's job.
 
 `status: blocked` when the adapter declares the requested op
-`not_implemented` (an operation the adapter has not built yet) or when `tasks.provider: none` and an op
-was requested anyway — Hyuga never silently no-ops a requested tracker
+`not_implemented` (an operation the adapter has not built yet), when
+`tasks.provider` names a provider with no adapter file under
+`nerv-tasks/providers/` (report the value and the allowed ones; never fall
+back to another provider), or when `tasks.provider: none` and an op was
+requested anyway — Hyuga never silently no-ops a requested tracker
 operation.
 
 ### Boundaries
