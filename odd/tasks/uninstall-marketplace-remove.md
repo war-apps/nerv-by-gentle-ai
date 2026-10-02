@@ -23,8 +23,9 @@ in `~/.claude/plugins/known_marketplaces.json` pointing at the deleted `~/.nerv/
 ## Scope and constraints
 
 - New `claude.PluginCLI.RemoveMarketplace(ctx, name)`: runs `claude plugin marketplace remove
-  <name>`; a non-zero exit whose output mentions "not found" (case-insensitively) is tolerated
-  as success; any other non-zero exit or launch failure is an error carrying the output.
+  <name>`; a non-zero exit whose output carries the CLI's own `Marketplace '<name>' not found`
+  message (case-insensitively) is tolerated as success; any other non-zero exit, including an
+  unrelated "not found", or a launch failure is an error carrying the output.
 - `install.Uninstall` calls it after `claude plugin uninstall nerv@nerv` and before removing the
   materialized directory; a real failure stops the uninstall with an error.
 - Out of scope: the other advisory findings of that review (go install hint, task-doc note,
