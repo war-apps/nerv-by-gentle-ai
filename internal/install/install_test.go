@@ -440,3 +440,28 @@ func TestRefreshCache_MarketplaceAddFailure_StopsBeforeInstall(t *testing.T) {
 		t.Errorf("claude plugin install ran despite the marketplace add failure; calls: %s", strings.Join(lines, " | "))
 	}
 }
+
+func TestInstall_SkillsStep_RunsAndReportsGentleAISync(t *testing.T) {
+	home := t.TempDir()
+	runner := baseRunner()
+	seedInstalledPlugins(t, home, pluginVersion(t))
+	var stdout bytes.Buffer
+	deps := install.Deps{Home: home, FS: nerv.PluginFS(), Runner: runner, Now: fixedNow, LookPath: lookPathAll, Stdout: &stdout}
+
+	if err := install.Install(context.Background(), deps, install.Options{}); err != nil {
+		t.Fatalf("Install() error = %v; output:\n%s", err, stdout.String())
+	}
+
+	syncCalls := 0
+	for _, l := range callLines(runner) {
+		if strings.HasPrefix(l, "gentle-ai sync --agents claude-code --skills ") {
+			syncCalls++
+		}
+	}
+	if syncCalls != 1 {
+		t.Errorf("gentle-ai sync ran %d times, want once; calls: %s", syncCalls, strings.Join(callLines(runner), " | "))
+	}
+	if !strings.Contains(stdout.String(), "-> gentle-ai sync --agents claude-code --skills ") {
+		t.Errorf("output lacks the sync line:\n%s", stdout.String())
+	}
+}

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"strings"
 
 	"github.com/war-apps/nerv-by-gentle-ai/internal/claude"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/engram"
@@ -218,6 +219,12 @@ func installSkills(ctx context.Context, deps Deps) {
 		return
 	}
 
+	if report.Sync.Ran {
+		fmt.Fprintf(deps.Stdout, "-> gentle-ai %s\n", strings.Join(report.Plan.Sync.Args, " "))
+		if report.Sync.Failed {
+			fmt.Fprintln(deps.Stdout, "Warning: gentle-ai sync failed; the gentle-ai skills may still be missing.")
+		}
+	}
 	for _, remedy := range report.Plan.Remedies {
 		fmt.Fprintln(deps.Stdout, remedy)
 	}

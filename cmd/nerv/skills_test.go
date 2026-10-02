@@ -124,3 +124,23 @@ func TestRunSkills_HomeFlag_NoLongerAccepted(t *testing.T) {
 		t.Fatalf("exit code = %d, want 2 (a rejected unknown flag); stdout=%q", code, stdout.String())
 	}
 }
+
+func TestRunSkills_DryRun_PrintsOneGentleAISyncLine(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	home := t.TempDir()
+
+	code := run([]string{"skills", "--dry-run"}, &stdout, &stderr, testOptions(home))
+
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0 (stderr=%q)", code, stderr.String())
+	}
+	syncLines := 0
+	for _, line := range strings.Split(stdout.String(), "\n") {
+		if strings.HasPrefix(line, "DryRun: gentle-ai sync --agents claude-code --skills ") {
+			syncLines++
+		}
+	}
+	if syncLines != 1 {
+		t.Errorf("sync lines = %d, want 1; stdout:\n%s", syncLines, stdout.String())
+	}
+}

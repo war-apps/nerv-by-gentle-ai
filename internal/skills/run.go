@@ -13,17 +13,19 @@ type Options struct {
 	// skill in the manifest.
 	Only []string
 	// DryRun computes the install plan (and every status) without
-	// actually running any "npx skills add" install.
+	// actually running any "npx skills add" install or "gentle-ai sync".
 	DryRun bool
 }
 
 // Report is Run's result: the computed status of every processed skill,
 // the derived install plan, and (unless DryRun) the outcome of actually
-// running it. Result is the zero InstallResult when DryRun is true.
+// running it. Result and Sync are zero when DryRun is true. After a sync,
+// Plan.Remedies lists only the gentle-ai skills still missing.
 type Report struct {
 	Statuses []SkillStatus
 	Plan     Plan
 	Result   InstallResult
+	Sync     SyncResult
 }
 
 // ErrManifest wraps a failure to load or read the skills manifest, so
@@ -40,7 +42,9 @@ func (e *ErrManifest) Unwrap() error { return e.Err }
 // install", the setup wizard's required-skills offer, and "nerv skills":
 // load the manifest, optionally narrow it to opts.Only, compute every
 // entry's status against skillsDir, derive the install plan, and (unless
-// opts.DryRun) actually run it. Every caller renders Report into its own
+// opts.DryRun) actually run it: the npx installs, then one gentle-ai sync
+// for the missing gentle-ai skills, whose remedies survive only for the
+// skills still missing afterwards. Every caller renders Report into its own
 // output shape.
 func Run(ctx context.Context, runner env.Runner, fsys fs.FS, skillsDir string, opts Options) (Report, error) {
 	manifest, err := LoadManifestFS(fsys)
@@ -65,5 +69,9 @@ func Run(ctx context.Context, runner env.Runner, fsys fs.FS, skillsDir string, o
 	}
 
 	report.Result = Install(ctx, runner, plan)
+	report.Sync = Sync(ctx, runner, plan.Sync)
+	if report.Sync.Ran {
+		report.Plan.Remedies = InstallPlan(Status(manifest, skillsDir)).Remedies
+	}
 	return report, nil
 }
