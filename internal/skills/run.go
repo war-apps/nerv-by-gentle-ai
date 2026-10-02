@@ -20,7 +20,7 @@ type Options struct {
 // Report is Run's result: the computed status of every processed skill,
 // the derived install plan, and (unless DryRun) the outcome of actually
 // running it. Result and Sync are zero when DryRun is true. After a sync,
-// Plan.Remedies lists only the gentle-ai skills still missing.
+// the gentle-ai Statuses and Plan.Remedies reflect only what is still missing.
 type Report struct {
 	Statuses []SkillStatus
 	Plan     Plan
@@ -71,7 +71,20 @@ func Run(ctx context.Context, runner env.Runner, fsys fs.FS, skillsDir string, o
 	report.Result = Install(ctx, runner, plan)
 	report.Sync = Sync(ctx, runner, plan.Sync)
 	if report.Sync.Ran {
-		report.Plan.Remedies = InstallPlan(Status(manifest, skillsDir)).Remedies
+		refreshGentleAI(&report, Status(manifest, skillsDir))
 	}
 	return report, nil
+}
+
+// refreshGentleAI updates the gentle-ai entries of report.Statuses from fresh
+// (a Status recomputed after the sync) and recomputes Plan.Remedies, so the
+// report never shows a synced skill as missing. External entries keep their
+// pre-install status.
+func refreshGentleAI(report *Report, fresh []SkillStatus) {
+	for i, s := range report.Statuses {
+		if s.Kind == KindGentleAI {
+			report.Statuses[i] = fresh[i]
+		}
+	}
+	report.Plan.Remedies = InstallPlan(fresh).Remedies
 }

@@ -38,6 +38,12 @@ Engram mirror: topic `odd/skills-gentle-ai-sync/tasks`.
 
 ## Tasks
 
+- [x] T3 (added 2026-10-02, user request) herdr auto-open focuses the new worktree's workspace:
+  `--focus` instead of `--no-focus`, plus `herdr workspace focus <workspace_id>` when
+  `already_open` (route: direct inline, one procedure file).
+- [x] T4 (added 2026-10-02, review hardening) refresh gentle-ai statuses after the sync, surface
+  the sync diagnostic, test caller rendering (route: delegated direct).
+
 - [x] T1 RefreshCache tests assert marketplace add before uninstall/install and fail-stop on an
   add failure (route: delegated direct, part of the same writer; test-only, characterization of
   existing behavior, so GREEN on first run is expected and recorded).
@@ -70,6 +76,20 @@ Engram mirror: topic `odd/skills-gentle-ai-sync/tasks`.
   now exists. Side effect, as expected from gentle-ai sync: it rewrote its managed files
   (e.g. `~/.claude/CLAUDE.md`).
 
+- 2026-10-02: native review of `49df98b..1da3e5e` (medium, reliability lens, lineage
+  `review-709bffd4b1c13f97` slice) approved and acknowledged; warnings accepted as T4: stale
+  `Report.Statuses` after sync, discarded sync output, untested warning rendering (the `Only`
+  remedy recompute was already correct; an assertion now proves it).
+- 2026-10-02: T3 `bf50ab2` — `plugin/skills/nerv-tasks/providers/teamwork/procedures/start.md`
+  step g. Verified flags with `herdr worktree open --help` (`--focus`, `--no-focus`) and
+  `herdr workspace focus --help`.
+- 2026-10-02: T4 RED `8b35022` (observed: `report.Sync.Output undefined`; caller warnings without
+  a diagnostic line), GREEN `ea6eb28`: `refreshGentleAI` refreshes gentle-ai statuses and remedies;
+  `SyncResult.Output` (last two non-empty stderr/stdout lines or the launch error) printed by the
+  three callers. Wizard rendering untested (its tests skip skills). `go test ./...`,
+  `go vet ./...`, `gofmt -l .` clean.
+
 ## Next step
 
-Native review, then PR to `develop`.
+Native review of the branch, then PR to `develop`; after the merge, refresh the plugin cache so
+the herdr focus change reaches the installed plugin.
