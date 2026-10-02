@@ -51,6 +51,14 @@ Engram mirror: topic `odd/skills-gentle-ai-sync/tasks`.
   writer trigger: `internal/skills`, `internal/install`, `internal/wizard`, `cmd/nerv` and tests).
   RED commit, then GREEN commit.
 
+- [ ] T5 (added 2026-10-02, review R1-001/R4-001 + user decision "Preguntar si es interactivo")
+  the sync asks first: interactive callers (stdin is a terminal: `nerv install`, the wizard,
+  `nerv skills`) confirm before running it, naming the skills and warning that gentle-ai sync
+  rewrites its managed files (e.g. `~/.claude/CLAUDE.md`); without a terminal it never runs and
+  the remedy stays. Also: one shared renderer for the sync result (R2-001), a wizard rendering
+  test (R3), document the positional refresh assumption (R2-002), and docs describe the prompt
+  and its side effect (R3-sync-side-effects-undocumented). Route: delegated direct.
+
 ## Acceptance criteria
 
 - Tests prove: sync runs once with the exact args only when gentle-ai skills are missing; a skill
@@ -89,7 +97,11 @@ Engram mirror: topic `odd/skills-gentle-ai-sync/tasks`.
   three callers. Wizard rendering untested (its tests skip skills). `go test ./...`,
   `go vet ./...`, `gofmt -l .` clean.
 
+- 2026-10-02: native review of the branch (high, four lenses, lineage `review-bb8c0dd3ef748cc3`)
+  approved and acknowledged. R1/R4 flagged the unprompted sync rewriting gentle-ai managed user
+  files; the user chose "ask when interactive" → T5.
+
 ## Next step
 
-Native review of the branch, then PR to `develop`; after the merge, refresh the plugin cache so
+T5, then PR to `develop`; after the merge, refresh the plugin cache so
 the herdr focus change reaches the installed plugin.
