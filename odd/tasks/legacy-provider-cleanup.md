@@ -66,6 +66,18 @@ When a `nerv.yaml` (user or project scope) still carries the task providers remo
 - 2026-10-02: branch created, document written.
 - 2026-10-02: T1 and T2 done; `go test ./...`, `go vet ./...`, `gofmt -l .` clean. A no-op write
   (nothing to change) still touches nothing, so a legacy file is cleaned on its next real write.
+- 2026-10-02: native review accepted five in-scope findings (R3): preceding-block comment
+  swallowed, non-block value forms orphaning child lines, one-line flow `providers` map not
+  stripped, no-op save writing for cleanup, `removed` JSON field unasserted. Route: delegated
+  direct (one writer). RED `e03545e`: 13 new `TestStripRemovedTaskProviders` cases and
+  `TestStore_Save_UnchangedLegacyDocumentIsNoop` failing (the two new cmd tests passed already:
+  they pin existing behavior). GREEN `bdb2fc0`: only comment lines at the key's own indentation
+  directly above go with it; a removed key drops every deeper-indented line (block scalar,
+  anchor, tag, plain continuation), keeping the trailing separating blank; a one-line flow
+  `providers` map loses its removed entries with their separators; `Save` writes only when the
+  requested document differs from the original, then strips. Documented limit: a multi-line flow
+  `providers` map is left untouched and reports nothing (code comment and test).
+  `go test ./...`, `go vet ./...`, `gofmt -l .` clean.
 
 ## Next step
 
