@@ -41,10 +41,11 @@ later.
 
 ## Tasks
 
-- [ ] T1 Go: allowed values `teamwork | none`, tests and fixtures, help text (route: delegated
+- [x] T1 Go: allowed values `teamwork | none`, tests and fixtures, help text (route: delegated
   direct). RED then GREEN, the GREEN commit is `feat!:` with the footer.
-- [ ] T2 Plugin and docs: delete the stubs, update every mention, add "Adding a provider" and
-  the unknown-provider rule (route: delegated direct).
+  Commits `a275482` (RED), `cdf8cc7` (GREEN).
+- [x] T2 Plugin and docs: delete the stubs, update every mention, add "Adding a provider" and
+  the unknown-provider rule (route: delegated direct). Commit `7adab9b`.
 
 ## Acceptance criteria
 
@@ -56,7 +57,14 @@ later.
 ## Progress
 
 - 2026-10-02: branch created, document written.
+- 2026-10-02: T1 RED observed (`go test ./...`): `TestAllowedValues/tasks.provider` got
+  `[teamwork github-projects jira none]`, want `[teamwork none]`;
+  `TestValidateManagedValue_RemovedTaskProviders` and
+  `TestInitRepo_RemovedStubProviders_Refused` failed (no error for the removed values). GREEN:
+  all packages pass. T2 done; remaining `github-projects`/`jira` mentions are only the two
+  regression tests. `go test ./...`, `go vet ./...`, `gofmt -l .` clean;
+  `tests/hook-session-start.test.sh` 12 passed, 0 failed.
 
 ## Next step
 
-T1, T2.
+Native review, then PR.
