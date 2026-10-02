@@ -33,13 +33,13 @@ User request 2026-10-02: "ejecuta las revisiones sugeridas". Open advisories:
 
 ## Tasks
 
-- [ ] T1 Guard tests: docs roles table (purpose, gentle-ai equivalent, group, default
+- [x] T1 Guard tests: docs roles table (purpose, gentle-ai equivalent, group, default
   model/effort from agent frontmatter) and the `/nerv:configure` group legend match the
-  catalogue; `GroupDescriptions` member names match `Groups` (route: delegated direct).
-- [ ] T2 Wizard: make the models-table comment accurate about column widths (route: delegated
-  direct, same writer).
-- [ ] T3 Wizard test: reach the models section by anchoring on its prompt instead of a fixed
-  count of blank answers (route: delegated direct, same writer).
+  catalogue; `GroupDescriptions` member names match `Groups` (route: delegated direct). Commit `268771c`.
+- [x] T2 Wizard: make the models-table comment accurate about column widths (route: delegated
+  direct, same writer). Commit `2ba0a77`.
+- [x] T3 Wizard test: reach the models section by anchoring on its prompt instead of a fixed
+  count of blank answers (route: delegated direct, same writer). Commit `4f5e36f`.
 
 ## Acceptance criteria
 
@@ -50,7 +50,14 @@ User request 2026-10-02: "ejecuta las revisiones sugeridas". Open advisories:
 ## Progress
 
 - 2026-10-02: branch created, document written.
+- 2026-10-02: T1-T3 done by one delegated writer. Guards live in `role_catalogue_prose_test.go`
+  (root package). Bite evidence: breaking a group in the docs table, an equivalent, a default
+  model, adding a ghost row, changing a purpose, dropping a row, trimming a member from the
+  `configure.md` legend, and trimming one from `GroupDescriptions` each failed with a message
+  naming the role/group and field; all restored. T3: `modelsInput` answers blank until the
+  models offer is printed; an extra early prompt injected temporarily left all five
+  ModelsSection tests green. Existing prose was already consistent.
 
 ## Next step
 
-T1–T3.
+Native review, then PR.
