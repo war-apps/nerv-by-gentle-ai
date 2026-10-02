@@ -166,7 +166,11 @@ func TestSetModel_LegacyProviderBlocks_SurviveAddAndClear(t *testing.T) {
 	// comment), so only everything after it must match the original bytes.
 	const tail = "critical_paths:"
 	got := readFile(t, configPath)
-	if !strings.Contains(got, tail) || got[strings.Index(got, tail):] != fixture[strings.Index(fixture, tail):] {
+	wantAt, gotAt := strings.Index(fixture, tail), strings.Index(got, tail)
+	if wantAt < 0 {
+		t.Fatalf("fixture has no %q to compare from", tail)
+	}
+	if gotAt < 0 || got[gotAt:] != fixture[wantAt:] {
 		t.Errorf("content after models: changed by set-model:\ngot:\n%s", got)
 	}
 }
