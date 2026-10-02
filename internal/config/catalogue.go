@@ -106,7 +106,7 @@ func AllowedValues(key string) (values []string, ok bool) {
 	case "git.worktree":
 		return []string{"ask", "always", "never"}, true
 	case "tasks.provider":
-		return []string{"teamwork", "github-projects", "jira", "none"}, true
+		return []string{"teamwork", "none"}, true
 	case "tasks.ask_when_missing":
 		return []string{"true", "false"}, true
 	case "tasks.subtasks_per_wave":
