@@ -47,3 +47,22 @@ func TestPrintModelTable_LongValuesKeepColumnsAligned(t *testing.T) {
 		}
 	}
 }
+
+// TestPrintModelTable_ShowsEveryPurposeInFull proves no catalogue purpose is
+// cut off: the column exists to explain each role, so a truncated purpose
+// defeats it.
+func TestPrintModelTable_ShowsEveryPurposeInFull(t *testing.T) {
+	var table []config.ModelRow
+	for _, role := range config.Roles().AllRoles {
+		table = append(table, config.ModelRow{Role: role, Model: "sonnet", Effort: "medium", Source: "default"})
+	}
+	var out bytes.Buffer
+	printModelTable(&out, table, "/tmp/nerv.yaml")
+
+	for _, role := range config.Roles().AllRoles {
+		purpose := config.Roles().Info[role].Purpose
+		if !strings.Contains(out.String(), purpose) {
+			t.Errorf("role %q purpose %q is not shown in full:\n%s", role, purpose, out.String())
+		}
+	}
+}
