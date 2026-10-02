@@ -320,11 +320,16 @@ func Install(ctx context.Context, runner env.Runner, plan Plan) InstallResult {
 
 // SyncResult is the outcome of the gentle-ai sync step: Ran is false when
 // nothing was missing (or DryRun), Failed is true for a launch error or a
-// non-zero exit.
+// non-zero exit, and Output is then a short diagnostic (the launch error, or
+// the last lines of stderr, falling back to stdout); empty on success.
 type SyncResult struct {
 	Ran    bool
 	Failed bool
+	Output string
 }
+
+// syncDiagnosticLines is how many trailing output lines Sync keeps.
+const syncDiagnosticLines = 2
 
 // Sync runs "gentle-ai <step.Args>" through runner. A nil step is a no-op.
 // A failure is only reported, never an error: the remedies stay in place.
@@ -332,6 +337,31 @@ func Sync(ctx context.Context, runner env.Runner, step *SyncStep) SyncResult {
 	if step == nil {
 		return SyncResult{}
 	}
-	_, _, exitCode, err := runner.Run(ctx, "gentle-ai", step.Args...)
-	return SyncResult{Ran: true, Failed: err != nil || exitCode != 0}
+	stdout, stderr, exitCode, err := runner.Run(ctx, "gentle-ai", step.Args...)
+	if err == nil && exitCode == 0 {
+		return SyncResult{Ran: true}
+	}
+	if err != nil {
+		return SyncResult{Ran: true, Failed: true, Output: err.Error()}
+	}
+	output := stderr
+	if strings.TrimSpace(output) == "" {
+		output = stdout
+	}
+	return SyncResult{Ran: true, Failed: true, Output: tailLines(output, syncDiagnosticLines)}
+}
+
+// tailLines returns the last n non-empty lines of text, trimmed and joined by
+// newlines.
+func tailLines(text string, n int) string {
+	var lines []string
+	for _, line := range strings.Split(text, "\n") {
+		if line = strings.TrimSpace(line); line != "" {
+			lines = append(lines, line)
+		}
+	}
+	if len(lines) > n {
+		lines = lines[len(lines)-n:]
+	}
+	return strings.Join(lines, "\n")
 }

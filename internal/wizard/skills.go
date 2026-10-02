@@ -40,6 +40,9 @@ func offerSkillsInstall(ctx context.Context, deps Deps, paths configure.Paths, s
 		fmt.Fprintf(out, "-> gentle-ai %s\n", strings.Join(report.Plan.Sync.Args, " "))
 		if report.Sync.Failed {
 			fmt.Fprintln(out, "Warning: gentle-ai sync failed; the gentle-ai skills may still be missing.")
+			if report.Sync.Output != "" {
+				fmt.Fprintf(out, "  %s\n", strings.ReplaceAll(report.Sync.Output, "\n", "\n  "))
+			}
 		}
 	}
 	for _, remedy := range report.Plan.Remedies {

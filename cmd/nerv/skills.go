@@ -94,6 +94,9 @@ func runSkills(args []string, stdout, stderr io.Writer, opts options) int {
 			fmt.Fprintf(stdout, "-> gentle-ai %s\n", strings.Join(report.Plan.Sync.Args, " "))
 			if report.Sync.Failed {
 				fmt.Fprintln(stdout, "Warning: gentle-ai sync failed; the gentle-ai skills may still be missing.")
+				if report.Sync.Output != "" {
+					fmt.Fprintf(stdout, "  %s\n", strings.ReplaceAll(report.Sync.Output, "\n", "\n  "))
+				}
 			}
 		}
 		for _, remedy := range report.Plan.Remedies {
