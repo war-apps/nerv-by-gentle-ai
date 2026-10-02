@@ -34,6 +34,8 @@ Engram mirror: topic `odd/marketplace-sync-and-rename/tasks` (project `nerv`).
   (`war-apps/nerv-gentle-ai`), the Go module path, the plugin and marketplace id `nerv@nerv`,
   the `nerv` binary, the `.nerv` directories, and the Engram project key `nerv`.
 - Dated history entries in `odd/tasks/*.md` are records of past work and keep their wording.
+- Superseded 2026-10-01 by `odd/tasks/rename-repository.md`: the repository slug, raw URLs and Go
+  module path did change afterwards, to `war-apps/nerv-by-gentle-ai` (PR #40).
 
 ## Tasks
 

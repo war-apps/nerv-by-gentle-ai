@@ -9,8 +9,8 @@ import (
 )
 
 // PluginCLI drives Claude Code's "claude plugin" subcommand — the
-// marketplace add plus the uninstall/install pair that refreshes the plugin
-// cache — through an injected env.Runner.
+// marketplace add/remove plus the uninstall/install pair that refreshes the
+// plugin cache — through an injected env.Runner.
 type PluginCLI struct {
 	Runner env.Runner
 }
@@ -27,6 +27,29 @@ func (c PluginCLI) AddMarketplace(ctx context.Context, source string) (output st
 	combined := stdout + stderr
 	if exitCode != 0 {
 		return combined, fmt.Errorf("claude plugin marketplace add %s exited with code %d: %s", source, exitCode, strings.TrimSpace(combined))
+	}
+	return combined, nil
+}
+
+// RemoveMarketplace runs "claude plugin marketplace remove <name>", dropping
+// the marketplace registration the CLI keeps in its own registry. A non-zero
+// exit whose combined output carries the CLI's own "Marketplace '<name>' not
+// found" message (case-insensitively) is tolerated and reported as success:
+// an already-absent registration is not a failure for our purposes. Any other
+// non-zero exit, including an unrelated "not found", or a launch failure, is
+// returned as an error carrying the CLI output.
+func (c PluginCLI) RemoveMarketplace(ctx context.Context, name string) (output string, err error) {
+	stdout, stderr, exitCode, err := c.Runner.Run(ctx, "claude", "plugin", "marketplace", "remove", name)
+	if err != nil {
+		return "", fmt.Errorf("claude plugin marketplace remove %s could not run: %w", name, err)
+	}
+	combined := stdout + stderr
+	if exitCode != 0 {
+		notFound := fmt.Sprintf("marketplace '%s' not found", strings.ToLower(name))
+		if strings.Contains(strings.ToLower(combined), notFound) {
+			return combined, nil
+		}
+		return combined, fmt.Errorf("claude plugin marketplace remove %s exited with code %d: %s", name, exitCode, strings.TrimSpace(combined))
 	}
 	return combined, nil
 }

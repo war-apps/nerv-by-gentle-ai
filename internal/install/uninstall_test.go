@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"slices"
+	"strings"
 	"testing"
 
 	nerv "github.com/war-apps/nerv-by-gentle-ai"
@@ -94,5 +96,65 @@ func TestUninstall_TolerantWhenNothingWasInstalled(t *testing.T) {
 
 	if err := install.Uninstall(context.Background(), deps); err != nil {
 		t.Fatalf("Uninstall() error = %v, want nil when nothing was installed", err)
+	}
+}
+
+func TestUninstall_RemovesMarketplaceRegistrationAfterPluginUninstall(t *testing.T) {
+	home := t.TempDir()
+	runner := &envtest.FakeRunner{}
+	var stdout bytes.Buffer
+	deps := install.Deps{Home: home, FS: nerv.PluginFS(), Runner: runner, Now: fixedNow, LookPath: lookPathAll, Stdout: &stdout}
+
+	if err := install.Uninstall(context.Background(), deps); err != nil {
+		t.Fatalf("Uninstall() error = %v", err)
+	}
+
+	commands := callLines(runner)
+	want := []string{
+		"claude plugin uninstall nerv@nerv",
+		"claude plugin marketplace remove nerv",
+	}
+	if !slices.Equal(commands, want) {
+		t.Errorf("commands = %q, want %q", commands, want)
+	}
+	if !strings.Contains(stdout.String(), "-> claude plugin marketplace remove nerv") {
+		t.Errorf("stdout = %q, want the marketplace remove step announced", stdout.String())
+	}
+}
+
+func TestUninstall_TolerantWhenMarketplaceNotRegistered(t *testing.T) {
+	home := t.TempDir()
+	runner := &envtest.FakeRunner{
+		Responses: map[string]envtest.Response{
+			"claude plugin marketplace remove nerv": {Stderr: "✘ Failed to remove marketplace: Marketplace 'nerv' not found\n", ExitCode: 1},
+		},
+	}
+	var stdout bytes.Buffer
+	deps := install.Deps{Home: home, FS: nerv.PluginFS(), Runner: runner, Now: fixedNow, LookPath: lookPathAll, Stdout: &stdout}
+
+	if err := install.Uninstall(context.Background(), deps); err != nil {
+		t.Fatalf("Uninstall() error = %v, want nil when the marketplace was not registered", err)
+	}
+}
+
+func TestUninstall_MarketplaceRemoveFailureErrors(t *testing.T) {
+	home := t.TempDir()
+	runner := &envtest.FakeRunner{
+		Responses: map[string]envtest.Response{
+			"claude plugin marketplace remove nerv": {Stderr: "boom\n", ExitCode: 1},
+		},
+	}
+	var stdout bytes.Buffer
+	deps := install.Deps{Home: home, FS: nerv.PluginFS(), Runner: runner, Now: fixedNow, LookPath: lookPathAll, Stdout: &stdout}
+
+	err := install.Uninstall(context.Background(), deps)
+	if err == nil {
+		t.Fatal("Uninstall() error = nil, want an error when marketplace remove fails")
+	}
+	if !strings.Contains(err.Error(), "boom") {
+		t.Errorf("error = %v, want it to mention the failure output", err)
+	}
+	if !strings.Contains(err.Error(), "nerv uninstall") {
+		t.Errorf("error = %v, want it to say that re-running nerv uninstall finishes the job", err)
 	}
 }
