@@ -76,6 +76,10 @@ type ModelRow struct {
 	Model  string `json:"model"`
 	Effort string `json:"effort"`
 	Source string `json:"source"`
+	// Purpose and GentleAIEquivalent come from config.Roles(); the
+	// equivalent is "" for a role with no gentle-ai counterpart.
+	Purpose            string `json:"purpose"`
+	GentleAIEquivalent string `json:"gentle_ai_equivalent"`
 }
 
 // SkillStatus is one entry of -Print's `skills_status` array.
@@ -133,9 +137,14 @@ func Print(deps Deps, paths Paths) (PrintResult, error) {
 	}
 
 	modelTable := config.ModelTableFromDocument(doc, modelDefaults, phaseAssignments)
+	roleInfo := config.Roles().Info
 	modelRows := make([]ModelRow, len(modelTable))
 	for i, r := range modelTable {
-		modelRows[i] = ModelRow{Role: r.Role, Model: r.Model, Effort: r.Effort, Source: r.Source}
+		info := roleInfo[r.Role]
+		modelRows[i] = ModelRow{
+			Role: r.Role, Model: r.Model, Effort: r.Effort, Source: r.Source,
+			Purpose: info.Purpose, GentleAIEquivalent: info.GentleAIEquivalent,
+		}
 	}
 
 	skillRows := []SkillStatus{}

@@ -6,9 +6,9 @@
   test plan and code disagree on; a scenario the user explicitly declined
   during the corner-case interview is a recorded decision, not a missing
   case, and will not surface as a finding.
-- **GitHub Projects and Jira are schema stubs.** `tasks.providers.
-  github-projects` and `tasks.providers.jira` parse and validate, but no
-  adapter dispatches against either API yet — only `teamwork` is wired.
+- **Teamwork is the only task-tracker adapter.** `tasks.provider` accepts
+  `teamwork` or `none`; adding another provider is documented under "Adding a
+  provider" in `plugin/skills/nerv-tasks/SKILL.md`.
 - **Interactive gates can't be driven by `claude -p`.** Non-interactive
   harness runs (`bench/journeys.md`'s default variant) pre-answer every
   blocking prompt in the launch context; the interactive variants exist

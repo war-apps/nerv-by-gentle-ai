@@ -1,0 +1,88 @@
+# Role catalogue: purpose and gentle-ai equivalent per role
+
+Branch `feature/role-catalogue` from `develop` (`0ca3de0`). Started 2026-10-02.
+Delivery strategy: `ask-on-risk`; chain strategy cached: stacked to `develop` (user choice
+2026-10-02). Forecast ~450 authored changed lines; slice if the running count exceeds ~400.
+TDD: strict (global setting). Runner: `go test ./...` (plus `gofmt -l .` and `go vet ./...`).
+Engram mirror: topic `odd/role-catalogue/tasks`.
+
+## Objective
+
+Every surface that shows or configures a NERV role's model/effort also says what the role does
+and which gentle-ai phase it is equivalent to, from one Go source of truth.
+
+## Problem / why
+
+- User report 2026-10-02: in the per-role model configuration it is not clear what each role
+  does nor its equivalent among gentle-ai's agents.
+- Exploration 2026-10-02: the wizard table/prompts, `nerv configure --print`/`--set-model`,
+  `/nerv:configure` and `/nerv:status` show bare role names; groups `magi`, `pilots`,
+  `kaji-passes` are unexplained; no role→phase equivalence exists anywhere; the only role
+  descriptions live in `docs/integration.md` (roles table) and agent frontmatter.
+  `config.Roles()` (`internal/config/models.go`) carries names and groups only.
+
+## Scope and constraints
+
+- Role catalogue (user-approved 2026-10-02), purpose in English, one line each:
+
+  | Role | Purpose | gentle-ai equivalent |
+  |---|---|---|
+  | misato | authors the plan (proposal, design, tasks) | sdd-design |
+  | ritsuko | intelligence, test planning, end-of-run docs | sdd-explore |
+  | hyuga | task criticality, dependency waves, tracking | sdd-tasks |
+  | melchor | MAGI vote: structure and security | jd-judge-b |
+  | balthasar | MAGI vote: software principles | jd-judge-a |
+  | casper | MAGI vote: process and documentation | jd-judge-a |
+  | fuyutsuki | governance veto on new skills/scripts/commands | — (none) |
+  | kaworu | writes the failing tests first | sdd-apply |
+  | shinji | backend pilot | sdd-apply |
+  | asuka | frontend pilot | sdd-apply |
+  | rei | data pilot (persistence, observability) | sdd-apply |
+  | toji | infrastructure pilot (CI/CD, containers) | sdd-apply |
+  | maya | quality gate (tests, lint, build) | sdd-verify |
+  | kaji | audit compiler | sdd-verify |
+  | kaji-security | audit pass: security | jd-judge-a |
+  | kaji-coverage | audit pass: tests vs test plan | sdd-verify |
+  | kaji-refuter | refutes severe audit findings | jd-judge-b |
+  | aoba | commits, PRs and run telemetry | sdd-archive |
+
+- Group legend: `magi` = the three voters, `pilots` = the implementers (kaworu, shinji, asuka,
+  rei, toji — confirm against the existing group definition), `kaji-passes` = the audit passes.
+- The equivalence is informational: it never changes resolution; `from:<phase>` stays explicit.
+- `--print` JSON gains additive fields only (existing consumers keep working).
+- A test guards that every role in the catalogue exists in `plugin/agents/` and vice versa.
+
+## Tasks
+
+- [x] T1 Catalogue in `internal/config`: per-role purpose and gentle-ai equivalent, group
+  descriptions, plus the agents-vs-catalogue guard test (route: delegated direct).
+  RED `acb255f` (build failed: `cat.Info`/`cat.GroupDescriptions` undefined), GREEN `d3caff8`.
+  `pilots` membership in code (rei, shinji, asuka, toji, kaworu) matches the legend.
+- [x] T2 Surfaces in Go: wizard table columns and group legend, phase picker suggesting the
+  role's equivalent first, `--print` fields (route: delegated direct).
+  RED `11cf7cf` (header lacks WHAT IT DOES/GENTLE-AI, no legend, picker lists jd-judge-a first,
+  `--print` rows lack `purpose`/`gentle_ai_equivalent`), GREEN `1d18ed1`.
+  Unknown-role error listing purposes: not done (not cheap; the message still lists roles).
+- [x] T3 Plugin and docs: `/nerv:configure`, `/nerv:status`, `docs/configuration.md` roles table,
+  `docs/integration.md` link (route: delegated direct). `d8ad94c`.
+
+## Acceptance criteria
+
+- Tests prove the catalogue covers exactly the plugin agents, the wizard shows purpose and
+  equivalent, the phase picker lists the equivalent first, and `--print` carries the new fields.
+- `go test ./...`, `go vet ./...`, `gofmt -l .` clean.
+
+## Progress
+
+- 2026-10-02: branch created, document written.
+- 2026-10-02: T1-T3 implemented; `go test ./...`, `go vet ./...`, `gofmt -l .` clean.
+
+- 2026-10-02: native review (medium, reliability lens) approved and acknowledged. Accepted
+  R3-model-column-narrowed: RED `test(wizard): keep the models table aligned…` (observed: a
+  custom model id and a long gentle-ai source shifted the purpose column), GREEN `fix(wizard):
+  size the models table columns to their longest value`. Not taken (advisory): a test pinning
+  the `docs/configuration.md` roles table to the Go catalogue.
+
+## Next step
+
+PR to `develop` (about 560 authored lines: ask for the delivery shape).

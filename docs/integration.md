@@ -249,6 +249,10 @@ repository policy. Ikari itself never enables or disables the RDD switch.
 
 ## Roles
 
+For each role's one-line purpose, its gentle-ai equivalent phase and its
+default model/effort, see the roles table in
+[Configuration](configuration.md#roles-and-their-gentle-ai-equivalents).
+
 Ikari is the main Claude Code session itself, not a spawnable agent — the
 sole spawner that launches every role below, classifies each request,
 relays every blocking gate to the user, and never delegates that
@@ -335,9 +339,10 @@ Nerv by Gentle-AI artifacts), `at-close` (default — artifacts land in one
 `never` (artifacts stay untracked; the user commits them manually, if
 ever).
 
-**Task tracker.** `tasks.provider` selects `teamwork` (implemented today),
-`github-projects` or `jira` (schema stubs only, not wired), or `none` (no
-tracker calls; the preflight still asks worktree/branch). Hyuga's
+**Task tracker.** `tasks.provider` selects `teamwork` (implemented today) or
+`none` (no tracker calls; the preflight still asks worktree/branch). Another
+provider can be added: see "Adding a provider" in
+`plugin/skills/nerv-tasks/SKILL.md`. Hyuga's
 `DISPATCH: tracker` drives create/start/moveStage/block/close/done against
 the configured provider. The 16 `/task:*` commands read the same single
 `nerv.yaml` config (user + project scope) instead of hardcoded values.

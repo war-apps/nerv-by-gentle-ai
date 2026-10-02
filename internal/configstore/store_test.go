@@ -3,6 +3,7 @@ package configstore_test
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -64,7 +65,7 @@ func TestStore_Save_NoopWhenBytesIdentical(t *testing.T) {
 	doc := config.Parse(string(original))
 	now := time.Date(2026, 9, 29, 12, 0, 0, 0, time.UTC)
 
-	written, backup, err := (configstore.Store{}).Save(path, doc, original, now)
+	written, backup, _, err := (configstore.Store{}).Save(path, doc, original, now)
 	if err != nil {
 		t.Fatalf("Save() error = %v", err)
 	}
@@ -109,7 +110,7 @@ func TestStore_Save_WritesTimestampedBackupAndNewContent(t *testing.T) {
 	doc.SetScalar("git.base_branch", "develop2")
 	now := time.Date(2026, 9, 29, 12, 34, 56, 0, time.UTC)
 
-	written, backup, err := (configstore.Store{}).Save(path, doc, original, now)
+	written, backup, _, err := (configstore.Store{}).Save(path, doc, original, now)
 	if err != nil {
 		t.Fatalf("Save() error = %v", err)
 	}
@@ -152,7 +153,7 @@ func TestStore_Save_CreatesParentDirWhenFileMissing(t *testing.T) {
 	doc := config.Parse("enabled: true\n")
 	now := time.Date(2026, 9, 29, 0, 0, 0, 0, time.UTC)
 
-	written, backup, err := (configstore.Store{}).Save(path, doc, nil, now)
+	written, backup, _, err := (configstore.Store{}).Save(path, doc, nil, now)
 	if err != nil {
 		t.Fatalf("Save() error = %v", err)
 	}
@@ -168,5 +169,120 @@ func TestStore_Save_CreatesParentDirWhenFileMissing(t *testing.T) {
 	}
 	if string(content) != "enabled: true\n" {
 		t.Errorf("content = %q, want %q", content, "enabled: true\n")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Store.Load -> edit -> Store.Save keeps the legacy provider sub-blocks
+// (github-projects, jira) that releases before their removal left in
+// tasks.providers, byte for byte, with the legacy tasks.provider value too.
+// ---------------------------------------------------------------------------
+
+func TestStore_Save_StripsRemovedProviderSettings(t *testing.T) {
+	const legacyBlocks = "" +
+		"    # legacy stubs, kept by hand\n" +
+		"    github-projects: { task_ref_prefix: gh, owner: \"\", project_number: 0 }    # later\n" +
+		"    jira: { task_ref_prefix: jira, site: \"\", project_key: \"\" }               # later\n"
+	original := "" +
+		"enabled: true\n" +
+		"git:\n" +
+		"  base_branch: develop              # default base\n" +
+		"tasks:\n" +
+		"  provider: jira                    # legacy value\n" +
+		"  providers:\n" +
+		"    teamwork:\n" +
+		"      task_ref_prefix: tw\n" +
+		legacyBlocks
+	path := filepath.Join(t.TempDir(), "nerv.yaml")
+	if err := os.WriteFile(path, []byte(original), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	store := configstore.Store{}
+	doc, _, err := store.Load(path)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	doc.SetScalar("git.base_branch", "develop2")
+	written, backup, removed, err := store.Save(path, doc, []byte(original), time.Date(2026, 9, 29, 12, 0, 0, 0, time.UTC))
+	if err != nil {
+		t.Fatalf("Save() error = %v", err)
+	}
+	if !written {
+		t.Fatal("written = false, want true")
+	}
+	wantRemoved := []string{"tasks.provider (jira)", "tasks.providers.github-projects", "tasks.providers.jira"}
+	if !slices.Equal(removed, wantRemoved) {
+		t.Errorf("removed = %v, want %v", removed, wantRemoved)
+	}
+
+	after, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := strings.Replace(original, "base_branch: develop              #", "base_branch: develop2              #", 1)
+	want = strings.Replace(want, "  provider: jira                    # legacy value\n", "", 1)
+	want = strings.Replace(want, legacyBlocks, "", 1)
+	if string(after) != want {
+		t.Errorf("Save changed more than base_branch and the removed providers:\ngot:\n%s\nwant:\n%s", after, want)
+	}
+
+	// The backup keeps the file as it was, legacy settings included.
+	backupContent, err := os.ReadFile(backup)
+	if err != nil {
+		t.Fatalf("backup not written: %v", err)
+	}
+	if string(backupContent) != original {
+		t.Errorf("backup content = %q, want the original", backupContent)
+	}
+}
+
+// A document with nothing to remove saves exactly as before and reports nothing.
+func TestStore_Save_CleanDocumentReportsNothingRemoved(t *testing.T) {
+	original := "enabled: true\ntasks:\n  provider: teamwork\n"
+	path := filepath.Join(t.TempDir(), "nerv.yaml")
+	if err := os.WriteFile(path, []byte(original), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	doc := config.Parse(original)
+	doc.SetScalar("tasks.provider", "none")
+
+	written, _, removed, err := (configstore.Store{}).Save(path, doc, []byte(original), time.Date(2026, 9, 29, 12, 0, 0, 0, time.UTC))
+	if err != nil {
+		t.Fatalf("Save() error = %v", err)
+	}
+	if !written || len(removed) != 0 {
+		t.Errorf("written = %v, removed = %v; want a plain write with nothing removed", written, removed)
+	}
+	after, _ := os.ReadFile(path)
+	if string(after) != "enabled: true\ntasks:\n  provider: none\n" {
+		t.Errorf("file = %q", after)
+	}
+}
+
+// A save whose requested content equals the original writes nothing, even when
+// the file carries legacy provider settings: cleanup rides on a real change.
+func TestStore_Save_UnchangedLegacyDocumentIsNoop(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "nerv.yaml")
+	original := "enabled: true\ntasks:\n  provider: jira\n  providers:\n    jira: { site: x }\n"
+	if err := os.WriteFile(path, []byte(original), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	written, backup, removed, err := (configstore.Store{}).Save(path, config.Parse(original), []byte(original), time.Date(2026, 9, 29, 12, 0, 0, 0, time.UTC))
+	if err != nil {
+		t.Fatalf("Save() error = %v", err)
+	}
+	if written || backup != "" || len(removed) != 0 {
+		t.Errorf("written = %v, backup = %q, removed = %v; want a silent no-op", written, backup, removed)
+	}
+	entries, _ := os.ReadDir(dir)
+	if len(entries) != 1 {
+		t.Errorf("dir has %d entries, want 1 (no backup)", len(entries))
+	}
+	after, _ := os.ReadFile(path)
+	if string(after) != original {
+		t.Errorf("file changed on a no-op Save(): %q", after)
 	}
 }

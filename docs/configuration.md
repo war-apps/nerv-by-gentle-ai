@@ -28,10 +28,10 @@ git:
   worktree_pattern: ".claude/worktrees/{slug}"   # where task worktrees are created; {slug} {branch} {prefix} {id} {repo}
                                                   # `nerv configure`'s wizard offers default / herdr / custom; herdr
                                                   # reuses its own [worktrees] directory as <directory>/{repo}/{slug}
-  branch_pattern: "feature/{prefix}-{id}-{slug}"   # prefix comes from the provider (tw, gh, jira)
+  branch_pattern: "feature/{prefix}-{id}-{slug}"   # prefix comes from the provider (tw)
   commit_ref_pattern: "({PREFIX}-{id})"
 tasks:
-  provider: teamwork                # teamwork | github-projects | jira | none ; "ask" when absent
+  provider: teamwork                # teamwork | none ; "ask" when absent
   ask_when_missing: true            # preflight asks task + worktree + branch if no active task
   subtasks_per_wave: false
   providers:                        # one block per provider, only the enabled one is required
@@ -41,8 +41,6 @@ tasks:
       project_id: 1271726           # project scope
       tasklist_id: 3951970          # project scope
       stages: { inDev: DESARROLLO, testing: TESTING, implemented: IMPLEMENTA, blocked: BLOQUEA, canceled: CANCEL, pending: PENDIENTE, analysis: ANALISIS }
-    github-projects: { task_ref_prefix: gh, owner: "", project_number: 0 }    # later
-    jira: { task_ref_prefix: jira, site: "", project_key: "" }               # later
   sources:                          # extra work sources for listings (replaces ~/.claude/work/sources.md)
     - { name: erp-proveedores, type: google-sheets, ... }
 ```
@@ -72,15 +70,49 @@ and warns when the cached agent frontmatter has drifted from it, so a
 pending `nerv apply-models` run is visible without inspecting the cache by
 hand.
 
+### Roles and their gentle-ai equivalents
+
+Every role below can be overridden under `models:`. The gentle-ai
+equivalent is the closest gentle-ai phase, a hint for `from:<phase>`; it is
+informational and never changes how a model is resolved. The same data is
+shown in the wizard's models table, in `/nerv:configure` and `/nerv:status`,
+and as `purpose` / `gentle_ai_equivalent` on each `nerv configure --print`
+models row. Roles are addressable by group: `magi` (the three voters),
+`pilots` (the implementers), `kaji-passes` (the audit passes) and `all`.
+
+| Role | Group | Purpose | gentle-ai equivalent | Default model / effort |
+|---|---|---|---|---|
+| `misato` | | authors the plan (proposal, design, tasks) | `sdd-design` | fable / high |
+| `ritsuko` | | intelligence, test planning, end-of-run docs | `sdd-explore` | opus / high |
+| `hyuga` | | task criticality, dependency waves, tracking | `sdd-tasks` | sonnet / medium |
+| `melchor` | `magi` | MAGI vote: structure and security | `jd-judge-b` | fable / high |
+| `balthasar` | `magi` | MAGI vote: software principles | `jd-judge-a` | sonnet / medium |
+| `casper` | `magi` | MAGI vote: process and documentation | `jd-judge-a` | sonnet / medium |
+| `fuyutsuki` | | governance veto on new skills/scripts/commands | none | sonnet / medium |
+| `kaworu` | `pilots` | writes the failing tests first | `sdd-apply` | sonnet / medium |
+| `shinji` | `pilots` | backend pilot | `sdd-apply` | sonnet / medium |
+| `asuka` | `pilots` | frontend pilot | `sdd-apply` | sonnet / medium |
+| `rei` | `pilots` | data pilot (persistence, observability) | `sdd-apply` | sonnet / medium |
+| `toji` | `pilots` | infrastructure pilot (CI/CD, containers) | `sdd-apply` | sonnet / medium |
+| `maya` | | quality gate (tests, lint, build) | `sdd-verify` | sonnet / medium |
+| `kaji` | `kaji-passes` | audit compiler | `sdd-verify` | opus / high |
+| `kaji-security` | `kaji-passes` | audit pass: security | `jd-judge-a` | sonnet / medium |
+| `kaji-coverage` | `kaji-passes` | audit pass: tests vs test plan | `sdd-verify` | sonnet / medium |
+| `kaji-refuter` | `kaji-passes` | refutes severe audit findings | `jd-judge-b` | sonnet / medium |
+| `aoba` | | commits, PRs and run telemetry | `sdd-archive` | sonnet / low |
+
 ### Configuring models and effort
 
 The wizard's **Models** section (see "Setup" in [the README](../README.md))
 prints the resolved table (role, model, effort, source — `override`,
-`gentle-ai:<phase>`, or `default`), then lets you edit it role by role, or
+`gentle-ai:<phase>`, or `default` — plus what each role does and its
+gentle-ai equivalent) and a legend for the group shortcuts, then lets you
+edit it role by role, or
 by group (`magi`, `pilots`, `kaji-passes`, `all`), until you type `done`.
 For each role it asks for a model (`sonnet`/`opus`/`haiku`/`fable`/
 `inherit`, a custom `claude-...` id, or `from:` a gentle-ai phase listed
-from `~/.gentle-ai/state.json`) and an effort (`low`/`medium`/`high`/
+from `~/.gentle-ai/state.json`, with the role's own equivalent listed
+first and marked `(equivalent)`) and an effort (`low`/`medium`/`high`/
 `xhigh`/`max`), with Enter keeping the current value; `reset <role|group>`
 clears an override back to the plugin default. Confirming writes the block
 to the user-scope `nerv.yaml`, after backing up the file to

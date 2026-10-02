@@ -96,9 +96,14 @@ Otherwise, exactly one mode flag is required:
 
 With --init-repo:
   --repo-base <branch>      Base branch override
-  --repo-provider <name>    Tasks provider override (teamwork | github-projects | jira | none)
+  --repo-provider <name>    Tasks provider override (teamwork | none)
   --repo-project-id <id>    Teamwork project id override
   --repo-tasklist-id <id>   Teamwork tasklist id override
+
+If `.nerv/nerv.yaml` already exists it is not recreated; `--init-repo` only
+removes the task providers that no longer exist (`github-projects`, `jira`)
+from it, after a `.bak-configure-<yyyyMMdd-HHmmss>` backup, and says so. A file
+with nothing to remove is left untouched.
 
 Other flags:
   --json                    Print the result as JSON (ignored by --print, which always does)

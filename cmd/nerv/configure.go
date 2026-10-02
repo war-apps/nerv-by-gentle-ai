@@ -38,7 +38,7 @@ Otherwise, exactly one mode flag is required:
 
 With --init-repo:
   --repo-base <branch>      Base branch override
-  --repo-provider <name>    Tasks provider override (teamwork | github-projects | jira | none)
+  --repo-provider <name>    Tasks provider override (teamwork | none)
   --repo-project-id <id>    Teamwork project id override
   --repo-tasklist-id <id>   Teamwork tasklist id override
 
@@ -245,6 +245,9 @@ func emitMutation(stdout io.Writer, result configure.Result, err error, jsonOut 
 		for _, w := range result.Written {
 			fmt.Fprintf(stdout, "  %s\n", w)
 		}
+	}
+	if line := configure.RemovedLine(result.Removed); line != "" {
+		fmt.Fprintln(stdout, line)
 	}
 	for _, w := range result.Warnings {
 		fmt.Fprintf(stdout, "Warning: %s\n", w)

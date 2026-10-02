@@ -28,10 +28,10 @@ artifacts:
 git:
   base_branch: develop              # default base for the worktree offer
   worktree: ask                     # ask | always | never
-  branch_pattern: "feature/{prefix}-{id}-{slug}"   # prefix comes from the provider (tw, gh, jira)
+  branch_pattern: "feature/{prefix}-{id}-{slug}"   # prefix comes from the provider (tw)
   commit_ref_pattern: "({PREFIX}-{id})"
 tasks:
-  provider: teamwork                # teamwork | github-projects | jira | none ; "ask" when absent
+  provider: teamwork                # teamwork | none ; "ask" when absent
   ask_when_missing: true            # preflight asks task + worktree + branch if no active task
   subtasks_per_wave: false
   timer_store: ~/.claude/work/timers.json
@@ -56,8 +56,6 @@ tasks:
         - id: 1500000
           name: Legacy
           note: "read-only archive, do not assign"
-    github-projects: { task_ref_prefix: gh, owner: "", project_number: 0 }    # later
-    jira: { task_ref_prefix: jira, site: "", project_key: "" }               # later
   sources:                          # extra work sources for listings (replaces ~/.claude/work/sources.md)
     - name: erp-proveedores
       type: google-sheets
@@ -83,10 +81,10 @@ critical_paths: [auth/, payments/, migrations/, infra/]            # Hyuga auto-
 git:
   base_branch: develop              # default base for the worktree offer
   worktree: ask                     # ask | always | never
-  branch_pattern: "feature/{prefix}-{id}-{slug}"   # prefix comes from the provider (tw, gh, jira)
+  branch_pattern: "feature/{prefix}-{id}-{slug}"   # prefix comes from the provider (tw)
   commit_ref_pattern: "({PREFIX}-{id})"
 tasks:
-  provider: teamwork                # teamwork | github-projects | jira | none ; "ask" when absent
+  provider: teamwork                # teamwork | none ; "ask" when absent
   ask_when_missing: true            # preflight asks task + worktree + branch if no active task
   subtasks_per_wave: false
   timer_store: ~/.claude/work/timers.json
@@ -98,8 +96,6 @@ tasks:
       default_project_id: 1271726
       default_tasklist_id: 3951970
       stages: { inDev: DESARROLLO, testing: TESTING, implemented: IMPLEMENTA, blocked: BLOQUEA, canceled: CANCEL, pending: PENDIENTE, analysis: ANALISIS }
-    github-projects: { task_ref_prefix: gh, owner: "", project_number: 0 }    # later
-    jira: { task_ref_prefix: jira, site: "", project_key: "" }               # later
 `
 
 func hasBareLF(s string) bool {

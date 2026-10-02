@@ -19,7 +19,7 @@ overwrites silently, and delegates gentle-ai's own bootstrap unchanged.
    `AskUserQuestion` when representable, plain-text fallback otherwise, per
    the Lossless Blocking Prompts contract). Do not ask about a key already
    resolved from either file. Candidate groups:
-   - **Task provider**: `teamwork` | `github-projects` | `jira` | `none`.
+   - **Task provider**: `teamwork` | `none`.
      Omit this group entirely if `tasks.provider` already resolves.
    - **Teamwork project/tasklist** (only when the chosen or already-
      resolved provider is `teamwork` and `tasks.providers.teamwork.
@@ -84,7 +84,10 @@ overwrites silently, and delegates gentle-ai's own bootstrap unchanged.
    (user scope only — project-scope `models:` applies `model`
    only). If `.nerv/nerv.yaml` already exists, do **not** overwrite it
    without confirmation — show the diff between the existing file and the
-   proposed one, and ask a single yes/no confirmation before writing.
+   proposed one, and ask a single yes/no confirmation before writing. (The
+   `nerv configure --init-repo` CLI never overwrites it either; it only
+   removes the removed task providers `github-projects` and `jira` from an
+   existing file, with a backup.)
 
 5. **Bootstrap gentle-ai if needed.** If `openspec/config.yaml` or
    `.atl/skill-registry.md` is missing, delegate to the `sdd-init` agent

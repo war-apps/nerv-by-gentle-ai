@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -19,6 +20,9 @@ var (
 	effortMenu = menuOf(config.Efforts())
 
 	resetRe = regexp.MustCompile(`(?i)^reset\s*(.*)$`)
+
+	// groupOrder is the order the group legend lists the shortcuts in.
+	groupOrder = []string{"magi", "pilots", "kaji-passes", "all"}
 )
 
 // menuOf builds a "1"->tokens[0], "2"->tokens[1], ... menu-choice map, the
@@ -80,7 +84,7 @@ func runModelsSection(deps Deps, paths configure.Paths, s *session, out io.Write
 
 		currentDisplay := currentModelDisplay(roles, table)
 
-		newModel, newFrom, modelChoice, modelChosen, err := askModel(s, out, paths, phaseNames, phaseAssignments, currentDisplay)
+		newModel, newFrom, modelChoice, modelChosen, err := askModel(s, out, paths, phaseNames, phaseAssignments, currentDisplay, equivalentOf(roles, catalogue))
 		if err != nil {
 			return false, err
 		}
@@ -172,6 +176,31 @@ func selectRoles(s *session, out io.Writer, catalogue config.RoleCatalogue, over
 	return roles, false
 }
 
+// equivalentOf is the gentle-ai phase to suggest first in the phase picker:
+// the selected role's own equivalent when exactly one role is selected, or
+// "" for a group (its members may differ) or a role with none.
+func equivalentOf(roles []string, catalogue config.RoleCatalogue) string {
+	if len(roles) != 1 {
+		return ""
+	}
+	return catalogue.Info[roles[0]].GentleAIEquivalent
+}
+
+// phasePickerOrder returns phaseNames with equivalent moved to the front
+// when it is one of them; the rest keep their sorted order.
+func phasePickerOrder(phaseNames []string, equivalent string) []string {
+	if equivalent == "" || !slices.Contains(phaseNames, equivalent) {
+		return phaseNames
+	}
+	ordered := []string{equivalent}
+	for _, p := range phaseNames {
+		if p != equivalent {
+			ordered = append(ordered, p)
+		}
+	}
+	return ordered
+}
+
 // askModel prompts the model choice for the current selection
 // (currentDisplay is its "Enter keeps ..." hint), resolving a custom
 // model id or gentle-ai phase sub-prompt as needed. chosen is false when
@@ -179,7 +208,7 @@ func selectRoles(s *session, out io.Writer, catalogue config.RoleCatalogue, over
 // raw menu answer ("" when blank), which askEffort and applyToOverrides
 // also need (case "7" drives the effort prompt's "inherited" wording and
 // From-vs-Model application).
-func askModel(s *session, out io.Writer, paths configure.Paths, phaseNames []string, phaseAssignments map[string]config.PhaseAssignment, currentDisplay string) (newModel, newFrom, modelChoice string, chosen bool, err error) {
+func askModel(s *session, out io.Writer, paths configure.Paths, phaseNames []string, phaseAssignments map[string]config.PhaseAssignment, currentDisplay, equivalent string) (newModel, newFrom, modelChoice string, chosen bool, err error) {
 	modelChoice, chosen, err = s.menuChoice(
 		fmt.Sprintf("Model (1 sonnet, 2 opus, 3 haiku, 4 fable, 5 inherit, 6 custom id, 7 from gentle-ai phase, Enter keeps %s):", currentDisplay),
 		[]string{"1", "2", "3", "4", "5", "6", "7"})
@@ -210,10 +239,15 @@ func askModel(s *session, out io.Writer, paths configure.Paths, phaseNames []str
 			return "", "", modelChoice, true, nil
 		}
 		fmt.Fprintln(out, "Phases:")
+		phaseNames = phasePickerOrder(phaseNames, equivalent)
 		valid := make([]string, len(phaseNames))
 		for i, p := range phaseNames {
 			pa := phaseAssignments[p]
-			fmt.Fprintf(out, "  %d) %s (%s/%s)\n", i+1, p, pa.Model, pa.Effort)
+			mark := ""
+			if p == equivalent {
+				mark = " (equivalent)"
+			}
+			fmt.Fprintf(out, "  %d) %s (%s/%s)%s\n", i+1, p, pa.Model, pa.Effort, mark)
 			valid[i] = strconv.Itoa(i + 1)
 		}
 		idx, ok, err := s.menuChoice("Phase number:", valid)
@@ -313,7 +347,7 @@ func writeModelsBlock(deps Deps, s *session, out io.Writer, paths configure.Path
 	}
 
 	config.SetModelsBlock(doc, blockText)
-	written, backup, err := (configure.Store{}).Save(paths.Config, doc, original, deps.Now())
+	written, backup, removed, err := (configure.Store{}).Save(paths.Config, doc, original, deps.Now())
 	if err != nil {
 		return false, err
 	}
@@ -323,15 +357,48 @@ func writeModelsBlock(deps Deps, s *session, out io.Writer, paths configure.Path
 	if written {
 		fmt.Fprintf(out, "Written: %s\n", paths.Config)
 	}
+	if line := configure.RemovedLine(removed); line != "" {
+		fmt.Fprintln(out, line)
+	}
 	return written, nil
 }
 
+// printModelTable prints the resolved table (with each role's purpose and
+// gentle-ai equivalent) followed by a legend for the group shortcuts the
+// role prompt accepts. Every column sizes to its longest value (the purpose
+// column to the longest catalogue purpose), so no purpose is cut off and a
+// custom model id or a long gentle-ai source never shifts the columns after
+// it; such values widen the row instead.
 func printModelTable(out io.Writer, table []config.ModelRow, configPath string) {
+	catalogue := config.Roles()
 	fmt.Fprintln(out)
 	fmt.Fprintf(out, "Config: %s\n", configPath)
-	fmt.Fprintf(out, "%-16s %-16s %-8s %s\n", "ROLE", "MODEL", "EFFORT", "SOURCE")
+	roleW, modelW, effortW, sourceW := len("ROLE"), len("MODEL"), len("EFFORT"), len("SOURCE")
+	purposeW := len("WHAT IT DOES")
+	for _, info := range catalogue.Info {
+		purposeW = max(purposeW, len(info.Purpose))
+	}
+	for _, row := range table {
+		roleW = max(roleW, len(row.Role))
+		modelW = max(modelW, len(row.Model))
+		effortW = max(effortW, len(row.Effort))
+		sourceW = max(sourceW, len(row.Source))
+	}
+	fmt.Fprintf(out, "    %-*s %-*s %-*s %-*s %-*s %s\n", roleW, "ROLE", modelW, "MODEL", effortW, "EFFORT",
+		sourceW, "SOURCE", purposeW, "WHAT IT DOES", "GENTLE-AI")
 	for i, row := range table {
-		fmt.Fprintf(out, "%2d) %-16s %-16s %-8s %s\n", i+1, row.Role, row.Model, row.Effort, row.Source)
+		info := catalogue.Info[row.Role]
+		equivalent := info.GentleAIEquivalent
+		if equivalent == "" {
+			equivalent = "-"
+		}
+		fmt.Fprintf(out, "%2d) %-*s %-*s %-*s %-*s %-*s %s\n", i+1, roleW, row.Role, modelW, row.Model,
+			effortW, row.Effort, sourceW, row.Source, purposeW, info.Purpose, equivalent)
+	}
+	fmt.Fprintln(out)
+	fmt.Fprintln(out, "Groups:")
+	for _, group := range groupOrder {
+		fmt.Fprintf(out, "  %s = %s\n", group, catalogue.GroupDescriptions[group])
 	}
 	fmt.Fprintln(out)
 }

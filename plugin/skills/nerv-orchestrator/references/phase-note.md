@@ -12,7 +12,7 @@ and the full audit-and-closure stage (Kaji, `kaji-security`,
 `kaji-coverage`, `kaji-refuter`, the ranked issue gate, fix routing, the
 bounded re-audit loop, and Aoba's mechanical Archive duty). The task
 tracker (`nerv-tasks/SKILL.md`, the Teamwork adapter delegating to
-`~/.claude/commands/task/*.md`, the `github-projects`/`jira` stubs, and
+`~/.claude/commands/task/*.md`, and
 Hyuga's `DISPATCH: tracker`) and the single `nerv.yaml` config file
 (two scopes, one schema, project overrides user) are wired into Preflight,
 Maya's full-gate start, the issue gate, and Close in both pipelines.

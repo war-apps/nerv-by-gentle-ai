@@ -3,8 +3,11 @@ package wizard_test
 import (
 	"bytes"
 	"errors"
+	"fmt"
+	"io"
 	"os"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strings"
 	"testing"
@@ -36,10 +39,10 @@ const fixtureLF = "" +
 	"  base_branch: develop              # default base for the worktree offer\n" +
 	"  worktree: ask                     # ask | always | never\n" +
 	`  worktree_pattern: ".claude/worktrees/{slug}"   # where task worktrees are created; {slug} {branch} {prefix} {id}` + "\n" +
-	`  branch_pattern: "feature/{prefix}-{id}-{slug}"   # prefix comes from the provider (tw, gh, jira)` + "\n" +
+	`  branch_pattern: "feature/{prefix}-{id}-{slug}"   # prefix comes from the provider (tw)` + "\n" +
 	`  commit_ref_pattern: "({PREFIX}-{id})"` + "\n" +
 	"tasks:\n" +
-	`  provider: teamwork                # teamwork | github-projects | jira | none ; "ask" when absent` + "\n" +
+	`  provider: teamwork                # teamwork | none ; "ask" when absent` + "\n" +
 	"  ask_when_missing: true            # preflight asks task + worktree + branch if no active task\n" +
 	"  subtasks_per_wave: false\n" +
 	"  timer_store: ~/.claude/work/timers.json\n" +
@@ -51,8 +54,6 @@ const fixtureLF = "" +
 	"      default_project_id: 1271726\n" +
 	"      default_tasklist_id: 3951970\n" +
 	"      stages: { inDev: DESARROLLO, testing: TESTING, implemented: IMPLEMENTA, blocked: BLOQUEA, canceled: CANCEL, pending: PENDIENTE, analysis: ANALISIS }\n" +
-	`    github-projects: { task_ref_prefix: gh, owner: "", project_number: 0 }    # later` + "\n" +
-	`    jira: { task_ref_prefix: jira, site: "", project_key: "" }               # later` + "\n" +
 	"artifacts:\n" +
 	"  commit: at-close                  # with-change | at-close | never (default: at-close)\n"
 
@@ -289,19 +290,12 @@ func TestRun_ModelsSection_CustomModelID_EOFAfterPrompt_AbortsWithoutWriteOrRunn
 
 	opts := wizard.Options{Paths: paths, SkipSkills: true, SkipRepos: true, SkipCommands: true, NoRefresh: true}
 
-	lines := make([]string, 0, 31)
-	for i := 0; i < 28; i++ { // user-config section: every prompt kept (no change, no write confirm consumed)
-		lines = append(lines, "")
-	}
-	lines = append(lines,
-		"y",         // "Configure per-role model and effort now?"
+	var out bytes.Buffer
+	in := modelsInput(&out,
 		"balthasar", // single role
 		"6",         // model choice: custom id
 		// reader ends here: the custom-id sub-prompt gets genuine EOF
 	)
-
-	in := strings.NewReader(strings.Join(lines, "\n"))
-	var out bytes.Buffer
 
 	done := make(chan error, 1)
 	go func() {
@@ -346,12 +340,8 @@ func TestRun_ModelsSection_CustomModelID_InvalidThenValid_AppliesOverride(t *tes
 
 	opts := wizard.Options{Paths: paths, SkipSkills: true, SkipRepos: true, SkipCommands: true, NoRefresh: true}
 
-	lines := make([]string, 0, 37)
-	for i := 0; i < 28; i++ {
-		lines = append(lines, "")
-	}
-	lines = append(lines,
-		"y",           // "Configure per-role model and effort now?"
+	var out bytes.Buffer
+	in := modelsInput(&out,
 		"balthasar",   // single role
 		"6",           // model choice: custom id
 		"not-a-model", // invalid: doesn't match ^claude-.+$, re-prompts
@@ -360,9 +350,7 @@ func TestRun_ModelsSection_CustomModelID_InvalidThenValid_AppliesOverride(t *tes
 		"done",        // finish the role loop
 		"y",           // write confirm
 	)
-
-	var out bytes.Buffer
-	summary, err := wizard.Run(deps, strings.NewReader(strings.Join(lines, "\n")), &out, opts)
+	summary, err := wizard.Run(deps, in, &out, opts)
 	if err != nil {
 		t.Fatalf("Run() error = %v; output:\n%s", err, out.String())
 	}
@@ -793,21 +781,15 @@ func TestRun_ModelsSection_MagiGroup(t *testing.T) {
 
 	opts := wizard.Options{Paths: paths, SkipSkills: true, SkipRepos: true, SkipCommands: true, NoRefresh: true}
 
-	lines := make([]string, 0, 34)
-	for i := 0; i < 28; i++ { // user-config section: every prompt kept (no change, no write confirm consumed)
-		lines = append(lines, "")
-	}
-	lines = append(lines,
-		"y",    // "Configure per-role model and effort now?"
+	var out bytes.Buffer
+	in := modelsInput(&out,
 		"magi", // role group
 		"2",    // model choice: opus
 		"3",    // effort choice: high
 		"done", // finish the role loop
 		"y",    // write confirm
 	)
-
-	var out bytes.Buffer
-	summary, err := wizard.Run(deps, strings.NewReader(strings.Join(lines, "\n")), &out, opts)
+	summary, err := wizard.Run(deps, in, &out, opts)
 	if err != nil {
 		t.Fatalf("Run() error = %v; output:\n%s", err, out.String())
 	}
@@ -824,6 +806,188 @@ func TestRun_ModelsSection_MagiGroup(t *testing.T) {
 		if !strings.Contains(string(got), want) {
 			t.Errorf("expected %q in models: block:\n%s", want, got)
 		}
+	}
+}
+
+// modelsOffer is the prompt that opens the models section.
+const modelsOffer = "Configure per-role model and effort now?"
+
+// maxBlankAnswers bounds how many blank answers modelsInput gives before the
+// models offer appears, so a missing or renamed offer fails the test at once
+// instead of feeding blank lines until the go test timeout.
+const maxBlankAnswers = 200
+
+// modelsInput scripts the answers that reach the models section by its own
+// prompt instead of counting the earlier ones: it answers every prompt with
+// a blank line until out shows the models offer, then answers "y" to it and
+// feeds the given answers, one line per read, before reporting EOF. out must
+// be the buffer the wizard writes to. The wizard's scanner reads one line at
+// a time, so out always holds the prompt it is answering when Read runs.
+func modelsInput(out *bytes.Buffer, answers ...string) io.Reader {
+	queue := append([]string{"y"}, answers...)
+	blanks := 0
+	return readerFunc(func(p []byte) (int, error) {
+		line := ""
+		if !strings.Contains(out.String(), modelsOffer) {
+			if blanks == maxBlankAnswers {
+				return 0, fmt.Errorf("models offer %q never appeared after %d blank answers", modelsOffer, maxBlankAnswers)
+			}
+			blanks++
+		} else {
+			if len(queue) == 0 {
+				return 0, io.EOF
+			}
+			line, queue = queue[0], queue[1:]
+		}
+		return copy(p, line+"\n"), nil
+	})
+}
+
+func TestModelsInput_FailsWhenTheOfferNeverAppears(t *testing.T) {
+	var out bytes.Buffer
+	in := modelsInput(&out)
+	buf := make([]byte, 64)
+	for i := 0; i < maxBlankAnswers; i++ {
+		if _, err := in.Read(buf); err != nil {
+			t.Fatalf("read %d: unexpected error %v", i, err)
+		}
+	}
+	if _, err := in.Read(buf); err == nil || !strings.Contains(err.Error(), "never appeared") {
+		t.Fatalf("read past the bound: error = %v, want one naming the missing offer", err)
+	}
+}
+
+// promptAnswer answers the first prompt whose text contains prompt.
+type promptAnswer struct {
+	prompt, answer string
+}
+
+// promptInput scripts answers by prompt text instead of by position: each
+// read looks at the output written since the previous read, gives the next
+// pending answer once its prompt appears there, and answers blank
+// otherwise. It reports EOF once every answer was given, and fails after
+// maxBlankAnswers blank answers in a row so a missing prompt cannot hang the
+// test. out must be the buffer the wizard writes to.
+func promptInput(out *bytes.Buffer, answers []promptAnswer) io.Reader {
+	seen, blanks := 0, 0
+	return readerFunc(func(p []byte) (int, error) {
+		if len(answers) == 0 {
+			return 0, io.EOF
+		}
+		fresh := out.String()[seen:]
+		seen = out.Len()
+		line := ""
+		if strings.Contains(fresh, answers[0].prompt) {
+			line, answers, blanks = answers[0].answer, answers[1:], 0
+		} else {
+			if blanks == maxBlankAnswers {
+				return 0, fmt.Errorf("prompt %q never appeared after %d blank answers", answers[0].prompt, maxBlankAnswers)
+			}
+			blanks++
+		}
+		return copy(p, line+"\n"), nil
+	})
+}
+
+type readerFunc func([]byte) (int, error)
+
+func (f readerFunc) Read(p []byte) (int, error) { return f(p) }
+
+var tableRowRe = regexp.MustCompile(`^\s*\d+\) [a-z-]+ `)
+
+// phaseLine returns the first output line after "Phases:" that contains needle.
+func phaseLine(out, needle string) string {
+	_, after, _ := strings.Cut(out, "Phases:")
+	return lineWith(after, needle)
+}
+
+func lineWith(out, needle string) string {
+	for _, l := range strings.Split(out, "\n") {
+		if strings.Contains(l, needle) {
+			return l
+		}
+	}
+	return ""
+}
+
+// The models table says what each role does and which gentle-ai phase it
+// matches, and a legend explains the group shortcuts before the prompt.
+func TestRun_ModelsSection_TableShowsPurposeEquivalentAndGroupLegend(t *testing.T) {
+	root := t.TempDir()
+	home := t.TempDir()
+	writeFixture(t, filepath.Join(root, "nerv.yaml"))
+	paths := testPaths(root, home)
+	deps := configure.Deps{Home: home, FS: nerv.PluginFS(), Runner: noRunner(), Now: fixedNow, LookPath: lookPathNone}
+	opts := wizard.Options{Paths: paths, SkipSkills: true, SkipRepos: true, SkipCommands: true, NoRefresh: true}
+
+	var out bytes.Buffer
+	if _, err := wizard.Run(deps, modelsInput(&out, "done"), &out, opts); err != nil {
+		t.Fatalf("Run() error = %v; output:\n%s", err, out.String())
+	}
+	got := out.String()
+
+	header := lineWith(got, "ROLE ")
+	for _, col := range []string{"WHAT IT DOES", "GENTLE-AI"} {
+		if !strings.Contains(header, col) {
+			t.Errorf("table header %q lacks column %q", header, col)
+		}
+	}
+	if row := lineWith(got, ") kaworu"); !strings.Contains(row, "writes the failing tests first") || !strings.Contains(row, "sdd-apply") {
+		t.Errorf("kaworu row = %q, want purpose and sdd-apply", row)
+	}
+	if row := lineWith(got, ") fuyutsuki"); !strings.HasSuffix(strings.TrimSpace(row), "-") {
+		t.Errorf("fuyutsuki row = %q, want a '-' equivalent", row)
+	}
+	for _, l := range strings.Split(got, "\n") {
+		if tableRowRe.MatchString(l) && len(l) > 120 {
+			t.Errorf("table row wider than 120 columns (%d): %q", len(l), l)
+		}
+	}
+	for group, desc := range config.Roles().GroupDescriptions {
+		if !strings.Contains(got, group+" = "+desc) {
+			t.Errorf("group legend lacks %q", group+" = "+desc)
+		}
+	}
+	if legend, prompt := strings.Index(got, "magi = "), strings.Index(got, "Role (name, number"); legend < 0 || legend > prompt {
+		t.Errorf("group legend must precede the role prompt (legend at %d, prompt at %d)", legend, prompt)
+	}
+}
+
+// For a single role, the phase picker lists the role's gentle-ai equivalent
+// first and marks it; picking it writes from:<phase>.
+func TestRun_ModelsSection_PhasePickerListsEquivalentFirst(t *testing.T) {
+	root := t.TempDir()
+	home := t.TempDir()
+	writeFixture(t, filepath.Join(root, "nerv.yaml"))
+	paths := testPaths(root, home)
+	state := `{"claude_phase_assignments":{"jd-judge-a":{"model":"opus","effort":"high"},"sdd-apply":{"model":"sonnet","effort":"medium"}}}`
+	if err := os.MkdirAll(filepath.Dir(paths.State), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(paths.State, []byte(state), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	deps := configure.Deps{Home: home, FS: nerv.PluginFS(), Runner: noRunner(), Now: fixedNow, LookPath: lookPathNone}
+	opts := wizard.Options{Paths: paths, SkipSkills: true, SkipRepos: true, SkipCommands: true, NoRefresh: true}
+
+	var out bytes.Buffer
+	in := modelsInput(&out, "kaworu", "7", "1", "", "done", "y")
+	if _, err := wizard.Run(deps, in, &out, opts); err != nil {
+		t.Fatalf("Run() error = %v; output:\n%s", err, out.String())
+	}
+
+	if first := phaseLine(out.String(), "  1) "); !strings.Contains(first, "sdd-apply") || !strings.Contains(first, "(equivalent)") {
+		t.Errorf("first phase = %q, want sdd-apply marked (equivalent)", first)
+	}
+	if second := phaseLine(out.String(), "  2) "); !strings.Contains(second, "jd-judge-a") || strings.Contains(second, "(equivalent)") {
+		t.Errorf("second phase = %q, want jd-judge-a unmarked", second)
+	}
+	got, err := os.ReadFile(paths.Config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := "kaworu: { from: sdd-apply }"; !strings.Contains(string(got), want) {
+		t.Errorf("expected %q in models: block:\n%s", want, got)
 	}
 }
 
@@ -866,4 +1030,131 @@ func diffLineCount(a, b string) int {
 		}
 	}
 	return diff
+}
+
+// ---------------------------------------------------------------------------
+// Legacy provider settings (github-projects and jira sub-blocks in
+// tasks.providers, a tasks.provider: jira line), left by releases before their
+// removal, are stripped by a wizard save; every other byte stays as written.
+// ---------------------------------------------------------------------------
+
+const legacyProviderLines = "" +
+	"    # legacy stubs, kept by hand\n" +
+	"    github-projects: { task_ref_prefix: gh, owner: \"\", project_number: 0 }    # later\n" +
+	"    jira: { task_ref_prefix: jira, site: \"\", project_key: \"\" }               # later\n"
+
+func legacyFixture(t *testing.T, provider string) string {
+	t.Helper()
+	const anchor = "artifacts:\n"
+	fixture := strings.Replace(fixtureLF, anchor, legacyProviderLines+anchor, 1)
+	if provider != "teamwork" {
+		old := "  provider: teamwork                #"
+		if !strings.Contains(fixture, old) {
+			t.Fatal("provider line not found in the fixture")
+		}
+		fixture = strings.Replace(fixture, old, "  provider: "+provider+strings.Repeat(" ", 20-len(provider))+"#", 1)
+	}
+	return fixture
+}
+
+func TestRun_LegacyProviderSettings_AreStrippedOnSave(t *testing.T) {
+	for _, provider := range []string{"teamwork", "jira"} {
+		t.Run(provider, func(t *testing.T) {
+			root := t.TempDir()
+			home := t.TempDir()
+			paths := testPaths(root, home)
+			fixture := legacyFixture(t, provider)
+			if err := os.WriteFile(paths.Config, []byte(fixture), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			deps := configure.Deps{Home: home, FS: nerv.PluginFS(), Runner: noRunner(), Now: fixedNow, LookPath: lookPathNone}
+			opts := skipAll()
+			opts.Paths = paths
+
+			var out bytes.Buffer
+			in := promptInput(&out, []promptAnswer{
+				{prompt: "Base branch", answer: "develop2"},
+				{prompt: "Write to ", answer: "y"},
+			})
+			summary, err := wizard.Run(deps, in, &out, opts)
+			if err != nil {
+				t.Fatalf("Run() error = %v; output:\n%s", err, out.String())
+			}
+			if !summary.Changed {
+				t.Fatalf("Changed = false, want true; output:\n%s", out.String())
+			}
+
+			got, err := os.ReadFile(paths.Config)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !strings.Contains(string(got), "base_branch: develop2") {
+				t.Errorf("base_branch not updated:\n%s", got)
+			}
+			if strings.Contains(string(got), "github-projects") || strings.Contains(string(got), "jira: {") {
+				t.Errorf("legacy provider blocks survived:\n%s", got)
+			}
+
+			// What the save must remove: the blocks, plus the provider line
+			// when it still holds the removed provider.
+			cleaned := strings.Replace(fixture, legacyProviderLines, "", 1)
+			wantLine := "Removed legacy task provider settings: tasks.providers.github-projects, tasks.providers.jira"
+			if provider == "jira" {
+				cleaned = removeLineWith(cleaned, "  provider: jira")
+				wantLine = "Removed legacy task provider settings: tasks.provider (jira), tasks.providers.github-projects, tasks.providers.jira"
+			}
+			if !strings.Contains(out.String(), wantLine) {
+				t.Errorf("output missing %q:\n%s", wantLine, out.String())
+			}
+			if diff := diffLineCount(cleaned, string(got)); diff != 1 {
+				t.Errorf("diff line count against the cleaned fixture = %d, want 1; got:\n%s", diff, got)
+			}
+			if provider == "jira" && strings.Contains(string(got), "  provider:") {
+				t.Errorf("tasks.provider survived:\n%s", got)
+			}
+		})
+	}
+}
+
+// removeLineWith drops the one line of s that contains marker.
+func removeLineWith(s, marker string) string {
+	lines := strings.SplitAfter(s, "\n")
+	kept := lines[:0]
+	for _, l := range lines {
+		if !strings.Contains(l, marker) {
+			kept = append(kept, l)
+		}
+	}
+	return strings.Join(kept, "")
+}
+
+// The models section writes through the shared store too: saving an override
+// into a legacy file strips the removed provider settings and says so.
+func TestRun_ModelsSection_StripsLegacyProviderSettings(t *testing.T) {
+	root := t.TempDir()
+	home := t.TempDir()
+	paths := testPaths(root, home)
+	fixture := legacyFixture(t, "jira")
+	if err := os.WriteFile(paths.Config, []byte(fixture), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	deps := configure.Deps{Home: home, FS: nerv.PluginFS(), Runner: noRunner(), Now: fixedNow, LookPath: lookPathNone}
+	opts := wizard.Options{Paths: paths, SkipSkills: true, SkipRepos: true, SkipCommands: true, NoRefresh: true}
+
+	var out bytes.Buffer
+	in := modelsInput(&out, "magi", "2", "3", "done", "y")
+	if _, err := wizard.Run(deps, in, &out, opts); err != nil {
+		t.Fatalf("Run() error = %v; output:\n%s", err, out.String())
+	}
+
+	got, err := os.ReadFile(paths.Config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(got), "github-projects") || strings.Contains(string(got), "provider: jira") {
+		t.Errorf("legacy settings survived the models write:\n%s", got)
+	}
+	if !strings.Contains(out.String(), "Removed legacy task provider settings: tasks.provider (jira), tasks.providers.github-projects, tasks.providers.jira") {
+		t.Errorf("output does not report the removal:\n%s", out.String())
+	}
 }

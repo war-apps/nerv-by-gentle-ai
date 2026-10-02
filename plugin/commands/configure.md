@@ -65,8 +65,7 @@ changes confirmed — never more.
         text, e.g. `({PREFIX}-{id})`).
    - **tasks** (split across grouped questions, in this order — omit a
      later one whose condition doesn't hold):
-     1. General: `tasks.provider` (`teamwork` | `github-projects` |
-        `jira` | `none`), `tasks.ask_when_missing` (yes/no),
+     1. General: `tasks.provider` (`teamwork` | `none`), `tasks.ask_when_missing` (yes/no),
         `tasks.subtasks_per_wave` (yes/no), `tasks.timer_store` (free
         text path).
      2. General, continued: `tasks.rounding_minutes` (free text, e.g.
@@ -92,8 +91,16 @@ changes confirmed — never more.
      `.atl/skill-registry.md`. Also ask `critical_paths` (free text,
      comma-separated) and `artifacts.commit` (`with-change` | `at-close` |
      `never`) in the second group.
-   - **models**: ask one grouped question for which roles to override —
-     free text, comma-separated role names or a group keyword (`magi`,
+   - **models**: first print the `models` rows from step 2 as a table —
+     `role`, `purpose`, `gentle_ai_equivalent` (`-` when empty), `model`,
+     `effort`, `source` — and a one-line legend for the group keywords:
+     `magi` = the three voters (balthasar, melchor, casper), `pilots` =
+     the implementers (kaworu, shinji, asuka, rei, toji), `kaji-passes` =
+     the audit passes (kaji, kaji-security, kaji-coverage, kaji-refuter),
+     `all` = every role. The equivalent is a hint for `from:<phase>`: when
+     the user picks `from:` for a single role, suggest that role's
+     `gentle_ai_equivalent` first. It never changes resolution. Then ask one
+     grouped question for which roles to override — free text, comma-separated role names or a group keyword (`magi`,
      `pilots`, `kaji-passes`, `all`), pre-filled `skip`. For each role
      confirmed, ask a grouped question (at most 2 roles per question, 2
      sub-questions each: model, effort) with:

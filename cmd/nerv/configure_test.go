@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -227,6 +228,94 @@ func TestRunConfigure_Set_HappyPathThenNoop(t *testing.T) {
 	}
 }
 
+// A write that strips legacy provider settings says so on one line; the JSON
+// summary lists them; a write with nothing to strip prints nothing extra.
+func TestRunConfigure_Set_ReportsRemovedLegacyProviders(t *testing.T) {
+	home := t.TempDir()
+	configPath := filepath.Join(home, ".claude", "nerv", "nerv.yaml")
+	if err := os.MkdirAll(filepath.Dir(configPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	legacy := "enabled: true\ngit:\n  worktree: ask\ntasks:\n  provider: jira   # old\n  providers:\n    teamwork:\n      task_ref_prefix: tw\n    jira: { site: x }\n"
+	if err := os.WriteFile(configPath, []byte(legacy), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"configure", "--set", "git.worktree=always"}, &stdout, &stderr, testOptions(home))
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0 (stderr=%q)", code, stderr.String())
+	}
+	const want = "Removed legacy task provider settings: tasks.provider (jira), tasks.providers.jira\n"
+	if strings.Count(stdout.String(), "Removed legacy task provider settings") != 1 || !strings.Contains(stdout.String(), want) {
+		t.Errorf("stdout missing the single line %q:\n%s", want, stdout.String())
+	}
+
+	var again bytes.Buffer
+	code = run([]string{"configure", "--set", "git.worktree=never", "--json"}, &again, &stderr, testOptions(home))
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0", code)
+	}
+	if strings.Contains(again.String(), "removed") {
+		t.Errorf("a write with nothing to strip mentions removals: %s", again.String())
+	}
+}
+
+// --json carries the stripped settings in a "removed" array, in file order.
+func TestRunConfigure_Set_JSONListsRemovedLegacyProviders(t *testing.T) {
+	home := t.TempDir()
+	configPath := filepath.Join(home, ".claude", "nerv", "nerv.yaml")
+	if err := os.MkdirAll(filepath.Dir(configPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	legacy := "enabled: true\ngit:\n  worktree: ask\ntasks:\n  provider: jira\n  providers:\n    teamwork:\n      task_ref_prefix: tw\n    jira: { site: x }\n"
+	if err := os.WriteFile(configPath, []byte(legacy), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"configure", "--set", "git.worktree=always", "--json"}, &stdout, &stderr, testOptions(home))
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0 (stderr=%q)", code, stderr.String())
+	}
+	var got struct {
+		Removed []string `json:"removed"`
+	}
+	if err := json.Unmarshal(stdout.Bytes(), &got); err != nil {
+		t.Fatalf("stdout not valid JSON: %v (%q)", err, stdout.String())
+	}
+	want := []string{"tasks.provider (jira)", "tasks.providers.jira"}
+	if !slices.Equal(got.Removed, want) {
+		t.Errorf("removed = %v, want %v", got.Removed, want)
+	}
+}
+
+// Setting a key to the value it already has changes nothing, so the legacy
+// settings stay and nothing is reported.
+func TestRunConfigure_Set_SameValueDoesNotCleanLegacyProviders(t *testing.T) {
+	home := t.TempDir()
+	configPath := filepath.Join(home, ".claude", "nerv", "nerv.yaml")
+	if err := os.MkdirAll(filepath.Dir(configPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	legacy := "enabled: true\ngit:\n  worktree: ask\ntasks:\n  provider: jira\n"
+	if err := os.WriteFile(configPath, []byte(legacy), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	if code := run([]string{"configure", "--set", "git.worktree=ask"}, &stdout, &stderr, testOptions(home)); code != 0 {
+		t.Fatalf("exit code = %d, want 0 (stderr=%q)", code, stderr.String())
+	}
+	if strings.Contains(stdout.String(), "Removed legacy") {
+		t.Errorf("a no-op set reported a cleanup:\n%s", stdout.String())
+	}
+	after, _ := os.ReadFile(configPath)
+	if string(after) != legacy {
+		t.Errorf("file changed on a no-op set: %q", after)
+	}
+}
+
 // ---------------------------------------------------------------------------
 // --set with an unknown key: exit 1, message on stdout.
 // ---------------------------------------------------------------------------
@@ -277,5 +366,60 @@ func TestRunConfigure_HomeFlag_NoLongerAccepted(t *testing.T) {
 
 	if code != 2 {
 		t.Fatalf("exit code = %d, want 2 (a rejected unknown flag); stdout=%q stderr=%q", code, stdout.String(), stderr.String())
+	}
+}
+
+// --init-repo on an existing project file cleans the removed task providers:
+// one informational line in the human output, a "removed" array in --json.
+func TestRunConfigure_InitRepo_CleansExistingLegacyProjectConfig(t *testing.T) {
+	home := t.TempDir()
+	repo := t.TempDir()
+	legacy := "enabled: true\ntasks:\n  provider: jira\n  providers:\n    teamwork:\n      project_id: 1\n    jira: { site: x }\n"
+	projectPath := filepath.Join(repo, ".nerv", "nerv.yaml")
+	if err := os.MkdirAll(filepath.Dir(projectPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(projectPath, []byte(legacy), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	opts := testOptions(home)
+	opts.Runner = &envtest.FakeRunner{Responses: map[string]envtest.Response{
+		"git -C " + repo + " rev-parse --show-toplevel": {Stdout: repo + "\n"},
+	}}
+
+	var stdout, stderr bytes.Buffer
+	if code := run([]string{"configure", "--init-repo", repo, "--json"}, &stdout, &stderr, opts); code != 0 {
+		t.Fatalf("exit code = %d, want 0 (stderr=%q)", code, stderr.String())
+	}
+	var got struct {
+		Removed []string `json:"removed"`
+	}
+	if err := json.Unmarshal(stdout.Bytes(), &got); err != nil {
+		t.Fatalf("stdout not valid JSON: %v (%q)", err, stdout.String())
+	}
+	if want := []string{"tasks.provider (jira)", "tasks.providers.jira"}; !slices.Equal(got.Removed, want) {
+		t.Errorf("removed = %v, want %v", got.Removed, want)
+	}
+
+	// Cleaned already: the human run prints no removal line.
+	var human bytes.Buffer
+	if code := run([]string{"configure", "--init-repo", repo}, &human, &stderr, opts); code != 0 {
+		t.Fatalf("exit code = %d, want 0", code)
+	}
+	if strings.Contains(human.String(), "Removed legacy") {
+		t.Errorf("a clean file reports a removal:\n%s", human.String())
+	}
+
+	// And the human output of a cleaning run carries the single line.
+	if err := os.WriteFile(projectPath, []byte(legacy), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var cleaning bytes.Buffer
+	if code := run([]string{"configure", "--init-repo", repo}, &cleaning, &stderr, opts); code != 0 {
+		t.Fatalf("exit code = %d, want 0", code)
+	}
+	const line = "Removed legacy task provider settings: tasks.provider (jira), tasks.providers.jira\n"
+	if strings.Count(cleaning.String(), "Removed legacy task provider settings") != 1 || !strings.Contains(cleaning.String(), line) {
+		t.Errorf("stdout missing the single line %q:\n%s", line, cleaning.String())
 	}
 }

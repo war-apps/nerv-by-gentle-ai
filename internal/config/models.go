@@ -18,18 +18,34 @@ type ModelOverride struct {
 	From   string
 }
 
-// RoleCatalogue is the 18 NERV agent roles and their group shortcuts.
+// RoleInfo describes one role for display: what it does and which gentle-ai
+// phase it is comparable to. The equivalence is informational only — it
+// never changes how a role's model is resolved (from:<phase> stays explicit).
+type RoleInfo struct {
+	// Purpose is a one-line description of what the role does.
+	Purpose string
+	// GentleAIEquivalent is the closest gentle-ai phase, or "" when the
+	// role has no counterpart (fuyutsuki).
+	GentleAIEquivalent string
+}
+
+// RoleCatalogue is the 18 NERV agent roles, their group shortcuts and the
+// display metadata for both.
 type RoleCatalogue struct {
 	AllRoles []string
 	Groups   map[string][]string
+	// Info maps every role in AllRoles to its RoleInfo.
+	Info map[string]RoleInfo
+	// GroupDescriptions maps every group in Groups to a short legend.
+	GroupDescriptions map[string]string
 }
 
 // Roles returns the role catalogue — the single source of truth shared by
 // the interactive wizard's role/group prompts and "nerv configure
 // --set-model"'s role validation.
 //
-// It returns only role names and group membership, not a per-role plugin
-// default model/effort — those live in plugin/agents/*.md frontmatter on
+// It returns role names, group membership and display metadata (purpose,
+// gentle-ai equivalent), not a per-role plugin default model/effort — those live in plugin/agents/*.md frontmatter on
 // disk, read by internal/models (out of this file-I/O-free package's
 // scope). ModelTable below takes the resolved defaults as a parameter
 // instead.
@@ -45,7 +61,33 @@ func Roles() RoleCatalogue {
 		"kaji-passes": {"kaji", "kaji-security", "kaji-coverage", "kaji-refuter"},
 		"all":         allRoles,
 	}
-	return RoleCatalogue{AllRoles: allRoles, Groups: groups}
+	info := map[string]RoleInfo{
+		"misato":        {"authors the plan (proposal, design, tasks)", "sdd-design"},
+		"ritsuko":       {"intelligence, test planning, end-of-run docs", "sdd-explore"},
+		"hyuga":         {"task criticality, dependency waves, tracking", "sdd-tasks"},
+		"melchor":       {"MAGI vote: structure and security", "jd-judge-b"},
+		"balthasar":     {"MAGI vote: software principles", "jd-judge-a"},
+		"casper":        {"MAGI vote: process and documentation", "jd-judge-a"},
+		"fuyutsuki":     {"governance veto on new skills/scripts/commands", ""},
+		"kaworu":        {"writes the failing tests first", "sdd-apply"},
+		"shinji":        {"backend pilot", "sdd-apply"},
+		"asuka":         {"frontend pilot", "sdd-apply"},
+		"rei":           {"data pilot (persistence, observability)", "sdd-apply"},
+		"toji":          {"infrastructure pilot (CI/CD, containers)", "sdd-apply"},
+		"maya":          {"quality gate (tests, lint, build)", "sdd-verify"},
+		"kaji":          {"audit compiler", "sdd-verify"},
+		"kaji-security": {"audit pass: security", "jd-judge-a"},
+		"kaji-coverage": {"audit pass: tests vs test plan", "sdd-verify"},
+		"kaji-refuter":  {"refutes severe audit findings", "jd-judge-b"},
+		"aoba":          {"commits, PRs and run telemetry", "sdd-archive"},
+	}
+	groupDescriptions := map[string]string{
+		"magi":        "the three voters (balthasar, melchor, casper)",
+		"pilots":      "the implementers (kaworu, shinji, asuka, rei, toji)",
+		"kaji-passes": "the audit passes (kaji, kaji-security, kaji-coverage, kaji-refuter)",
+		"all":         "every role",
+	}
+	return RoleCatalogue{AllRoles: allRoles, Groups: groups, Info: info, GroupDescriptions: groupDescriptions}
 }
 
 // ErrUnknownRole is returned by ValidateRole for a role outside the
