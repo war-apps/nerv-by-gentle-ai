@@ -62,6 +62,12 @@ User request 2026-10-02: "ejecuta las revisiones sugeridas". Open advisories:
   R3-models-input-unbounded-blanks: `modelsInput` now stops after `maxBlankAnswers` (200) with an
   error naming the missing offer, proven by `TestModelsInput_FailsWhenTheOfferNeverAppears`.
 
+- 2026-10-02: second native review approved and acknowledged. Accepted
+  R3-purpose-truncated-in-wizard: RED `test(wizard): require every role purpose in full…`
+  (observed: fuyutsuki, hyuga and ritsuko purposes cut off at 42 columns), GREEN `fix(wizard):
+  size the purpose column to the longest role purpose` (the fixed 42-column cap and `truncate`
+  are gone). R3-print-test-unchecked-assertion fixed in the same test commit.
+
 ## Next step
 
 PR to `develop`.
