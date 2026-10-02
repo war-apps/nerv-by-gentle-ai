@@ -4,7 +4,9 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+	"testing/fstest"
 
 	nerv "github.com/war-apps/nerv-by-gentle-ai"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/env/envtest"
@@ -309,5 +311,232 @@ func TestInstall_CountsNonZeroExitAsFailure(t *testing.T) {
 
 	if result.Installed != 0 || result.Failed != 1 || len(result.Failures) != 1 || result.Failures[0] != "broken-skill" {
 		t.Fatalf("result = %+v, want one recorded failure for broken-skill", result)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Run — gentle-ai skills are provided through "gentle-ai sync".
+// ---------------------------------------------------------------------------
+
+const syncManifest = `{
+  "schema": "nerv.skills-manifest/v1",
+  "skills": [
+    { "name": "tdd", "kind": "external", "repo": "mattpocock/skills", "skill": "tdd", "used_by": ["testing"] },
+    { "name": "branch-pr", "kind": "gentle-ai", "used_by": ["delivery"] },
+    { "name": "work-unit-commits", "kind": "gentle-ai", "used_by": ["delivery"] },
+    { "name": "security-review", "kind": "builtin", "used_by": ["audit"] }
+  ]
+}`
+
+const syncCommand = "gentle-ai sync --agents claude-code --skills branch-pr,work-unit-commits"
+
+func syncFS() fstest.MapFS {
+	return fstest.MapFS{"skills-manifest.json": {Data: []byte(syncManifest)}}
+}
+
+func writeSkill(t *testing.T, dir, name string) {
+	t.Helper()
+	skillDir := filepath.Join(dir, name)
+	if err := os.MkdirAll(skillDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte("# "+name), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// syncRunner wraps FakeRunner and simulates what a successful
+// "gentle-ai sync" does on disk: it writes SKILL.md for each name in provide.
+type syncRunner struct {
+	*envtest.FakeRunner
+	t       *testing.T
+	dir     string
+	provide []string
+}
+
+func (r *syncRunner) Run(ctx context.Context, name string, args ...string) (string, string, int, error) {
+	stdout, stderr, code, err := r.FakeRunner.Run(ctx, name, args...)
+	if name == "gentle-ai" && code == 0 && err == nil {
+		for _, skill := range r.provide {
+			writeSkill(r.t, r.dir, skill)
+		}
+	}
+	return stdout, stderr, code, err
+}
+
+func callLines(runner *envtest.FakeRunner) []string {
+	var lines []string
+	for _, c := range runner.Calls {
+		lines = append(lines, c.Name+" "+strings.Join(c.Args, " "))
+	}
+	return lines
+}
+
+func countCalls(runner *envtest.FakeRunner, line string) int {
+	n := 0
+	for _, l := range callLines(runner) {
+		if l == line {
+			n++
+		}
+	}
+	return n
+}
+
+func TestRun_MissingGentleAISkills_RunsSyncOnceWithManifestOrder(t *testing.T) {
+	dir := t.TempDir()
+	writeSkill(t, dir, "tdd")
+	fake := &envtest.FakeRunner{}
+	runner := &syncRunner{FakeRunner: fake, t: t, dir: dir, provide: []string{"branch-pr", "work-unit-commits"}}
+
+	report, err := skills.Run(context.Background(), runner, syncFS(), dir, skills.Options{})
+	if err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+
+	if n := countCalls(fake, syncCommand); n != 1 {
+		t.Fatalf("sync ran %d times, want exactly once; calls: %s", n, strings.Join(callLines(fake), " | "))
+	}
+	if len(report.Plan.Remedies) != 0 {
+		t.Fatalf("Remedies = %v, want none once sync provided both skills", report.Plan.Remedies)
+	}
+}
+
+func TestRun_SyncProvidesOnlyOneSkill_KeepsRemedyForTheOther(t *testing.T) {
+	dir := t.TempDir()
+	writeSkill(t, dir, "tdd")
+	fake := &envtest.FakeRunner{}
+	runner := &syncRunner{FakeRunner: fake, t: t, dir: dir, provide: []string{"branch-pr"}}
+
+	report, err := skills.Run(context.Background(), runner, syncFS(), dir, skills.Options{})
+	if err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+
+	if len(report.Plan.Remedies) != 1 || !strings.Contains(report.Plan.Remedies[0], "'work-unit-commits'") {
+		t.Fatalf("Remedies = %v, want exactly one for work-unit-commits", report.Plan.Remedies)
+	}
+}
+
+func TestRun_FailedSync_KeepsRemediesWithoutError(t *testing.T) {
+	cases := map[string]envtest.Response{
+		"non-zero exit": {ExitCode: 1, Stderr: "boom"},
+		"launch error":  {Err: os.ErrNotExist},
+	}
+	for name, resp := range cases {
+		t.Run(name, func(t *testing.T) {
+			dir := t.TempDir()
+			writeSkill(t, dir, "tdd")
+			fake := &envtest.FakeRunner{Responses: map[string]envtest.Response{"gentle-ai": resp}}
+
+			report, err := skills.Run(context.Background(), fake, syncFS(), dir, skills.Options{})
+			if err != nil {
+				t.Fatalf("Run() error = %v, want nil when the sync fails", err)
+			}
+
+			if n := countCalls(fake, syncCommand); n != 1 {
+				t.Fatalf("sync ran %d times, want once; calls: %s", n, strings.Join(callLines(fake), " | "))
+			}
+			if len(report.Plan.Remedies) != 2 {
+				t.Fatalf("Remedies = %v, want both gentle-ai skills still remedied", report.Plan.Remedies)
+			}
+			if !report.Sync.Ran || !report.Sync.Failed {
+				t.Fatalf("Sync = %+v, want Ran=true Failed=true", report.Sync)
+			}
+		})
+	}
+}
+
+func TestRun_SuccessfulSync_ReportsRanWithoutFailure(t *testing.T) {
+	dir := t.TempDir()
+	writeSkill(t, dir, "tdd")
+	fake := &envtest.FakeRunner{}
+	runner := &syncRunner{FakeRunner: fake, t: t, dir: dir, provide: []string{"branch-pr", "work-unit-commits"}}
+
+	report, err := skills.Run(context.Background(), runner, syncFS(), dir, skills.Options{})
+	if err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+
+	if !report.Sync.Ran || report.Sync.Failed {
+		t.Fatalf("Sync = %+v, want Ran=true Failed=false", report.Sync)
+	}
+}
+
+func TestRun_NothingMissing_NoSync(t *testing.T) {
+	dir := t.TempDir()
+	for _, n := range []string{"tdd", "branch-pr", "work-unit-commits"} {
+		writeSkill(t, dir, n)
+	}
+	fake := &envtest.FakeRunner{}
+
+	report, err := skills.Run(context.Background(), fake, syncFS(), dir, skills.Options{})
+	if err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+
+	for _, l := range callLines(fake) {
+		if strings.HasPrefix(l, "gentle-ai ") {
+			t.Fatalf("unexpected gentle-ai call %q", l)
+		}
+	}
+	if report.Plan.Sync != nil || report.Sync.Ran {
+		t.Fatalf("Plan.Sync = %+v, Sync = %+v, want no sync planned or run", report.Plan.Sync, report.Sync)
+	}
+}
+
+func TestRun_OnlyExternalMissing_NoSync(t *testing.T) {
+	dir := t.TempDir()
+	writeSkill(t, dir, "branch-pr")
+	writeSkill(t, dir, "work-unit-commits")
+	fake := &envtest.FakeRunner{}
+
+	if _, err := skills.Run(context.Background(), fake, syncFS(), dir, skills.Options{}); err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+
+	if n := countCalls(fake, "npx skills add mattpocock/skills --skill tdd -g -a claude-code -y"); n != 1 {
+		t.Fatalf("npx install ran %d times, want once; calls: %s", n, strings.Join(callLines(fake), " | "))
+	}
+	for _, l := range callLines(fake) {
+		if strings.HasPrefix(l, "gentle-ai ") {
+			t.Fatalf("unexpected gentle-ai call %q", l)
+		}
+	}
+}
+
+func TestRun_OnlyRestrictsSyncToSelectedSkills(t *testing.T) {
+	dir := t.TempDir()
+	fake := &envtest.FakeRunner{}
+
+	if _, err := skills.Run(context.Background(), fake, syncFS(), dir, skills.Options{Only: []string{"work-unit-commits"}}); err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+
+	if n := countCalls(fake, "gentle-ai sync --agents claude-code --skills work-unit-commits"); n != 1 {
+		t.Fatalf("calls: %s", strings.Join(callLines(fake), " | "))
+	}
+}
+
+func TestRun_DryRun_PlansSyncWithoutRunningIt(t *testing.T) {
+	dir := t.TempDir()
+	writeSkill(t, dir, "tdd")
+	fake := &envtest.FakeRunner{}
+
+	report, err := skills.Run(context.Background(), fake, syncFS(), dir, skills.Options{DryRun: true})
+	if err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+
+	if len(fake.Calls) != 0 {
+		t.Fatalf("DryRun made calls: %s", strings.Join(callLines(fake), " | "))
+	}
+	if report.Plan.Sync == nil {
+		t.Fatal("Plan.Sync = nil, want the sync planned")
+	}
+	if got := "gentle-ai " + strings.Join(report.Plan.Sync.Args, " "); got != syncCommand {
+		t.Fatalf("Plan.Sync command = %q, want %q", got, syncCommand)
+	}
+	if report.Sync.Ran {
+		t.Fatalf("Sync = %+v, want not run in DryRun", report.Sync)
 	}
 }
