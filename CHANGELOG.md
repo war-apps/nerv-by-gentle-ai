@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-10-02
+
+### Breaking
+- move the repository and Go module to war-apps/nerv-by-gentle-ai (3228875)
+  - Install with `go install github.com/war-apps/nerv-by-gentle-ai/cmd/nerv@latest`; the old
+    `github.com/war-apps/nerv-gentle-ai` module path no longer resolves to new versions.
+
+### Added
+- skills: ask before running the gentle-ai sync (4fba6c6)
+- skills: run gentle-ai sync for missing gentle-ai skills (8afa5cd)
+- tasks: focus the herdr workspace of a newly opened worktree (774004a)
+
+### Fixed
+- install: sync the nerv marketplace before refreshing the plugin cache (cb9a1a9)
+- install: remove the nerv marketplace registration on uninstall (5da904f)
+- install: tolerate only the marketplace's own not-found message on uninstall (5139e65)
+- skills: never prompt for the sync when printing --json (88decdc)
+- skills: refresh statuses after sync and surface its diagnostics (9737cf8)
+
 ## [0.2.0] - 2026-10-01
 
 ### Added
