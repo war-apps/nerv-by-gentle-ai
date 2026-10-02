@@ -941,7 +941,11 @@ func TestRun_ModelsSection_TableShowsPurposeEquivalentAndGroupLegend(t *testing.
 	// Every purpose starts under its header and is printed whole, whatever
 	// the fixture's model and source widths are.
 	purposeCol, equivalentCol := strings.Index(header, "WHAT IT DOES"), strings.Index(header, "GENTLE-AI")
+	if purposeCol < 0 || equivalentCol <= purposeCol {
+		t.Fatalf("table header %q: WHAT IT DOES at %d, GENTLE-AI at %d", header, purposeCol, equivalentCol)
+	}
 	info := config.Roles().Info
+	checked := 0
 	for _, l := range strings.Split(got, "\n") {
 		m := tableRowRe.FindStringSubmatch(l)
 		if m == nil {
@@ -951,6 +955,7 @@ func TestRun_ModelsSection_TableShowsPurposeEquivalentAndGroupLegend(t *testing.
 		if !ok {
 			continue // a numbered row of another menu
 		}
+		checked++
 		purpose := role.Purpose
 		if strings.Index(l, purpose) != purposeCol {
 			t.Errorf("%s purpose not aligned under WHAT IT DOES (col %d): %q", m[1], purposeCol, l)
@@ -958,6 +963,9 @@ func TestRun_ModelsSection_TableShowsPurposeEquivalentAndGroupLegend(t *testing.
 		if len(l) < equivalentCol || strings.TrimSpace(l[purposeCol:equivalentCol]) != purpose {
 			t.Errorf("%s purpose cut off or GENTLE-AI misaligned (col %d): %q", m[1], equivalentCol, l)
 		}
+	}
+	if want := len(config.Roles().AllRoles); checked != want {
+		t.Errorf("alignment checked %d table rows, want one per role (%d)", checked, want)
 	}
 	for group, desc := range config.Roles().GroupDescriptions {
 		if !strings.Contains(got, group+" = "+desc) {
