@@ -166,6 +166,9 @@ only the answers you confirm.
 `nerv configure --init-repo <path>` (with `--repo-base`, `--repo-provider`,
 and, for Teamwork, `--repo-project-id`/`--repo-tasklist-id`), or `/nerv:init`
 from inside Claude Code for the same thing through guided questions.
+Running `--init-repo` on a repo that already has `.nerv/nerv.yaml` also
+removes the task providers that no longer exist (`github-projects`, `jira`)
+from it, with a backup; any other content is left as written.
 `/nerv:status` reports the resolved config and, while a run is in progress,
 the orchestrator lock state.
 

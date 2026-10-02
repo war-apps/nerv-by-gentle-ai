@@ -84,7 +84,10 @@ overwrites silently, and delegates gentle-ai's own bootstrap unchanged.
    (user scope only — project-scope `models:` applies `model`
    only). If `.nerv/nerv.yaml` already exists, do **not** overwrite it
    without confirmation — show the diff between the existing file and the
-   proposed one, and ask a single yes/no confirmation before writing.
+   proposed one, and ask a single yes/no confirmation before writing. (The
+   `nerv configure --init-repo` CLI never overwrites it either; it only
+   removes the removed task providers `github-projects` and `jira` from an
+   existing file, with a backup.)
 
 5. **Bootstrap gentle-ai if needed.** If `openspec/config.yaml` or
    `.atl/skill-registry.md` is missing, delegate to the `sdd-init` agent
