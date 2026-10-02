@@ -3,6 +3,7 @@ package wizard_test
 import (
 	"bytes"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -288,19 +289,12 @@ func TestRun_ModelsSection_CustomModelID_EOFAfterPrompt_AbortsWithoutWriteOrRunn
 
 	opts := wizard.Options{Paths: paths, SkipSkills: true, SkipRepos: true, SkipCommands: true, NoRefresh: true}
 
-	lines := make([]string, 0, 31)
-	for i := 0; i < 28; i++ { // user-config section: every prompt kept (no change, no write confirm consumed)
-		lines = append(lines, "")
-	}
-	lines = append(lines,
-		"y",         // "Configure per-role model and effort now?"
+	var out bytes.Buffer
+	in := modelsInput(&out,
 		"balthasar", // single role
 		"6",         // model choice: custom id
 		// reader ends here: the custom-id sub-prompt gets genuine EOF
 	)
-
-	in := strings.NewReader(strings.Join(lines, "\n"))
-	var out bytes.Buffer
 
 	done := make(chan error, 1)
 	go func() {
@@ -345,12 +339,8 @@ func TestRun_ModelsSection_CustomModelID_InvalidThenValid_AppliesOverride(t *tes
 
 	opts := wizard.Options{Paths: paths, SkipSkills: true, SkipRepos: true, SkipCommands: true, NoRefresh: true}
 
-	lines := make([]string, 0, 37)
-	for i := 0; i < 28; i++ {
-		lines = append(lines, "")
-	}
-	lines = append(lines,
-		"y",           // "Configure per-role model and effort now?"
+	var out bytes.Buffer
+	in := modelsInput(&out,
 		"balthasar",   // single role
 		"6",           // model choice: custom id
 		"not-a-model", // invalid: doesn't match ^claude-.+$, re-prompts
@@ -359,9 +349,7 @@ func TestRun_ModelsSection_CustomModelID_InvalidThenValid_AppliesOverride(t *tes
 		"done",        // finish the role loop
 		"y",           // write confirm
 	)
-
-	var out bytes.Buffer
-	summary, err := wizard.Run(deps, strings.NewReader(strings.Join(lines, "\n")), &out, opts)
+	summary, err := wizard.Run(deps, in, &out, opts)
 	if err != nil {
 		t.Fatalf("Run() error = %v; output:\n%s", err, out.String())
 	}
@@ -792,21 +780,15 @@ func TestRun_ModelsSection_MagiGroup(t *testing.T) {
 
 	opts := wizard.Options{Paths: paths, SkipSkills: true, SkipRepos: true, SkipCommands: true, NoRefresh: true}
 
-	lines := make([]string, 0, 34)
-	for i := 0; i < 28; i++ { // user-config section: every prompt kept (no change, no write confirm consumed)
-		lines = append(lines, "")
-	}
-	lines = append(lines,
-		"y",    // "Configure per-role model and effort now?"
+	var out bytes.Buffer
+	in := modelsInput(&out,
 		"magi", // role group
 		"2",    // model choice: opus
 		"3",    // effort choice: high
 		"done", // finish the role loop
 		"y",    // write confirm
 	)
-
-	var out bytes.Buffer
-	summary, err := wizard.Run(deps, strings.NewReader(strings.Join(lines, "\n")), &out, opts)
+	summary, err := wizard.Run(deps, in, &out, opts)
 	if err != nil {
 		t.Fatalf("Run() error = %v; output:\n%s", err, out.String())
 	}
@@ -826,17 +808,32 @@ func TestRun_ModelsSection_MagiGroup(t *testing.T) {
 	}
 }
 
-// modelsLines builds the scripted answers that reach the models section:
-// 28 blank user-config answers, "y" to configure, then the given answers.
-func modelsLines(answers ...string) string {
-	lines := make([]string, 0, 29+len(answers))
-	for i := 0; i < 28; i++ {
-		lines = append(lines, "")
-	}
-	lines = append(lines, "y")
-	lines = append(lines, answers...)
-	return strings.Join(lines, "\n")
+// modelsOffer is the prompt that opens the models section.
+const modelsOffer = "Configure per-role model and effort now?"
+
+// modelsInput scripts the answers that reach the models section by its own
+// prompt instead of counting the earlier ones: it answers every prompt with
+// a blank line until out shows the models offer, then answers "y" to it and
+// feeds the given answers, one line per read, before reporting EOF. out must
+// be the buffer the wizard writes to. The wizard's scanner reads one line at
+// a time, so out always holds the prompt it is answering when Read runs.
+func modelsInput(out *bytes.Buffer, answers ...string) io.Reader {
+	queue := append([]string{"y"}, answers...)
+	return readerFunc(func(p []byte) (int, error) {
+		line := ""
+		if strings.Contains(out.String(), modelsOffer) {
+			if len(queue) == 0 {
+				return 0, io.EOF
+			}
+			line, queue = queue[0], queue[1:]
+		}
+		return copy(p, line+"\n"), nil
+	})
 }
+
+type readerFunc func([]byte) (int, error)
+
+func (f readerFunc) Read(p []byte) (int, error) { return f(p) }
 
 var tableRowRe = regexp.MustCompile(`^\s*\d+\) [a-z-]+ `)
 
@@ -866,7 +863,7 @@ func TestRun_ModelsSection_TableShowsPurposeEquivalentAndGroupLegend(t *testing.
 	opts := wizard.Options{Paths: paths, SkipSkills: true, SkipRepos: true, SkipCommands: true, NoRefresh: true}
 
 	var out bytes.Buffer
-	if _, err := wizard.Run(deps, strings.NewReader(modelsLines("done")), &out, opts); err != nil {
+	if _, err := wizard.Run(deps, modelsInput(&out, "done"), &out, opts); err != nil {
 		t.Fatalf("Run() error = %v; output:\n%s", err, out.String())
 	}
 	got := out.String()
@@ -916,7 +913,7 @@ func TestRun_ModelsSection_PhasePickerListsEquivalentFirst(t *testing.T) {
 	opts := wizard.Options{Paths: paths, SkipSkills: true, SkipRepos: true, SkipCommands: true, NoRefresh: true}
 
 	var out bytes.Buffer
-	in := strings.NewReader(modelsLines("kaworu", "7", "1", "", "done", "y"))
+	in := modelsInput(&out, "kaworu", "7", "1", "", "done", "y")
 	if _, err := wizard.Run(deps, in, &out, opts); err != nil {
 		t.Fatalf("Run() error = %v; output:\n%s", err, out.String())
 	}
