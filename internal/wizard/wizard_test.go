@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strings"
 	"testing"
@@ -824,6 +825,116 @@ func TestRun_ModelsSection_MagiGroup(t *testing.T) {
 		if !strings.Contains(string(got), want) {
 			t.Errorf("expected %q in models: block:\n%s", want, got)
 		}
+	}
+}
+
+// modelsLines builds the scripted answers that reach the models section:
+// 28 blank user-config answers, "y" to configure, then the given answers.
+func modelsLines(answers ...string) string {
+	lines := make([]string, 0, 29+len(answers))
+	for i := 0; i < 28; i++ {
+		lines = append(lines, "")
+	}
+	lines = append(lines, "y")
+	lines = append(lines, answers...)
+	return strings.Join(lines, "\n")
+}
+
+var tableRowRe = regexp.MustCompile(`^\s*\d+\) [a-z-]+ `)
+
+// phaseLine returns the first output line after "Phases:" that contains needle.
+func phaseLine(out, needle string) string {
+	_, after, _ := strings.Cut(out, "Phases:")
+	return lineWith(after, needle)
+}
+
+func lineWith(out, needle string) string {
+	for _, l := range strings.Split(out, "\n") {
+		if strings.Contains(l, needle) {
+			return l
+		}
+	}
+	return ""
+}
+
+// The models table says what each role does and which gentle-ai phase it
+// matches, and a legend explains the group shortcuts before the prompt.
+func TestRun_ModelsSection_TableShowsPurposeEquivalentAndGroupLegend(t *testing.T) {
+	root := t.TempDir()
+	home := t.TempDir()
+	writeFixture(t, filepath.Join(root, "nerv.yaml"))
+	paths := testPaths(root, home)
+	deps := configure.Deps{Home: home, FS: nerv.PluginFS(), Runner: noRunner(), Now: fixedNow, LookPath: lookPathNone}
+	opts := wizard.Options{Paths: paths, SkipSkills: true, SkipRepos: true, SkipCommands: true, NoRefresh: true}
+
+	var out bytes.Buffer
+	if _, err := wizard.Run(deps, strings.NewReader(modelsLines("done")), &out, opts); err != nil {
+		t.Fatalf("Run() error = %v; output:\n%s", err, out.String())
+	}
+	got := out.String()
+
+	header := lineWith(got, "ROLE ")
+	for _, col := range []string{"WHAT IT DOES", "GENTLE-AI"} {
+		if !strings.Contains(header, col) {
+			t.Errorf("table header %q lacks column %q", header, col)
+		}
+	}
+	if row := lineWith(got, ") kaworu"); !strings.Contains(row, "writes the failing tests first") || !strings.Contains(row, "sdd-apply") {
+		t.Errorf("kaworu row = %q, want purpose and sdd-apply", row)
+	}
+	if row := lineWith(got, ") fuyutsuki"); !strings.HasSuffix(strings.TrimSpace(row), "-") {
+		t.Errorf("fuyutsuki row = %q, want a '-' equivalent", row)
+	}
+	for _, l := range strings.Split(got, "\n") {
+		if tableRowRe.MatchString(l) && len(l) > 120 {
+			t.Errorf("table row wider than 120 columns (%d): %q", len(l), l)
+		}
+	}
+	for group, desc := range config.Roles().GroupDescriptions {
+		if !strings.Contains(got, group+" = "+desc) {
+			t.Errorf("group legend lacks %q", group+" = "+desc)
+		}
+	}
+	if legend, prompt := strings.Index(got, "magi = "), strings.Index(got, "Role (name, number"); legend < 0 || legend > prompt {
+		t.Errorf("group legend must precede the role prompt (legend at %d, prompt at %d)", legend, prompt)
+	}
+}
+
+// For a single role, the phase picker lists the role's gentle-ai equivalent
+// first and marks it; picking it writes from:<phase>.
+func TestRun_ModelsSection_PhasePickerListsEquivalentFirst(t *testing.T) {
+	root := t.TempDir()
+	home := t.TempDir()
+	writeFixture(t, filepath.Join(root, "nerv.yaml"))
+	paths := testPaths(root, home)
+	state := `{"claude_phase_assignments":{"jd-judge-a":{"model":"opus","effort":"high"},"sdd-apply":{"model":"sonnet","effort":"medium"}}}`
+	if err := os.MkdirAll(filepath.Dir(paths.State), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(paths.State, []byte(state), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	deps := configure.Deps{Home: home, FS: nerv.PluginFS(), Runner: noRunner(), Now: fixedNow, LookPath: lookPathNone}
+	opts := wizard.Options{Paths: paths, SkipSkills: true, SkipRepos: true, SkipCommands: true, NoRefresh: true}
+
+	var out bytes.Buffer
+	in := strings.NewReader(modelsLines("kaworu", "7", "1", "", "done", "y"))
+	if _, err := wizard.Run(deps, in, &out, opts); err != nil {
+		t.Fatalf("Run() error = %v; output:\n%s", err, out.String())
+	}
+
+	if first := phaseLine(out.String(), "  1) "); !strings.Contains(first, "sdd-apply") || !strings.Contains(first, "(equivalent)") {
+		t.Errorf("first phase = %q, want sdd-apply marked (equivalent)", first)
+	}
+	if second := phaseLine(out.String(), "  2) "); !strings.Contains(second, "jd-judge-a") || strings.Contains(second, "(equivalent)") {
+		t.Errorf("second phase = %q, want jd-judge-a unmarked", second)
+	}
+	got, err := os.ReadFile(paths.Config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := "kaworu: { from: sdd-apply }"; !strings.Contains(string(got), want) {
+		t.Errorf("expected %q in models: block:\n%s", want, got)
 	}
 }
 

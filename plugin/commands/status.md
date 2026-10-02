@@ -59,9 +59,14 @@ short and imperative — this is a status check, not a narrative.
    directory is missing, print `cache: not found` once and leave `cached
    effort` blank for every row. Print one table:
 
-   | role | model | effort | source | cached effort |
-   |---|---|---|---|---|
-   | ... | ... | ... | project\|user\|gentle-ai:\<phase\>\|default | ... |
+   | role | purpose | gentle-ai equivalent | model | effort | source | cached effort |
+   |---|---|---|---|---|---|---|
+   | ... | ... | ... | ... | ... | project\|user\|gentle-ai:\<phase\>\|default | ... |
+
+   Take `purpose` and `gentle-ai equivalent` (`-` when none) per role from
+   `nerv configure --print --json` (`models[].purpose` and
+   `models[].gentle_ai_equivalent`); they are informational and never
+   affect resolution.
 
    Then print a closing line: `models: in sync` when every role's resolved
    effort matches its cached frontmatter effort, or `models: N role(s)

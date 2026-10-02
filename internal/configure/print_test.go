@@ -146,6 +146,47 @@ func TestPrint_ModelsTableHasOverrideRole(t *testing.T) {
 	}
 }
 
+// The role catalogue's purpose and gentle-ai equivalent ride along on every
+// models row as additive JSON fields.
+func TestPrint_ModelsRowsCarryPurposeAndEquivalent(t *testing.T) {
+	home := t.TempDir()
+	paths := configure.ResolvePaths(home, "")
+
+	result, err := configure.Print(printDeps(home), paths)
+	if err != nil {
+		t.Fatalf("Print() error = %v", err)
+	}
+	encoded, err := json.Marshal(result)
+	if err != nil {
+		t.Fatalf("json.Marshal() error = %v", err)
+	}
+	var decoded struct {
+		Models []map[string]any `json:"models"`
+	}
+	if err := json.Unmarshal(encoded, &decoded); err != nil {
+		t.Fatalf("json.Unmarshal() error = %v", err)
+	}
+
+	byRole := map[string]map[string]any{}
+	for _, row := range decoded.Models {
+		for _, key := range []string{"purpose", "gentle_ai_equivalent"} {
+			if _, ok := row[key]; !ok {
+				t.Errorf("row %v missing key %q", row["role"], key)
+			}
+		}
+		byRole[row["role"].(string)] = row
+	}
+	if got := byRole["kaworu"]["gentle_ai_equivalent"]; got != "sdd-apply" {
+		t.Errorf("kaworu gentle_ai_equivalent = %v, want sdd-apply", got)
+	}
+	if got := byRole["kaworu"]["purpose"]; got != "writes the failing tests first" {
+		t.Errorf("kaworu purpose = %v", got)
+	}
+	if got := byRole["fuyutsuki"]["gentle_ai_equivalent"]; got != "" {
+		t.Errorf("fuyutsuki gentle_ai_equivalent = %v, want empty", got)
+	}
+}
+
 // ---------------------------------------------------------------------------
 // print-skills-status-is-array
 // ---------------------------------------------------------------------------
