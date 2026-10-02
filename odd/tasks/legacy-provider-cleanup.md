@@ -54,6 +54,12 @@ When a `nerv.yaml` (user or project scope) still carries the task providers remo
   `--init-repo` only creates a missing project file and never rewrites an existing one, and
   `--print`/`install` only read, so no cleanup runs there.
 
+- [ ] T3 (added 2026-10-02, user decision "vamos por la recomendacion") `nerv configure
+  --init-repo` cleans an existing project `nerv.yaml` (with backup, the informational Removed
+  line, and no rewrite when nothing needs cleaning); a missing file is created as today. Project
+  files are otherwise never rewritten, so this is their only cleanup path (route: delegated
+  direct).
+
 ## Acceptance criteria
 
 - A legacy file loses exactly the provider line and the two sub-blocks on the next write; the
