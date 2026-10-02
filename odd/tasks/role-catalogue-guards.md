@@ -58,6 +58,10 @@ User request 2026-10-02: "ejecuta las revisiones sugeridas". Open advisories:
   models offer is printed; an extra early prompt injected temporarily left all five
   ModelsSection tests green. Existing prose was already consistent.
 
+- 2026-10-02: native review (medium, reliability lens) approved and acknowledged. Accepted
+  R3-models-input-unbounded-blanks: `modelsInput` now stops after `maxBlankAnswers` (200) with an
+  error naming the missing offer, proven by `TestModelsInput_FailsWhenTheOfferNeverAppears`.
+
 ## Next step
 
-Native review, then PR.
+PR to `develop`.
