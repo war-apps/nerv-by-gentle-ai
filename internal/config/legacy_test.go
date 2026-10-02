@@ -216,6 +216,12 @@ func TestStripRemovedTaskProviders(t *testing.T) {
 			wantRemoved: []string{jiraKey, githubKey},
 		},
 		{
+			name:        "flow providers map: an apostrophe inside a plain scalar is not a quote",
+			in:          stripHead + "  providers: { teamwork: { label: dont's-tw }, jira: { site: x } }\n" + stripTail,
+			want:        stripHead + "  providers: { teamwork: { label: dont's-tw } }\n" + stripTail,
+			wantRemoved: []string{jiraKey},
+		},
+		{
 			name:        "flow providers map: a middle entry goes with the separator after it",
 			in:          stripHead + "  providers: { teamwork: { a: 1 }, jira: { site: \"a,b\" }, other: { b: 2 } }\n" + stripTail,
 			want:        stripHead + "  providers: { teamwork: { a: 1 }, other: { b: 2 } }\n" + stripTail,

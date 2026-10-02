@@ -368,3 +368,58 @@ func TestRunConfigure_HomeFlag_NoLongerAccepted(t *testing.T) {
 		t.Fatalf("exit code = %d, want 2 (a rejected unknown flag); stdout=%q stderr=%q", code, stdout.String(), stderr.String())
 	}
 }
+
+// --init-repo on an existing project file cleans the removed task providers:
+// one informational line in the human output, a "removed" array in --json.
+func TestRunConfigure_InitRepo_CleansExistingLegacyProjectConfig(t *testing.T) {
+	home := t.TempDir()
+	repo := t.TempDir()
+	legacy := "enabled: true\ntasks:\n  provider: jira\n  providers:\n    teamwork:\n      project_id: 1\n    jira: { site: x }\n"
+	projectPath := filepath.Join(repo, ".nerv", "nerv.yaml")
+	if err := os.MkdirAll(filepath.Dir(projectPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(projectPath, []byte(legacy), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	opts := testOptions(home)
+	opts.Runner = &envtest.FakeRunner{Responses: map[string]envtest.Response{
+		"git -C " + repo + " rev-parse --show-toplevel": {Stdout: repo + "\n"},
+	}}
+
+	var stdout, stderr bytes.Buffer
+	if code := run([]string{"configure", "--init-repo", repo, "--json"}, &stdout, &stderr, opts); code != 0 {
+		t.Fatalf("exit code = %d, want 0 (stderr=%q)", code, stderr.String())
+	}
+	var got struct {
+		Removed []string `json:"removed"`
+	}
+	if err := json.Unmarshal(stdout.Bytes(), &got); err != nil {
+		t.Fatalf("stdout not valid JSON: %v (%q)", err, stdout.String())
+	}
+	if want := []string{"tasks.provider (jira)", "tasks.providers.jira"}; !slices.Equal(got.Removed, want) {
+		t.Errorf("removed = %v, want %v", got.Removed, want)
+	}
+
+	// Cleaned already: the human run prints no removal line.
+	var human bytes.Buffer
+	if code := run([]string{"configure", "--init-repo", repo}, &human, &stderr, opts); code != 0 {
+		t.Fatalf("exit code = %d, want 0", code)
+	}
+	if strings.Contains(human.String(), "Removed legacy") {
+		t.Errorf("a clean file reports a removal:\n%s", human.String())
+	}
+
+	// And the human output of a cleaning run carries the single line.
+	if err := os.WriteFile(projectPath, []byte(legacy), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var cleaning bytes.Buffer
+	if code := run([]string{"configure", "--init-repo", repo}, &cleaning, &stderr, opts); code != 0 {
+		t.Fatalf("exit code = %d, want 0", code)
+	}
+	const line = "Removed legacy task provider settings: tasks.provider (jira), tasks.providers.jira\n"
+	if strings.Count(cleaning.String(), "Removed legacy task provider settings") != 1 || !strings.Contains(cleaning.String(), line) {
+		t.Errorf("stdout missing the single line %q:\n%s", line, cleaning.String())
+	}
+}

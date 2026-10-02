@@ -54,6 +54,20 @@ When a `nerv.yaml` (user or project scope) still carries the task providers remo
   `--init-repo` only creates a missing project file and never rewrites an existing one, and
   `--print`/`install` only read, so no cleanup runs there.
 
+- [x] T3 (added 2026-10-02, user decision "vamos por la recomendacion") `nerv configure
+  --init-repo` cleans an existing project `nerv.yaml` (with backup, the informational Removed
+  line, and no rewrite when nothing needs cleaning); a missing file is created as today. Project
+  files are otherwise never rewritten, so this is their only cleanup path (route: delegated
+  direct).
+  RED `8bf53fe`: `TestInitRepo_ExistingLegacyConfig_IsCleanedWithBackup` and
+  `TestRunConfigure_InitRepo_CleansExistingLegacyProjectConfig` failing (file untouched, nothing
+  in `Removed`/`Backup`). GREEN `8228784`: `InitRepo` strips an existing project file through
+  `config.StripRemovedTaskProviders` and writes it with `atomicfile.Save` and the store's
+  `bak-configure-` backup; a clean file stays untouched with today's warning; a missing file is
+  created as before. `--repo-provider` with an existing file still changes nothing but the
+  cleanup. The #52-era test pinning "left untouched" was inverted in the same commit. Docs
+  `78c0173`.
+
 ## Acceptance criteria
 
 - A legacy file loses exactly the provider line and the two sub-blocks on the next write; the
@@ -79,6 +93,17 @@ When a `nerv.yaml` (user or project scope) still carries the task providers remo
   `providers` map is left untouched and reports nothing (code comment and test).
   `go test ./...`, `go vet ./...`, `gofmt -l .` clean.
 
+- 2026-10-02: T3 done; `go test ./...`, `go vet ./...`, `gofmt -l .` clean.
+
+- 2026-10-02: native review of `e9c481f..56344cd` (hardening + T3, medium, reliability lens)
+  approved and acknowledged. Accepted both warnings: R3-flow-quote-apostrophe (a quote only opens
+  a quoted scalar right after `{`, `[`, `,` or `:`, in both `stripFlowProviders` and `flowDepth`)
+  and R3-initrepo-read-error-now-fatal (`--init-repo` on an existing but unreadable config warns
+  and skips the cleanup, as before). RED `test(config): cover apostrophes in flow scalars and an
+  unreadable project config` (observed: jira entry kept, `is a directory` error), GREEN `fix(config):
+  treat in-scalar quotes as text and keep --init-repo non-fatal on unreadable configs`.
+  `go test ./...`, `go vet ./...`, `gofmt -l .` clean.
+
 ## Next step
 
-Native review, then PR.
+PR to `develop` (about 1,500 authored lines: stacked slices, cached strategy).

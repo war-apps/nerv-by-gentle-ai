@@ -100,6 +100,11 @@ With --init-repo:
   --repo-project-id <id>    Teamwork project id override
   --repo-tasklist-id <id>   Teamwork tasklist id override
 
+If `.nerv/nerv.yaml` already exists it is not recreated; `--init-repo` only
+removes the task providers that no longer exist (`github-projects`, `jira`)
+from it, after a `.bak-configure-<yyyyMMdd-HHmmss>` backup, and says so. A file
+with nothing to remove is left untouched.
+
 Other flags:
   --json                    Print the result as JSON (ignored by --print, which always does)
   --config <path>           Override the user-scope nerv.yaml path

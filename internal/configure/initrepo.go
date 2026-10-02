@@ -27,7 +27,10 @@ type InitRepoRequest struct {
 
 // InitRepo initializes path for NERV by writing <toplevel>/.nerv/nerv.yaml
 // (config.FormatProjectFile) — never overwriting an existing project
-// config, reporting that case as a warning rather than an error. path must
+// config, reporting that case as a warning rather than an error. An existing
+// config is rewritten only to strip the settings of the removed task
+// providers (backed up first, reported in Result.Removed); otherwise it is
+// left untouched. path must
 // exist and be inside a git working tree (resolved with
 // "git -C <path> rev-parse --show-toplevel"); either failure is a
 // refusal.
@@ -55,8 +58,33 @@ func InitRepo(deps Deps, req InitRepoRequest) (Result, error) {
 	written := emptyStrings()
 	changed := false
 
+	var backup *string
+	var removed []string
+
 	if _, statErr := os.Stat(repoConfigPath); statErr == nil {
-		warnings = append(warnings, fmt.Sprintf("%s already initialized; left untouched.", repoConfigPath))
+		existing, readErr := os.ReadFile(repoConfigPath)
+		cleaned, names := config.StripRemovedTaskProviders(existing)
+		if readErr != nil {
+			// An existing but unreadable config keeps the old, non-fatal
+			// "already initialized" outcome; only the cleanup is skipped.
+			warnings = append(warnings, fmt.Sprintf("%s already initialized; left untouched (could not read it to clean legacy settings: %v).", repoConfigPath, readErr))
+		} else if len(names) == 0 {
+			warnings = append(warnings, fmt.Sprintf("%s already initialized; left untouched.", repoConfigPath))
+		} else {
+			b, err := atomicfile.Save(repoConfigPath, cleaned, atomicfile.Options{
+				Now:          deps.Now(),
+				BackupSuffix: "bak-configure-",
+			})
+			if err != nil {
+				return Result{}, err
+			}
+			if b != "" {
+				backup = &b
+			}
+			removed = names
+			written = append(written, repoConfigPath)
+			changed = true
+		}
 	} else if errors.Is(statErr, fs.ErrNotExist) {
 		text := config.FormatProjectFile(config.ProjectValues{
 			BaseBranch: req.Base,
@@ -79,6 +107,7 @@ func InitRepo(deps Deps, req InitRepoRequest) (Result, error) {
 		Written:    written,
 		Warnings:   warnings,
 		ConfigPath: repoConfigPath,
-		Backup:     nil,
+		Backup:     backup,
+		Removed:    removed,
 	}, nil
 }

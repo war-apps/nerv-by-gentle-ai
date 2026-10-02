@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -182,5 +183,130 @@ func TestInitRepo_RemovedStubProviders_Refused(t *testing.T) {
 				t.Errorf("error message %q does not name the provider", err.Error())
 			}
 		})
+	}
+}
+
+// ---------------------------------------------------------------------------
+// initrepo against an existing project config: the removed task providers are
+// cleaned (with a backup and a Removed report); a clean file is untouched.
+// ---------------------------------------------------------------------------
+
+const legacyProjectConfig = "enabled: true\n" +
+	"tasks:\n" +
+	"  provider: jira   # old\n" +
+	"  providers:\n" +
+	"    teamwork:\n" +
+	"      project_id: 111\n" +
+	"    github-projects: { owner: x }\n" +
+	"    jira: { site: x }\n"
+
+const cleanedProjectConfig = "enabled: true\n" +
+	"tasks:\n" +
+	"  providers:\n" +
+	"    teamwork:\n" +
+	"      project_id: 111\n"
+
+func writeProjectConfig(t *testing.T, repoDir, content string) string {
+	t.Helper()
+	path := filepath.Join(repoDir, ".nerv", "nerv.yaml")
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+func TestInitRepo_ExistingLegacyConfig_IsCleanedWithBackup(t *testing.T) {
+	repoDir := t.TempDir()
+	path := writeProjectConfig(t, repoDir, legacyProjectConfig)
+	deps := configure.Deps{Runner: gitToplevelRunner(repoDir), Now: func() time.Time { return time.Date(2026, 10, 2, 9, 0, 0, 0, time.UTC) }}
+
+	result, err := configure.InitRepo(deps, configure.InitRepoRequest{Path: repoDir})
+	if err != nil {
+		t.Fatalf("InitRepo() error = %v", err)
+	}
+
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != cleanedProjectConfig {
+		t.Errorf("file =\n%s\nwant\n%s", got, cleanedProjectConfig)
+	}
+	if !result.Changed {
+		t.Error("Changed = false, want true")
+	}
+	if len(result.Written) != 1 || result.Written[0] != path {
+		t.Errorf("Written = %v, want [%s]", result.Written, path)
+	}
+	want := []string{"tasks.provider (jira)", "tasks.providers.github-projects", "tasks.providers.jira"}
+	if !slices.Equal(result.Removed, want) {
+		t.Errorf("Removed = %v, want %v", result.Removed, want)
+	}
+	if result.Backup == nil {
+		t.Fatal("Backup = nil, want the backup path")
+	}
+	backup, err := os.ReadFile(*result.Backup)
+	if err != nil {
+		t.Fatalf("backup not written: %v", err)
+	}
+	if string(backup) != legacyProjectConfig {
+		t.Errorf("backup does not hold the original file:\n%s", backup)
+	}
+	if !strings.HasPrefix(*result.Backup, path+".bak-configure-") {
+		t.Errorf("Backup = %q, want the %q convention", *result.Backup, path+".bak-configure-<timestamp>")
+	}
+}
+
+func TestInitRepo_ExistingCleanConfig_IsUntouchedWithoutBackup(t *testing.T) {
+	repoDir := t.TempDir()
+	path := writeProjectConfig(t, repoDir, cleanedProjectConfig)
+	deps := configure.Deps{Runner: gitToplevelRunner(repoDir), Now: func() time.Time { return time.Now() }}
+
+	result, err := configure.InitRepo(deps, configure.InitRepoRequest{Path: repoDir})
+	if err != nil {
+		t.Fatalf("InitRepo() error = %v", err)
+	}
+
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != cleanedProjectConfig {
+		t.Errorf("clean file was rewritten:\n%s", got)
+	}
+	if result.Changed || len(result.Written) != 0 || len(result.Removed) != 0 || result.Backup != nil {
+		t.Errorf("result = %+v, want nothing changed, written, removed or backed up", result)
+	}
+	if len(result.Warnings) == 0 {
+		t.Error("Warnings is empty, want the already-initialized warning")
+	}
+	backups, _ := filepath.Glob(path + ".bak-*")
+	if len(backups) != 0 {
+		t.Errorf("backups = %v, want none", backups)
+	}
+}
+
+func TestInitRepo_UnreadableExistingConfig_WarnsInsteadOfFailing(t *testing.T) {
+	repoDir := t.TempDir()
+	path := filepath.Join(repoDir, ".nerv", "nerv.yaml")
+	// A directory at the config path exists for os.Stat but cannot be read
+	// as a file, like an unreadable config.
+	if err := os.MkdirAll(path, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	deps := configure.Deps{Runner: gitToplevelRunner(repoDir), Now: func() time.Time { return time.Now() }}
+
+	result, err := configure.InitRepo(deps, configure.InitRepoRequest{Path: repoDir})
+	if err != nil {
+		t.Fatalf("InitRepo() error = %v, want a warning instead of a failure", err)
+	}
+	if result.Changed || len(result.Written) != 0 || len(result.Removed) != 0 {
+		t.Errorf("result = %+v, want nothing changed, written or removed", result)
+	}
+	if len(result.Warnings) == 0 {
+		t.Error("Warnings is empty, want one naming the unreadable config")
 	}
 }
