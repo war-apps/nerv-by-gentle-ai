@@ -32,7 +32,7 @@ in `~/.claude/plugins/known_marketplaces.json` pointing at the deleted `~/.nerv/
 
 ## Tasks
 
-- [ ] T1 Uninstall removes the marketplace registration (route: delegated direct, writer
+- [x] T1 Uninstall removes the marketplace registration (route: delegated direct, writer
   trigger: `internal/claude/plugincli.go`, `internal/install/uninstall.go` and their tests).
   RED commit, then GREEN commit.
 
@@ -45,7 +45,11 @@ in `~/.claude/plugins/known_marketplaces.json` pointing at the deleted `~/.nerv/
 ## Progress
 
 - 2026-10-02: branch created, document written.
+- 2026-10-02: T1 done. RED `a8ba9ff` (observed: `cli.RemoveMarketplace undefined`; uninstall
+  made no `marketplace remove` call; uninstall returned nil on a remove failure). GREEN `5da904f`:
+  `PluginCLI.RemoveMarketplace` (tolerates "not found") and the call in `Uninstall` between the
+  plugin uninstall and the directory removal. `go test ./...`, `go vet ./...`, `gofmt -l .` clean.
 
 ## Next step
 
-T1.
+Native review of the branch, then PR to `develop`.
