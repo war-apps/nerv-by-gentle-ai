@@ -857,6 +857,38 @@ func TestModelsInput_FailsWhenTheOfferNeverAppears(t *testing.T) {
 	}
 }
 
+// promptAnswer answers the first prompt whose text contains prompt.
+type promptAnswer struct {
+	prompt, answer string
+}
+
+// promptInput scripts answers by prompt text instead of by position: each
+// read looks at the output written since the previous read, gives the next
+// pending answer once its prompt appears there, and answers blank
+// otherwise. It reports EOF once every answer was given, and fails after
+// maxBlankAnswers blank answers in a row so a missing prompt cannot hang the
+// test. out must be the buffer the wizard writes to.
+func promptInput(out *bytes.Buffer, answers []promptAnswer) io.Reader {
+	seen, blanks := 0, 0
+	return readerFunc(func(p []byte) (int, error) {
+		if len(answers) == 0 {
+			return 0, io.EOF
+		}
+		fresh := out.String()[seen:]
+		seen = out.Len()
+		line := ""
+		if strings.Contains(fresh, answers[0].prompt) {
+			line, answers, blanks = answers[0].answer, answers[1:], 0
+		} else {
+			if blanks == maxBlankAnswers {
+				return 0, fmt.Errorf("prompt %q never appeared after %d blank answers", answers[0].prompt, maxBlankAnswers)
+			}
+			blanks++
+		}
+		return copy(p, line+"\n"), nil
+	})
+}
+
 type readerFunc func([]byte) (int, error)
 
 func (f readerFunc) Read(p []byte) (int, error) { return f(p) }
@@ -1039,20 +1071,12 @@ func TestRun_LegacyProviderBlocks_SurviveSave(t *testing.T) {
 			opts := skipAll()
 			opts.Paths = paths
 
-			// git(5) + tasks(5) + teamwork(11, only while the provider stays
-			// teamwork) + skills(5) + critical_paths + artifacts.commit.
-			blanks := 17
-			if provider == "teamwork" {
-				blanks += 11
-			}
-			lines := []string{"develop2"}
-			for i := 1; i < blanks; i++ {
-				lines = append(lines, "")
-			}
-			lines = append(lines, "y") // write confirm
-
 			var out bytes.Buffer
-			summary, err := wizard.Run(deps, strings.NewReader(strings.Join(lines, "\n")), &out, opts)
+			in := promptInput(&out, []promptAnswer{
+				{prompt: "Base branch", answer: "develop2"},
+				{prompt: "Write to ", answer: "y"},
+			})
+			summary, err := wizard.Run(deps, in, &out, opts)
 			if err != nil {
 				t.Fatalf("Run() error = %v; output:\n%s", err, out.String())
 			}
