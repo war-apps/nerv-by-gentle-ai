@@ -249,6 +249,10 @@ repository policy. Ikari itself never enables or disables the RDD switch.
 
 ## Roles
 
+For each role's one-line purpose, its gentle-ai equivalent phase and its
+default model/effort, see the roles table in
+[Configuration](configuration.md#roles-and-their-gentle-ai-equivalents).
+
 Ikari is the main Claude Code session itself, not a spawnable agent — the
 sole spawner that launches every role below, classifies each request,
 relays every blocking gate to the user, and never delegates that
