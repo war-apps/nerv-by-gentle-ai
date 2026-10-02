@@ -174,7 +174,11 @@ func TestPrint_ModelsRowsCarryPurposeAndEquivalent(t *testing.T) {
 				t.Errorf("row %v missing key %q", row["role"], key)
 			}
 		}
-		byRole[row["role"].(string)] = row
+		role, ok := row["role"].(string)
+		if !ok {
+			t.Fatalf("row %v has no string role", row)
+		}
+		byRole[role] = row
 	}
 	if got := byRole["kaworu"]["gentle_ai_equivalent"]; got != "sdd-apply" {
 		t.Errorf("kaworu gentle_ai_equivalent = %v, want sdd-apply", got)
