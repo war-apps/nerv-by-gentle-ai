@@ -408,7 +408,35 @@ func TestRefreshCache_AddsMarketplace(t *testing.T) {
 	if err := install.RefreshCache(context.Background(), deps); err != nil {
 		t.Fatalf("RefreshCache() error = %v; output:\n%s", err, stdout.String())
 	}
-	if indexOf(callLines(runner), "claude plugin marketplace add "+filepath.Join(home, ".nerv", "marketplace")) < 0 {
-		t.Errorf("no marketplace add call; calls: %s", strings.Join(callLines(runner), " | "))
+	lines := callLines(runner)
+	add := indexOf(lines, "claude plugin marketplace add "+filepath.Join(home, ".nerv", "marketplace"))
+	uninstall := indexOf(lines, "claude plugin uninstall nerv@nerv")
+	installed := indexOf(lines, "claude plugin install nerv@nerv")
+	if add < 0 {
+		t.Fatalf("no marketplace add call; calls: %s", strings.Join(lines, " | "))
+	}
+	if add > uninstall || add > installed {
+		t.Errorf("marketplace add must run before uninstall/install; calls: %s", strings.Join(lines, " | "))
+	}
+}
+
+func TestRefreshCache_MarketplaceAddFailure_StopsBeforeInstall(t *testing.T) {
+	home := t.TempDir()
+	runner := baseRunner()
+	runner.Responses["claude plugin marketplace add "+filepath.Join(home, ".nerv", "marketplace")] =
+		envtest.Response{Stderr: "invalid marketplace\n", ExitCode: 1}
+	var stdout bytes.Buffer
+	deps := install.Deps{Home: home, FS: nerv.PluginFS(), Runner: runner, Now: fixedNow, LookPath: lookPathAll, Stdout: &stdout}
+
+	err := install.RefreshCache(context.Background(), deps)
+	if err == nil {
+		t.Fatal("RefreshCache() error = nil, want an error when the marketplace add fails")
+	}
+	if !strings.Contains(err.Error(), "invalid marketplace") {
+		t.Errorf("error = %v, want it to carry the CLI output", err)
+	}
+	lines := callLines(runner)
+	if indexOf(lines, "claude plugin install nerv@nerv") >= 0 {
+		t.Errorf("claude plugin install ran despite the marketplace add failure; calls: %s", strings.Join(lines, " | "))
 	}
 }
