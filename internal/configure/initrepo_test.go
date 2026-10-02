@@ -165,3 +165,22 @@ func TestInitRepo_InvalidProvider_Refused(t *testing.T) {
 		t.Error("file was created despite the invalid provider")
 	}
 }
+
+// The removed stub providers are refused like any other unknown value.
+func TestInitRepo_RemovedStubProviders_Refused(t *testing.T) {
+	for _, provider := range []string{"github-projects", "jira"} {
+		t.Run(provider, func(t *testing.T) {
+			repoDir := t.TempDir()
+			deps := configure.Deps{Runner: gitToplevelRunner(repoDir), Now: func() time.Time { return time.Now() }}
+
+			_, err := configure.InitRepo(deps, configure.InitRepoRequest{Path: repoDir, Provider: provider})
+			var refusal *configure.RefusalError
+			if !errors.As(err, &refusal) {
+				t.Fatalf("error = %v, want *RefusalError", err)
+			}
+			if !strings.Contains(err.Error(), provider) {
+				t.Errorf("error message %q does not name the provider", err.Error())
+			}
+		})
+	}
+}
