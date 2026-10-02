@@ -3,6 +3,7 @@ package wizard_test
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -811,6 +812,11 @@ func TestRun_ModelsSection_MagiGroup(t *testing.T) {
 // modelsOffer is the prompt that opens the models section.
 const modelsOffer = "Configure per-role model and effort now?"
 
+// maxBlankAnswers bounds how many blank answers modelsInput gives before the
+// models offer appears, so a missing or renamed offer fails the test at once
+// instead of feeding blank lines until the go test timeout.
+const maxBlankAnswers = 200
+
 // modelsInput scripts the answers that reach the models section by its own
 // prompt instead of counting the earlier ones: it answers every prompt with
 // a blank line until out shows the models offer, then answers "y" to it and
@@ -819,9 +825,15 @@ const modelsOffer = "Configure per-role model and effort now?"
 // a time, so out always holds the prompt it is answering when Read runs.
 func modelsInput(out *bytes.Buffer, answers ...string) io.Reader {
 	queue := append([]string{"y"}, answers...)
+	blanks := 0
 	return readerFunc(func(p []byte) (int, error) {
 		line := ""
-		if strings.Contains(out.String(), modelsOffer) {
+		if !strings.Contains(out.String(), modelsOffer) {
+			if blanks == maxBlankAnswers {
+				return 0, fmt.Errorf("models offer %q never appeared after %d blank answers", modelsOffer, maxBlankAnswers)
+			}
+			blanks++
+		} else {
 			if len(queue) == 0 {
 				return 0, io.EOF
 			}
@@ -829,6 +841,20 @@ func modelsInput(out *bytes.Buffer, answers ...string) io.Reader {
 		}
 		return copy(p, line+"\n"), nil
 	})
+}
+
+func TestModelsInput_FailsWhenTheOfferNeverAppears(t *testing.T) {
+	var out bytes.Buffer
+	in := modelsInput(&out)
+	buf := make([]byte, 64)
+	for i := 0; i < maxBlankAnswers; i++ {
+		if _, err := in.Read(buf); err != nil {
+			t.Fatalf("read %d: unexpected error %v", i, err)
+		}
+	}
+	if _, err := in.Read(buf); err == nil || !strings.Contains(err.Error(), "never appeared") {
+		t.Fatalf("read past the bound: error = %v, want one naming the missing offer", err)
+	}
 }
 
 type readerFunc func([]byte) (int, error)
