@@ -127,3 +127,64 @@ func TestPluginCLI_AddMarketplace_FailureErrors(t *testing.T) {
 		t.Errorf("error = %v, want it to mention the failure output", err)
 	}
 }
+
+func TestPluginCLI_RemoveMarketplace_RunsExactCommand(t *testing.T) {
+	runner := &envtest.FakeRunner{
+		Responses: map[string]envtest.Response{
+			"claude plugin marketplace remove nerv": {Stdout: "removed\n", ExitCode: 0},
+		},
+	}
+	cli := claude.PluginCLI{Runner: runner}
+
+	if _, err := cli.RemoveMarketplace(context.Background(), "nerv"); err != nil {
+		t.Fatalf("RemoveMarketplace() error = %v", err)
+	}
+	if len(runner.Calls) != 1 {
+		t.Fatalf("calls = %+v, want exactly one", runner.Calls)
+	}
+	got := runner.Calls[0].Name + " " + strings.Join(runner.Calls[0].Args, " ")
+	if got != "claude plugin marketplace remove nerv" {
+		t.Errorf("command = %q", got)
+	}
+}
+
+func TestPluginCLI_RemoveMarketplace_TolerantOfNotFound(t *testing.T) {
+	runner := &envtest.FakeRunner{
+		Responses: map[string]envtest.Response{
+			"claude plugin marketplace remove nerv": {Stderr: "✘ Failed to remove marketplace: Marketplace 'nerv' not found\n", ExitCode: 1},
+		},
+	}
+	cli := claude.PluginCLI{Runner: runner}
+
+	if _, err := cli.RemoveMarketplace(context.Background(), "nerv"); err != nil {
+		t.Fatalf("RemoveMarketplace() error = %v, want nil (tolerant of 'not found')", err)
+	}
+}
+
+func TestPluginCLI_RemoveMarketplace_OtherFailureErrors(t *testing.T) {
+	runner := &envtest.FakeRunner{
+		Responses: map[string]envtest.Response{
+			"claude plugin marketplace remove nerv": {Stderr: "boom\n", ExitCode: 1},
+		},
+	}
+	cli := claude.PluginCLI{Runner: runner}
+
+	_, err := cli.RemoveMarketplace(context.Background(), "nerv")
+	if err == nil {
+		t.Fatal("RemoveMarketplace() error = nil, want an error")
+	}
+	if !strings.Contains(err.Error(), "boom") {
+		t.Errorf("error = %v, want it to mention the failure output", err)
+	}
+}
+
+func TestPluginCLI_RemoveMarketplace_LaunchFailureErrors(t *testing.T) {
+	runner := &envtest.FakeRunner{
+		Default: envtest.Response{Err: context.DeadlineExceeded},
+	}
+	cli := claude.PluginCLI{Runner: runner}
+
+	if _, err := cli.RemoveMarketplace(context.Background(), "nerv"); err == nil {
+		t.Fatal("RemoveMarketplace() error = nil, want an error on launch failure")
+	}
+}
