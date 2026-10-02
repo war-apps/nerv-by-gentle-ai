@@ -17,11 +17,12 @@ const skillsUsage = `Usage: nerv skills [flags]
 
 Installs or verifies the Claude Code user-scope skills the NERV plugin
 defaults reference: external ones via "npx skills add ... -g", gentle-ai
-ones verified only.
+ones via "gentle-ai sync --agents claude-code --skills ..." (one run for
+all the missing ones).
 
 Flags:
-  --dry-run          Print the exact npx command for each missing skill
-                      instead of running it
+  --dry-run          Print the exact npx and gentle-ai commands for the
+                      missing skills instead of running them
   --json             Print the computed status as a JSON array
   --only name,...    Restrict processing to these skill names
 `
@@ -29,8 +30,9 @@ Flags:
 // runSkills is "nerv skills"'s CLI: the human table (or --json array,
 // always an array even for one entry), --only rejecting an unknown name
 // with exit 1, --dry-run's "npx skills add ..." lines alongside the
-// printed remedy lines for gentle-ai gaps and the human summary line, and
-// the failure-count-driven exit code.
+// printed remedy lines for the gentle-ai gaps left after "gentle-ai sync"
+// (whose own line is printed when it runs or, with --dry-run, would run),
+// the human summary line, and the failure-count-driven exit code.
 func runSkills(args []string, stdout, stderr io.Writer, opts options) int {
 	fs := flag.NewFlagSet("skills", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
@@ -88,6 +90,12 @@ func runSkills(args []string, stdout, stderr io.Writer, opts options) int {
 
 	gentleAiGapCount := len(report.Plan.Remedies)
 	if !*jsonOut {
+		if report.Sync.Ran {
+			fmt.Fprintf(stdout, "-> gentle-ai %s\n", strings.Join(report.Plan.Sync.Args, " "))
+			if report.Sync.Failed {
+				fmt.Fprintln(stdout, "Warning: gentle-ai sync failed; the gentle-ai skills may still be missing.")
+			}
+		}
 		for _, remedy := range report.Plan.Remedies {
 			fmt.Fprintln(stdout, remedy)
 		}
@@ -98,6 +106,9 @@ func runSkills(args []string, stdout, stderr io.Writer, opts options) int {
 		if !*jsonOut {
 			for _, step := range report.Plan.Installs {
 				fmt.Fprintf(stdout, "DryRun: npx %s\n", strings.Join(step.Args, " "))
+			}
+			if report.Plan.Sync != nil {
+				fmt.Fprintf(stdout, "DryRun: gentle-ai %s\n", strings.Join(report.Plan.Sync.Args, " "))
 			}
 		}
 	} else {

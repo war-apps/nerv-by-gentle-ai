@@ -176,14 +176,15 @@ nerv apply-models
 
 Installs or verifies the Claude Code user-scope skills the NERV plugin
 defaults reference: external ones via `npx skills add ... -g`, gentle-ai
-ones verified only.
+ones via one `gentle-ai sync --agents claude-code --skills ...` for all the
+missing ones (a failed sync leaves a remedy line per skill still missing).
 
 ```
 Usage: nerv skills [flags]
 
 Flags:
-  --dry-run          Print the exact npx command for each missing skill
-                      instead of running it
+  --dry-run          Print the exact npx and gentle-ai commands for the
+                      missing skills instead of running them
   --json             Print the computed status as a JSON array
   --only name,...    Restrict processing to these skill names
 ```
