@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-10-02
+
+### Breaking
+- config: drop the GitHub Projects and Jira task providers (cdf8cc7)
+  - `tasks.provider` accepts only `teamwork` or `none`. Existing configs are cleaned on the next
+    write: `nerv` removes `tasks.provider: github-projects|jira` (the default then applies) and
+    the `tasks.providers.github-projects` / `tasks.providers.jira` blocks; run
+    `nerv configure --init-repo` in a repository to clean its project `nerv.yaml`.
+
+### Added
+- config: describe each role and its gentle-ai equivalent (ba9fbce)
+- wizard: explain each role and suggest its gentle-ai equivalent (6b7d766)
+- config: strip the removed task providers from existing configs (ae0e388)
+- configure: strip the removed providers on every config write (4b31fa6)
+- configure: clean removed task providers from existing project configs (8228784)
+
+### Fixed
+- wizard: size the models table columns to their longest value (51986fa)
+- wizard: size the purpose column to the longest role purpose (720477b)
+- config: keep foreign comments and strip every legacy provider form (bdb2fc0)
+- config: treat in-scalar quotes as text and keep --init-repo non-fatal on unreadable configs (3fcc9e0)
+
 ## [0.3.0] - 2026-10-02
 
 ### Breaking

@@ -1,6 +1,6 @@
 {
   "name": "nerv",
-  "version": "0.3.0",
+  "version": "1.0.0",
   "description": "Nerv by Gentle-AI: governance overlay on gentle-ai (Evangelion-named multi-agent workflow) — per-task MAGI vote, governance veto, quality gate, ranked audit, run summary",
   "author": { "name": "Walter Rodriguez" }
 }
