@@ -315,9 +315,10 @@ func TestSetManagedValue(t *testing.T) {
 
 // ---------------------------------------------------------------------------
 // Legacy provider sub-blocks (github-projects, jira) left in tasks.providers by
-// releases before their removal: the document layer must carry them through
-// every managed-key write, including a write that inserts a missing teamwork
-// key right next to them.
+// releases before their removal: the document layer edits only the key it is
+// asked to and carries them through, including a write that inserts a missing
+// teamwork key right next to them. Removing them is the write layer's job
+// (StripRemovedTaskProviders, applied by configstore.Store.Save).
 // ---------------------------------------------------------------------------
 
 const legacyProviderBlocks = "" +

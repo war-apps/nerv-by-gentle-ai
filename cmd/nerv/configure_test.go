@@ -227,6 +227,39 @@ func TestRunConfigure_Set_HappyPathThenNoop(t *testing.T) {
 	}
 }
 
+// A write that strips legacy provider settings says so on one line; the JSON
+// summary lists them; a write with nothing to strip prints nothing extra.
+func TestRunConfigure_Set_ReportsRemovedLegacyProviders(t *testing.T) {
+	home := t.TempDir()
+	configPath := filepath.Join(home, ".claude", "nerv", "nerv.yaml")
+	if err := os.MkdirAll(filepath.Dir(configPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	legacy := "enabled: true\ngit:\n  worktree: ask\ntasks:\n  provider: jira   # old\n  providers:\n    teamwork:\n      task_ref_prefix: tw\n    jira: { site: x }\n"
+	if err := os.WriteFile(configPath, []byte(legacy), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"configure", "--set", "git.worktree=always"}, &stdout, &stderr, testOptions(home))
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0 (stderr=%q)", code, stderr.String())
+	}
+	const want = "Removed legacy task provider settings: tasks.provider (jira), tasks.providers.jira\n"
+	if strings.Count(stdout.String(), "Removed legacy task provider settings") != 1 || !strings.Contains(stdout.String(), want) {
+		t.Errorf("stdout missing the single line %q:\n%s", want, stdout.String())
+	}
+
+	var again bytes.Buffer
+	code = run([]string{"configure", "--set", "git.worktree=never", "--json"}, &again, &stderr, testOptions(home))
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0", code)
+	}
+	if strings.Contains(again.String(), "removed") {
+		t.Errorf("a write with nothing to strip mentions removals: %s", again.String())
+	}
+}
+
 // ---------------------------------------------------------------------------
 // --set with an unknown key: exit 1, message on stdout.
 // ---------------------------------------------------------------------------
