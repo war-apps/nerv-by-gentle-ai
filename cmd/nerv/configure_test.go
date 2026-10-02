@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -257,6 +258,61 @@ func TestRunConfigure_Set_ReportsRemovedLegacyProviders(t *testing.T) {
 	}
 	if strings.Contains(again.String(), "removed") {
 		t.Errorf("a write with nothing to strip mentions removals: %s", again.String())
+	}
+}
+
+// --json carries the stripped settings in a "removed" array, in file order.
+func TestRunConfigure_Set_JSONListsRemovedLegacyProviders(t *testing.T) {
+	home := t.TempDir()
+	configPath := filepath.Join(home, ".claude", "nerv", "nerv.yaml")
+	if err := os.MkdirAll(filepath.Dir(configPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	legacy := "enabled: true\ngit:\n  worktree: ask\ntasks:\n  provider: jira\n  providers:\n    teamwork:\n      task_ref_prefix: tw\n    jira: { site: x }\n"
+	if err := os.WriteFile(configPath, []byte(legacy), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"configure", "--set", "git.worktree=always", "--json"}, &stdout, &stderr, testOptions(home))
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0 (stderr=%q)", code, stderr.String())
+	}
+	var got struct {
+		Removed []string `json:"removed"`
+	}
+	if err := json.Unmarshal(stdout.Bytes(), &got); err != nil {
+		t.Fatalf("stdout not valid JSON: %v (%q)", err, stdout.String())
+	}
+	want := []string{"tasks.provider (jira)", "tasks.providers.jira"}
+	if !slices.Equal(got.Removed, want) {
+		t.Errorf("removed = %v, want %v", got.Removed, want)
+	}
+}
+
+// Setting a key to the value it already has changes nothing, so the legacy
+// settings stay and nothing is reported.
+func TestRunConfigure_Set_SameValueDoesNotCleanLegacyProviders(t *testing.T) {
+	home := t.TempDir()
+	configPath := filepath.Join(home, ".claude", "nerv", "nerv.yaml")
+	if err := os.MkdirAll(filepath.Dir(configPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	legacy := "enabled: true\ngit:\n  worktree: ask\ntasks:\n  provider: jira\n"
+	if err := os.WriteFile(configPath, []byte(legacy), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	if code := run([]string{"configure", "--set", "git.worktree=ask"}, &stdout, &stderr, testOptions(home)); code != 0 {
+		t.Fatalf("exit code = %d, want 0 (stderr=%q)", code, stderr.String())
+	}
+	if strings.Contains(stdout.String(), "Removed legacy") {
+		t.Errorf("a no-op set reported a cleanup:\n%s", stdout.String())
+	}
+	after, _ := os.ReadFile(configPath)
+	if string(after) != legacy {
+		t.Errorf("file changed on a no-op set: %q", after)
 	}
 }
 
