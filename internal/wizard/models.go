@@ -366,20 +366,30 @@ func writeModelsBlock(deps Deps, s *session, out io.Writer, paths configure.Path
 
 // printModelTable prints the resolved table (with each role's purpose and
 // gentle-ai equivalent) followed by a legend for the group shortcuts the
-// role prompt accepts.
+// role prompt accepts. The role, model, effort and source columns size to
+// their longest value, so a custom model id or a long gentle-ai source
+// never shifts the purpose column.
 func printModelTable(out io.Writer, table []config.ModelRow, configPath string) {
 	catalogue := config.Roles()
 	fmt.Fprintln(out)
 	fmt.Fprintf(out, "Config: %s\n", configPath)
-	fmt.Fprintf(out, "    %-13s %-8s %-7s %-22s %-*s %s\n", "ROLE", "MODEL", "EFFORT", "SOURCE", purposeWidth, "WHAT IT DOES", "GENTLE-AI")
+	roleW, modelW, effortW, sourceW := len("ROLE"), len("MODEL"), len("EFFORT"), len("SOURCE")
+	for _, row := range table {
+		roleW = max(roleW, len(row.Role))
+		modelW = max(modelW, len(row.Model))
+		effortW = max(effortW, len(row.Effort))
+		sourceW = max(sourceW, len(row.Source))
+	}
+	fmt.Fprintf(out, "    %-*s %-*s %-*s %-*s %-*s %s\n", roleW, "ROLE", modelW, "MODEL", effortW, "EFFORT",
+		sourceW, "SOURCE", purposeWidth, "WHAT IT DOES", "GENTLE-AI")
 	for i, row := range table {
 		info := catalogue.Info[row.Role]
 		equivalent := info.GentleAIEquivalent
 		if equivalent == "" {
 			equivalent = "-"
 		}
-		fmt.Fprintf(out, "%2d) %-13s %-8s %-7s %-22s %-*s %s\n", i+1, row.Role, row.Model, row.Effort, row.Source,
-			purposeWidth, truncate(info.Purpose, purposeWidth), equivalent)
+		fmt.Fprintf(out, "%2d) %-*s %-*s %-*s %-*s %-*s %s\n", i+1, roleW, row.Role, modelW, row.Model,
+			effortW, row.Effort, sourceW, row.Source, purposeWidth, truncate(info.Purpose, purposeWidth), equivalent)
 	}
 	fmt.Fprintln(out)
 	fmt.Fprintln(out, "Groups:")
