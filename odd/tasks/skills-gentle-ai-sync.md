@@ -109,7 +109,13 @@ Engram mirror: topic `odd/skills-gentle-ai-sync/tasks`.
   refresh assumption documented, README and `docs/commands.md` updated. Follow-up: `--json`
   never prompts. Route: delegated direct.
 
+- 2026-10-02: the selectorless preflight range from `main` (99 files, 2,293 lines) stopped with
+  `lens_context_budget_exceeded` (no authority created). Re-scoped to the T5 slice
+  `262cbaf..HEAD` (16 files, 716 lines, medium, reliability lens, base-ref selector): approved and
+  acknowledged. Advisory, not taken: a test for the wizard's confirmation-input-closed path, and
+  a possible second sync prompt in the wizard after declining in the `nerv install` skills step.
+
 ## Next step
 
-T5, then PR to `develop`; after the merge, refresh the plugin cache so
-the herdr focus change reaches the installed plugin.
+PR to `develop`; after the merge, refresh the plugin cache so the herdr focus change reaches the
+installed plugin.
