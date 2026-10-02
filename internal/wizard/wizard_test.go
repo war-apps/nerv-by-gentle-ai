@@ -893,7 +893,7 @@ type readerFunc func([]byte) (int, error)
 
 func (f readerFunc) Read(p []byte) (int, error) { return f(p) }
 
-var tableRowRe = regexp.MustCompile(`^\s*\d+\) [a-z-]+ `)
+var tableRowRe = regexp.MustCompile(`^\s*\d+\) ([a-z-]+) `)
 
 // phaseLine returns the first output line after "Phases:" that contains needle.
 func phaseLine(out, needle string) string {
@@ -938,9 +938,25 @@ func TestRun_ModelsSection_TableShowsPurposeEquivalentAndGroupLegend(t *testing.
 	if row := lineWith(got, ") fuyutsuki"); !strings.HasSuffix(strings.TrimSpace(row), "-") {
 		t.Errorf("fuyutsuki row = %q, want a '-' equivalent", row)
 	}
+	// Every purpose starts under its header and is printed whole, whatever
+	// the fixture's model and source widths are.
+	purposeCol, equivalentCol := strings.Index(header, "WHAT IT DOES"), strings.Index(header, "GENTLE-AI")
+	info := config.Roles().Info
 	for _, l := range strings.Split(got, "\n") {
-		if tableRowRe.MatchString(l) && len(l) > 120 {
-			t.Errorf("table row wider than 120 columns (%d): %q", len(l), l)
+		m := tableRowRe.FindStringSubmatch(l)
+		if m == nil {
+			continue
+		}
+		role, ok := info[m[1]]
+		if !ok {
+			continue // a numbered row of another menu
+		}
+		purpose := role.Purpose
+		if strings.Index(l, purpose) != purposeCol {
+			t.Errorf("%s purpose not aligned under WHAT IT DOES (col %d): %q", m[1], purposeCol, l)
+		}
+		if len(l) < equivalentCol || strings.TrimSpace(l[purposeCol:equivalentCol]) != purpose {
+			t.Errorf("%s purpose cut off or GENTLE-AI misaligned (col %d): %q", m[1], equivalentCol, l)
 		}
 	}
 	for group, desc := range config.Roles().GroupDescriptions {
