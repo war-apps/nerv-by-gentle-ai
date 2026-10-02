@@ -77,6 +77,12 @@ and which gentle-ai phase it is equivalent to, from one Go source of truth.
 - 2026-10-02: branch created, document written.
 - 2026-10-02: T1-T3 implemented; `go test ./...`, `go vet ./...`, `gofmt -l .` clean.
 
+- 2026-10-02: native review (medium, reliability lens) approved and acknowledged. Accepted
+  R3-model-column-narrowed: RED `test(wizard): keep the models table aligned…` (observed: a
+  custom model id and a long gentle-ai source shifted the purpose column), GREEN `fix(wizard):
+  size the models table columns to their longest value`. Not taken (advisory): a test pinning
+  the `docs/configuration.md` roles table to the Go catalogue.
+
 ## Next step
 
-Native review, then PR.
+PR to `develop` (about 560 authored lines: ask for the delivery shape).
