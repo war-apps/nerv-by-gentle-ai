@@ -91,6 +91,12 @@ func TestStripRemovedTaskProviders(t *testing.T) {
 			wantRemoved: []string{jiraKey},
 		},
 		{
+			name:        "flow value spilling over several lines",
+			in:          stripHead + stripTeamwork + "    jira: {\n      site: \"a}\",\n      project_key: x }  # later\n" + stripTail,
+			want:        stripHead + stripTeamwork + stripTail,
+			wantRemoved: []string{jiraKey},
+		},
+		{
 			name:        "only jira present",
 			in:          stripHead + stripTeamwork + stripJiraInline + stripTail,
 			want:        stripHead + stripTeamwork + stripTail,

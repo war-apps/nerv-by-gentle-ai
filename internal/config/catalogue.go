@@ -97,6 +97,12 @@ func ManagedKeys() []string {
 	return keys
 }
 
+// RemovedTaskProviders lists the task providers that earlier releases wrote
+// into nerv.yaml and that no longer exist. StripRemovedTaskProviders removes
+// their settings from existing configs; a future removal only needs a new
+// entry here.
+var RemovedTaskProviders = []string{"github-projects", "jira"}
+
 // AllowedValues returns the closed set of valid values for a managed key
 // that has one, and whether key is enumerated at all. A managed key absent
 // from this catalogue (ok == false) accepts any value. Mirrors
