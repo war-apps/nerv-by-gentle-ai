@@ -999,3 +999,83 @@ func diffLineCount(a, b string) int {
 	}
 	return diff
 }
+
+// ---------------------------------------------------------------------------
+// Legacy provider sub-blocks (github-projects, jira), left in tasks.providers by
+// releases before their removal, survive a wizard save byte for byte; a legacy
+// tasks.provider: jira is kept as written when the answer is blank.
+// ---------------------------------------------------------------------------
+
+const legacyProviderLines = "" +
+	"    # legacy stubs, kept by hand\n" +
+	"    github-projects: { task_ref_prefix: gh, owner: \"\", project_number: 0 }    # later\n" +
+	"    jira: { task_ref_prefix: jira, site: \"\", project_key: \"\" }               # later\n"
+
+func legacyFixture(t *testing.T, provider string) string {
+	t.Helper()
+	const anchor = "artifacts:\n"
+	fixture := strings.Replace(fixtureLF, anchor, legacyProviderLines+anchor, 1)
+	if provider != "teamwork" {
+		old := "  provider: teamwork                #"
+		if !strings.Contains(fixture, old) {
+			t.Fatal("provider line not found in the fixture")
+		}
+		fixture = strings.Replace(fixture, old, "  provider: "+provider+strings.Repeat(" ", 20-len(provider))+"#", 1)
+	}
+	return fixture
+}
+
+func TestRun_LegacyProviderBlocks_SurviveSave(t *testing.T) {
+	for _, provider := range []string{"teamwork", "jira"} {
+		t.Run(provider, func(t *testing.T) {
+			root := t.TempDir()
+			home := t.TempDir()
+			paths := testPaths(root, home)
+			fixture := legacyFixture(t, provider)
+			if err := os.WriteFile(paths.Config, []byte(fixture), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			deps := configure.Deps{Home: home, FS: nerv.PluginFS(), Runner: noRunner(), Now: fixedNow, LookPath: lookPathNone}
+			opts := skipAll()
+			opts.Paths = paths
+
+			// git(5) + tasks(5) + teamwork(11, only while the provider stays
+			// teamwork) + skills(5) + critical_paths + artifacts.commit.
+			blanks := 17
+			if provider == "teamwork" {
+				blanks += 11
+			}
+			lines := []string{"develop2"}
+			for i := 1; i < blanks; i++ {
+				lines = append(lines, "")
+			}
+			lines = append(lines, "y") // write confirm
+
+			var out bytes.Buffer
+			summary, err := wizard.Run(deps, strings.NewReader(strings.Join(lines, "\n")), &out, opts)
+			if err != nil {
+				t.Fatalf("Run() error = %v; output:\n%s", err, out.String())
+			}
+			if !summary.Changed {
+				t.Fatalf("Changed = false, want true; output:\n%s", out.String())
+			}
+
+			got, err := os.ReadFile(paths.Config)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !strings.Contains(string(got), "base_branch: develop2") {
+				t.Errorf("base_branch not updated:\n%s", got)
+			}
+			if !strings.Contains(string(got), legacyProviderLines) {
+				t.Errorf("legacy provider blocks not intact:\n%s", got)
+			}
+			if !strings.Contains(string(got), "  provider: "+provider+" ") {
+				t.Errorf("tasks.provider changed from %q:\n%s", provider, got)
+			}
+			if diff := diffLineCount(fixture, string(got)); diff != 1 {
+				t.Errorf("diff line count = %d, want 1; got:\n%s", diff, got)
+			}
+		})
+	}
+}

@@ -170,3 +170,49 @@ func TestStore_Save_CreatesParentDirWhenFileMissing(t *testing.T) {
 		t.Errorf("content = %q, want %q", content, "enabled: true\n")
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Store.Load -> edit -> Store.Save keeps the legacy provider sub-blocks
+// (github-projects, jira) that releases before their removal left in
+// tasks.providers, byte for byte, with the legacy tasks.provider value too.
+// ---------------------------------------------------------------------------
+
+func TestStore_RoundTrip_LegacyProviderBlocksSurvive(t *testing.T) {
+	const legacyBlocks = "" +
+		"    # legacy stubs, kept by hand\n" +
+		"    github-projects: { task_ref_prefix: gh, owner: \"\", project_number: 0 }    # later\n" +
+		"    jira: { task_ref_prefix: jira, site: \"\", project_key: \"\" }               # later\n"
+	original := "" +
+		"enabled: true\n" +
+		"git:\n" +
+		"  base_branch: develop              # default base\n" +
+		"tasks:\n" +
+		"  provider: jira                    # legacy value\n" +
+		"  providers:\n" +
+		"    teamwork:\n" +
+		"      task_ref_prefix: tw\n" +
+		legacyBlocks
+	path := filepath.Join(t.TempDir(), "nerv.yaml")
+	if err := os.WriteFile(path, []byte(original), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	store := configstore.Store{}
+	doc, _, err := store.Load(path)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	doc.SetScalar("git.base_branch", "develop2")
+	if _, _, err := store.Save(path, doc, []byte(original), time.Date(2026, 9, 29, 12, 0, 0, 0, time.UTC)); err != nil {
+		t.Fatalf("Save() error = %v", err)
+	}
+
+	after, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := strings.Replace(original, "base_branch: develop              #", "base_branch: develop2              #", 1)
+	if string(after) != want {
+		t.Errorf("round trip changed more than base_branch:\ngot:\n%s\nwant:\n%s", after, want)
+	}
+}
