@@ -345,11 +345,11 @@ func TestSet_LegacyJiraProvider_RefusesJiraAndAllowsMovingAway(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// --init-repo never rewrites an existing project config: one that still
-// carries the legacy provider is left byte for byte, with a warning.
+// --init-repo on an existing project config only strips the legacy provider
+// settings; --repo-provider never rewrites what is already there.
 // ---------------------------------------------------------------------------
 
-func TestInitRepo_ExistingLegacyJiraProjectConfig_LeftUntouched(t *testing.T) {
+func TestInitRepo_ExistingLegacyJiraProjectConfig_OnlyCleaned(t *testing.T) {
 	repoDir := t.TempDir()
 	projectPath := filepath.Join(repoDir, ".nerv", "nerv.yaml")
 	legacy := "enabled: true\ntasks:\n  provider: jira   # legacy\n  providers:\n" + legacyProviderLines
@@ -360,10 +360,11 @@ func TestInitRepo_ExistingLegacyJiraProjectConfig_LeftUntouched(t *testing.T) {
 	if err != nil {
 		t.Fatalf("InitRepo() error = %v", err)
 	}
-	if result.Changed || len(result.Warnings) != 1 {
-		t.Errorf("Changed = %v, Warnings = %v; want untouched with one warning", result.Changed, result.Warnings)
+	if !result.Changed || len(result.Warnings) != 0 || len(result.Removed) == 0 {
+		t.Errorf("Changed = %v, Warnings = %v, Removed = %v; want cleaned, no warning", result.Changed, result.Warnings, result.Removed)
 	}
-	if got := readFile(t, projectPath); got != legacy {
-		t.Errorf("existing project config rewritten:\n%s", got)
+	const want = "enabled: true\ntasks:\n  providers:\n"
+	if got := readFile(t, projectPath); got != want {
+		t.Errorf("project config = %q, want %q", got, want)
 	}
 }
