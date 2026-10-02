@@ -169,7 +169,7 @@ without asking:
    `~/.claude/work/timers.json` scoped to this session, or a task ref
    already given by the user in this conversation?
 3. **Check `tasks.provider`.** Resolved (one of `teamwork` |
-   `github-projects` | `jira` | `none`), or absent with
+   `none`), or absent with
    `ask_when_missing: true`?
 
 If step 2 finds an active task and step 3 resolves, preflight is

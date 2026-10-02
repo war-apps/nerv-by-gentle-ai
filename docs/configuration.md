@@ -28,10 +28,10 @@ git:
   worktree_pattern: ".claude/worktrees/{slug}"   # where task worktrees are created; {slug} {branch} {prefix} {id} {repo}
                                                   # `nerv configure`'s wizard offers default / herdr / custom; herdr
                                                   # reuses its own [worktrees] directory as <directory>/{repo}/{slug}
-  branch_pattern: "feature/{prefix}-{id}-{slug}"   # prefix comes from the provider (tw, gh, jira)
+  branch_pattern: "feature/{prefix}-{id}-{slug}"   # prefix comes from the provider (tw)
   commit_ref_pattern: "({PREFIX}-{id})"
 tasks:
-  provider: teamwork                # teamwork | github-projects | jira | none ; "ask" when absent
+  provider: teamwork                # teamwork | none ; "ask" when absent
   ask_when_missing: true            # preflight asks task + worktree + branch if no active task
   subtasks_per_wave: false
   providers:                        # one block per provider, only the enabled one is required
@@ -41,8 +41,6 @@ tasks:
       project_id: 1271726           # project scope
       tasklist_id: 3951970          # project scope
       stages: { inDev: DESARROLLO, testing: TESTING, implemented: IMPLEMENTA, blocked: BLOQUEA, canceled: CANCEL, pending: PENDIENTE, analysis: ANALISIS }
-    github-projects: { task_ref_prefix: gh, owner: "", project_number: 0 }    # later
-    jira: { task_ref_prefix: jira, site: "", project_key: "" }               # later
   sources:                          # extra work sources for listings (replaces ~/.claude/work/sources.md)
     - { name: erp-proveedores, type: google-sheets, ... }
 ```

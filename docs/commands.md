@@ -96,7 +96,7 @@ Otherwise, exactly one mode flag is required:
 
 With --init-repo:
   --repo-base <branch>      Base branch override
-  --repo-provider <name>    Tasks provider override (teamwork | github-projects | jira | none)
+  --repo-provider <name>    Tasks provider override (teamwork | none)
   --repo-project-id <id>    Teamwork project id override
   --repo-tasklist-id <id>   Teamwork tasklist id override
 
