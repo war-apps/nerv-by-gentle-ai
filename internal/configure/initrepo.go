@@ -62,12 +62,13 @@ func InitRepo(deps Deps, req InitRepoRequest) (Result, error) {
 	var removed []string
 
 	if _, statErr := os.Stat(repoConfigPath); statErr == nil {
-		existing, err := os.ReadFile(repoConfigPath)
-		if err != nil {
-			return Result{}, err
-		}
+		existing, readErr := os.ReadFile(repoConfigPath)
 		cleaned, names := config.StripRemovedTaskProviders(existing)
-		if len(names) == 0 {
+		if readErr != nil {
+			// An existing but unreadable config keeps the old, non-fatal
+			// "already initialized" outcome; only the cleanup is skipped.
+			warnings = append(warnings, fmt.Sprintf("%s already initialized; left untouched (could not read it to clean legacy settings: %v).", repoConfigPath, readErr))
+		} else if len(names) == 0 {
 			warnings = append(warnings, fmt.Sprintf("%s already initialized; left untouched.", repoConfigPath))
 		} else {
 			b, err := atomicfile.Save(repoConfigPath, cleaned, atomicfile.Options{

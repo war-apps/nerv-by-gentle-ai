@@ -181,7 +181,7 @@ scan:
 			if c == quote {
 				quote = 0
 			}
-		case c == '"' || c == '\'':
+		case (c == '"' || c == '\'') && startsScalar(line, open, i):
 			quote = c
 		case c == '{' || c == '[':
 			depth++
@@ -294,15 +294,16 @@ func splitKey(text string) (key, rest string) {
 // ignoring quoted strings and a trailing comment.
 func flowDepth(text string) int {
 	depth := 0
-	var quote rune
+	var quote byte
 	prevSpace := true
-	for _, r := range text {
+	for i := 0; i < len(text); i++ {
+		r := text[i]
 		switch {
 		case quote != 0:
 			if r == quote {
 				quote = 0
 			}
-		case r == '"' || r == '\'':
+		case (r == '"' || r == '\'') && startsScalar(text, 0, i):
 			quote = r
 		case r == '#' && prevSpace:
 			return depth
@@ -314,4 +315,22 @@ func flowDepth(text string) int {
 		prevSpace = r == ' ' || r == '\t'
 	}
 	return depth
+}
+
+// startsScalar reports whether the quote at line[i] opens a quoted scalar:
+// only when it is the first non-blank character after the flow map's opening
+// brace, a separator, or a key's colon. A quote inside a plain scalar (an
+// apostrophe in dont's) is literal text.
+func startsScalar(line string, open, i int) bool {
+	for k := i - 1; k >= open; k-- {
+		switch line[k] {
+		case ' ', '\t':
+			continue
+		case '{', '[', ',', ':':
+			return true
+		default:
+			return false
+		}
+	}
+	return true
 }
