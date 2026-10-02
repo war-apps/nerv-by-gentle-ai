@@ -26,7 +26,9 @@ var (
 )
 
 // purposeWidth is the "WHAT IT DOES" column width; longer purposes are
-// truncated so a table row stays within ~120 columns.
+// truncated to it. It is the only capped column: role, model, effort and
+// source size to their longest value, so a long custom model id or source
+// widens the row.
 const purposeWidth = 42
 
 // menuOf builds a "1"->tokens[0], "2"->tokens[1], ... menu-choice map, the
