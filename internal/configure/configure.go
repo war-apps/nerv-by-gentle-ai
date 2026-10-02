@@ -13,6 +13,7 @@ package configure
 
 import (
 	"io/fs"
+	"strings"
 	"time"
 
 	"github.com/war-apps/nerv-by-gentle-ai/internal/env"
@@ -108,6 +109,18 @@ type Result struct {
 	ConfigPath string   `json:"config_path"`
 	// Backup is nil (JSON null) when no backup was written this run.
 	Backup *string `json:"backup"`
+	// Removed names the legacy task provider settings the write stripped
+	// from the config (see RemovedLine); absent when nothing was.
+	Removed []string `json:"removed,omitempty"`
+}
+
+// RemovedLine is the one informational line a write prints when it stripped
+// legacy task provider settings, or "" when removed is empty.
+func RemovedLine(removed []string) string {
+	if len(removed) == 0 {
+		return ""
+	}
+	return "Removed legacy task provider settings: " + strings.Join(removed, ", ")
 }
 
 // RefusalError marks a rejected request — an unknown key, an invalid value,

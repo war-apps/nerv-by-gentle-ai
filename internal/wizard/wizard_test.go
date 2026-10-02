@@ -1033,9 +1033,9 @@ func diffLineCount(a, b string) int {
 }
 
 // ---------------------------------------------------------------------------
-// Legacy provider sub-blocks (github-projects, jira), left in tasks.providers by
-// releases before their removal, survive a wizard save byte for byte; a legacy
-// tasks.provider: jira is kept as written when the answer is blank.
+// Legacy provider settings (github-projects and jira sub-blocks in
+// tasks.providers, a tasks.provider: jira line), left by releases before their
+// removal, are stripped by a wizard save; every other byte stays as written.
 // ---------------------------------------------------------------------------
 
 const legacyProviderLines = "" +
@@ -1057,7 +1057,7 @@ func legacyFixture(t *testing.T, provider string) string {
 	return fixture
 }
 
-func TestRun_LegacyProviderBlocks_SurviveSave(t *testing.T) {
+func TestRun_LegacyProviderSettings_AreStrippedOnSave(t *testing.T) {
 	for _, provider := range []string{"teamwork", "jira"} {
 		t.Run(provider, func(t *testing.T) {
 			root := t.TempDir()
@@ -1091,15 +1091,70 @@ func TestRun_LegacyProviderBlocks_SurviveSave(t *testing.T) {
 			if !strings.Contains(string(got), "base_branch: develop2") {
 				t.Errorf("base_branch not updated:\n%s", got)
 			}
-			if !strings.Contains(string(got), legacyProviderLines) {
-				t.Errorf("legacy provider blocks not intact:\n%s", got)
+			if strings.Contains(string(got), "github-projects") || strings.Contains(string(got), "jira: {") {
+				t.Errorf("legacy provider blocks survived:\n%s", got)
 			}
-			if !strings.Contains(string(got), "  provider: "+provider+" ") {
-				t.Errorf("tasks.provider changed from %q:\n%s", provider, got)
+
+			// What the save must remove: the blocks, plus the provider line
+			// when it still holds the removed provider.
+			cleaned := strings.Replace(fixture, legacyProviderLines, "", 1)
+			wantLine := "Removed legacy task provider settings: tasks.providers.github-projects, tasks.providers.jira"
+			if provider == "jira" {
+				cleaned = removeLineWith(cleaned, "  provider: jira")
+				wantLine = "Removed legacy task provider settings: tasks.provider (jira), tasks.providers.github-projects, tasks.providers.jira"
 			}
-			if diff := diffLineCount(fixture, string(got)); diff != 1 {
-				t.Errorf("diff line count = %d, want 1; got:\n%s", diff, got)
+			if !strings.Contains(out.String(), wantLine) {
+				t.Errorf("output missing %q:\n%s", wantLine, out.String())
+			}
+			if diff := diffLineCount(cleaned, string(got)); diff != 1 {
+				t.Errorf("diff line count against the cleaned fixture = %d, want 1; got:\n%s", diff, got)
+			}
+			if provider == "jira" && strings.Contains(string(got), "  provider:") {
+				t.Errorf("tasks.provider survived:\n%s", got)
 			}
 		})
+	}
+}
+
+// removeLineWith drops the one line of s that contains marker.
+func removeLineWith(s, marker string) string {
+	lines := strings.SplitAfter(s, "\n")
+	kept := lines[:0]
+	for _, l := range lines {
+		if !strings.Contains(l, marker) {
+			kept = append(kept, l)
+		}
+	}
+	return strings.Join(kept, "")
+}
+
+// The models section writes through the shared store too: saving an override
+// into a legacy file strips the removed provider settings and says so.
+func TestRun_ModelsSection_StripsLegacyProviderSettings(t *testing.T) {
+	root := t.TempDir()
+	home := t.TempDir()
+	paths := testPaths(root, home)
+	fixture := legacyFixture(t, "jira")
+	if err := os.WriteFile(paths.Config, []byte(fixture), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	deps := configure.Deps{Home: home, FS: nerv.PluginFS(), Runner: noRunner(), Now: fixedNow, LookPath: lookPathNone}
+	opts := wizard.Options{Paths: paths, SkipSkills: true, SkipRepos: true, SkipCommands: true, NoRefresh: true}
+
+	var out bytes.Buffer
+	in := modelsInput(&out, "magi", "2", "3", "done", "y")
+	if _, err := wizard.Run(deps, in, &out, opts); err != nil {
+		t.Fatalf("Run() error = %v; output:\n%s", err, out.String())
+	}
+
+	got, err := os.ReadFile(paths.Config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(got), "github-projects") || strings.Contains(string(got), "provider: jira") {
+		t.Errorf("legacy settings survived the models write:\n%s", got)
+	}
+	if !strings.Contains(out.String(), "Removed legacy task provider settings: tasks.provider (jira), tasks.providers.github-projects, tasks.providers.jira") {
+		t.Errorf("output does not report the removal:\n%s", out.String())
 	}
 }

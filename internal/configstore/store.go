@@ -48,10 +48,15 @@ func (Store) Load(path string) (*config.Document, bool, error) {
 // when it does not exist yet, Save creates path's parent directory
 // instead. The new content is then written atomically (temp file +
 // rename).
-func (Store) Save(path string, doc *config.Document, previous []byte, now time.Time) (written bool, backup string, err error) {
-	newText := []byte(doc.String())
+//
+// Every write also strips the settings of the removed task providers
+// (config.StripRemovedTaskProviders) from the text, leaving every other byte
+// as it was; removed names what went, and is nil when nothing did. The backup
+// keeps the file as it was before the cleanup.
+func (Store) Save(path string, doc *config.Document, previous []byte, now time.Time) (written bool, backup string, removed []string, err error) {
+	newText, removed := config.StripRemovedTaskProviders([]byte(doc.String()))
 	if bytes.Equal(newText, previous) {
-		return false, "", nil
+		return false, "", nil, nil
 	}
 
 	backup, err = atomicfile.Save(path, newText, atomicfile.Options{
@@ -59,7 +64,7 @@ func (Store) Save(path string, doc *config.Document, previous []byte, now time.T
 		BackupSuffix: "bak-configure-",
 	})
 	if err != nil {
-		return false, "", err
+		return false, "", nil, err
 	}
-	return true, backup, nil
+	return true, backup, removed, nil
 }

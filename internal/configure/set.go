@@ -72,13 +72,14 @@ func finalizeMutation(deps Deps, paths Paths, store Store, working *config.Docum
 	}
 
 	if touched && working.String() != string(original) {
-		written, backup, err := store.Save(paths.Config, working, original, deps.Now())
+		written, backup, removed, err := store.Save(paths.Config, working, original, deps.Now())
 		if err != nil {
 			return Result{}, err
 		}
 		if written {
 			result.Changed = true
 			result.Written = []string{paths.Config}
+			result.Removed = removed
 			if backup != "" {
 				b := backup
 				result.Backup = &b

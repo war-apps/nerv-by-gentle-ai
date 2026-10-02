@@ -347,7 +347,7 @@ func writeModelsBlock(deps Deps, s *session, out io.Writer, paths configure.Path
 	}
 
 	config.SetModelsBlock(doc, blockText)
-	written, backup, err := (configure.Store{}).Save(paths.Config, doc, original, deps.Now())
+	written, backup, removed, err := (configure.Store{}).Save(paths.Config, doc, original, deps.Now())
 	if err != nil {
 		return false, err
 	}
@@ -356,6 +356,9 @@ func writeModelsBlock(deps Deps, s *session, out io.Writer, paths configure.Path
 	}
 	if written {
 		fmt.Fprintf(out, "Written: %s\n", paths.Config)
+	}
+	if line := configure.RemovedLine(removed); line != "" {
+		fmt.Fprintln(out, line)
 	}
 	return written, nil
 }
