@@ -259,3 +259,30 @@ func TestStore_Save_CleanDocumentReportsNothingRemoved(t *testing.T) {
 		t.Errorf("file = %q", after)
 	}
 }
+
+// A save whose requested content equals the original writes nothing, even when
+// the file carries legacy provider settings: cleanup rides on a real change.
+func TestStore_Save_UnchangedLegacyDocumentIsNoop(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "nerv.yaml")
+	original := "enabled: true\ntasks:\n  provider: jira\n  providers:\n    jira: { site: x }\n"
+	if err := os.WriteFile(path, []byte(original), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	written, backup, removed, err := (configstore.Store{}).Save(path, config.Parse(original), []byte(original), time.Date(2026, 9, 29, 12, 0, 0, 0, time.UTC))
+	if err != nil {
+		t.Fatalf("Save() error = %v", err)
+	}
+	if written || backup != "" || len(removed) != 0 {
+		t.Errorf("written = %v, backup = %q, removed = %v; want a silent no-op", written, backup, removed)
+	}
+	entries, _ := os.ReadDir(dir)
+	if len(entries) != 1 {
+		t.Errorf("dir has %d entries, want 1 (no backup)", len(entries))
+	}
+	after, _ := os.ReadFile(path)
+	if string(after) != original {
+		t.Errorf("file changed on a no-op Save(): %q", after)
+	}
+}

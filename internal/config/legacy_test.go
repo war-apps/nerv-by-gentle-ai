@@ -147,6 +147,101 @@ func TestStripRemovedTaskProviders(t *testing.T) {
 			wantRemoved: []string{jiraKey},
 		},
 		{
+			name: "a deeper comment of the previous block stays",
+			in: stripHead + stripTeamwork +
+				"      # last word about teamwork\n" + stripJiraInline + stripTail,
+			want:        stripHead + stripTeamwork + "      # last word about teamwork\n" + stripTail,
+			wantRemoved: []string{jiraKey},
+		},
+		{
+			name: "only the comment at the key's own indentation goes with it",
+			in: stripHead + stripTeamwork +
+				"      # last word about teamwork\n    # legacy stub\n" + stripJiraInline + stripTail,
+			want:        stripHead + stripTeamwork + "      # last word about teamwork\n" + stripTail,
+			wantRemoved: []string{jiraKey},
+		},
+		{
+			name: "a shallower comment above the block stays",
+			in: stripHead + stripTeamwork +
+				"  # about the sources\n" + stripJiraInline + stripTail,
+			want:        stripHead + stripTeamwork + "  # about the sources\n" + stripTail,
+			wantRemoved: []string{jiraKey},
+		},
+		{
+			name:        "block scalar value drops its lines",
+			in:          stripHead + stripTeamwork + "    jira: |\n      line one\n      line two\n" + stripTail,
+			want:        stripHead + stripTeamwork + stripTail,
+			wantRemoved: []string{jiraKey},
+		},
+		{
+			name:        "folded scalar with a blank line inside drops all of it",
+			in:          stripHead + stripTeamwork + "    jira: >-\n      one\n\n      two\n" + stripTail,
+			want:        stripHead + stripTeamwork + stripTail,
+			wantRemoved: []string{jiraKey},
+		},
+		{
+			name:        "the blank line that separates the block from the next sibling stays",
+			in:          stripHead + stripTeamwork + "    jira: |\n      one\n\n    github-projects: { owner: x }\n" + stripTail,
+			want:        stripHead + stripTeamwork + "\n" + stripTail,
+			wantRemoved: []string{jiraKey, githubKey},
+		},
+		{
+			name:        "anchored value drops its children",
+			in:          stripHead + stripTeamwork + "    jira: &stub\n      site: a\n" + stripTail,
+			want:        stripHead + stripTeamwork + stripTail,
+			wantRemoved: []string{jiraKey},
+		},
+		{
+			name:        "tagged value drops its children",
+			in:          stripHead + stripTeamwork + "    jira: !stub\n      site: a\n" + stripTail,
+			want:        stripHead + stripTeamwork + stripTail,
+			wantRemoved: []string{jiraKey},
+		},
+		{
+			name:        "alias value is a single line",
+			in:          stripHead + stripTeamwork + "    jira: *stub\n" + stripTail,
+			want:        stripHead + stripTeamwork + stripTail,
+			wantRemoved: []string{jiraKey},
+		},
+		{
+			name:        "plain value with a continuation line",
+			in:          stripHead + stripTeamwork + "    jira: some text\n      that goes on\n" + stripTail,
+			want:        stripHead + stripTeamwork + stripTail,
+			wantRemoved: []string{jiraKey},
+		},
+		{
+			name:        "flow providers map: last entries go with the separator before them",
+			in:          stripHead + "  providers: { teamwork: { task_ref_prefix: tw }, jira: { site: x }, github-projects: { owner: y } }  # c\n" + stripTail,
+			want:        stripHead + "  providers: { teamwork: { task_ref_prefix: tw } }  # c\n" + stripTail,
+			wantRemoved: []string{jiraKey, githubKey},
+		},
+		{
+			name:        "flow providers map: a middle entry goes with the separator after it",
+			in:          stripHead + "  providers: { teamwork: { a: 1 }, jira: { site: \"a,b\" }, other: { b: 2 } }\n" + stripTail,
+			want:        stripHead + "  providers: { teamwork: { a: 1 }, other: { b: 2 } }\n" + stripTail,
+			wantRemoved: []string{jiraKey},
+		},
+		{
+			name:        "flow providers map: a leading entry",
+			in:          stripHead + "  providers: {jira: {a: 1}, teamwork: {b: 2}}\n" + stripTail,
+			want:        stripHead + "  providers: {teamwork: {b: 2}}\n" + stripTail,
+			wantRemoved: []string{jiraKey},
+		},
+		{
+			name:        "flow providers map: only removed entries leave an empty map",
+			in:          stripHead + "  providers: { jira: { a: 1 } }\n" + stripTail,
+			want:        stripHead + "  providers: {}\n" + stripTail,
+			wantRemoved: []string{jiraKey},
+		},
+		{
+			// Known limit: only a flow map that opens and closes on one line is
+			// edited; a multi-line one is left as written and reports nothing.
+			name:        "multi-line flow providers map is left untouched",
+			in:          stripHead + "  providers: {\n    teamwork: { a: 1 },\n    jira: { b: 2 }\n  }\n" + stripTail,
+			want:        stripHead + "  providers: {\n    teamwork: { a: 1 },\n    jira: { b: 2 }\n  }\n" + stripTail,
+			wantRemoved: nil,
+		},
+		{
 			name:        "CRLF line endings are kept",
 			in:          strings.ReplaceAll(stripHead+"  provider: jira\n"+stripTeamwork+stripGithubInline+stripJiraMulti+stripTail, "\n", "\r\n"),
 			want:        strings.ReplaceAll(stripHead+stripTeamwork+stripTail, "\n", "\r\n"),
