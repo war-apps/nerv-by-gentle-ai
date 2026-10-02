@@ -95,6 +95,15 @@ When a `nerv.yaml` (user or project scope) still carries the task providers remo
 
 - 2026-10-02: T3 done; `go test ./...`, `go vet ./...`, `gofmt -l .` clean.
 
+- 2026-10-02: native review of `e9c481f..56344cd` (hardening + T3, medium, reliability lens)
+  approved and acknowledged. Accepted both warnings: R3-flow-quote-apostrophe (a quote only opens
+  a quoted scalar right after `{`, `[`, `,` or `:`, in both `stripFlowProviders` and `flowDepth`)
+  and R3-initrepo-read-error-now-fatal (`--init-repo` on an existing but unreadable config warns
+  and skips the cleanup, as before). RED `test(config): cover apostrophes in flow scalars and an
+  unreadable project config` (observed: jira entry kept, `is a directory` error), GREEN `fix(config):
+  treat in-scalar quotes as text and keep --init-repo non-fatal on unreadable configs`.
+  `go test ./...`, `go vet ./...`, `gofmt -l .` clean.
+
 ## Next step
 
-Native review, then PR.
+PR to `develop` (about 1,500 authored lines: stacked slices, cached strategy).
