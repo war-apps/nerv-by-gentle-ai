@@ -50,6 +50,17 @@ in `~/.claude/plugins/known_marketplaces.json` pointing at the deleted `~/.nerv/
   `PluginCLI.RemoveMarketplace` (tolerates "not found") and the call in `Uninstall` between the
   plugin uninstall and the directory removal. `go test ./...`, `go vet ./...`, `gofmt -l .` clean.
 
+- 2026-10-02: native review (four lenses, lineage `review-53f835f751a541aa`, preflight range from
+  `main`) approved and acknowledged. Three lenses independently flagged the loose "not found"
+  match (a `command not found` or missing settings file would pass as success and leave the
+  stale entry). Accepted as in-scope hardening: RED `test(install): require the exact marketplace
+  not-found message and a re-run hint` (observed: unrelated "not found" returned nil; error lacked
+  the re-run hint), GREEN matches `Marketplace '<name>' not found` and the uninstall error says
+  to re-run `nerv uninstall`; `uninstall_test.go` reuses `callLines`. `go test ./...`,
+  `go vet ./...`, `gofmt -l .` clean. Not taken (advisory): directory removal on a registry
+  failure (re-run already finishes the job), the task-doc note and RefreshCache ordering
+  assertions from the earlier review.
+
 ## Next step
 
-Native review of the branch, then PR to `develop`.
+PR to `develop`.
