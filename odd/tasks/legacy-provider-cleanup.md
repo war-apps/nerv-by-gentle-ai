@@ -39,11 +39,20 @@ When a `nerv.yaml` (user or project scope) still carries the task providers remo
 
 ## Tasks
 
-- [ ] T1 Cleanup in the config layer: removed-provider list, pure function that strips the line
+- [x] T1 Cleanup in the config layer: removed-provider list, pure function that strips the line
   and sub-blocks from YAML bytes (byte-preserving elsewhere), tests for inline/multi-line/
   comment/EOF/no-op cases (route: delegated direct).
-- [ ] T2 Wire it into every write path and invert the #52 tests; one informational line when
+  RED `7a1633b`: build failed, `undefined: config.RemovedTaskProviders` and
+  `config.StripRemovedTaskProviders`. GREEN `ae0e388` (`internal/config/legacy.go`, 207 lines with tests).
+- [x] T2 Wire it into every write path and invert the #52 tests; one informational line when
   something was removed (route: delegated direct).
+  RED `017c513`: build failures (`Save` returned 3 values, `Result.Removed` undefined) and
+  `TestRunConfigure_Set_ReportsRemovedLegacyProviders` failing. GREEN `4b31fa6`: the cleanup
+  lives in `configstore.Store.Save`, the one write point behind `configure.Set`/`SetModel` (and
+  so the wizard's user-config section) and the wizard's models section; `Result.Removed`
+  (`removed`, omitted when empty) and `configure.RemovedLine` carry the one-line report.
+  `--init-repo` only creates a missing project file and never rewrites an existing one, and
+  `--print`/`install` only read, so no cleanup runs there.
 
 ## Acceptance criteria
 
@@ -55,7 +64,9 @@ When a `nerv.yaml` (user or project scope) still carries the task providers remo
 ## Progress
 
 - 2026-10-02: branch created, document written.
+- 2026-10-02: T1 and T2 done; `go test ./...`, `go vet ./...`, `gofmt -l .` clean. A no-op write
+  (nothing to change) still touches nothing, so a legacy file is cleaned on its next real write.
 
 ## Next step
 
-T1, T2.
+Native review, then PR.
