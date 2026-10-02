@@ -857,6 +857,38 @@ func TestModelsInput_FailsWhenTheOfferNeverAppears(t *testing.T) {
 	}
 }
 
+// promptAnswer answers the first prompt whose text contains prompt.
+type promptAnswer struct {
+	prompt, answer string
+}
+
+// promptInput scripts answers by prompt text instead of by position: each
+// read looks at the output written since the previous read, gives the next
+// pending answer once its prompt appears there, and answers blank
+// otherwise. It reports EOF once every answer was given, and fails after
+// maxBlankAnswers blank answers in a row so a missing prompt cannot hang the
+// test. out must be the buffer the wizard writes to.
+func promptInput(out *bytes.Buffer, answers []promptAnswer) io.Reader {
+	seen, blanks := 0, 0
+	return readerFunc(func(p []byte) (int, error) {
+		if len(answers) == 0 {
+			return 0, io.EOF
+		}
+		fresh := out.String()[seen:]
+		seen = out.Len()
+		line := ""
+		if strings.Contains(fresh, answers[0].prompt) {
+			line, answers, blanks = answers[0].answer, answers[1:], 0
+		} else {
+			if blanks == maxBlankAnswers {
+				return 0, fmt.Errorf("prompt %q never appeared after %d blank answers", answers[0].prompt, maxBlankAnswers)
+			}
+			blanks++
+		}
+		return copy(p, line+"\n"), nil
+	})
+}
+
 type readerFunc func([]byte) (int, error)
 
 func (f readerFunc) Read(p []byte) (int, error) { return f(p) }
@@ -998,4 +1030,76 @@ func diffLineCount(a, b string) int {
 		}
 	}
 	return diff
+}
+
+// ---------------------------------------------------------------------------
+// Legacy provider sub-blocks (github-projects, jira), left in tasks.providers by
+// releases before their removal, survive a wizard save byte for byte; a legacy
+// tasks.provider: jira is kept as written when the answer is blank.
+// ---------------------------------------------------------------------------
+
+const legacyProviderLines = "" +
+	"    # legacy stubs, kept by hand\n" +
+	"    github-projects: { task_ref_prefix: gh, owner: \"\", project_number: 0 }    # later\n" +
+	"    jira: { task_ref_prefix: jira, site: \"\", project_key: \"\" }               # later\n"
+
+func legacyFixture(t *testing.T, provider string) string {
+	t.Helper()
+	const anchor = "artifacts:\n"
+	fixture := strings.Replace(fixtureLF, anchor, legacyProviderLines+anchor, 1)
+	if provider != "teamwork" {
+		old := "  provider: teamwork                #"
+		if !strings.Contains(fixture, old) {
+			t.Fatal("provider line not found in the fixture")
+		}
+		fixture = strings.Replace(fixture, old, "  provider: "+provider+strings.Repeat(" ", 20-len(provider))+"#", 1)
+	}
+	return fixture
+}
+
+func TestRun_LegacyProviderBlocks_SurviveSave(t *testing.T) {
+	for _, provider := range []string{"teamwork", "jira"} {
+		t.Run(provider, func(t *testing.T) {
+			root := t.TempDir()
+			home := t.TempDir()
+			paths := testPaths(root, home)
+			fixture := legacyFixture(t, provider)
+			if err := os.WriteFile(paths.Config, []byte(fixture), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			deps := configure.Deps{Home: home, FS: nerv.PluginFS(), Runner: noRunner(), Now: fixedNow, LookPath: lookPathNone}
+			opts := skipAll()
+			opts.Paths = paths
+
+			var out bytes.Buffer
+			in := promptInput(&out, []promptAnswer{
+				{prompt: "Base branch", answer: "develop2"},
+				{prompt: "Write to ", answer: "y"},
+			})
+			summary, err := wizard.Run(deps, in, &out, opts)
+			if err != nil {
+				t.Fatalf("Run() error = %v; output:\n%s", err, out.String())
+			}
+			if !summary.Changed {
+				t.Fatalf("Changed = false, want true; output:\n%s", out.String())
+			}
+
+			got, err := os.ReadFile(paths.Config)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !strings.Contains(string(got), "base_branch: develop2") {
+				t.Errorf("base_branch not updated:\n%s", got)
+			}
+			if !strings.Contains(string(got), legacyProviderLines) {
+				t.Errorf("legacy provider blocks not intact:\n%s", got)
+			}
+			if !strings.Contains(string(got), "  provider: "+provider+" ") {
+				t.Errorf("tasks.provider changed from %q:\n%s", provider, got)
+			}
+			if diff := diffLineCount(fixture, string(got)); diff != 1 {
+				t.Errorf("diff line count = %d, want 1; got:\n%s", diff, got)
+			}
+		})
+	}
 }

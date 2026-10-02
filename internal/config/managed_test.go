@@ -312,3 +312,55 @@ func TestSetManagedValue(t *testing.T) {
 		}
 	})
 }
+
+// ---------------------------------------------------------------------------
+// Legacy provider sub-blocks (github-projects, jira) left in tasks.providers by
+// releases before their removal: the document layer must carry them through
+// every managed-key write, including a write that inserts a missing teamwork
+// key right next to them.
+// ---------------------------------------------------------------------------
+
+const legacyProviderBlocks = "" +
+	"    github-projects: { task_ref_prefix: gh, owner: \"\", project_number: 0 }    # later\n" +
+	"    jira: { task_ref_prefix: jira, site: \"\", project_key: \"\" }               # later\n"
+
+const legacyProvidersDoc = "" +
+	"tasks:\n" +
+	"  provider: jira                    # was a stub provider\n" +
+	"  providers:\n" +
+	"    teamwork:\n" +
+	"      task_ref_prefix: tw\n" +
+	"      stages: { inDev: DESARROLLO, blocked: BLOQUEA }\n" +
+	legacyProviderBlocks +
+	"git:\n" +
+	"  base_branch: develop\n"
+
+func TestSetManagedValue_LegacyProviderBlocks_Preserved(t *testing.T) {
+	doc := config.Parse(legacyProvidersDoc)
+
+	for _, kv := range [][2]string{
+		{"tasks.providers.teamwork.stages.blocked", "BLOCKED"},
+		{"tasks.providers.teamwork.assignee_id", "7"}, // missing key: inserted into the teamwork block
+		{"git.base_branch", "main"},
+	} {
+		if _, err := config.SetManagedValue(doc, kv[0], kv[1]); err != nil {
+			t.Fatalf("SetManagedValue(%s) error = %v", kv[0], err)
+		}
+	}
+
+	got := doc.String()
+	if !strings.Contains(got, legacyProviderBlocks) {
+		t.Errorf("legacy provider blocks changed:\n%s", got)
+	}
+	if !strings.Contains(got, "  provider: jira                    # was a stub provider\n") {
+		t.Errorf("legacy tasks.provider line changed:\n%s", got)
+	}
+	for _, want := range []string{"blocked: BLOCKED", "assignee_id: 7", "base_branch: main"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("output missing %q:\n%s", want, got)
+		}
+	}
+	if v, ok := config.ManagedValue(doc, "tasks.provider"); !ok || v != "jira" {
+		t.Errorf("ManagedValue(tasks.provider) = %q, %v; want jira, true", v, ok)
+	}
+}
