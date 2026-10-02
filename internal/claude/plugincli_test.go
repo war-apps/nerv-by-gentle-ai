@@ -178,6 +178,19 @@ func TestPluginCLI_RemoveMarketplace_OtherFailureErrors(t *testing.T) {
 	}
 }
 
+func TestPluginCLI_RemoveMarketplace_UnrelatedNotFoundErrors(t *testing.T) {
+	runner := &envtest.FakeRunner{
+		Responses: map[string]envtest.Response{
+			"claude plugin marketplace remove nerv": {Stderr: "Error: settings file not found\n", ExitCode: 1},
+		},
+	}
+	cli := claude.PluginCLI{Runner: runner}
+
+	if _, err := cli.RemoveMarketplace(context.Background(), "nerv"); err == nil {
+		t.Fatal("RemoveMarketplace() error = nil, want an error for a 'not found' that is not the marketplace itself")
+	}
+}
+
 func TestPluginCLI_RemoveMarketplace_LaunchFailureErrors(t *testing.T) {
 	runner := &envtest.FakeRunner{
 		Default: envtest.Response{Err: context.DeadlineExceeded},

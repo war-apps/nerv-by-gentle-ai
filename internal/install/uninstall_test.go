@@ -109,10 +109,7 @@ func TestUninstall_RemovesMarketplaceRegistrationAfterPluginUninstall(t *testing
 		t.Fatalf("Uninstall() error = %v", err)
 	}
 
-	var commands []string
-	for _, c := range runner.Calls {
-		commands = append(commands, c.Name+" "+strings.Join(c.Args, " "))
-	}
+	commands := callLines(runner)
 	want := []string{
 		"claude plugin uninstall nerv@nerv",
 		"claude plugin marketplace remove nerv",
@@ -156,5 +153,8 @@ func TestUninstall_MarketplaceRemoveFailureErrors(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "boom") {
 		t.Errorf("error = %v, want it to mention the failure output", err)
+	}
+	if !strings.Contains(err.Error(), "nerv uninstall") {
+		t.Errorf("error = %v, want it to say that re-running nerv uninstall finishes the job", err)
 	}
 }
