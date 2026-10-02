@@ -54,13 +54,17 @@ and which gentle-ai phase it is equivalent to, from one Go source of truth.
 
 ## Tasks
 
-- [ ] T1 Catalogue in `internal/config`: per-role purpose and gentle-ai equivalent, group
+- [x] T1 Catalogue in `internal/config`: per-role purpose and gentle-ai equivalent, group
   descriptions, plus the agents-vs-catalogue guard test (route: delegated direct).
-- [ ] T2 Surfaces in Go: wizard table columns and group legend, phase picker suggesting the
-  role's equivalent first, `--print` fields, unknown-role errors listing purposes where cheap
-  (route: delegated direct).
-- [ ] T3 Plugin and docs: `/nerv:configure`, `/nerv:status`, `docs/configuration.md` roles table,
-  `docs/integration.md` link (route: delegated direct).
+  RED `acb255f` (build failed: `cat.Info`/`cat.GroupDescriptions` undefined), GREEN `d3caff8`.
+  `pilots` membership in code (rei, shinji, asuka, toji, kaworu) matches the legend.
+- [x] T2 Surfaces in Go: wizard table columns and group legend, phase picker suggesting the
+  role's equivalent first, `--print` fields (route: delegated direct).
+  RED `11cf7cf` (header lacks WHAT IT DOES/GENTLE-AI, no legend, picker lists jd-judge-a first,
+  `--print` rows lack `purpose`/`gentle_ai_equivalent`), GREEN `1d18ed1`.
+  Unknown-role error listing purposes: not done (not cheap; the message still lists roles).
+- [x] T3 Plugin and docs: `/nerv:configure`, `/nerv:status`, `docs/configuration.md` roles table,
+  `docs/integration.md` link (route: delegated direct). `d8ad94c`.
 
 ## Acceptance criteria
 
@@ -71,7 +75,8 @@ and which gentle-ai phase it is equivalent to, from one Go source of truth.
 ## Progress
 
 - 2026-10-02: branch created, document written.
+- 2026-10-02: T1-T3 implemented; `go test ./...`, `go vet ./...`, `gofmt -l .` clean.
 
 ## Next step
 
-T1.
+Native review, then PR.
