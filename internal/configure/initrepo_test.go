@@ -288,3 +288,25 @@ func TestInitRepo_ExistingCleanConfig_IsUntouchedWithoutBackup(t *testing.T) {
 		t.Errorf("backups = %v, want none", backups)
 	}
 }
+
+func TestInitRepo_UnreadableExistingConfig_WarnsInsteadOfFailing(t *testing.T) {
+	repoDir := t.TempDir()
+	path := filepath.Join(repoDir, ".nerv", "nerv.yaml")
+	// A directory at the config path exists for os.Stat but cannot be read
+	// as a file, like an unreadable config.
+	if err := os.MkdirAll(path, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	deps := configure.Deps{Runner: gitToplevelRunner(repoDir), Now: func() time.Time { return time.Now() }}
+
+	result, err := configure.InitRepo(deps, configure.InitRepoRequest{Path: repoDir})
+	if err != nil {
+		t.Fatalf("InitRepo() error = %v, want a warning instead of a failure", err)
+	}
+	if result.Changed || len(result.Written) != 0 || len(result.Removed) != 0 {
+		t.Errorf("result = %+v, want nothing changed, written or removed", result)
+	}
+	if len(result.Warnings) == 0 {
+		t.Error("Warnings is empty, want one naming the unreadable config")
+	}
+}
