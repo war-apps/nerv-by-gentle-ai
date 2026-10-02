@@ -44,7 +44,7 @@ func Uninstall(ctx context.Context, deps Deps) error {
 
 	fmt.Fprintf(deps.Stdout, "-> claude plugin marketplace remove %s\n", marketplaceName)
 	if _, err := cli.RemoveMarketplace(ctx, marketplaceName); err != nil {
-		return fmt.Errorf("claude plugin marketplace remove failed: %w", err)
+		return fmt.Errorf("claude plugin marketplace remove failed (re-run nerv uninstall to finish): %w", err)
 	}
 
 	marketplaceDir := paths.Resolve(deps.Home).Marketplace

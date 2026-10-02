@@ -33,9 +33,10 @@ func (c PluginCLI) AddMarketplace(ctx context.Context, source string) (output st
 
 // RemoveMarketplace runs "claude plugin marketplace remove <name>", dropping
 // the marketplace registration the CLI keeps in its own registry. A non-zero
-// exit whose combined output mentions "not found" (case-insensitively) is
-// tolerated and reported as success: an already-absent registration is not a
-// failure for our purposes. Any other non-zero exit, or a launch failure, is
+// exit whose combined output carries the CLI's own "Marketplace '<name>' not
+// found" message (case-insensitively) is tolerated and reported as success:
+// an already-absent registration is not a failure for our purposes. Any other
+// non-zero exit, including an unrelated "not found", or a launch failure, is
 // returned as an error carrying the CLI output.
 func (c PluginCLI) RemoveMarketplace(ctx context.Context, name string) (output string, err error) {
 	stdout, stderr, exitCode, err := c.Runner.Run(ctx, "claude", "plugin", "marketplace", "remove", name)
@@ -44,7 +45,8 @@ func (c PluginCLI) RemoveMarketplace(ctx context.Context, name string) (output s
 	}
 	combined := stdout + stderr
 	if exitCode != 0 {
-		if strings.Contains(strings.ToLower(combined), "not found") {
+		notFound := fmt.Sprintf("marketplace '%s' not found", strings.ToLower(name))
+		if strings.Contains(strings.ToLower(combined), notFound) {
 			return combined, nil
 		}
 		return combined, fmt.Errorf("claude plugin marketplace remove %s exited with code %d: %s", name, exitCode, strings.TrimSpace(combined))
