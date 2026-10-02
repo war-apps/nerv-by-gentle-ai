@@ -38,10 +38,10 @@ Engram mirror: topic `odd/skills-gentle-ai-sync/tasks`.
 
 ## Tasks
 
-- [ ] T1 RefreshCache tests assert marketplace add before uninstall/install and fail-stop on an
+- [x] T1 RefreshCache tests assert marketplace add before uninstall/install and fail-stop on an
   add failure (route: delegated direct, part of the same writer; test-only, characterization of
   existing behavior, so GREEN on first run is expected and recorded).
-- [ ] T2 Skills step runs `gentle-ai sync` for missing gentle-ai skills (route: delegated direct,
+- [x] T2 Skills step runs `gentle-ai sync` for missing gentle-ai skills (route: delegated direct,
   writer trigger: `internal/skills`, `internal/install`, `internal/wizard`, `cmd/nerv` and tests).
   RED commit, then GREEN commit.
 
@@ -55,7 +55,21 @@ Engram mirror: topic `odd/skills-gentle-ai-sync/tasks`.
 ## Progress
 
 - 2026-10-02: branch created, document written.
+- 2026-10-02: T1 `84b44fc` — RefreshCache ordering assertion plus
+  `TestRefreshCache_MarketplaceAddFailure_StopsBeforeInstall`; GREEN on first run, as expected for
+  a characterization test.
+- 2026-10-02: T2 RED `4fe80ef` (observed: build failure, `report.Sync` / `report.Plan.Sync`
+  undefined), GREEN `baa9639`: `SyncStep`/`SyncArgs`/`Plan.Sync` computed in `InstallPlan`;
+  `Sync()`/`SyncResult` executed by `Run` after the npx installs; remedies recomputed from disk
+  after a sync; DryRun plans without running. Install, wizard and `nerv skills` print the sync
+  line and a warning on failure; README (install step 7, wizard required skills) and
+  `docs/commands.md` updated. `go test ./...`, `go vet ./...`, `gofmt -l .` clean.
+- 2026-10-02: smoke test on the dev machine: `go run ./cmd/nerv skills --dry-run` showed the
+  `branch-pr` remedy and `DryRun: gentle-ai sync --agents claude-code --skills branch-pr`; the
+  real run executed the sync and ended with 0 gentle-ai gaps; `~/.claude/skills/branch-pr/SKILL.md`
+  now exists. Side effect, as expected from gentle-ai sync: it rewrote its managed files
+  (e.g. `~/.claude/CLAUDE.md`).
 
 ## Next step
 
-T1, T2.
+Native review, then PR to `develop`.
