@@ -51,6 +51,24 @@ docs/integration.md diagram), then upgrade the local gentle-ai and release.
 - [x] T6 (commit ce7c38f) Orchestrator prose: drop the SDD claims (`SKILL.md:25-47`, `docs/integration.md` reuse map); strict TDD becomes nerv-owned, read from `openspec/config.yaml`; "gentle-ai's own" artifact wording becomes nerv-owned. (slice 3)
 - [x] T7 (commits 97d6693, 4be1f69, 4843997) Review advisories: a 2.x install case, a wizard warning test, and install prints the same 4.x note as `/nerv:status`; spec-compose rejects a requirement name repeated within one delta section; atomicfile.Write resolves symlinks. (slice 3)
 
+### Phase 3 (user approved 2026-10-05)
+
+Branch `feature/require-gentle-ai-v4` from `develop` (`7647996`). This change is breaking, so the next release is a major (user decision).
+
+- [x] T8 Local upgrade. The user installed gentle-ai 4.0.0 and ran sync. Validated with the `develop` build:
+  - Native review STATUS v2 and assess work.
+  - `skill-registry refresh` works (37 skills, no `sdd-*`).
+  - `nerv skills` finds all 15 present.
+  - `nerv spec-compose` works on real CRLF files.
+  - Found: the installed nerv 1.0.0 still refuses 4.x and lacks `spec-compose`, so phase 4 is needed.
+- [x] T9 `~/.claude` cleanup (outside the repo). The v4 sync left these behind; they were moved to `~/.claude/backups/sdd-cleanup-20261005-123051`:
+  - 11 `skills/sdd-*` and 11 `agents/sdd-*.md`
+  - 11 `commands/gentle-sdd-*.md`
+  - 4 `skills/_shared/sdd-*.md` and `_shared/openspec-convention.md` (v3-only, unreferenced)
+  - the `PreToolUse` hook `gentle-ai sdd-preflight-hook`, which failed on every Agent call
+  - `~/.gentle-ai/state.json` still lists the `sdd-*` phase keys; left untouched.
+- [ ] T10 Require gentle-ai 4.x. The gate accepts only major 4. Messages say "4.x". "Tested against" becomes 4.0.0. The "4.x support is in progress" notes go away (install, `status.md`, README, bench). (route: delegated direct)
+
 ## Acceptance criteria
 
 - `gentle-ai 4.0.0` and `3.7.0` both yield `OK: true`; `2.x` and `5.x` are refused with a message
@@ -110,6 +128,8 @@ docs/integration.md diagram), then upgrade the local gentle-ai and release.
   - R3-equivalent-not-a-from-phase (WARNING): the wizard and `/nerv:configure` suggest the equivalent as a `from:` value, but `review-*` are not `claude_phase_assignments` keys.
   - R3-dangling-symlink-output-replaced (WARNING): a dangling `--output` link becomes a regular file.
   - R3-cross-section-conflict-silent: MODIFIED followed by REMOVED of the same name silently drops the modification.
+
+- 2026-10-05: Final stack review `review-4fdd4196d3650bae` (including `0f6aad4`) was approved and acknowledged; no new findings. PRs #61, #62 and #63 were merged to `develop` (`58dc6a1`, `9615ad5`, `7647996`) with CI green.
 
 ## Next step
 
