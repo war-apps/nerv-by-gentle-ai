@@ -65,6 +65,7 @@ isn't taking effect.
 | `nerv uninstall` | Uninstall NERV |
 | `nerv apply-models` | Apply `models:` overrides to the cached agents |
 | `nerv skills` | Install or verify the skills NERV's defaults reference |
+| `nerv spec-compose` | Merge a change's delta spec into its canonical spec (used by Aoba's archive step) |
 
 ### nerv configure
 
@@ -204,6 +205,36 @@ nerv skills --dry-run --json
 
 ```
 nerv skills --only tdd,solid-principles
+```
+
+### nerv spec-compose
+
+Merges a change's delta spec into the canonical spec it amends. It applies
+`RENAMED`, `MODIFIED`, `REMOVED`, then `ADDED` requirements in that order
+and leaves every unrelated byte of the canonical spec untouched. Names must
+match exactly; a `RENAMED` or `REMOVED` entry needs a `(Reason: ...)` line.
+An unmatched or duplicate name, an empty delta, or a canonical spec with no
+requirements is an error: nothing is written, stderr names the section and
+requirement, and the exit code is 1 (2 for a usage or I/O error).
+
+`--output` defaults to stdout. A file is replaced atomically (a temp file in
+the same directory, then a rename) and keeps its existing mode, so
+`--output` may name the canonical spec itself. It is a port of the merge gentle-ai
+3.x shipped, which gentle-ai 4 removed.
+
+```
+Usage: nerv spec-compose --canonical <path> --delta <path> [--output <path|->]
+
+Flags:
+  --canonical <path>   The canonical openspec/specs/<domain>/spec.md
+  --delta <path>       The change's openspec/changes/<change>/specs/<domain>/spec.md
+  --output <path|->    Where to write the composed spec (default "-", stdout)
+```
+
+```
+nerv spec-compose --canonical openspec/specs/widgets/spec.md \
+  --delta openspec/changes/add-tags/specs/widgets/spec.md \
+  --output openspec/specs/widgets/spec.md
 ```
 
 ## Maintainer: nerv release
