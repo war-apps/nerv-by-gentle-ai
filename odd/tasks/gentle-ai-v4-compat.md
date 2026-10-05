@@ -101,6 +101,11 @@ docs/integration.md diagram), then upgrade the local gentle-ai and release.
   - R3-cross-section-conflict-unchecked: the same name in MODIFIED and REMOVED is accepted silently.
   - R3-dangling-symlink-replaced: a dangling `--output` link becomes a regular file (from slice 3's symlink fix).
 
+- 2026-10-05: The two spec-compose warnings were fixed on `feature/gentle-ai-v4-spec-compose` and the stack was rebased onto it (no conflicts; the repeated-name check is kept).
+  - `47babd0` `fix(specs): accept CRLF headings in spec-compose`. RED: 4 tests (CRLF MODIFIED, ADDED, RENAMED with Reason, REMOVED with Reason) failed with "delta spec declares no ADDED, MODIFIED, REMOVED, or RENAMED requirements". The mixed CRLF canonical plus LF delta test passed before the fix and stays as a guard. A rename keeps the heading's `\r`.
+  - `7f217c4` `fix(specs): ignore fenced headings when parsing a delta`. RED: a MODIFIED body with a fenced `### Requirement: B` and `## REMOVED Requirements` composed with requirement B removed and the fence cut short. Both delta parsers now reuse `fencedRanges` through `unfencedMatches`.
+  - Left as follow-ups: R3-cross-section-conflict-unchecked and R3-dangling-symlink-replaced (advisories).
+
 ## Next step
 
 Phase 1 is complete locally. Next: PR to `develop` (user decision), then phase 2 (`/nerv:init` without `sdd-init`, Aoba archive without `sdd-archive-compose`, role catalogue `sdd-*` equivalents, orchestrator prose).
