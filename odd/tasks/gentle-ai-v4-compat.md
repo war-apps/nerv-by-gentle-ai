@@ -33,7 +33,7 @@ docs/integration.md diagram), then upgrade the local gentle-ai and release.
 - [x] T1 (commit 484f00d) Version gate accepts majors 3 and 4: `internal/gentleai`, install refusal/warnings,
   wizard, `cmd/nerv/install.go` help, `plugin/commands/status.md` step, README, CONTRIBUTING,
   `docs/commands.md` (route: delegated direct; trigger: 2+ non-trivial files).
-- [x] T2 (commit PENDING_T2) Drop `gentle-ai sdd-status`: `plugin/commands/status.md`, `references/resume.md`,
+- [x] T2 (commit c38f182) Drop `gentle-ai sdd-status`: `plugin/commands/status.md`, `references/resume.md`,
   `_shared/nerv-artifacts.md`, `bench/journeys.md` read the change artifacts directly
   (route: delegated direct, same writer).
 
