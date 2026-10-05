@@ -213,6 +213,44 @@ func TestInstall_RequireGentleAI_MissingRefuses(t *testing.T) {
 	}
 }
 
+func TestInstall_RequireGentleAI_MajorGate(t *testing.T) {
+	tests := []struct {
+		name    string
+		version string
+		refused bool
+	}{
+		{"3.x passes", "3.7.0", false},
+		{"4.x passes", "4.0.0", false},
+		{"5.x refused", "5.0.0", true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			home := t.TempDir()
+			runner := baseRunner()
+			runner.Responses["gentle-ai --version"] = envtest.Response{Stdout: "gentle-ai version " + tt.version + "\n"}
+			seedInstalledPlugins(t, home, pluginVersion(t))
+			var stdout bytes.Buffer
+			deps := install.Deps{Home: home, FS: nerv.PluginFS(), Runner: runner, Now: fixedNow, LookPath: lookPathAll, Stdout: &stdout}
+
+			err := install.Install(context.Background(), deps, install.Options{RequireGentleAI: true, NoSkills: true})
+
+			if !tt.refused {
+				if err != nil {
+					t.Fatalf("Install() error = %v, want nil for gentle-ai %s", err, tt.version)
+				}
+				return
+			}
+			var refusal *install.RefusalError
+			if !errors.As(err, &refusal) {
+				t.Fatalf("error = %v (%T), want *install.RefusalError for gentle-ai %s", err, err, tt.version)
+			}
+			if !strings.Contains(err.Error(), "3.x or 4.x") {
+				t.Errorf("refusal %q does not name the supported majors", err)
+			}
+		})
+	}
+}
+
 func TestInstall_GentleAIMissing_WithoutRequire_WarnsAndContinues(t *testing.T) {
 	home := t.TempDir()
 	runner := baseRunner()

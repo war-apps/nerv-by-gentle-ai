@@ -1,7 +1,7 @@
 # Nerv by Gentle-AI
 
 <p align="center">
-  <a href="https://github.com/Gentleman-Programming/gentle-ai"><img alt="gentle-ai 3.x" src="https://img.shields.io/badge/gentle--ai-3.x-6f42c1?style=for-the-badge"></a>
+  <a href="https://github.com/Gentleman-Programming/gentle-ai"><img alt="gentle-ai 3.x or 4.x" src="https://img.shields.io/badge/gentle--ai-3.x%20%7C%204.x-6f42c1?style=for-the-badge"></a>
   <a href="https://code.claude.com/docs"><img alt="Claude Code plugin" src="https://img.shields.io/badge/Claude_Code-plugin-d97757?style=for-the-badge&logo=anthropic&logoColor=white"></a>
   <a href="https://go.dev/"><img alt="Go CLI" src="https://img.shields.io/badge/Go-CLI-00ADD8?style=for-the-badge&logo=go&logoColor=white"></a>
   <a href="https://www.gnu.org/software/bash/"><img alt="Bash hooks" src="https://img.shields.io/badge/Bash-hooks-4EAA25?style=for-the-badge&logo=gnubash&logoColor=white"></a>
@@ -50,9 +50,10 @@ activation, and pipeline diagrams.
 
 ## Requirements
 
-- **gentle-ai 3.x** — major version 3 is required; minor and patch are free.
-  Tested against 3.7.0. 4.x is untested and not supported until Nerv by
-  Gentle-AI's contracts are re-verified against it.
+- **gentle-ai 3.x or 4.x** — major version 3 or 4 is required; minor and
+  patch are free. Tested against 3.7.0. 4.x support is being validated:
+  the SDD-dependent steps (init bootstrap, archive compose) are still
+  pending migration.
 - Claude Code with plugin marketplaces support (2.1+).
 - git — only needed to contribute to this repository (cloning, building,
   work-unit commits). Installing and running `nerv` itself does not require
@@ -105,7 +106,7 @@ Requires Go 1.26+ (see "Requirements" above).
 
 ### What `nerv install` does
 
-1. Runs a gentle-ai preflight check (warns if missing or not 3.x; refuses
+1. Runs a gentle-ai preflight check (warns if missing or not 3.x or 4.x; refuses
    with `--require-gentle-ai`).
 2. Materializes the embedded plugin under `~/.nerv/marketplace`.
 3. Registers that directory marketplace in Claude Code's `settings.json`.
@@ -124,7 +125,7 @@ Requires Go 1.26+ (see "Requirements" above).
 
 Flags: `--no-configure` (skip the closing wizard/hint entirely),
 `--no-skills` (skip installing skills), `--require-gentle-ai` (fail with
-exit 1 when gentle-ai is missing or not 3.x).
+exit 1 when gentle-ai is missing or not 3.x or 4.x).
 
 ### Updating
 
@@ -221,7 +222,7 @@ After the wizard, open Claude Code in each configured repository and run
 missing; the wizard itself only writes `.nerv/nerv.yaml`.
 
 Outside the wizard, the plugin stays self-contained apart from these
-requirements: **gentle-ai 3.x** installed and configured (`gentle-ai
+requirements: **gentle-ai 3.x or 4.x** installed and configured (`gentle-ai
 install`), **Claude Code** with the **Teamwork MCP** configured when the
 Teamwork task-tracker adapter is used, and **Engram** (optional — used for
 the shared `nerv` knowledge base and per-repo memory detection).
