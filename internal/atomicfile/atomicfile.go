@@ -149,11 +149,14 @@ func writeAtomic(path string, data []byte, verify func([]byte) error, mode fs.Fi
 // same directory, then a rename), without taking a backup. An existing file
 // keeps its permission bits; a new file gets perm. When path is a symlink
 // to an existing file, the link's target is the file written and the link
-// stays. On any failure the destination is left as it was and no temp file
-// remains.
+// stays. A symlink that cannot be resolved (dangling or looping) is refused
+// rather than replaced. On any failure the destination is left as it was and
+// no temp file remains.
 func Write(path string, data []byte, perm fs.FileMode) error {
 	if resolved, err := filepath.EvalSymlinks(path); err == nil {
 		path = resolved
+	} else if info, lerr := os.Lstat(path); lerr == nil && info.Mode()&os.ModeSymlink != 0 {
+		return fmt.Errorf("refusing to replace unresolvable symlink %s: %w", path, err)
 	}
 	mode := perm
 	if info, err := os.Stat(path); err == nil {
