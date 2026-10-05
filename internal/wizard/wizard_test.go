@@ -1018,6 +1018,45 @@ func TestRun_ModelsSection_PhasePickerListsEquivalentFirst(t *testing.T) {
 	}
 }
 
+// A role whose gentle-ai equivalent is a native review agent (not a
+// claude_phase_assignments key) gets no phase hint: even when that agent's
+// name is a state key, nothing is marked (equivalent) and the phases stay in
+// sorted order instead of listing it first.
+func TestRun_ModelsSection_PhasePickerMarksNothingForReviewAgentEquivalent(t *testing.T) {
+	root := t.TempDir()
+	home := t.TempDir()
+	writeFixture(t, filepath.Join(root, "nerv.yaml"))
+	paths := testPaths(root, home)
+	// review-risk is present as a key so that a hint driven by the
+	// equivalent (instead of FromPhase) would surface it first and marked.
+	state := `{"claude_phase_assignments":{"jd-judge-a":{"model":"opus","effort":"high"},"jd-judge-b":{"model":"sonnet","effort":"medium"},"review-risk":{"model":"haiku","effort":"low"}}}`
+	if err := os.MkdirAll(filepath.Dir(paths.State), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(paths.State, []byte(state), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	deps := configure.Deps{Home: home, FS: nerv.PluginFS(), Runner: noRunner(), Now: fixedNow, LookPath: lookPathNone}
+	opts := wizard.Options{Paths: paths, SkipSkills: true, SkipRepos: true, SkipCommands: true, NoRefresh: true}
+
+	var out bytes.Buffer
+	in := modelsInput(&out, "kaji-security", "7", "1", "", "done", "y")
+	if _, err := wizard.Run(deps, in, &out, opts); err != nil {
+		t.Fatalf("Run() error = %v; output:\n%s", err, out.String())
+	}
+
+	_, picker, found := strings.Cut(out.String(), "Phases:")
+	if !found {
+		t.Fatalf("phase picker not shown; output:\n%s", out.String())
+	}
+	if strings.Contains(picker, "(equivalent)") {
+		t.Errorf("phase picker marks an equivalent for kaji-security:\n%s", picker)
+	}
+	if first := phaseLine(out.String(), "  1) "); !strings.Contains(first, "jd-judge-a") {
+		t.Errorf("first phase = %q, want jd-judge-a (sorted order, no hint)", first)
+	}
+}
+
 // A gentle-ai major other than 4 is warned about in the prerequisites
 // block, and the warning names the required major.
 func TestRun_Prerequisites_UnsupportedMajorWarnsAndNamesSupportedMajors(t *testing.T) {

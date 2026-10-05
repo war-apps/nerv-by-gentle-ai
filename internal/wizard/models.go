@@ -84,7 +84,7 @@ func runModelsSection(deps Deps, paths configure.Paths, s *session, out io.Write
 
 		currentDisplay := currentModelDisplay(roles, table)
 
-		newModel, newFrom, modelChoice, modelChosen, err := askModel(s, out, paths, phaseNames, phaseAssignments, currentDisplay, equivalentOf(roles, catalogue))
+		newModel, newFrom, modelChoice, modelChosen, err := askModel(s, out, paths, phaseNames, phaseAssignments, currentDisplay, fromPhaseOf(roles, catalogue))
 		if err != nil {
 			return false, err
 		}
@@ -176,14 +176,16 @@ func selectRoles(s *session, out io.Writer, catalogue config.RoleCatalogue, over
 	return roles, false
 }
 
-// equivalentOf is the gentle-ai phase to suggest first in the phase picker:
-// the selected role's own equivalent when exactly one role is selected, or
-// "" for a group (its members may differ) or a role with none.
-func equivalentOf(roles []string, catalogue config.RoleCatalogue) string {
+// fromPhaseOf is the gentle-ai phase to suggest first in the phase picker:
+// the selected role's own FromPhase when exactly one role is selected, or
+// "" for a group (its members may differ) or a role with none. It never
+// uses GentleAIEquivalent, which may name a native review agent that is
+// not a claude_phase_assignments key.
+func fromPhaseOf(roles []string, catalogue config.RoleCatalogue) string {
 	if len(roles) != 1 {
 		return ""
 	}
-	return catalogue.Info[roles[0]].GentleAIEquivalent
+	return catalogue.Info[roles[0]].FromPhase
 }
 
 // phasePickerOrder returns phaseNames with equivalent moved to the front

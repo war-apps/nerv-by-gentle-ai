@@ -169,7 +169,7 @@ func TestPrint_ModelsRowsCarryPurposeAndEquivalent(t *testing.T) {
 
 	byRole := map[string]map[string]any{}
 	for _, row := range decoded.Models {
-		for _, key := range []string{"purpose", "gentle_ai_equivalent"} {
+		for _, key := range []string{"purpose", "gentle_ai_equivalent", "from_phase"} {
 			if _, ok := row[key]; !ok {
 				t.Errorf("row %v missing key %q", row["role"], key)
 			}
@@ -182,6 +182,12 @@ func TestPrint_ModelsRowsCarryPurposeAndEquivalent(t *testing.T) {
 	}
 	if got := byRole["kaji-security"]["gentle_ai_equivalent"]; got != "review-risk" {
 		t.Errorf("kaji-security gentle_ai_equivalent = %v, want review-risk", got)
+	}
+	if got := byRole["kaji-security"]["from_phase"]; got != "" {
+		t.Errorf("kaji-security from_phase = %v, want empty (review-risk is not a phase key)", got)
+	}
+	if got := byRole["casper"]["from_phase"]; got != "jd-judge-a" {
+		t.Errorf("casper from_phase = %v, want jd-judge-a", got)
 	}
 	if got := byRole["kaworu"]["gentle_ai_equivalent"]; got != "" {
 		t.Errorf("kaworu gentle_ai_equivalent = %v, want empty", got)

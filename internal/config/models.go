@@ -18,15 +18,21 @@ type ModelOverride struct {
 	From   string
 }
 
-// RoleInfo describes one role for display: what it does and which gentle-ai
-// phase it is comparable to. The equivalence is informational only — it
-// never changes how a role's model is resolved (from:<phase> stays explicit).
+// RoleInfo describes one role for display: what it does, which gentle-ai
+// v4 agent it is comparable to, and which gentle-ai phase to suggest for a
+// from:<phase> override. Neither ever changes how a role's model is
+// resolved (from:<phase> stays explicit).
 type RoleInfo struct {
 	// Purpose is a one-line description of what the role does.
 	Purpose string
-	// GentleAIEquivalent is the closest gentle-ai phase, or "" when the
-	// role has no counterpart (fuyutsuki).
+	// GentleAIEquivalent is the closest gentle-ai v4 agent (a jd-judge or a
+	// native review agent), or "" when the role has none. It is
+	// informational only and never a from:<phase> value: native review
+	// agents are not claude_phase_assignments keys.
 	GentleAIEquivalent string
+	// FromPhase is the gentle-ai claude_phase_assignments key to suggest as
+	// from:<phase> for this role, or "" when no phase fits.
+	FromPhase string
 }
 
 // RoleCatalogue is the 18 NERV agent roles, their group shortcuts and the
@@ -62,24 +68,24 @@ func Roles() RoleCatalogue {
 		"all":         allRoles,
 	}
 	info := map[string]RoleInfo{
-		"misato":        {"authors the plan (proposal, design, tasks)", ""},
-		"ritsuko":       {"intelligence, test planning, end-of-run docs", ""},
-		"hyuga":         {"task criticality, dependency waves, tracking", ""},
-		"melchor":       {"MAGI vote: structure and security", "jd-judge-b"},
-		"balthasar":     {"MAGI vote: software principles", "jd-judge-a"},
-		"casper":        {"MAGI vote: process and documentation", "jd-judge-a"},
-		"fuyutsuki":     {"governance veto on new skills/scripts/commands", ""},
-		"kaworu":        {"writes the failing tests first", ""},
-		"shinji":        {"backend pilot", ""},
-		"asuka":         {"frontend pilot", ""},
-		"rei":           {"data pilot (persistence, observability)", ""},
-		"toji":          {"infrastructure pilot (CI/CD, containers)", ""},
-		"maya":          {"quality gate (tests, lint, build)", ""},
-		"kaji":          {"audit compiler", ""},
-		"kaji-security": {"audit pass: security", "review-risk"},
-		"kaji-coverage": {"audit pass: tests vs test plan", "review-reliability"},
-		"kaji-refuter":  {"refutes severe audit findings", "review-refuter"},
-		"aoba":          {"commits, PRs and run telemetry", ""},
+		"misato":        {"authors the plan (proposal, design, tasks)", "", ""},
+		"ritsuko":       {"intelligence, test planning, end-of-run docs", "", ""},
+		"hyuga":         {"task criticality, dependency waves, tracking", "", ""},
+		"melchor":       {"MAGI vote: structure and security", "jd-judge-b", "jd-judge-b"},
+		"balthasar":     {"MAGI vote: software principles", "jd-judge-a", "jd-judge-a"},
+		"casper":        {"MAGI vote: process and documentation", "jd-judge-a", "jd-judge-a"},
+		"fuyutsuki":     {"governance veto on new skills/scripts/commands", "", ""},
+		"kaworu":        {"writes the failing tests first", "", ""},
+		"shinji":        {"backend pilot", "", ""},
+		"asuka":         {"frontend pilot", "", ""},
+		"rei":           {"data pilot (persistence, observability)", "", ""},
+		"toji":          {"infrastructure pilot (CI/CD, containers)", "", ""},
+		"maya":          {"quality gate (tests, lint, build)", "", ""},
+		"kaji":          {"audit compiler", "", ""},
+		"kaji-security": {"audit pass: security", "review-risk", ""},
+		"kaji-coverage": {"audit pass: tests vs test plan", "review-reliability", ""},
+		"kaji-refuter":  {"refutes severe audit findings", "review-refuter", ""},
+		"aoba":          {"commits, PRs and run telemetry", "", ""},
 	}
 	groupDescriptions := map[string]string{
 		"magi":        "the three voters (balthasar, melchor, casper)",

@@ -74,10 +74,14 @@ hand.
 
 Every role below can be overridden under `models:`. The gentle-ai
 equivalent is the closest gentle-ai v4 agent that still exists (the `jd-judge`
-agents and the native review agents), a hint for `from:<phase>`; roles with
-no such agent show none. It is informational and never changes how a model is resolved. The same data is
-shown in the wizard's models table, in `/nerv:configure` and `/nerv:status`,
-and as `purpose` / `gentle_ai_equivalent` on each `nerv configure --print`
+agents and the native review agents); roles with no such agent show none.
+It is informational only and never a `from:<phase>` value: the native
+review agents (`review-*`) are not keys of `claude_phase_assignments`.
+Only the `jd-judge` equivalents (melchor, balthasar, casper) double as a
+`from:` suggestion, exposed separately as `from_phase`. Neither changes how
+a model is resolved. The same data is shown in the wizard's models table,
+in `/nerv:configure` and `/nerv:status`, and as `purpose` /
+`gentle_ai_equivalent` / `from_phase` on each `nerv configure --print`
 models row. Roles are addressable by group: `magi` (the three voters),
 `pilots` (the implementers), `kaji-passes` (the audit passes) and `all`.
 
@@ -112,8 +116,8 @@ edit it role by role, or
 by group (`magi`, `pilots`, `kaji-passes`, `all`), until you type `done`.
 For each role it asks for a model (`sonnet`/`opus`/`haiku`/`fable`/
 `inherit`, a custom `claude-...` id, or `from:` a gentle-ai phase listed
-from `~/.gentle-ai/state.json`, with the role's own equivalent listed
-first and marked `(equivalent)`) and an effort (`low`/`medium`/`high`/
+from `~/.gentle-ai/state.json`, with the role's own `from_phase` listed
+first and marked `(equivalent)`; roles without one get no mark) and an effort (`low`/`medium`/`high`/
 `xhigh`/`max`), with Enter keeping the current value; `reset <role|group>`
 clears an override back to the plugin default. Confirming writes the block
 to the user-scope `nerv.yaml`, after backing up the file to
