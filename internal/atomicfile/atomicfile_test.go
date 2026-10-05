@@ -264,3 +264,29 @@ func TestWrite_RefusesADanglingSymlinkAndKeepsTheLink(t *testing.T) {
 		t.Errorf("target was created (Lstat err = %v), want it left absent", err)
 	}
 }
+
+// A link that points at itself cannot be resolved either, so it gets the
+// same refusal as a dangling one instead of being replaced.
+func TestWrite_RefusesALoopingSymlinkAndKeepsTheLink(t *testing.T) {
+	dir := t.TempDir()
+	link := filepath.Join(dir, "loop.md")
+	if err := os.Symlink(link, link); err != nil {
+		t.Skipf("symlinks unsupported here: %v", err)
+	}
+
+	err := atomicfile.Write(link, []byte("new\n"), 0o600)
+	if err == nil || !strings.Contains(err.Error(), "unresolvable symlink") {
+		t.Fatalf("Write error = %v, want the unresolvable-symlink refusal", err)
+	}
+
+	if target, err := os.Readlink(link); err != nil || target != link {
+		t.Fatalf("Readlink(link) = %q, %v; want the link to still point at itself", target, err)
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 1 {
+		t.Errorf("directory holds %d entries, want only the link (no temp file)", len(entries))
+	}
+}
