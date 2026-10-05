@@ -222,7 +222,8 @@ requirements is an error: nothing is written, stderr names the section and
 requirement, and the exit code is 1 (2 for a usage or I/O error).
 
 `--output` defaults to stdout. A file is replaced atomically (a temp file in
-the same directory, then a rename) and keeps its existing mode, so
+the same directory, then a rename) and keeps its existing mode (a symlink is followed: its target is updated
+and the link stays), so
 `--output` may name the canonical spec itself. It is a port of the merge gentle-ai
 3.x shipped, which gentle-ai 4 removed.
 
