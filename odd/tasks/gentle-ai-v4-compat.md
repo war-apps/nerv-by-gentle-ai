@@ -106,6 +106,11 @@ docs/integration.md diagram), then upgrade the local gentle-ai and release.
   - `7f217c4` `fix(specs): ignore fenced headings when parsing a delta`. RED: a MODIFIED body with a fenced `### Requirement: B` and `## REMOVED Requirements` composed with requirement B removed and the fence cut short. Both delta parsers now reuse `fencedRanges` through `unfencedMatches`.
   - Left as follow-ups: R3-cross-section-conflict-unchecked and R3-dangling-symlink-replaced (advisories).
 
+- 2026-10-05: After the CRLF and fence fixes and the rebase, the user granted consent. Native review lineage `review-18dfa9c598ca6234` was approved (reliability lens) and acknowledged. Open follow-ups, kept out of this feature:
+  - R3-equivalent-not-a-from-phase (WARNING): the wizard and `/nerv:configure` suggest the equivalent as a `from:` value, but `review-*` are not `claude_phase_assignments` keys.
+  - R3-dangling-symlink-output-replaced (WARNING): a dangling `--output` link becomes a regular file.
+  - R3-cross-section-conflict-silent: MODIFIED followed by REMOVED of the same name silently drops the modification.
+
 ## Next step
 
 Phase 1 is complete locally. Next: PR to `develop` (user decision), then phase 2 (`/nerv:init` without `sdd-init`, Aoba archive without `sdd-archive-compose`, role catalogue `sdd-*` equivalents, orchestrator prose).
