@@ -1,7 +1,13 @@
 # gentle-ai v4 compatibility, phase 1
 
 Branch `feature/gentle-ai-v4-compat` from `develop` (`5b43239`). Started 2026-10-05.
-Delivery strategy: `ask-on-risk`. Forecast ~200 authored changed lines, one PR.
+Delivery strategy: `ask-on-risk`; chain strategy: stacked PRs to `develop` (user choice 2026-10-05).
+Forecast: phase 1 266 lines, phase 2 ~700 more (over budget, so chained).
+
+Slices (each branch stacks on the previous one):
+1. `feature/gentle-ai-v4-compat`: T1-T2 (phase 1, committed and reviewed).
+2. `feature/gentle-ai-v4-spec-compose`: T4 (`nerv spec-compose` port). Likely `size:exception`, because the port is ~350 lines plus tests.
+3. `feature/gentle-ai-v4-sdd-retire`: T3, T5, T6, T7.
 TDD: strict (global setting). Runner: `go test ./...` (plus `gofmt -l .` and `go vet ./...`).
 Engram mirror: topic `odd/gentle-ai-v4-compat/tasks`.
 
@@ -36,6 +42,14 @@ docs/integration.md diagram), then upgrade the local gentle-ai and release.
 - [x] T2 (commit c38f182) Drop `gentle-ai sdd-status`: `plugin/commands/status.md`, `references/resume.md`,
   `_shared/nerv-artifacts.md`, `bench/journeys.md` read the change artifacts directly
   (route: delegated direct, same writer).
+
+### Phase 2 (user approved 2026-10-05)
+
+- [ ] T3 `/nerv:init` writes `openspec/config.yaml` itself (context, `strict_tdd` with the v3 `sdd-init` rule, testing runner) and runs `gentle-ai skill-registry refresh`; no `sdd-init` delegation. `docs/commands.md:39` follows. (slice 3)
+- [ ] T4 `nerv spec-compose --canonical --delta [--output]`: Go port of gentle-ai v3.7.0 `internal/sddstatus/openspec_archive_compose.go` (MIT, attributed), with an atomic write and tests. Aoba's archive step, `pipeline-full.md`, `troubleshooting.md` and `bench/journeys.md` use it. (slice 2; user chose a subcommand over prompt-level merging)
+- [ ] T5 Role catalogue equivalents: keep jd-judge-a/b; kaji-security goes to review-risk, kaji-refuter to review-refuter, kaji-coverage to review-reliability; the rest become `none`. Docs, guard tests and the status/configure prose follow. (slice 3)
+- [ ] T6 Orchestrator prose: drop the SDD claims (`SKILL.md:25-47`, `docs/integration.md` reuse map); strict TDD becomes nerv-owned, read from `openspec/config.yaml`; "gentle-ai's own" artifact wording becomes nerv-owned. (slice 3)
+- [ ] T7 Review advisories: a 2.x install case, a wizard warning test, and install prints the same 4.x note as `/nerv:status`. (slice 3)
 
 ## Acceptance criteria
 
