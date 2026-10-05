@@ -251,7 +251,9 @@ type ModelRow struct {
 	Role   string
 	Model  string
 	Effort string
-	// Source is "default", "override", or "gentle-ai:<phase>".
+	// Source is "default", "override", "gentle-ai:<phase>", or
+	// "gentle-ai:<phase>" + MissingPhaseSuffix when the phase is absent
+	// from a known, non-empty set of phase assignments.
 	Source string
 }
 
@@ -263,12 +265,20 @@ type PhaseAssignment struct {
 	Effort string
 }
 
+// MissingPhaseSuffix is appended to a "gentle-ai:<phase>" source when the
+// phase is not a key of a known, non-empty phase-assignment map, so the
+// row does not claim a gentle-ai resolution it never got.
+const MissingPhaseSuffix = " (missing; plugin default)"
+
 // ModelTable builds the display table (role, model, effort, source) from
 // the plugin default model/effort per role, the raw models: overrides, and
 // gentle-ai's phase assignments (for from:<phase> display). source is
 // "override" when the role has an explicit model or effort key in
 // overrides, "gentle-ai:<phase>" when it only has a from key, or "default"
-// when it has no override at all. A role present in overrides but not
+// when it has no override at all. A from:<phase> missing from a non-empty
+// phaseAssignments gets MissingPhaseSuffix and keeps the plugin default;
+// a nil or empty phaseAssignments means the assignments are unknown
+// (state.json absent or unreadable), so nothing is flagged. A role present in overrides but not
 // defaults still appears. Mirrors Get-NervModelTable.
 func ModelTable(defaults, overrides map[string]ModelOverride, phaseAssignments map[string]PhaseAssignment) []ModelRow {
 	roleSet := map[string]struct{}{}
@@ -299,6 +309,8 @@ func ModelTable(defaults, overrides map[string]ModelOverride, phaseAssignments m
 					if pa.Effort != "" {
 						effort = pa.Effort
 					}
+				} else if len(phaseAssignments) > 0 {
+					source += MissingPhaseSuffix
 				}
 			}
 			if override.Model != "" {

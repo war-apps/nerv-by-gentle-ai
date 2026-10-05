@@ -110,8 +110,10 @@ models row. Roles are addressable by group: `magi` (the three voters),
 
 The wizard's **Models** section (see "Setup" in [the README](../README.md))
 prints the resolved table (role, model, effort, source — `override`,
-`gentle-ai:<phase>`, or `default` — plus what each role does and its
-gentle-ai equivalent) and a legend for the group shortcuts, then lets you
+`gentle-ai:<phase>`, or `default`; `gentle-ai:<phase> (missing; plugin
+default)` when `~/.gentle-ai/state.json` has phase assignments but not
+that phase — plus what each role does and its gentle-ai equivalent) and a
+legend for the group shortcuts, then lets you
 edit it role by role, or
 by group (`magi`, `pilots`, `kaji-passes`, `all`), until you type `done`.
 For each role it asks for a model (`sonnet`/`opus`/`haiku`/`fable`/

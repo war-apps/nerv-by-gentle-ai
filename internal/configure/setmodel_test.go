@@ -242,3 +242,69 @@ func TestSetModel_Batch_TwoRoles(t *testing.T) {
 		}
 	}
 }
+
+// ---------------------------------------------------------------------------
+// from:<phase> validation against gentle-ai's state.json: a phase missing
+// from a readable, non-empty claude_phase_assignments map warns (naming the
+// phase and the available keys) but the override is still written.
+// ---------------------------------------------------------------------------
+
+func TestSetModel_FromPhase_StateWarnings(t *testing.T) {
+	const stateWithPhases = `{"claude_phase_assignments":{"jd-judge-b":{"model":"opus","effort":"xhigh"},"sdd-apply":{"model":"sonnet","effort":"high"}}}`
+
+	tests := []struct {
+		name        string
+		state       string // "" means no state.json on disk
+		spec        string
+		wantWarning bool
+	}{
+		{name: "missing phase with readable state warns", state: stateWithPhases, spec: "rei=from:review-risk", wantWarning: true},
+		{name: "present phase does not warn", state: stateWithPhases, spec: "rei=from:jd-judge-b", wantWarning: false},
+		{name: "absent state does not warn", state: "", spec: "rei=from:review-risk", wantWarning: false},
+		{name: "state without assignments does not warn", state: `{"claude_phase_assignments":{}}`, spec: "rei=from:review-risk", wantWarning: false},
+		{name: "malformed state does not warn", state: `{"claude_phase_assignments":{"jd-judge-b":`, spec: "rei=from:review-risk", wantWarning: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := t.TempDir()
+			configPath := filepath.Join(dir, "nerv.yaml")
+			writeFixture(t, configPath, richFixtureLF)
+			statePath := filepath.Join(dir, "state.json")
+			if tt.state != "" {
+				writeFixture(t, statePath, tt.state)
+			}
+
+			deps := newTestDeps(dir, time.Now())
+			paths := configure.Paths{Config: configPath, State: statePath}
+
+			result, err := configure.SetModel(deps, paths, []string{tt.spec})
+			if err != nil {
+				t.Fatalf("SetModel() error = %v", err)
+			}
+
+			if tt.wantWarning {
+				if len(result.Warnings) != 1 {
+					t.Fatalf("Warnings = %q, want exactly one", result.Warnings)
+				}
+				w := result.Warnings[0]
+				for _, want := range []string{"review-risk", "jd-judge-b, sdd-apply"} {
+					if !strings.Contains(w, want) {
+						t.Errorf("warning %q does not mention %q", w, want)
+					}
+				}
+			} else if len(result.Warnings) != 0 {
+				t.Errorf("Warnings = %q, want none", result.Warnings)
+			}
+
+			after, err := os.ReadFile(configPath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			phase := strings.TrimPrefix(tt.spec, "rei=from:")
+			if !strings.Contains(string(after), "rei: { from: "+phase+" }") {
+				t.Errorf("from: override for %q not written", phase)
+			}
+		})
+	}
+}
