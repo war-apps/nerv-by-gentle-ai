@@ -893,7 +893,7 @@ type readerFunc func([]byte) (int, error)
 
 func (f readerFunc) Read(p []byte) (int, error) { return f(p) }
 
-var tableRowRe = regexp.MustCompile(`^\s*\d+\) [a-z-]+ `)
+var tableRowRe = regexp.MustCompile(`^\s*\d+\) ([a-z-]+) `)
 
 // phaseLine returns the first output line after "Phases:" that contains needle.
 func phaseLine(out, needle string) string {
@@ -932,16 +932,43 @@ func TestRun_ModelsSection_TableShowsPurposeEquivalentAndGroupLegend(t *testing.
 			t.Errorf("table header %q lacks column %q", header, col)
 		}
 	}
-	if row := lineWith(got, ") kaworu"); !strings.Contains(row, "writes the failing tests first") || !strings.Contains(row, "sdd-apply") {
-		t.Errorf("kaworu row = %q, want purpose and sdd-apply", row)
+	if row := lineWith(got, ") kaji-security"); !strings.Contains(row, "audit pass: security") || !strings.Contains(row, "review-risk") {
+		t.Errorf("kaji-security row = %q, want purpose and review-risk", row)
+	}
+	if row := lineWith(got, ") kaworu"); !strings.Contains(row, "writes the failing tests first") || strings.Contains(row, "sdd-") || !strings.HasSuffix(strings.TrimSpace(row), "-") {
+		t.Errorf("kaworu row = %q, want purpose and a '-' equivalent", row)
 	}
 	if row := lineWith(got, ") fuyutsuki"); !strings.HasSuffix(strings.TrimSpace(row), "-") {
 		t.Errorf("fuyutsuki row = %q, want a '-' equivalent", row)
 	}
+	// Every purpose starts under its header and is printed whole, whatever
+	// the fixture's model and source widths are.
+	purposeCol, equivalentCol := strings.Index(header, "WHAT IT DOES"), strings.Index(header, "GENTLE-AI")
+	if purposeCol < 0 || equivalentCol <= purposeCol {
+		t.Fatalf("table header %q: WHAT IT DOES at %d, GENTLE-AI at %d", header, purposeCol, equivalentCol)
+	}
+	info := config.Roles().Info
+	checked := 0
 	for _, l := range strings.Split(got, "\n") {
-		if tableRowRe.MatchString(l) && len(l) > 120 {
-			t.Errorf("table row wider than 120 columns (%d): %q", len(l), l)
+		m := tableRowRe.FindStringSubmatch(l)
+		if m == nil {
+			continue
 		}
+		role, ok := info[m[1]]
+		if !ok {
+			continue // a numbered row of another menu
+		}
+		checked++
+		purpose := role.Purpose
+		if strings.Index(l, purpose) != purposeCol {
+			t.Errorf("%s purpose not aligned under WHAT IT DOES (col %d): %q", m[1], purposeCol, l)
+		}
+		if len(l) < equivalentCol || strings.TrimSpace(l[purposeCol:equivalentCol]) != purpose {
+			t.Errorf("%s purpose cut off or GENTLE-AI misaligned (col %d): %q", m[1], equivalentCol, l)
+		}
+	}
+	if want := len(config.Roles().AllRoles); checked != want {
+		t.Errorf("alignment checked %d table rows, want one per role (%d)", checked, want)
 	}
 	for group, desc := range config.Roles().GroupDescriptions {
 		if !strings.Contains(got, group+" = "+desc) {
@@ -960,7 +987,7 @@ func TestRun_ModelsSection_PhasePickerListsEquivalentFirst(t *testing.T) {
 	home := t.TempDir()
 	writeFixture(t, filepath.Join(root, "nerv.yaml"))
 	paths := testPaths(root, home)
-	state := `{"claude_phase_assignments":{"jd-judge-a":{"model":"opus","effort":"high"},"sdd-apply":{"model":"sonnet","effort":"medium"}}}`
+	state := `{"claude_phase_assignments":{"jd-judge-a":{"model":"opus","effort":"high"},"jd-judge-b":{"model":"sonnet","effort":"medium"}}}`
 	if err := os.MkdirAll(filepath.Dir(paths.State), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -971,23 +998,43 @@ func TestRun_ModelsSection_PhasePickerListsEquivalentFirst(t *testing.T) {
 	opts := wizard.Options{Paths: paths, SkipSkills: true, SkipRepos: true, SkipCommands: true, NoRefresh: true}
 
 	var out bytes.Buffer
-	in := modelsInput(&out, "kaworu", "7", "1", "", "done", "y")
+	in := modelsInput(&out, "casper", "7", "1", "", "done", "y")
 	if _, err := wizard.Run(deps, in, &out, opts); err != nil {
 		t.Fatalf("Run() error = %v; output:\n%s", err, out.String())
 	}
 
-	if first := phaseLine(out.String(), "  1) "); !strings.Contains(first, "sdd-apply") || !strings.Contains(first, "(equivalent)") {
-		t.Errorf("first phase = %q, want sdd-apply marked (equivalent)", first)
+	if first := phaseLine(out.String(), "  1) "); !strings.Contains(first, "jd-judge-a") || !strings.Contains(first, "(equivalent)") {
+		t.Errorf("first phase = %q, want jd-judge-a marked (equivalent)", first)
 	}
-	if second := phaseLine(out.String(), "  2) "); !strings.Contains(second, "jd-judge-a") || strings.Contains(second, "(equivalent)") {
-		t.Errorf("second phase = %q, want jd-judge-a unmarked", second)
+	if second := phaseLine(out.String(), "  2) "); !strings.Contains(second, "jd-judge-b") || strings.Contains(second, "(equivalent)") {
+		t.Errorf("second phase = %q, want jd-judge-b unmarked", second)
 	}
 	got, err := os.ReadFile(paths.Config)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if want := "kaworu: { from: sdd-apply }"; !strings.Contains(string(got), want) {
+	if want := "casper: { from: jd-judge-a }"; !strings.Contains(string(got), want) {
 		t.Errorf("expected %q in models: block:\n%s", want, got)
+	}
+}
+
+// A gentle-ai major other than 4 is warned about in the prerequisites
+// block, and the warning names the required major.
+func TestRun_Prerequisites_UnsupportedMajorWarnsAndNamesSupportedMajors(t *testing.T) {
+	root := t.TempDir()
+	home := t.TempDir()
+	writeFixture(t, filepath.Join(root, "nerv.yaml"))
+	runner := &envtest.FakeRunner{Responses: map[string]envtest.Response{
+		"gentle-ai --version": {Stdout: "gentle-ai version 2.9.0\n"},
+	}}
+	deps := configure.Deps{Home: home, FS: nerv.PluginFS(), Runner: runner, Now: fixedNow, LookPath: lookPathNone}
+	opts := wizard.Options{Paths: testPaths(root, home), SkipSkills: true, SkipRepos: true, SkipCommands: true, SkipModels: true, NoRefresh: true}
+
+	var out bytes.Buffer
+	_, _ = wizard.Run(deps, strings.NewReader(""), &out, opts) // EOF aborts after the prerequisites block
+
+	if line := lineWith(out.String(), "gentle-ai      :"); !strings.Contains(line, "2.9.0") || !strings.Contains(line, "WARNING: NERV requires gentle-ai 4.x") {
+		t.Errorf("gentle-ai line = %q, want a warning naming gentle-ai 4.x; output:\n%s", line, out.String())
 	}
 }
 

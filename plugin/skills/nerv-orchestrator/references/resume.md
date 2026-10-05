@@ -9,9 +9,10 @@ On resuming an interrupted NERV change, in order:
    after the user confirms the other session is really dead; record
    `took_over_from: <session_id>`). Stale (`waiting_on` not `user` and
    `heartbeat_at` 15+ minutes old) or absent → proceed.
-2. **Memory + native status.** `mem_context` → `mem_search` scoped to
+2. **Memory + change artifacts.** `mem_context` → `mem_search` scoped to
    `nerv/{change}` → `mem_get_observation` for each hit's full content →
-   `gentle-ai sdd-status {change} --json`.
+   read the change directory: which of `proposal.md`, `specs/`,
+   `design.md`, `tasks.md` exist and the `[x]` state of `tasks.md`.
 3. **Artifacts.** Read `state.yaml`, every `nerv/*.md`, `votes.md`'s
    `frozen` flags, `waves.md`, and the commits since the branch point.
 4. **Reconcile.** Frozen tasks are never re-voted; closed waves are never

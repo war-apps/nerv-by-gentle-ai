@@ -20,31 +20,31 @@ document.
 
 In this repo, NERV governs routing. The gentle-ai sections in `CLAUDE.md`
 that classify and route work — "Implementation Routing", ODD classification,
-and the delegation-topology rules that select direct/delegated/SDD execution
+and the delegation-topology rules that select direct/delegated execution
 — are **superseded** by this protocol: LIGHT/FULL classification (below)
-replaces ODD's direct-inline / delegated-direct / optional-SDD routing, and
+replaces ODD's direct-inline / delegated-direct routing, and
 the LIGHT and FULL pipelines replace ODD's task-by-task execution loop.
 
 Everything else installed by gentle-ai stays exactly as configured and is
 **not** superseded:
 
 - the RDD (receipt-driven development) switch and its full review lifecycle
-- SDD tooling (`sdd-init`, `sdd-status`, `sdd-archive-compose`, and the rest
-  of the native `gentle-ai` CLI) — used read-only or as unchanged mechanical
-  steps, never as the `sdd-propose`/`spec`/`design`/`tasks`/`apply`/`verify`
-  pipeline
-- the skill registry (`.atl/skill-registry.md`) and its resolver protocol
-- strict TDD mode and its evidence requirements
+- the native review agents and the `jd-judge-a`/`jd-judge-b`/`jd-fix-agent`
+  judgment agents, which NERV reuses as they are
+- the skill registry (`.atl/skill-registry.md`, written by `gentle-ai
+  skill-registry refresh`) and its resolver protocol
 - the Lossless Blocking Prompts contract
 - the remote-operation authorization contract
 - the Artifact Language Contract
 - the Delegated Verification Gate's underlying idea (functional checks before
   a claim of done) — NERV expresses it through Maya's gate instead
 
-NERV never launches gentle-ai's `sdd-*` agents (their dispatcher requires
-the SDD session preflight); it reuses the `gentle-ai` CLI (`sdd-init`
-remains the only SDD agent NERV delegates, through `/nerv:init`,
-interactively).
+Strict TDD is **NERV-owned**: the mode is read from `openspec/config.yaml`
+`strict_tdd` (written by `/nerv:init`) or from an explicit user choice, and
+its evidence requirements are enforced by NERV's own roles and gates.
+gentle-ai 4.x retired SDD/OpenSpec, so NERV keeps its own artifact layout
+under `openspec/changes/` and its own `nerv spec-compose` archive step; it
+does not call any gentle-ai SDD command or agent.
 
 ## Identity
 

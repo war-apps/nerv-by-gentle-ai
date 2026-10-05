@@ -35,8 +35,11 @@ only the changes you confirm. Use it any time you want to change
 
 Sets up NERV in a repository that doesn't have it yet: asks only for the
 keys that aren't already resolved (task provider, Teamwork project/tasklist,
-base branch), writes `.nerv/nerv.yaml`, and delegates gentle-ai's own
-bootstrap (`sdd-init`) if it hasn't run yet. Use it once per repository.
+base branch), writes `.nerv/nerv.yaml`, creates `openspec/config.yaml`
+(`strict_tdd` and the test runner) and the `openspec/specs/` and
+`openspec/changes/archive/` folders when they are missing, and refreshes
+the skill registry with `gentle-ai skill-registry refresh`. An existing
+`openspec/config.yaml` is never overwritten. Use it once per repository.
 
 ```
 /nerv:init
@@ -46,7 +49,7 @@ bootstrap (`sdd-init`) if it hasn't run yet. Use it once per repository.
 
 Read-only report of NERV's state for the current repo: activation,
 resolved config (project vs. user vs. default), the installed `gentle-ai`
-version, active SDD changes and orchestrator lock state, and a per-role
+version, active changes and orchestrator lock state, and a per-role
 model/effort table with drift detection. Use it to check what NERV will
 actually do before trusting the session, or to debug a configuration that
 isn't taking effect.
@@ -65,6 +68,7 @@ isn't taking effect.
 | `nerv uninstall` | Uninstall NERV |
 | `nerv apply-models` | Apply `models:` overrides to the cached agents |
 | `nerv skills` | Install or verify the skills NERV's defaults reference |
+| `nerv spec-compose` | Merge a change's delta spec into its canonical spec (used by Aoba's archive step) |
 
 ### nerv configure
 
@@ -136,7 +140,7 @@ environment variables (`NERV_CHANNEL`, `NERV_INSTALL_DIR`,
 Usage: nerv install [flags]
 
 Flags:
-  --require-gentle-ai   Fail (exit 1) when gentle-ai is missing or not 3.x
+  --require-gentle-ai   Fail (exit 1) when gentle-ai is missing or not 4.x
   --no-skills           Skip installing skills
   --no-configure        Skip the closing wizard/hint entirely
 ```
@@ -204,6 +208,38 @@ nerv skills --dry-run --json
 
 ```
 nerv skills --only tdd,solid-principles
+```
+
+### nerv spec-compose
+
+Merges a change's delta spec into the canonical spec it amends. It applies
+`RENAMED`, `MODIFIED`, `REMOVED`, then `ADDED` requirements in that order
+and leaves every unrelated byte of the canonical spec untouched. Names must
+match exactly; a `RENAMED` or `REMOVED` entry needs a `(Reason: ...)` line.
+An unmatched name, a name repeated within one delta section, an `ADDED`
+name that already exists, an empty delta, or a canonical spec with no
+requirements is an error: nothing is written, stderr names the section and
+requirement, and the exit code is 1 (2 for a usage or I/O error).
+
+`--output` defaults to stdout. A file is replaced atomically (a temp file in
+the same directory, then a rename) and keeps its existing mode (a symlink is followed: its target is updated
+and the link stays), so
+`--output` may name the canonical spec itself. It is a port of the merge gentle-ai
+3.x shipped, which gentle-ai 4 removed.
+
+```
+Usage: nerv spec-compose --canonical <path> --delta <path> [--output <path|->]
+
+Flags:
+  --canonical <path>   The canonical openspec/specs/<domain>/spec.md
+  --delta <path>       The change's openspec/changes/<change>/specs/<domain>/spec.md
+  --output <path|->    Where to write the composed spec (default "-", stdout)
+```
+
+```
+nerv spec-compose --canonical openspec/specs/widgets/spec.md \
+  --delta openspec/changes/add-tags/specs/widgets/spec.md \
+  --output openspec/specs/widgets/spec.md
 ```
 
 ## Maintainer: nerv release

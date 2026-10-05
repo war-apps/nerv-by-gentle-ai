@@ -57,12 +57,9 @@
   detached review worktree (`git worktree add --detach`; lineages share
   the same `.git`), and keep individual commits near the ~400-line
   delivery-budget heuristic so each fits.
-- **The `sdd-archive` agent refuses to launch.** gentle-ai's SDD dispatcher
-  refuses `sdd-archive` outside a native SDD session (it wants an
-  interactive AskUserQuestion preflight Nerv by Gentle-AI doesn't run). Nerv by
-  Gentle-AI archives
-  mechanically instead — Aoba runs `git mv` plus
-  `gentle-ai sdd-archive-compose` per delta spec.
+- **Looking for gentle-ai's archive agent.** gentle-ai 4.x retired SDD, so
+  there is none. Nerv by Gentle-AI archives mechanically — Aoba runs `git mv`
+  plus `nerv spec-compose` per delta spec.
 - **A launch dies under memory pressure.** The protocol retries the launch
   once. If the session itself is interrupted, resuming is safe: the
   orchestrator lock and its heartbeat let a resume session detect and take

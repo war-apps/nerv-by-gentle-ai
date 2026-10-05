@@ -22,18 +22,19 @@ short and imperative — this is a status check, not a narrative.
    (`with-change` | `at-close` | `never`; built-in default `at-close` when neither file sets it).
 
 3. **gentle-ai version check.** Run `gentle-ai --version` and parse the
-   first token as `MAJOR.MINOR.PATCH` (e.g. `3.7.0`). Compare against the
-   version this NERV release was tested against — `3.7.0`, as stated in
+   first token as `MAJOR.MINOR.PATCH` (e.g. `4.0.0`). Compare against the
+   version this NERV release was tested against — `4.0.0`, as stated in
    this plugin's `README.md`. Print both versions.
-   - Major `!= 3`: print "NERV requires gentle-ai 3.x; found X.Y.Z" and
+   - Major `!= 4`: print "NERV requires gentle-ai 4.x; found X.Y.Z" and
      mark status degraded.
-   - Major `== 3` but minor/patch differ from `3.7.0`: print an
+   - Major `== 4` but minor/patch differ from `4.0.0`: print an
      informational note only.
    Never block on either case.
 
 4. **Active changes.** If `openspec/changes/` exists in the repo, for each
-   active change directory run `gentle-ai sdd-status --json` and list it
-   alongside which NERV-owned artifacts are present under that change's
+   active change directory read its directory and list which of `proposal.md`, `specs/`,
+   `design.md` and `tasks.md` exist, plus the checked state of `tasks.md`
+   (`[x]` of total), alongside which NERV-owned artifacts are present under that change's
    `nerv/` subfolder (for example `nerv/run-summary.md`). If no changes
    exist, say so plainly. For each active change, also read
    `nerv/.orchestrator.lock` if present (read-only — never refresh or
@@ -63,7 +64,8 @@ short and imperative — this is a status check, not a narrative.
    |---|---|---|---|---|---|---|
    | ... | ... | ... | ... | ... | project\|user\|gentle-ai:\<phase\>\|default | ... |
 
-   Take `purpose` and `gentle-ai equivalent` (`-` when none) per role from
+   Take `purpose` and `gentle-ai equivalent` (`-` when none; the `jd-judge`
+   or native `review-*` agent otherwise) per role from
    `nerv configure --print --json` (`models[].purpose` and
    `models[].gentle_ai_equivalent`); they are informational and never
    affect resolution.

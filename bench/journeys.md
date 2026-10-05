@@ -6,7 +6,7 @@ outcomes that must hold. Run them after every phase and before any push.
 
 ## Common setup
 
-- gentle-ai 3.7.0 installed; plugin `nerv@nerv` installed from the committed
+- gentle-ai 4.x installed (tested against 4.0.0); plugin `nerv@nerv` installed from the committed
   HEAD under test (`claude plugin uninstall nerv@nerv && claude plugin install nerv@nerv`).
 - Scratch repo with a real test runner. Reference layout: .NET 10 class
   library `src/Calc` + xUnit project `tests/Calc.Tests`, solution `Bench.slnx`,
@@ -77,8 +77,8 @@ Expected, in order:
    orchestrator collected (never estimated), the two commits and no PR
    slices.
 9. `git log --oneline` shows the RED commit before the GREEN commit.
-10. `gentle-ai sdd-status subtract-method --cwd <repo> --json` succeeds with
-    the `nerv/` folder present.
+10. `openspec/changes/subtract-method/` holds the gentle-ai-owned files
+    with the `nerv/` folder present, and `/nerv:status` lists the change.
 
 Interactive variant: same request without the pre-answered context. Expected
 extra gates: the grouped preflight question (task, worktree, branch, base),
@@ -206,9 +206,8 @@ Expected, in order:
     `deviation`, or `ruling_issued` entries are expected on this
     straightforward change (nothing escalates, nothing deviates, no
     ruling is needed).
-17. `gentle-ai sdd-status multiply-and-ci --cwd <repo> --json` succeeds,
-    reporting the change with all gentle-ai-owned files present and the
-    `nerv/` folder alongside them.
+17. `/nerv:status` lists `multiply-and-ci` with all gentle-ai-owned files
+    present and the `nerv/` folder alongside them.
 
 Interactive variant: same request without the pre-answered context.
 Expected extra gates beyond J1's interactive variant: the corner-case
@@ -318,7 +317,7 @@ Expected, in order:
     `nerv/agent-config.md` (every launch across the whole run, audit
     passes included).
 11. `nerv:aoba` (Archive duty) composes specs via
-    `gentle-ai sdd-archive-compose` (one call per delta spec) and moves the
+    `nerv spec-compose` (one call per delta spec) and moves the
     change with `git mv` to
     `openspec/changes/archive/YYYY-MM-DD-divide-audit/`, `nerv/` folder
     included; the commit `docs: archive change divide-audit` appears in

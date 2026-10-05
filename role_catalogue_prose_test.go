@@ -149,6 +149,15 @@ func TestConfigureCommandLegend_MatchesCatalogueGroups(t *testing.T) {
 			t.Errorf("commands/configure.md has no legend entry for group %q", group)
 		}
 	}
+	// `all` lists no members; its legend entry must carry the catalogue's
+	// description instead.
+	allDesc := config.Roles().GroupDescriptions["all"]
+	if strings.TrimSpace(allDesc) == "" {
+		t.Fatal(`GroupDescriptions["all"] is empty`)
+	}
+	if want := "`all` = " + allDesc; !strings.Contains(text, want) {
+		t.Errorf("commands/configure.md legend lacks %q", want)
+	}
 }
 
 func TestGroupDescriptions_NameTheGroupMembers(t *testing.T) {

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"strings"
 
 	"github.com/war-apps/nerv-by-gentle-ai/internal/claude"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/engram"
@@ -67,12 +68,17 @@ func Install(ctx context.Context, deps Deps, opts Options) error {
 	return nil
 }
 
+// upgradeHint is printed for a 3.x gentle-ai. `gentle-ai upgrade` from 3.x
+// cannot reach 4.x on go installs, so it is not suggested.
+const upgradeHint = "  Upgrade: go install github.com/gentleman-programming/gentle-ai/v4/cmd/gentle-ai@latest (or: brew upgrade gentle-ai), then: gentle-ai sync.\n" +
+	"  Note: `gentle-ai upgrade` from 3.x cannot reach 4.x on go installs."
+
 func preflightGentleAI(ctx context.Context, deps Deps, require bool) error {
 	preflight := gentleai.CheckPreflight(ctx, deps.Runner)
 
 	switch {
 	case !preflight.Found:
-		fmt.Fprintln(deps.Stdout, "Warning: gentle-ai not found on PATH; NERV requires gentle-ai 3.x (https://github.com/Gentleman-Programming/gentle-ai)")
+		fmt.Fprintln(deps.Stdout, "Warning: gentle-ai not found on PATH; NERV requires gentle-ai 4.x (https://github.com/Gentleman-Programming/gentle-ai)")
 		if require {
 			return &RefusalError{Err: errors.New("gentle-ai not found on PATH")}
 		}
@@ -82,12 +88,15 @@ func preflightGentleAI(ctx context.Context, deps Deps, require bool) error {
 			return &RefusalError{Err: errors.New("gentle-ai --version returned an unparseable value")}
 		}
 	case !preflight.OK:
-		fmt.Fprintf(deps.Stdout, "Warning: NERV requires gentle-ai 3.x; found %s\n", preflight.Version)
+		fmt.Fprintf(deps.Stdout, "Warning: NERV requires gentle-ai 4.x; found %s\n", preflight.Version)
+		if strings.HasPrefix(preflight.Version, "3.") {
+			fmt.Fprintln(deps.Stdout, upgradeHint)
+		}
 		if require {
-			return &RefusalError{Err: fmt.Errorf("NERV requires gentle-ai 3.x; found %s", preflight.Version)}
+			return &RefusalError{Err: fmt.Errorf("NERV requires gentle-ai 4.x; found %s", preflight.Version)}
 		}
 	default:
-		fmt.Fprintf(deps.Stdout, "gentle-ai version : %s (tested against 3.7.0)\n", preflight.Version)
+		fmt.Fprintf(deps.Stdout, "gentle-ai version : %s (tested against 4.0.0)\n", preflight.Version)
 	}
 	return nil
 }

@@ -3,20 +3,21 @@
 One definition per NERV-owned artifact, referenced by every agent instead of
 repeating the shape inline. gentle-ai-owned filenames (`state.yaml`,
 `exploration.md`, `proposal.md`, `specs/{domain}/spec.md`, `design.md`,
-`tasks.md`) keep gentle-ai's own shape and stay where `gentle-ai sdd-status`
-expects them; only NERV-owned files are defined here. All NERV files live
-under `openspec/changes/{change}/nerv/`, except `state.yaml` which lives at
-`openspec/changes/{change}/state.yaml` (gentle-ai's own file, extended with
-one NERV-owned key). Engram topic key for every artifact:
+`tasks.md`) are NERV-owned too: gentle-ai 4.x retired SDD/OpenSpec, so
+the `openspec/changes/` layout is defined by NERV and stays where status
+and resume read it. Files under `nerv/` are the NERV-specific additions. All
+of them live under `openspec/changes/{change}/nerv/`, except `state.yaml`,
+which lives at `openspec/changes/{change}/state.yaml` and carries the
+`nerv:` block. Engram topic key for every artifact:
 `nerv/{change}/{artifact}` (artifact = file name without extension).
 
 ## state.yaml (extended)
 
-- Purpose: native SDD change state, extended with the NERV path decision so
+- Purpose: change state, extended with the NERV path decision so
   a resumed session knows which pipeline governed the change without
   re-classifying.
 - Author: Ikari (the `nerv:` block only — the rest of the file is
-  gentle-ai's own and is never hand-edited by NERV agents).
+  never hand-edited by NERV agents).
 - Location: `openspec/changes/{change}/state.yaml`.
 - Engram key: `nerv/{change}/state` (mirror of the `nerv:` block only).
 - `task_ref` holds `{PREFIX}-{id}` — the resolved provider's
@@ -265,16 +266,15 @@ FULL adds these event types to the same append-only log, same shape
   Payload carries `unfreezes: task_ids[]` — the frozen task(s), if any,
   the ruling reopened via `unfrozen_by_ruling`.
 
-## gentle-ai-owned artifacts authored by NERV roles
+## Change artifacts authored by NERV roles
 
-These keep gentle-ai's own filenames, location, and shape — `gentle-ai
-sdd-status` depends on it — but are authored by NERV roles, never by the
-`sdd-propose`/`spec`/`design`/`tasks` agents:
+These keep their historical OpenSpec filenames, location, and shape — status
+and resume read them in place — and are authored by NERV roles:
 
 - `exploration.md` — Ritsuko (MODE: intel). Full FULL-path exploration;
   written before `tasks.md` exists, so it never references a task id.
 - `specs/{domain}/spec.md` — Ritsuko (MODE: test-plan). WHAT the change
-  must do, as scenarios, in gentle-ai's own spec shape; written alongside
+  must do, as scenarios, in the OpenSpec spec shape; written alongside
   `nerv/test-plan.md`, also before `tasks.md` exists.
 - `proposal.md`, `design.md`, `tasks.md` — Misato.
   - `design.md` MUST contain a `## New skills, scripts and commands`

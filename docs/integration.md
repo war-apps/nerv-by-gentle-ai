@@ -88,44 +88,39 @@ gentle-ai's own ODD Implementation Routing stays in charge of the session.
 ```mermaid
 flowchart LR
     subgraph Reused["Reused unchanged"]
-        R1["sdd-init"]
-        R2["skill-registry refresh"]
-        R3["sdd-status / sdd-continue"]
-        R4["sdd-archive-compose"]
-        R5["review assess/status/start/mode + lenses + refuter"]
-        R6["work-unit-commits"]
-        R7["chained-pr"]
-        R8["branch-pr"]
-        R9["skill-resolver"]
-        R10["persistence contract"]
-        R11["lossless blocking prompts"]
+        R1["skill-registry refresh"]
+        R2["review assess/status/start/mode + lenses + refuter"]
+        R3["jd-judge-a / jd-judge-b / jd-fix-agent"]
+        R4["work-unit-commits"]
+        R5["chained-pr"]
+        R6["branch-pr"]
+        R7["skill-resolver"]
+        R8["persistence contract"]
+        R9["lossless blocking prompts"]
+        R10["skills in skills-manifest.json"]
+    end
+
+    subgraph Owned["Owned by NERV"]
+        O1["nerv spec-compose"]
+        O2["openspec/ layout + strict_tdd (/nerv:init)"]
     end
 
     subgraph Superseded["Superseded in NERV repos"]
         S1["ODD Implementation Routing / delegation topology"]
     end
-
-    subgraph NotUsed["Not used"]
-        N1["sdd-propose"]
-        N2["sdd-spec"]
-        N3["sdd-design"]
-        N4["sdd-tasks"]
-        N5["sdd-apply"]
-        N6["sdd-verify"]
-    end
-
-    NotUsed -.NERV roles author those artifacts instead.-> Superseded
 ```
 
-Nerv by Gentle-AI calls a large slice of gentle-ai's native engine completely
-unchanged (SDD's read-only/mechanical steps, the whole RDD lifecycle, the
-delivery and skill-resolution skills, the persistence and lossless-prompt
-contracts). It supersedes exactly one thing — gentle-ai's ODD
+Nerv by Gentle-AI calls a slice of gentle-ai's native engine completely
+unchanged: `skill-registry refresh`, the whole RDD lifecycle, the `jd`
+judgment agents, the delivery and skill-resolution skills listed in
+`plugin/skills-manifest.json`, and the persistence and lossless-prompt
+contracts. It supersedes exactly one thing — gentle-ai's ODD
 Implementation Routing — with its own LIGHT/FULL classification and
-pipelines, only in repos carrying the `.nerv/nerv.yaml` marker. It never
-touches the authoring half of SDD (`sdd-propose` through `sdd-verify`);
-Nerv by Gentle-AI's own roles (Misato, Ritsuko, the MAGI, the pilots) author
-the equivalent artifacts instead.
+pipelines, only in repos carrying the `.nerv/nerv.yaml` marker. gentle-ai
+4.x retired SDD/OpenSpec, so the SDD phases are gone; Nerv by Gentle-AI owns
+the `openspec/` layout, `strict_tdd` (written by `/nerv:init`) and
+`nerv spec-compose`, and its own roles (Misato, Ritsuko, the MAGI, the
+pilots) author the change artifacts.
 
 ### LIGHT pipeline
 
@@ -180,7 +175,7 @@ flowchart TB
     S4 --> S5{"NOW set empty?"}
     S5 -- no --> S6["Fix routing via the work-unit cycle, re-audit on the fix delta (cap 2)"]
     S6 --> S1
-    S5 -- yes --> S7["Docs (ritsuko), archive (aoba + sdd-archive-compose), curate (fuyutsuki)"]
+    S5 -- yes --> S7["Docs (ritsuko), archive (aoba + nerv spec-compose), curate (fuyutsuki)"]
     S7 --> T["Run summary (aoba)"]
     T --> U["Close (hyuga tracker close)"]
 ```
@@ -326,9 +321,10 @@ ask before taking over, however long the gate stays open.
 **Artifacts.** Nerv by Gentle-AI writes only under
 `openspec/changes/{change}/nerv/` (deliberation log, exploration, test
 plan, votes, veto ruling, waves,
-Maya reports, audit rounds, run summary) plus the shared gentle-ai SDD
-files (`state.yaml`, `proposal.md`, `design.md`, `tasks.md`, `specs/`) at
-the change root. `.nerv/nerv.yaml` (project scope) and
+Maya reports, audit rounds, run summary) plus the change files
+(`state.yaml`, `proposal.md`, `design.md`, `tasks.md`, `specs/`) at the
+change root, an OpenSpec-style layout that Nerv by Gentle-AI owns now that
+gentle-ai 4.x has retired SDD. `.nerv/nerv.yaml` (project scope) and
 `~/.claude/nerv/nerv.yaml` (user scope) hold configuration; nothing is
 ever written under `~/.claude/agents` or `~/.claude/skills`.
 

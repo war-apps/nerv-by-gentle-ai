@@ -16,29 +16,30 @@ import (
 // install.ps1 (~594-631) and Get-NervPrerequisitesStatus's gentle_ai block.
 // ---------------------------------------------------------------------------
 
-func TestCheckPreflight_FoundAndOkAtMajor3(t *testing.T) {
-	runner := &envtest.FakeRunner{Responses: map[string]envtest.Response{
-		"gentle-ai --version": {Stdout: "gentle-ai 3.7.0\n"},
-	}}
-
-	got := gentleai.CheckPreflight(context.Background(), runner)
-
-	want := gentleai.Preflight{Found: true, Version: "3.7.0", OK: true}
-	if got != want {
-		t.Fatalf("CheckPreflight() = %+v, want %+v", got, want)
+func TestCheckPreflight_MajorGate(t *testing.T) {
+	tests := []struct {
+		name   string
+		output string
+		want   gentleai.Preflight
+	}{
+		{"major 3", "gentle-ai 3.7.0\n", gentleai.Preflight{Found: true, Version: "3.7.0", OK: false}},
+		{"major 4", "gentle-ai 4.0.0\n", gentleai.Preflight{Found: true, Version: "4.0.0", OK: true}},
+		{"major 4 with version word", "gentle-ai version 4.0.0\n", gentleai.Preflight{Found: true, Version: "4.0.0", OK: true}},
+		{"major 2", "gentle-ai 2.1.0\n", gentleai.Preflight{Found: true, Version: "2.1.0", OK: false}},
+		{"major 5", "gentle-ai 5.0.0\n", gentleai.Preflight{Found: true, Version: "5.0.0", OK: false}},
 	}
-}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			runner := &envtest.FakeRunner{Responses: map[string]envtest.Response{
+				"gentle-ai --version": {Stdout: tt.output},
+			}}
 
-func TestCheckPreflight_FoundButWrongMajor(t *testing.T) {
-	runner := &envtest.FakeRunner{Responses: map[string]envtest.Response{
-		"gentle-ai --version": {Stdout: "gentle-ai 2.1.0\n"},
-	}}
+			got := gentleai.CheckPreflight(context.Background(), runner)
 
-	got := gentleai.CheckPreflight(context.Background(), runner)
-
-	want := gentleai.Preflight{Found: true, Version: "2.1.0", OK: false}
-	if got != want {
-		t.Fatalf("CheckPreflight() = %+v, want %+v", got, want)
+			if got != tt.want {
+				t.Fatalf("CheckPreflight() = %+v, want %+v", got, tt.want)
+			}
+		})
 	}
 }
 
@@ -124,7 +125,7 @@ func TestPhaseAssignments_MalformedFileErrors(t *testing.T) {
 
 func TestPrerequisites_ComputesAllThreeTools(t *testing.T) {
 	runner := &envtest.FakeRunner{Responses: map[string]envtest.Response{
-		"gentle-ai --version": {Stdout: "gentle-ai 3.7.0\n"},
+		"gentle-ai --version": {Stdout: "gentle-ai 4.0.0\n"},
 	}}
 	lookPath := func(name string) (string, error) {
 		if name == "engram" {
@@ -135,7 +136,7 @@ func TestPrerequisites_ComputesAllThreeTools(t *testing.T) {
 
 	got := gentleai.Prerequisites(context.Background(), runner, lookPath)
 
-	if !got.GentleAI.Found || got.GentleAI.Version != "3.7.0" || !got.GentleAI.OK {
+	if !got.GentleAI.Found || got.GentleAI.Version != "4.0.0" || !got.GentleAI.OK {
 		t.Fatalf("Prerequisites().GentleAI = %+v, unexpected", got.GentleAI)
 	}
 	if !got.Engram.Found {

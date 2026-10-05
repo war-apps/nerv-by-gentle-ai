@@ -180,8 +180,11 @@ func TestPrint_ModelsRowsCarryPurposeAndEquivalent(t *testing.T) {
 		}
 		byRole[role] = row
 	}
-	if got := byRole["kaworu"]["gentle_ai_equivalent"]; got != "sdd-apply" {
-		t.Errorf("kaworu gentle_ai_equivalent = %v, want sdd-apply", got)
+	if got := byRole["kaji-security"]["gentle_ai_equivalent"]; got != "review-risk" {
+		t.Errorf("kaji-security gentle_ai_equivalent = %v, want review-risk", got)
+	}
+	if got := byRole["kaworu"]["gentle_ai_equivalent"]; got != "" {
+		t.Errorf("kaworu gentle_ai_equivalent = %v, want empty", got)
 	}
 	if got := byRole["kaworu"]["purpose"]; got != "writes the failing tests first" {
 		t.Errorf("kaworu purpose = %v", got)

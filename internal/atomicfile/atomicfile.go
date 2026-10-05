@@ -59,7 +59,7 @@ func Save(path string, data []byte, opts Options) (backupPath string, err error)
 		return "", statErr
 	}
 
-	if writeErr := writeAtomic(path, data, opts.Verify); writeErr != nil {
+	if writeErr := writeAtomic(path, data, opts.Verify, 0); writeErr != nil {
 		if opts.Verify == nil {
 			return "", writeErr
 		}
@@ -81,9 +81,10 @@ func copyFile(src, dst string) error {
 }
 
 // writeAtomic writes data to a temp file next to path and renames it over
-// path. When verify is non-nil, it is run against data before the rename
-// and against a fresh read of path after the rename.
-func writeAtomic(path string, data []byte, verify func([]byte) error) error {
+// path. A non-zero mode is applied to the temp file before the rename; zero
+// keeps os.CreateTemp's 0600. When verify is non-nil, it is run against data
+// before the rename and against a fresh read of path after the rename.
+func writeAtomic(path string, data []byte, verify func([]byte) error, mode fs.FileMode) error {
 	dir := filepath.Dir(path)
 	if dir != "" {
 		if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -97,7 +98,14 @@ func writeAtomic(path string, data []byte, verify func([]byte) error) error {
 	}
 	tmpPath := tmp.Name()
 
+	var chmodErr error
+	if mode != 0 {
+		chmodErr = tmp.Chmod(mode)
+	}
 	_, writeErr := tmp.Write(data)
+	if chmodErr != nil {
+		writeErr = chmodErr
+	}
 	closeErr := tmp.Close()
 	if writeErr != nil {
 		os.Remove(tmpPath)
@@ -135,4 +143,21 @@ func writeAtomic(path string, data []byte, verify func([]byte) error) error {
 		}
 	}
 	return nil
+}
+
+// Write replaces the file at path with data atomically (a temp file in the
+// same directory, then a rename), without taking a backup. An existing file
+// keeps its permission bits; a new file gets perm. When path is a symlink
+// to an existing file, the link's target is the file written and the link
+// stays. On any failure the destination is left as it was and no temp file
+// remains.
+func Write(path string, data []byte, perm fs.FileMode) error {
+	if resolved, err := filepath.EvalSymlinks(path); err == nil {
+		path = resolved
+	}
+	mode := perm
+	if info, err := os.Stat(path); err == nil {
+		mode = info.Mode().Perm()
+	}
+	return writeAtomic(path, data, nil, mode)
 }

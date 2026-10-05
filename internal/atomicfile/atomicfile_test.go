@@ -129,3 +129,112 @@ func TestSave_VerifyFailure_NoBackupTaken_NoRestoreNoBackupPath(t *testing.T) {
 		t.Error("path must not exist after a failed verified write with nothing to restore")
 	}
 }
+
+func TestWrite_NewFileGetsTheDefaultMode(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "nested", "out.md")
+
+	if err := atomicfile.Write(path, []byte("hello\n"), 0o644); err != nil {
+		t.Fatalf("Write: %v", err)
+	}
+
+	got, err := os.ReadFile(path)
+	if err != nil || string(got) != "hello\n" {
+		t.Fatalf("content = %q, err = %v; want %q", got, err, "hello\n")
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode().Perm() != 0o644 {
+		t.Errorf("mode = %v, want 0644", info.Mode().Perm())
+	}
+}
+
+func TestWrite_ExistingFileKeepsItsModeAndTakesNoBackup(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "out.md")
+	if err := os.WriteFile(path, []byte("old\n"), 0o640); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(path, 0o640); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := atomicfile.Write(path, []byte("new\n"), 0o600); err != nil {
+		t.Fatalf("Write: %v", err)
+	}
+
+	got, _ := os.ReadFile(path)
+	if string(got) != "new\n" {
+		t.Errorf("content = %q, want %q", got, "new\n")
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode().Perm() != 0o640 {
+		t.Errorf("mode = %v, want the existing 0640", info.Mode().Perm())
+	}
+	entries, _ := os.ReadDir(dir)
+	if len(entries) != 1 {
+		t.Errorf("directory has %d entries, want only the destination: %v", len(entries), entries)
+	}
+}
+
+func TestWrite_ThroughASymlinkUpdatesTheTargetAndKeepsTheLink(t *testing.T) {
+	dir := t.TempDir()
+	targetDir := filepath.Join(dir, "real")
+	if err := os.MkdirAll(targetDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	target := filepath.Join(targetDir, "spec.md")
+	if err := os.WriteFile(target, []byte("old\n"), 0o640); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(dir, "link.md")
+	if err := os.Symlink(target, link); err != nil {
+		t.Skipf("symlinks unsupported here: %v", err)
+	}
+
+	if err := atomicfile.Write(link, []byte("new\n"), 0o600); err != nil {
+		t.Fatalf("Write: %v", err)
+	}
+
+	info, err := os.Lstat(link)
+	if err != nil {
+		t.Fatalf("Lstat(link): %v", err)
+	}
+	if info.Mode()&os.ModeSymlink == 0 {
+		t.Fatalf("link was replaced by a regular file (mode = %v)", info.Mode())
+	}
+	got, _ := os.ReadFile(target)
+	if string(got) != "new\n" {
+		t.Errorf("target content = %q, want %q", got, "new\n")
+	}
+	tinfo, err := os.Stat(target)
+	if err != nil {
+		t.Fatalf("Stat(target): %v", err)
+	}
+	if tinfo.Mode().Perm() != 0o640 {
+		t.Errorf("target mode = %v, want the existing 0640", tinfo.Mode().Perm())
+	}
+}
+
+func TestWrite_FailureLeavesNoPartialFileAndNoTemp(t *testing.T) {
+	dir := t.TempDir()
+	// A non-empty directory at the destination makes the final rename fail
+	// after the temp file was fully written.
+	path := filepath.Join(dir, "out.md")
+	if err := os.MkdirAll(filepath.Join(path, "keep"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := atomicfile.Write(path, []byte("new\n"), 0o644); err == nil {
+		t.Fatal("Write succeeded over a directory, want an error")
+	}
+
+	entries, _ := os.ReadDir(dir)
+	if len(entries) != 1 || entries[0].Name() != "out.md" {
+		t.Errorf("directory entries = %v, want only the untouched destination (no temp file)", entries)
+	}
+}
