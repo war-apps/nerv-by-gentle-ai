@@ -55,3 +55,8 @@ docs/integration.md diagram), then upgrade the local gentle-ai and release.
 - 2026-10-05: branch created, baseline green except the known environmental failure above.
 - 2026-10-05: T1 done. RED: `TestCheckPreflight_MajorGate/major_4` got OK:false want OK:true; `TestInstall_RequireGentleAI_MajorGate/4.x_passes` refused 4.0.0. GREEN after the gate change; gofmt, go vet, go test clean.
 - 2026-10-05: T2 done. Status, resume, nerv-artifacts and bench journeys read change artifacts directly; remaining `sdd-status` mentions are phase-2 only (SKILL.md:32, docs/integration.md).
+- 2026-10-05: RDD assess over 5b43239..8b61a5d (committed-only): risk medium, review_due false (under_budget, 216 authored lines); review stays pending in the slice. Parent spot check: `go test ./internal/gentleai/ ./internal/install/ -count=1` ok.
+
+## Next step
+
+Phase 1 is complete locally. Next: PR to `develop` (user decision), then phase 2 (`/nerv:init` without `sdd-init`, Aoba archive without `sdd-archive-compose`, role catalogue `sdd-*` equivalents, orchestrator prose).
