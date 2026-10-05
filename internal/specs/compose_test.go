@@ -484,3 +484,26 @@ func TestComposeIgnoresFencedHeadingsInsideDeltaBody(t *testing.T) {
 		t.Fatalf("got %q, want %q", got, want)
 	}
 }
+
+// MODIFIED is applied before REMOVED, so a requirement listed in both
+// sections used to vanish and silently discard the modification.
+func TestComposeRefusesRequirementBothModifiedAndRemoved(t *testing.T) {
+	delta := `## MODIFIED Requirements
+
+### Requirement: Widget Expiration
+
+The system MUST expire widgets after 90 days.
+
+## REMOVED Requirements
+
+### Requirement: Widget Expiration
+
+(Reason: superseded)
+`
+
+	_, err := Compose(canonicalFixture, delta)
+	var unapplied *UnappliedDeltaError
+	if !errors.As(err, &unapplied) || unapplied.Section != "REMOVED" || unapplied.Requirement != "Widget Expiration" {
+		t.Fatalf("error = %v, want *UnappliedDeltaError{Section: REMOVED, Requirement: Widget Expiration}", err)
+	}
+}

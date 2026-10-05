@@ -76,10 +76,13 @@ type ModelRow struct {
 	Model  string `json:"model"`
 	Effort string `json:"effort"`
 	Source string `json:"source"`
-	// Purpose and GentleAIEquivalent come from config.Roles(); the
-	// equivalent is "" for a role with no gentle-ai counterpart.
+	// Purpose, GentleAIEquivalent and FromPhase come from config.Roles().
+	// The equivalent is informational ("" for a role with no gentle-ai
+	// counterpart); FromPhase is the only from:<phase> suggestion ("" for
+	// none).
 	Purpose            string `json:"purpose"`
 	GentleAIEquivalent string `json:"gentle_ai_equivalent"`
+	FromPhase          string `json:"from_phase"`
 }
 
 // SkillStatus is one entry of -Print's `skills_status` array.
@@ -143,7 +146,7 @@ func Print(deps Deps, paths Paths) (PrintResult, error) {
 		info := roleInfo[r.Role]
 		modelRows[i] = ModelRow{
 			Role: r.Role, Model: r.Model, Effort: r.Effort, Source: r.Source,
-			Purpose: info.Purpose, GentleAIEquivalent: info.GentleAIEquivalent,
+			Purpose: info.Purpose, GentleAIEquivalent: info.GentleAIEquivalent, FromPhase: info.FromPhase,
 		}
 	}
 

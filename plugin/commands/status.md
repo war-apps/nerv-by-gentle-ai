@@ -64,6 +64,10 @@ short and imperative — this is a status check, not a narrative.
    |---|---|---|---|---|---|---|
    | ... | ... | ... | ... | ... | project\|user\|gentle-ai:\<phase\>\|default | ... |
 
+   When `~/.gentle-ai/state.json` has phase assignments but not the
+   role's `from` phase, the role keeps its plugin default: print its
+   source as `gentle-ai:<phase> (missing; plugin default)`.
+
    Take `purpose` and `gentle-ai equivalent` (`-` when none; the `jd-judge`
    or native `review-*` agent otherwise) per role from
    `nerv configure --print --json` (`models[].purpose` and

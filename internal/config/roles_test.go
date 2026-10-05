@@ -2,6 +2,7 @@ package config_test
 
 import (
 	"io/fs"
+	"slices"
 	"sort"
 	"strings"
 	"testing"
@@ -47,6 +48,43 @@ func TestRoles_EveryRoleHasPurposeAndEquivalent(t *testing.T) {
 	}
 	if len(cat.Info) != len(cat.AllRoles) {
 		t.Errorf("Info has %d entries, AllRoles has %d", len(cat.Info), len(cat.AllRoles))
+	}
+}
+
+// wantFromPhases is the role -> gentle-ai claude_phase_assignments key the
+// role suggests as from:<phase>. Unlike wantEquivalents it only holds keys
+// that exist in gentle-ai 4.x state; an empty value means no suggestion.
+var wantFromPhases = map[string]string{
+	"misato": "", "ritsuko": "", "hyuga": "",
+	"melchor": "jd-judge-b", "balthasar": "jd-judge-a", "casper": "jd-judge-a",
+	"fuyutsuki": "",
+	"kaworu":    "", "shinji": "", "asuka": "", "rei": "", "toji": "",
+	"maya": "", "kaji": "", "kaji-security": "",
+	"kaji-coverage": "", "kaji-refuter": "", "aoba": "",
+}
+
+// v4PhaseKeys are the claude_phase_assignments keys that still have an
+// agent in gentle-ai 4.x, the only values usable as from:<phase>.
+var v4PhaseKeys = []string{"jd-judge-a", "jd-judge-b", "jd-fix-agent"}
+
+func TestRoles_FromPhaseIsAGentleAIPhaseKey(t *testing.T) {
+	cat := config.Roles()
+	for _, role := range cat.AllRoles {
+		info := cat.Info[role]
+		want, known := wantFromPhases[role]
+		if !known {
+			t.Errorf("role %q missing from the expected from-phase table", role)
+			continue
+		}
+		if info.FromPhase != want {
+			t.Errorf("role %q FromPhase = %q, want %q", role, info.FromPhase, want)
+		}
+		if info.FromPhase != "" && !slices.Contains(v4PhaseKeys, info.FromPhase) {
+			t.Errorf("role %q FromPhase %q is not a gentle-ai 4.x phase key %v", role, info.FromPhase, v4PhaseKeys)
+		}
+		if strings.HasPrefix(info.FromPhase, "review-") {
+			t.Errorf("role %q FromPhase %q is a native review agent, not a phase key", role, info.FromPhase)
+		}
 	}
 }
 

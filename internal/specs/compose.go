@@ -315,6 +315,18 @@ func Compose(canonical, delta string) (string, error) {
 		}
 	}
 
+	// MODIFIED runs before REMOVED, so a requirement in both sections would
+	// drop the modification without a trace; the delta is contradictory.
+	modified := make(map[string]bool, len(deltaDoc.Modified))
+	for _, r := range deltaDoc.Modified {
+		modified[r.Name] = true
+	}
+	for _, r := range deltaDoc.Removed {
+		if modified[r.Name] {
+			return "", &UnappliedDeltaError{Section: "REMOVED", Requirement: r.Name, Reason: fmt.Sprintf("requirement %q is also listed under MODIFIED", r.Name)}
+		}
+	}
+
 	// segments re-emits the whole document, including non-requirement spans
 	// between requirement blocks, so nothing but a targeted delta edit ever
 	// changes a byte of it.

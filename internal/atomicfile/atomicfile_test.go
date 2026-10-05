@@ -238,3 +238,29 @@ func TestWrite_FailureLeavesNoPartialFileAndNoTemp(t *testing.T) {
 		t.Errorf("directory entries = %v, want only the untouched destination (no temp file)", entries)
 	}
 }
+
+// A dangling link used to fail EvalSymlinks silently, so the rename
+// replaced the link itself with a regular file.
+func TestWrite_RefusesADanglingSymlinkAndKeepsTheLink(t *testing.T) {
+	dir := t.TempDir()
+	target := filepath.Join(dir, "missing", "spec.md")
+	link := filepath.Join(dir, "link.md")
+	if err := os.Symlink(target, link); err != nil {
+		t.Skipf("symlinks unsupported here: %v", err)
+	}
+
+	if err := atomicfile.Write(link, []byte("new\n"), 0o600); err == nil {
+		t.Fatal("Write through a dangling symlink succeeded, want an error")
+	}
+
+	info, err := os.Lstat(link)
+	if err != nil {
+		t.Fatalf("Lstat(link): %v", err)
+	}
+	if info.Mode()&os.ModeSymlink == 0 {
+		t.Fatalf("link was replaced by a regular file (mode = %v)", info.Mode())
+	}
+	if _, err := os.Lstat(target); !os.IsNotExist(err) {
+		t.Errorf("target was created (Lstat err = %v), want it left absent", err)
+	}
+}
