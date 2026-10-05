@@ -1018,6 +1018,26 @@ func TestRun_ModelsSection_PhasePickerListsEquivalentFirst(t *testing.T) {
 	}
 }
 
+// A gentle-ai major outside 3 or 4 is warned about in the prerequisites
+// block, and the warning names both supported majors.
+func TestRun_Prerequisites_UnsupportedMajorWarnsAndNamesSupportedMajors(t *testing.T) {
+	root := t.TempDir()
+	home := t.TempDir()
+	writeFixture(t, filepath.Join(root, "nerv.yaml"))
+	runner := &envtest.FakeRunner{Responses: map[string]envtest.Response{
+		"gentle-ai --version": {Stdout: "gentle-ai version 2.9.0\n"},
+	}}
+	deps := configure.Deps{Home: home, FS: nerv.PluginFS(), Runner: runner, Now: fixedNow, LookPath: lookPathNone}
+	opts := wizard.Options{Paths: testPaths(root, home), SkipSkills: true, SkipRepos: true, SkipCommands: true, SkipModels: true, NoRefresh: true}
+
+	var out bytes.Buffer
+	_, _ = wizard.Run(deps, strings.NewReader(""), &out, opts) // EOF aborts after the prerequisites block
+
+	if line := lineWith(out.String(), "gentle-ai      :"); !strings.Contains(line, "2.9.0") || !strings.Contains(line, "WARNING: NERV requires major version 3 or 4") {
+		t.Errorf("gentle-ai line = %q, want a warning naming major version 3 or 4; output:\n%s", line, out.String())
+	}
+}
+
 // mutatingCalls filters out the informational "gentle-ai --version"
 // prerequisites check (printPrerequisites runs it unconditionally, before
 // any prompt, and it never mutates anything) so EOF-abort tests can
