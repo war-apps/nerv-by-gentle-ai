@@ -16,7 +16,7 @@ func TestPrintModelTable_LongValuesKeepColumnsAligned(t *testing.T) {
 	table := []config.ModelRow{
 		{Role: "aoba", Model: "sonnet", Effort: "low", Source: "default"},
 		{Role: "kaji-coverage", Model: "claude-sonnet-5-5-20260101", Effort: "medium", Source: "override"},
-		{Role: "misato", Model: "fable", Effort: "high", Source: "gentle-ai:sdd-onboard-extended"},
+		{Role: "misato", Model: "fable", Effort: "high", Source: "gentle-ai:jd-fix-agent-extended"},
 	}
 	var out bytes.Buffer
 	printModelTable(&out, table, "/tmp/nerv.yaml")

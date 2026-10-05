@@ -99,7 +99,10 @@ changes confirmed — never more.
      the audit passes (kaji, kaji-security, kaji-coverage, kaji-refuter),
      `all` = every role. The equivalent is a hint for `from:<phase>`: when
      the user picks `from:` for a single role, suggest that role's
-     `gentle_ai_equivalent` first. It never changes resolution. Then ask one
+     `gentle_ai_equivalent` first. It never changes resolution. A `from:`
+     phase is a key of `claude_phase_assignments` in `~/.gentle-ai/state.json`
+     that still has an agent in gentle-ai 4.x (`jd-judge-a`, `jd-judge-b`,
+     `jd-fix-agent`); most roles have no equivalent (`-`). Then ask one
      grouped question for which roles to override — free text, comma-separated role names or a group keyword (`magi`,
      `pilots`, `kaji-passes`, `all`), pre-filled `skip`. For each role
      confirmed, ask a grouped question (at most 2 roles per question, 2
@@ -130,7 +133,7 @@ changes confirmed — never more.
      surface that verbatim and stop applying further keys from the same
      batch until fixed.
    - **models**: one call per confirmed batch —
-     `nerv configure --set-model role=model[/effort] --set-model role2=from:<phase> --json`.
+     `nerv configure --set-model role=model[/effort] --set-model role2=from:jd-judge-a --json`.
    - **repo**: `nerv configure --init-repo <path> --repo-base <base> --repo-provider <provider> [--repo-project-id <id> --repo-tasklist-id <id>] --json`.
      This never overwrites an existing `.nerv/nerv.yaml`; if one is already
      present, the result carries a `warnings` entry saying so — report it

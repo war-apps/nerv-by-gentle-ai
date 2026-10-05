@@ -10,15 +10,16 @@ import (
 	"github.com/war-apps/nerv-by-gentle-ai/internal/config"
 )
 
-// wantEquivalents is the user-approved role -> gentle-ai phase table. An
-// empty value means the role has no equivalent.
+// wantEquivalents is the user-approved role -> gentle-ai v4 agent table (the jd-judge
+// and native review agents that still exist in v4). An empty value means
+// the role has no equivalent.
 var wantEquivalents = map[string]string{
-	"misato": "sdd-design", "ritsuko": "sdd-explore", "hyuga": "sdd-tasks",
+	"misato": "", "ritsuko": "", "hyuga": "",
 	"melchor": "jd-judge-b", "balthasar": "jd-judge-a", "casper": "jd-judge-a",
 	"fuyutsuki": "",
-	"kaworu":    "sdd-apply", "shinji": "sdd-apply", "asuka": "sdd-apply", "rei": "sdd-apply", "toji": "sdd-apply",
-	"maya": "sdd-verify", "kaji": "sdd-verify", "kaji-security": "jd-judge-a",
-	"kaji-coverage": "sdd-verify", "kaji-refuter": "jd-judge-b", "aoba": "sdd-archive",
+	"kaworu":    "", "shinji": "", "asuka": "", "rei": "", "toji": "",
+	"maya": "", "kaji": "", "kaji-security": "review-risk",
+	"kaji-coverage": "review-reliability", "kaji-refuter": "review-refuter", "aoba": "",
 }
 
 func TestRoles_EveryRoleHasPurposeAndEquivalent(t *testing.T) {

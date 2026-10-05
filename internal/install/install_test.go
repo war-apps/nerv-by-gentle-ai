@@ -221,6 +221,7 @@ func TestInstall_RequireGentleAI_MajorGate(t *testing.T) {
 	}{
 		{"3.x passes", "3.7.0", false},
 		{"4.x passes", "4.0.0", false},
+		{"2.x refused", "2.9.0", true},
 		{"5.x refused", "5.0.0", true},
 	}
 	for _, tt := range tests {
@@ -246,6 +247,36 @@ func TestInstall_RequireGentleAI_MajorGate(t *testing.T) {
 			}
 			if !strings.Contains(err.Error(), "3.x or 4.x") {
 				t.Errorf("refusal %q does not name the supported majors", err)
+			}
+		})
+	}
+}
+
+func TestInstall_GentleAIVersionNote(t *testing.T) {
+	tests := []struct {
+		name, version string
+		want, absent  string
+	}{
+		{"3.x states the tested version", "3.7.0", "tested against 3.7.0", "4.x support is in progress"},
+		{"4.x prints the in-progress note", "4.0.0", "4.x support is in progress", ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			home := t.TempDir()
+			runner := baseRunner()
+			runner.Responses["gentle-ai --version"] = envtest.Response{Stdout: "gentle-ai version " + tt.version + "\n"}
+			seedInstalledPlugins(t, home, pluginVersion(t))
+			var stdout bytes.Buffer
+			deps := install.Deps{Home: home, FS: nerv.PluginFS(), Runner: runner, Now: fixedNow, LookPath: lookPathAll, Stdout: &stdout}
+
+			if err := install.Install(context.Background(), deps, install.Options{RequireGentleAI: true, NoSkills: true}); err != nil {
+				t.Fatalf("Install() error = %v", err)
+			}
+			if !strings.Contains(stdout.String(), tt.want) {
+				t.Errorf("output lacks %q:\n%s", tt.want, stdout.String())
+			}
+			if tt.absent != "" && strings.Contains(stdout.String(), tt.absent) {
+				t.Errorf("output must not contain %q:\n%s", tt.absent, stdout.String())
 			}
 		})
 	}

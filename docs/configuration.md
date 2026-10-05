@@ -73,8 +73,9 @@ hand.
 ### Roles and their gentle-ai equivalents
 
 Every role below can be overridden under `models:`. The gentle-ai
-equivalent is the closest gentle-ai phase, a hint for `from:<phase>`; it is
-informational and never changes how a model is resolved. The same data is
+equivalent is the closest gentle-ai v4 agent that still exists (the `jd-judge`
+agents and the native review agents), a hint for `from:<phase>`; roles with
+no such agent show none. It is informational and never changes how a model is resolved. The same data is
 shown in the wizard's models table, in `/nerv:configure` and `/nerv:status`,
 and as `purpose` / `gentle_ai_equivalent` on each `nerv configure --print`
 models row. Roles are addressable by group: `magi` (the three voters),
@@ -82,24 +83,24 @@ models row. Roles are addressable by group: `magi` (the three voters),
 
 | Role | Group | Purpose | gentle-ai equivalent | Default model / effort |
 |---|---|---|---|---|
-| `misato` | | authors the plan (proposal, design, tasks) | `sdd-design` | fable / high |
-| `ritsuko` | | intelligence, test planning, end-of-run docs | `sdd-explore` | opus / high |
-| `hyuga` | | task criticality, dependency waves, tracking | `sdd-tasks` | sonnet / medium |
+| `misato` | | authors the plan (proposal, design, tasks) | none | fable / high |
+| `ritsuko` | | intelligence, test planning, end-of-run docs | none | opus / high |
+| `hyuga` | | task criticality, dependency waves, tracking | none | sonnet / medium |
 | `melchor` | `magi` | MAGI vote: structure and security | `jd-judge-b` | fable / high |
 | `balthasar` | `magi` | MAGI vote: software principles | `jd-judge-a` | sonnet / medium |
 | `casper` | `magi` | MAGI vote: process and documentation | `jd-judge-a` | sonnet / medium |
 | `fuyutsuki` | | governance veto on new skills/scripts/commands | none | sonnet / medium |
-| `kaworu` | `pilots` | writes the failing tests first | `sdd-apply` | sonnet / medium |
-| `shinji` | `pilots` | backend pilot | `sdd-apply` | sonnet / medium |
-| `asuka` | `pilots` | frontend pilot | `sdd-apply` | sonnet / medium |
-| `rei` | `pilots` | data pilot (persistence, observability) | `sdd-apply` | sonnet / medium |
-| `toji` | `pilots` | infrastructure pilot (CI/CD, containers) | `sdd-apply` | sonnet / medium |
-| `maya` | | quality gate (tests, lint, build) | `sdd-verify` | sonnet / medium |
-| `kaji` | `kaji-passes` | audit compiler | `sdd-verify` | opus / high |
-| `kaji-security` | `kaji-passes` | audit pass: security | `jd-judge-a` | sonnet / medium |
-| `kaji-coverage` | `kaji-passes` | audit pass: tests vs test plan | `sdd-verify` | sonnet / medium |
-| `kaji-refuter` | `kaji-passes` | refutes severe audit findings | `jd-judge-b` | sonnet / medium |
-| `aoba` | | commits, PRs and run telemetry | `sdd-archive` | sonnet / low |
+| `kaworu` | `pilots` | writes the failing tests first | none | sonnet / medium |
+| `shinji` | `pilots` | backend pilot | none | sonnet / medium |
+| `asuka` | `pilots` | frontend pilot | none | sonnet / medium |
+| `rei` | `pilots` | data pilot (persistence, observability) | none | sonnet / medium |
+| `toji` | `pilots` | infrastructure pilot (CI/CD, containers) | none | sonnet / medium |
+| `maya` | | quality gate (tests, lint, build) | none | sonnet / medium |
+| `kaji` | `kaji-passes` | audit compiler | none | opus / high |
+| `kaji-security` | `kaji-passes` | audit pass: security | `review-risk` | sonnet / medium |
+| `kaji-coverage` | `kaji-passes` | audit pass: tests vs test plan | `review-reliability` | sonnet / medium |
+| `kaji-refuter` | `kaji-passes` | refutes severe audit findings | `review-refuter` | sonnet / medium |
+| `aoba` | | commits, PRs and run telemetry | none | sonnet / low |
 
 ### Configuring models and effort
 

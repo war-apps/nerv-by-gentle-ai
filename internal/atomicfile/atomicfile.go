@@ -147,9 +147,14 @@ func writeAtomic(path string, data []byte, verify func([]byte) error, mode fs.Fi
 
 // Write replaces the file at path with data atomically (a temp file in the
 // same directory, then a rename), without taking a backup. An existing file
-// keeps its permission bits; a new file gets perm. On any failure the
-// destination is left as it was and no temp file remains.
+// keeps its permission bits; a new file gets perm. When path is a symlink
+// to an existing file, the link's target is the file written and the link
+// stays. On any failure the destination is left as it was and no temp file
+// remains.
 func Write(path string, data []byte, perm fs.FileMode) error {
+	if resolved, err := filepath.EvalSymlinks(path); err == nil {
+		path = resolved
+	}
 	mode := perm
 	if info, err := os.Stat(path); err == nil {
 		mode = info.Mode().Perm()

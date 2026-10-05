@@ -1,11 +1,11 @@
 ---
-description: Bootstrap NERV for this repository — writes .nerv/nerv.yaml and ensures gentle-ai's own SDD bootstrap has run
+description: Bootstrap NERV for this repository — writes .nerv/nerv.yaml, openspec/config.yaml and the skill registry
 ---
 
 # /nerv:init
 
 Set up NERV in the current repository. Asks only for what is missing, never
-overwrites silently, and delegates gentle-ai's own bootstrap unchanged.
+overwrites silently, and bootstraps `openspec/` and the skill registry itself.
 
 1. **Refuse if not a git repository.** Run `git rev-parse --is-inside-work-tree`.
    On failure, tell the user NERV requires a git repository and stop — do
@@ -89,11 +89,44 @@ overwrites silently, and delegates gentle-ai's own bootstrap unchanged.
    removes the removed task providers `github-projects` and `jira` from an
    existing file, with a backup.)
 
-5. **Bootstrap gentle-ai if needed.** If `openspec/config.yaml` or
-   `.atl/skill-registry.md` is missing, delegate to the `sdd-init` agent
-   unchanged — do not reimplement its logic. Tell the user plainly that this
-   step is gentle-ai's own bootstrap (stack detection, persistence mode,
-   `strict_tdd`, skill registry), not a NERV-specific step.
+5. **Bootstrap `openspec/` and the skill registry.** NERV owns this step; it
+   no longer delegates to a gentle-ai agent (gentle-ai 4.x removed
+   `sdd-init`).
+   - Create `openspec/specs/` and `openspec/changes/archive/` when missing.
+   - Create `openspec/config.yaml` only when it is absent; an existing file
+     and every value in it are kept untouched. Keep it minimal:
+
+     ```yaml
+     context: |
+       <3-8 lines: stack, layout, conventions detected from the repo>
+     strict_tdd: <true|false>
+     testing:
+       runner: <the workspace-level test command, or none>
+     rules:
+       apply:
+         test_command: <same command>
+     ```
+
+   - Resolve the runner and `strict_tdd` from what the repo really has,
+     never by guessing. Discover every project root from the repo root (the
+     explicit workspace membership when declared, otherwise the root and at
+     most two levels below it; skip `.git`, `node_modules`, `vendor`,
+     `dist`, `build`, `out`, `target`, `.cache`, `__pycache__`, `.venv`,
+     `venv` and nested repositories). `strict_tdd: true` only when the
+     project set is non-empty and one explicit workspace-level test command
+     (an existing script or target such as `go test ./...`, `npm test` or
+     `dotnet test`, run from the repo root) covers every in-scope project.
+     Otherwise write `strict_tdd: false`, set `testing.runner` and
+     `rules.apply.test_command` to the single command when there is one (or
+     `none`), and tell the user why. These rules decide only the values of a
+     new file. When `openspec/config.yaml` already exists, never rewrite it:
+     if it holds `strict_tdd: true` but no workspace-level command covers
+     every in-scope project, leave the file as is and warn the user that
+     strict TDD cannot be honored until they add such a command or set
+     `strict_tdd: false` themselves.
+   - Then run `gentle-ai skill-registry refresh --cwd <repo>` to write
+     `.atl/skill-registry.md`. If `gentle-ai` is not installed, say so and
+     skip only this sub-step.
 
 6. **Summarize.** Print what was written (`.nerv/nerv.yaml` path and its
    resolved keys) and remind the user that no restart is required for the
@@ -102,5 +135,4 @@ overwrites silently, and delegates gentle-ai's own bootstrap unchanged.
    start — this session keeps running under whatever routing was already
    active.
 
-Do not modify any file this command does not own. Do not launch any agent
-other than `sdd-init`, and only when step 5's condition is met.
+Do not modify any file this command does not own. Do not launch any agent.

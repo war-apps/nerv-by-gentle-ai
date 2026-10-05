@@ -66,7 +66,8 @@ short and imperative — this is a status check, not a narrative.
    |---|---|---|---|---|---|---|
    | ... | ... | ... | ... | ... | project\|user\|gentle-ai:\<phase\>\|default | ... |
 
-   Take `purpose` and `gentle-ai equivalent` (`-` when none) per role from
+   Take `purpose` and `gentle-ai equivalent` (`-` when none; the `jd-judge`
+   or native `review-*` agent otherwise) per role from
    `nerv configure --print --json` (`models[].purpose` and
    `models[].gentle_ai_equivalent`); they are informational and never
    affect resolution.

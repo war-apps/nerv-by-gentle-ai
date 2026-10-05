@@ -164,6 +164,62 @@ func TestComposeRefusesUnapplicableDeltas(t *testing.T) {
 	}
 }
 
+// Two entries with the same name inside one delta section used to fold into
+// one (the last MODIFIED silently won). Each repeated name is now refused,
+// naming the section and the requirement.
+func TestComposeRefusesRequirementRepeatedWithinOneDeltaSection(t *testing.T) {
+	tests := []struct {
+		name        string
+		delta       string
+		wantSection string
+		wantReq     string
+	}{
+		{
+			name: "MODIFIED repeats a name",
+			delta: "## MODIFIED Requirements\n\n### Requirement: Widget Expiration\n\nFirst.\n\n" +
+				"### Requirement: Widget Expiration\n\nSecond.\n",
+			wantSection: "MODIFIED",
+			wantReq:     "Widget Expiration",
+		},
+		{
+			name: "ADDED repeats a new name",
+			delta: "## ADDED Requirements\n\n### Requirement: Fresh One\n\nFirst.\n\n" +
+				"### Requirement: Fresh One\n\nSecond.\n",
+			wantSection: "ADDED",
+			wantReq:     "Fresh One",
+		},
+		{
+			name: "REMOVED repeats a name",
+			delta: "## REMOVED Requirements\n\n### Requirement: Widget Expiration\n\n(Reason: a)\n\n" +
+				"### Requirement: Widget Expiration\n\n(Reason: b)\n",
+			wantSection: "REMOVED",
+			wantReq:     "Widget Expiration",
+		},
+		{
+			name: "RENAMED repeats a rename",
+			delta: "## RENAMED Requirements\n\n### Requirement: Widget Expiration → Widget Retention\n\n(Reason: a)\n\n" +
+				"### Requirement: Widget Expiration → Widget Retention\n\n(Reason: b)\n",
+			wantSection: "RENAMED",
+			wantReq:     "Widget Expiration → Widget Retention",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			out, err := Compose(canonicalFixture, tt.delta)
+			var unapplied *UnappliedDeltaError
+			if !errors.As(err, &unapplied) {
+				t.Fatalf("error = %v (output %q), want *UnappliedDeltaError", err, out)
+			}
+			if unapplied.Section != tt.wantSection || unapplied.Requirement != tt.wantReq {
+				t.Fatalf("unapplied = %+v, want Section=%q Requirement=%q", unapplied, tt.wantSection, tt.wantReq)
+			}
+			if !strings.Contains(unapplied.Reason, "more than once") {
+				t.Errorf("Reason = %q, want it to say the name appears more than once", unapplied.Reason)
+			}
+		})
+	}
+}
+
 // a "## Section" sitting between two
 // requirement blocks belonged to no block under the old preamble/
 // requirements/trailing model and was silently dropped. This pins the

@@ -6,7 +6,7 @@ outcomes that must hold. Run them after every phase and before any push.
 
 ## Common setup
 
-- gentle-ai 3.7.0 installed; plugin `nerv@nerv` installed from the committed
+- gentle-ai 3.x or 4.x installed; plugin `nerv@nerv` installed from the committed
   HEAD under test (`claude plugin uninstall nerv@nerv && claude plugin install nerv@nerv`).
 - Scratch repo with a real test runner. Reference layout: .NET 10 class
   library `src/Calc` + xUnit project `tests/Calc.Tests`, solution `Bench.slnx`,

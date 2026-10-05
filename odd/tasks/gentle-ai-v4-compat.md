@@ -45,11 +45,11 @@ docs/integration.md diagram), then upgrade the local gentle-ai and release.
 
 ### Phase 2 (user approved 2026-10-05)
 
-- [ ] T3 `/nerv:init` writes `openspec/config.yaml` itself (context, `strict_tdd` with the v3 `sdd-init` rule, testing runner) and runs `gentle-ai skill-registry refresh`; no `sdd-init` delegation. `docs/commands.md:39` follows. (slice 3)
+- [x] T3 (commit 84e15d9) `/nerv:init` writes `openspec/config.yaml` itself (context, `strict_tdd` with the v3 `sdd-init` rule, testing runner) and runs `gentle-ai skill-registry refresh`; no `sdd-init` delegation. `docs/commands.md:39` follows. (slice 3)
 - [x] T4 (commits 20d00bc, a226117) `nerv spec-compose --canonical --delta [--output]`: Go port of gentle-ai v3.7.0 `internal/sddstatus/openspec_archive_compose.go` (MIT, attributed), with an atomic write and tests. Aoba's archive step, `pipeline-full.md`, `troubleshooting.md` and `bench/journeys.md` use it. (slice 2; user chose a subcommand over prompt-level merging)
-- [ ] T5 Role catalogue equivalents: keep jd-judge-a/b; kaji-security goes to review-risk, kaji-refuter to review-refuter, kaji-coverage to review-reliability; the rest become `none`. Docs, guard tests and the status/configure prose follow. (slice 3)
-- [ ] T6 Orchestrator prose: drop the SDD claims (`SKILL.md:25-47`, `docs/integration.md` reuse map); strict TDD becomes nerv-owned, read from `openspec/config.yaml`; "gentle-ai's own" artifact wording becomes nerv-owned. (slice 3)
-- [ ] T7 Review advisories: a 2.x install case, a wizard warning test, and install prints the same 4.x note as `/nerv:status`; spec-compose rejects a requirement name repeated within one delta section; atomicfile.Write resolves symlinks. (slice 3)
+- [x] T5 (commit 99705c2) Role catalogue equivalents: keep jd-judge-a/b; kaji-security goes to review-risk, kaji-refuter to review-refuter, kaji-coverage to review-reliability; the rest become `none`. Docs, guard tests and the status/configure prose follow. (slice 3)
+- [x] T6 (commit ce7c38f) Orchestrator prose: drop the SDD claims (`SKILL.md:25-47`, `docs/integration.md` reuse map); strict TDD becomes nerv-owned, read from `openspec/config.yaml`; "gentle-ai's own" artifact wording becomes nerv-owned. (slice 3)
+- [x] T7 (commits 97d6693, 4be1f69, 4843997) Review advisories: a 2.x install case, a wizard warning test, and install prints the same 4.x note as `/nerv:status`; spec-compose rejects a requirement name repeated within one delta section; atomicfile.Write resolves symlinks. (slice 3)
 
 ## Acceptance criteria
 
@@ -82,6 +82,34 @@ docs/integration.md diagram), then upgrade the local gentle-ai and release.
   - R3-duplicate-modified-silently-last-wins (WARNING): two MODIFIED entries with the same name fold into one, silently, and `docs/commands.md` promises an error.
   - R3-atomic-write-replaces-symlink: an `--output` symlink is replaced by a regular file.
   - Writer decision gaps accepted: a missing flag exits 2 (consistent with `skills`); a new output file is created 0644; Aoba assumes `nerv` is on PATH, consistent with `/nerv:configure`.
+
+- 2026-10-05: Slice 3 done (T5, T3, T6, T7; route: delegated direct, one writer). RED: T5 `TestRoles_EveryRoleHasPurposeAndEquivalent` (14 role mismatches), `TestPrint_ModelsRowsCarryPurposeAndEquivalent`, wizard models table test; T7 `TestInstall_GentleAIVersionNote/4.x` lacked "4.x support is in progress"; `TestComposeRefusesRequirementRepeatedWithinOneDeltaSection` (MODIFIED folded silently, ADDED/REMOVED had the wrong reason); `TestWrite_ThroughASymlinkUpdatesTheTargetAndKeepsTheLink` (link replaced by a regular file). The 2.x install case and the wizard "3 or 4" warning test pass on first run (coverage gaps only). gofmt, go vet, go test ./... clean; hook suites 12/12 and 17/17. Remaining `sdd-` hits outside odd/ and CHANGELOG: init.md:94 (historical note that 4.x removed `sdd-init`) and a negative assertion in wizard_test.go. Decisions: "none" equivalent stays the empty string; config.yaml is context, strict_tdd, testing.runner, rules.apply.test_command.
+
+- 2026-10-05: Slice 3 (`461b45f..899383a`, 352+/150-) was assessed against base `f247268` as medium and due (slice_budget_reached). An earlier granted START for the accumulated branch was refused as `stale_target_identity`, because slice 3 commits landed meanwhile; nothing was recorded. The user granted consent again. Native review lineage `review-2af303b8e60736e5`, with the reliability lens, was approved and acknowledged. Advisories:
+  - R3-init-strict-tdd-overwrite-contradiction (WARNING): `init.md` step 5 says that an existing config is untouched and also that an explicit `strict_tdd: true` fails closed to false.
+  - R3-renamed-duplicate-uncovered: there is no test for a repeated RENAMED entry.
+  - R3-symlink-test-nil-deref: the symlink test reads `Mode()` on a nil FileInfo when an error occurs.
+
+- 2026-10-05: Slice 3 advisories fixed, on user request.
+  - `71d9c75`: `/nerv:init` never rewrites an existing `openspec/config.yaml`. It warns when an existing `strict_tdd: true` cannot be honored.
+  - `269b552`: adds the RENAMED duplicate test and splits the symlink test's error checks. The RENAMED case was mutation-checked: it fails when RENAMED is dropped from the repeat check.
+  - Checks: gofmt, vet, go test and the hook suites are green.
+
+- 2026-10-05: The stop hook surfaced the accumulated branch (3 slices plus the fixes). The user granted consent. Native review lineage `review-c2436de7e432cc0c` was approved (reliability lens) and acknowledged. New advisories, all in the ported `nerv spec-compose` (inherited from upstream unless noted):
+  - R3-crlf-specs-refused-misleadingly (WARNING): CRLF deltas are refused as "no sections" and CRLF names capture `\r`. Relevant because the team works on Windows.
+  - R3-delta-parse-ignores-fences (WARNING): delta parsing splits on requirement headings inside fenced samples.
+  - R3-cross-section-conflict-unchecked: the same name in MODIFIED and REMOVED is accepted silently.
+  - R3-dangling-symlink-replaced: a dangling `--output` link becomes a regular file (from slice 3's symlink fix).
+
+- 2026-10-05: The two spec-compose warnings were fixed on `feature/gentle-ai-v4-spec-compose` and the stack was rebased onto it (no conflicts; the repeated-name check is kept).
+  - `47babd0` `fix(specs): accept CRLF headings in spec-compose`. RED: 4 tests (CRLF MODIFIED, ADDED, RENAMED with Reason, REMOVED with Reason) failed with "delta spec declares no ADDED, MODIFIED, REMOVED, or RENAMED requirements". The mixed CRLF canonical plus LF delta test passed before the fix and stays as a guard. A rename keeps the heading's `\r`.
+  - `7f217c4` `fix(specs): ignore fenced headings when parsing a delta`. RED: a MODIFIED body with a fenced `### Requirement: B` and `## REMOVED Requirements` composed with requirement B removed and the fence cut short. Both delta parsers now reuse `fencedRanges` through `unfencedMatches`.
+  - Left as follow-ups: R3-cross-section-conflict-unchecked and R3-dangling-symlink-replaced (advisories).
+
+- 2026-10-05: After the CRLF and fence fixes and the rebase, the user granted consent. Native review lineage `review-18dfa9c598ca6234` was approved (reliability lens) and acknowledged. Open follow-ups, kept out of this feature:
+  - R3-equivalent-not-a-from-phase (WARNING): the wizard and `/nerv:configure` suggest the equivalent as a `from:` value, but `review-*` are not `claude_phase_assignments` keys.
+  - R3-dangling-symlink-output-replaced (WARNING): a dangling `--output` link becomes a regular file.
+  - R3-cross-section-conflict-silent: MODIFIED followed by REMOVED of the same name silently drops the modification.
 
 ## Next step
 

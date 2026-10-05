@@ -223,8 +223,8 @@ so no `tasks.md` and no task ids exist yet), derive concrete spec
 scenarios and write both artifacts per their schemas in
 `nerv-artifacts.md`:
 
-- the gentle-ai-owned `specs/{domain}/spec.md` — WHAT the change must do,
-  as scenarios, in gentle-ai's own spec shape;
+- the `specs/{domain}/spec.md` — WHAT the change must do,
+  as scenarios, in the OpenSpec spec shape;
 - `nerv/test-plan.md` — per case: file, case name, test layer (unit /
   integration / E2E, degrading gracefully per the strict-TDD
   layer-selection rules when a layer's tooling is unavailable), and

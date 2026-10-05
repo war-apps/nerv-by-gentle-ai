@@ -273,6 +273,20 @@ func ensureTrailingNewline(text string) string {
 	return text + "\n"
 }
 
+// rejectRepeatedName refuses a requirement name that appears twice in one
+// delta section: folding the entries into one would let the last silently
+// win.
+func rejectRepeatedName(section string, blocks []specRequirementBlock) error {
+	seen := make(map[string]bool, len(blocks))
+	for _, b := range blocks {
+		if seen[b.Name] {
+			return &UnappliedDeltaError{Section: section, Requirement: b.Name, Reason: fmt.Sprintf("requirement %q appears more than once in the %s section", b.Name, section)}
+		}
+		seen[b.Name] = true
+	}
+	return nil
+}
+
 // Compose merges a delta spec into a canonical
 // spec's byte content. Every unrelated canonical requirement is preserved
 // verbatim; RENAMED, MODIFIED, REMOVED, then ADDED delta requirements are
@@ -290,6 +304,15 @@ func Compose(canonical, delta string) (string, error) {
 	deltaDoc := parseDelta(delta)
 	if len(deltaDoc.Added) == 0 && len(deltaDoc.Modified) == 0 && len(deltaDoc.Removed) == 0 && len(deltaDoc.Renamed) == 0 {
 		return "", &UnappliedDeltaError{Section: "DELTA", Reason: "delta spec declares no ADDED, MODIFIED, REMOVED, or RENAMED requirements"}
+	}
+
+	for _, section := range []struct {
+		name   string
+		blocks []specRequirementBlock
+	}{{"RENAMED", deltaDoc.Renamed}, {"MODIFIED", deltaDoc.Modified}, {"REMOVED", deltaDoc.Removed}, {"ADDED", deltaDoc.Added}} {
+		if err := rejectRepeatedName(section.name, section.blocks); err != nil {
+			return "", err
+		}
 	}
 
 	// segments re-emits the whole document, including non-requirement spans

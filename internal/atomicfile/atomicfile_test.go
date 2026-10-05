@@ -181,6 +181,45 @@ func TestWrite_ExistingFileKeepsItsModeAndTakesNoBackup(t *testing.T) {
 	}
 }
 
+func TestWrite_ThroughASymlinkUpdatesTheTargetAndKeepsTheLink(t *testing.T) {
+	dir := t.TempDir()
+	targetDir := filepath.Join(dir, "real")
+	if err := os.MkdirAll(targetDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	target := filepath.Join(targetDir, "spec.md")
+	if err := os.WriteFile(target, []byte("old\n"), 0o640); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(dir, "link.md")
+	if err := os.Symlink(target, link); err != nil {
+		t.Skipf("symlinks unsupported here: %v", err)
+	}
+
+	if err := atomicfile.Write(link, []byte("new\n"), 0o600); err != nil {
+		t.Fatalf("Write: %v", err)
+	}
+
+	info, err := os.Lstat(link)
+	if err != nil {
+		t.Fatalf("Lstat(link): %v", err)
+	}
+	if info.Mode()&os.ModeSymlink == 0 {
+		t.Fatalf("link was replaced by a regular file (mode = %v)", info.Mode())
+	}
+	got, _ := os.ReadFile(target)
+	if string(got) != "new\n" {
+		t.Errorf("target content = %q, want %q", got, "new\n")
+	}
+	tinfo, err := os.Stat(target)
+	if err != nil {
+		t.Fatalf("Stat(target): %v", err)
+	}
+	if tinfo.Mode().Perm() != 0o640 {
+		t.Errorf("target mode = %v, want the existing 0640", tinfo.Mode().Perm())
+	}
+}
+
 func TestWrite_FailureLeavesNoPartialFileAndNoTemp(t *testing.T) {
 	dir := t.TempDir()
 	// A non-empty directory at the destination makes the final rename fail
