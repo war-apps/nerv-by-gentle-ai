@@ -932,8 +932,11 @@ func TestRun_ModelsSection_TableShowsPurposeEquivalentAndGroupLegend(t *testing.
 			t.Errorf("table header %q lacks column %q", header, col)
 		}
 	}
-	if row := lineWith(got, ") kaworu"); !strings.Contains(row, "writes the failing tests first") || !strings.Contains(row, "sdd-apply") {
-		t.Errorf("kaworu row = %q, want purpose and sdd-apply", row)
+	if row := lineWith(got, ") kaji-security"); !strings.Contains(row, "audit pass: security") || !strings.Contains(row, "review-risk") {
+		t.Errorf("kaji-security row = %q, want purpose and review-risk", row)
+	}
+	if row := lineWith(got, ") kaworu"); !strings.Contains(row, "writes the failing tests first") || strings.Contains(row, "sdd-") || !strings.HasSuffix(strings.TrimSpace(row), "-") {
+		t.Errorf("kaworu row = %q, want purpose and a '-' equivalent", row)
 	}
 	if row := lineWith(got, ") fuyutsuki"); !strings.HasSuffix(strings.TrimSpace(row), "-") {
 		t.Errorf("fuyutsuki row = %q, want a '-' equivalent", row)
@@ -984,7 +987,7 @@ func TestRun_ModelsSection_PhasePickerListsEquivalentFirst(t *testing.T) {
 	home := t.TempDir()
 	writeFixture(t, filepath.Join(root, "nerv.yaml"))
 	paths := testPaths(root, home)
-	state := `{"claude_phase_assignments":{"jd-judge-a":{"model":"opus","effort":"high"},"sdd-apply":{"model":"sonnet","effort":"medium"}}}`
+	state := `{"claude_phase_assignments":{"jd-judge-a":{"model":"opus","effort":"high"},"jd-judge-b":{"model":"sonnet","effort":"medium"}}}`
 	if err := os.MkdirAll(filepath.Dir(paths.State), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -995,22 +998,22 @@ func TestRun_ModelsSection_PhasePickerListsEquivalentFirst(t *testing.T) {
 	opts := wizard.Options{Paths: paths, SkipSkills: true, SkipRepos: true, SkipCommands: true, NoRefresh: true}
 
 	var out bytes.Buffer
-	in := modelsInput(&out, "kaworu", "7", "1", "", "done", "y")
+	in := modelsInput(&out, "casper", "7", "1", "", "done", "y")
 	if _, err := wizard.Run(deps, in, &out, opts); err != nil {
 		t.Fatalf("Run() error = %v; output:\n%s", err, out.String())
 	}
 
-	if first := phaseLine(out.String(), "  1) "); !strings.Contains(first, "sdd-apply") || !strings.Contains(first, "(equivalent)") {
-		t.Errorf("first phase = %q, want sdd-apply marked (equivalent)", first)
+	if first := phaseLine(out.String(), "  1) "); !strings.Contains(first, "jd-judge-a") || !strings.Contains(first, "(equivalent)") {
+		t.Errorf("first phase = %q, want jd-judge-a marked (equivalent)", first)
 	}
-	if second := phaseLine(out.String(), "  2) "); !strings.Contains(second, "jd-judge-a") || strings.Contains(second, "(equivalent)") {
-		t.Errorf("second phase = %q, want jd-judge-a unmarked", second)
+	if second := phaseLine(out.String(), "  2) "); !strings.Contains(second, "jd-judge-b") || strings.Contains(second, "(equivalent)") {
+		t.Errorf("second phase = %q, want jd-judge-b unmarked", second)
 	}
 	got, err := os.ReadFile(paths.Config)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if want := "kaworu: { from: sdd-apply }"; !strings.Contains(string(got), want) {
+	if want := "casper: { from: jd-judge-a }"; !strings.Contains(string(got), want) {
 		t.Errorf("expected %q in models: block:\n%s", want, got)
 	}
 }
