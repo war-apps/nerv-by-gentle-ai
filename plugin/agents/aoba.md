@@ -220,9 +220,8 @@ mv` below when both apply at the same close.
 
 ### Archive
 
-NERV never launches gentle-ai's `sdd-archive` agent — its dispatcher
-(`sdd-preflight-hook`) refuses without an SDD session preflight NERV does
-not run. Aoba archives the change mechanically instead:
+gentle-ai 4.x has no archive agent, so Aoba archives the change
+mechanically:
 
 1. For every delta spec `openspec/changes/{change}/specs/{domain}/spec.md`,
    run `nerv spec-compose --canonical

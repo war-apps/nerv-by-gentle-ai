@@ -97,7 +97,7 @@ func runReposSection(deps Deps, paths configure.Paths, s *session, out io.Writer
 			anyChanged = true
 		}
 		if result.Changed {
-			fmt.Fprintln(out, "Reminder: open Claude Code in that repo and run /nerv:init once to bootstrap gentle-ai's SDD registry if it is missing.")
+			fmt.Fprintln(out, "Reminder: open Claude Code in that repo and run /nerv:init once to create openspec/config.yaml and the skill registry if they are missing.")
 		}
 	}
 }

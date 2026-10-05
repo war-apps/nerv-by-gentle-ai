@@ -8,7 +8,7 @@
   <a href="https://www.markdownguide.org/"><img alt="Markdown agents and skills" src="https://img.shields.io/badge/Markdown-agents_%26_skills-000000?style=for-the-badge&logo=markdown&logoColor=white"></a>
   <a href="https://mermaid.js.org/"><img alt="Mermaid diagrams" src="https://img.shields.io/badge/Mermaid-diagrams-FF3670?style=for-the-badge&logo=mermaid&logoColor=white"></a>
   <a href="https://yaml.org/"><img alt="YAML config" src="https://img.shields.io/badge/YAML-nerv.yaml-CB171E?style=for-the-badge&logo=yaml&logoColor=white"></a>
-  <a href="https://github.com/Gentleman-Programming/gentle-ai"><img alt="OpenSpec SDD" src="https://img.shields.io/badge/OpenSpec-SDD_%2B_RDD-0aa?style=for-the-badge"></a>
+  <a href="https://github.com/Gentleman-Programming/gentle-ai"><img alt="OpenSpec RDD" src="https://img.shields.io/badge/OpenSpec-RDD-0aa?style=for-the-badge"></a>
   <a href="https://github.com/Gentleman-Programming/engram"><img alt="Engram memory" src="https://img.shields.io/badge/Engram-memory-2d3748?style=for-the-badge"></a>
   <a href="https://www.teamwork.com/"><img alt="Teamwork MCP" src="https://img.shields.io/badge/Teamwork-MCP_adapter-FF22B1?style=for-the-badge&logo=teamwork&logoColor=white"></a>
   <a href="https://skills.sh/"><img alt="skills.sh" src="https://img.shields.io/badge/skills.sh-manifest-333?style=for-the-badge"></a>
@@ -37,9 +37,9 @@ Codex and Pi are not supported yet.
 ## Relation to gentle-ai
 
 Nerv by Gentle-AI is an **overlay**, not a fork. It reuses gentle-ai's native
-engine and contracts unchanged — the SDD artifact pipeline, RDD
-(receipt-driven review), the skill registry and resolver, strict TDD,
-delivery budgeting with chained PRs, and the lossless blocking-prompt
+engine and contracts unchanged — RDD
+(receipt-driven review), the skill registry and resolver, the `jd`
+judgment agents, delivery budgeting with chained PRs, and the lossless blocking-prompt
 contract — and expresses Nerv by Gentle-AI's own governance on top. Nerv by
 Gentle-AI never modifies any gentle-ai file: nothing is ever written
 under `~/.claude/agents` or `~/.claude/skills`, so `gentle-ai sync` cannot
@@ -51,9 +51,7 @@ activation, and pipeline diagrams.
 ## Requirements
 
 - **gentle-ai 3.x or 4.x** — major version 3 or 4 is required; minor and
-  patch are free. Tested against 3.7.0. 4.x support is being validated:
-  the SDD-dependent steps (init bootstrap, archive compose) are still
-  pending migration.
+  patch are free. Tested against 3.7.0; 4.x is validated in the next phase.
 - Claude Code with plugin marketplaces support (2.1+).
 - git — only needed to contribute to this repository (cloning, building,
   work-unit commits). Installing and running `nerv` itself does not require
@@ -218,8 +216,8 @@ it. `--answers <path>` drives the whole wizard from a text file (one
 answer per line) instead of prompting, for scripted setup.
 
 After the wizard, open Claude Code in each configured repository and run
-`/nerv:init` once — this bootstraps gentle-ai's SDD registry when it is
-missing; the wizard itself only writes `.nerv/nerv.yaml`.
+`/nerv:init` once — this creates `openspec/config.yaml` and the skill
+registry when they are missing; the wizard itself only writes `.nerv/nerv.yaml`.
 
 Outside the wizard, the plugin stays self-contained apart from these
 requirements: **gentle-ai 3.x or 4.x** installed and configured (`gentle-ai

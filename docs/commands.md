@@ -49,7 +49,7 @@ the skill registry with `gentle-ai skill-registry refresh`. An existing
 
 Read-only report of NERV's state for the current repo: activation,
 resolved config (project vs. user vs. default), the installed `gentle-ai`
-version, active SDD changes and orchestrator lock state, and a per-role
+version, active changes and orchestrator lock state, and a per-role
 model/effort table with drift detection. Use it to check what NERV will
 actually do before trusting the session, or to debug a configuration that
 isn't taking effect.
