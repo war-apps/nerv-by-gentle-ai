@@ -46,7 +46,7 @@ docs/integration.md diagram), then upgrade the local gentle-ai and release.
 ### Phase 2 (user approved 2026-10-05)
 
 - [ ] T3 `/nerv:init` writes `openspec/config.yaml` itself (context, `strict_tdd` with the v3 `sdd-init` rule, testing runner) and runs `gentle-ai skill-registry refresh`; no `sdd-init` delegation. `docs/commands.md:39` follows. (slice 3)
-- [ ] T4 `nerv spec-compose --canonical --delta [--output]`: Go port of gentle-ai v3.7.0 `internal/sddstatus/openspec_archive_compose.go` (MIT, attributed), with an atomic write and tests. Aoba's archive step, `pipeline-full.md`, `troubleshooting.md` and `bench/journeys.md` use it. (slice 2; user chose a subcommand over prompt-level merging)
+- [x] T4 (commits 20d00bc, a226117) `nerv spec-compose --canonical --delta [--output]`: Go port of gentle-ai v3.7.0 `internal/sddstatus/openspec_archive_compose.go` (MIT, attributed), with an atomic write and tests. Aoba's archive step, `pipeline-full.md`, `troubleshooting.md` and `bench/journeys.md` use it. (slice 2; user chose a subcommand over prompt-level merging)
 - [ ] T5 Role catalogue equivalents: keep jd-judge-a/b; kaji-security goes to review-risk, kaji-refuter to review-refuter, kaji-coverage to review-reliability; the rest become `none`. Docs, guard tests and the status/configure prose follow. (slice 3)
 - [ ] T6 Orchestrator prose: drop the SDD claims (`SKILL.md:25-47`, `docs/integration.md` reuse map); strict TDD becomes nerv-owned, read from `openspec/config.yaml`; "gentle-ai's own" artifact wording becomes nerv-owned. (slice 3)
 - [ ] T7 Review advisories: a 2.x install case, a wizard warning test, and install prints the same 4.x note as `/nerv:status`. (slice 3)
@@ -76,6 +76,7 @@ docs/integration.md diagram), then upgrade the local gentle-ai and release.
   - R3-install-gate-cases-incomplete: the install-level table lacks a 2.x case, and the wizard's "3 or 4" warning text is untested.
   - R3-status-4x-note-not-mirrored: install still prints "tested against 3.7.0" for 4.x, while `/nerv:status` prints an "in progress" note.
   - R3-width-assertion-dropped: from the earlier slice (`155335d`, PR #60), not this feature. This was a deliberate change; left as is.
+- 2026-10-05: T4 done (route: delegated direct; trigger: 2+ non-trivial files). RED against a stub: `internal/specs` ported cases failed (21 FAIL lines incl. subtests; stub returns empty output and nil error), `internal/atomicfile` Write 3/3 failed, `cmd/nerv` spec-compose tests failed (13 FAIL lines incl. subtests). GREEN after the port. gofmt, go vet, go test ./... clean; hook suites 12/12 and 17/17. `rg sdd-archive-compose` outside odd/ and CHANGELOG now only hits SKILL.md:32 (T6). Slice diff vs bcdaf08: 13 files, +1203/-10 (`size:exception`: faithful port plus tests). Decisions: usage errors exit 2, an unapplied delta or missing input exits 1 (refusal), unwritable output exits 2; the atomic write is a new `atomicfile.Write` (no backup, keeps mode).
 
 ## Next step
 
