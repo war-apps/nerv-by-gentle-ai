@@ -85,6 +85,11 @@ docs/integration.md diagram), then upgrade the local gentle-ai and release.
 
 - 2026-10-05: Slice 3 done (T5, T3, T6, T7; route: delegated direct, one writer). RED: T5 `TestRoles_EveryRoleHasPurposeAndEquivalent` (14 role mismatches), `TestPrint_ModelsRowsCarryPurposeAndEquivalent`, wizard models table test; T7 `TestInstall_GentleAIVersionNote/4.x` lacked "4.x support is in progress"; `TestComposeRefusesRequirementRepeatedWithinOneDeltaSection` (MODIFIED folded silently, ADDED/REMOVED had the wrong reason); `TestWrite_ThroughASymlinkUpdatesTheTargetAndKeepsTheLink` (link replaced by a regular file). The 2.x install case and the wizard "3 or 4" warning test pass on first run (coverage gaps only). gofmt, go vet, go test ./... clean; hook suites 12/12 and 17/17. Remaining `sdd-` hits outside odd/ and CHANGELOG: init.md:94 (historical note that 4.x removed `sdd-init`) and a negative assertion in wizard_test.go. Decisions: "none" equivalent stays the empty string; config.yaml is context, strict_tdd, testing.runner, rules.apply.test_command.
 
+- 2026-10-05: Slice 3 (`461b45f..899383a`, 352+/150-) was assessed against base `f247268` as medium and due (slice_budget_reached). An earlier granted START for the accumulated branch was refused as `stale_target_identity`, because slice 3 commits landed meanwhile; nothing was recorded. The user granted consent again. Native review lineage `review-2af303b8e60736e5`, with the reliability lens, was approved and acknowledged. Advisories:
+  - R3-init-strict-tdd-overwrite-contradiction (WARNING): `init.md` step 5 says that an existing config is untouched and also that an explicit `strict_tdd: true` fails closed to false.
+  - R3-renamed-duplicate-uncovered: there is no test for a repeated RENAMED entry.
+  - R3-symlink-test-nil-deref: the symlink test reads `Mode()` on a nil FileInfo when an error occurs.
+
 ## Next step
 
 Phase 1 is complete locally. Next: PR to `develop` (user decision), then phase 2 (`/nerv:init` without `sdd-init`, Aoba archive without `sdd-archive-compose`, role catalogue `sdd-*` equivalents, orchestrator prose).
