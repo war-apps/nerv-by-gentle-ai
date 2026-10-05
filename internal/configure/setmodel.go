@@ -34,7 +34,10 @@ func SetModel(deps Deps, paths Paths, specs []string) (Result, error) {
 	overrides := config.ReadModelsOverrides(working)
 
 	// Unreadable state means the phases are unknown: skip the check.
-	phaseAssignments, _ := gentleai.PhaseAssignments(paths.State)
+	phaseAssignments, err := gentleai.PhaseAssignments(paths.State)
+	if err != nil {
+		phaseAssignments = nil
+	}
 
 	changes := emptyChanges()
 	warnings := emptyStrings()

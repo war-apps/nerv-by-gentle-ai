@@ -261,6 +261,8 @@ func TestSetModel_FromPhase_StateWarnings(t *testing.T) {
 		{name: "missing phase with readable state warns", state: stateWithPhases, spec: "rei=from:review-risk", wantWarning: true},
 		{name: "present phase does not warn", state: stateWithPhases, spec: "rei=from:jd-judge-b", wantWarning: false},
 		{name: "absent state does not warn", state: "", spec: "rei=from:review-risk", wantWarning: false},
+		{name: "state without assignments does not warn", state: `{"claude_phase_assignments":{}}`, spec: "rei=from:review-risk", wantWarning: false},
+		{name: "malformed state does not warn", state: `{"claude_phase_assignments":{"jd-judge-b":`, spec: "rei=from:review-risk", wantWarning: false},
 	}
 
 	for _, tt := range tests {
