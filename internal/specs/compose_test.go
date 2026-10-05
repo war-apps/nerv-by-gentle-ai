@@ -358,3 +358,61 @@ func TestComposeOutputEndsWithNewline(t *testing.T) {
 		t.Fatalf("composed output does not end with a newline: %q", composed)
 	}
 }
+
+func crlf(s string) string { return strings.ReplaceAll(s, "\n", "\r\n") }
+
+const crlfCanonical = "## Requirements\n\n### Requirement: A\n\nOld A.\n\n### Requirement: B\n\nOld B.\n"
+
+func TestComposeAcceptsCRLFModified(t *testing.T) {
+	got, err := Compose(crlf(crlfCanonical), crlf("## MODIFIED Requirements\n\n### Requirement: A\n\nNew A.\n"))
+	if err != nil {
+		t.Fatalf("Compose() error = %v", err)
+	}
+	want := strings.Replace(crlf(crlfCanonical), "Old A.\r\n\r\n", "New A.\r\n", 1)
+	if got != want {
+		t.Fatalf("got %q, want %q", got, want)
+	}
+}
+
+func TestComposeAcceptsCRLFAdded(t *testing.T) {
+	got, err := Compose(crlf(crlfCanonical), crlf("## ADDED Requirements\n\n### Requirement: C\n\nNew C.\n"))
+	if err != nil {
+		t.Fatalf("Compose() error = %v", err)
+	}
+	want := crlf(crlfCanonical) + crlf("### Requirement: C\n\nNew C.\n")
+	if got != want {
+		t.Fatalf("got %q, want %q", got, want)
+	}
+}
+
+func TestComposeAcceptsCRLFRenamedWithReason(t *testing.T) {
+	got, err := Compose(crlf(crlfCanonical), crlf("## RENAMED Requirements\n\n### Requirement: A → Z\n\n(Reason: clearer)\n"))
+	if err != nil {
+		t.Fatalf("Compose() error = %v", err)
+	}
+	want := strings.Replace(crlf(crlfCanonical), "### Requirement: A\r\n", "### Requirement: Z\r\n", 1)
+	if got != want {
+		t.Fatalf("got %q, want %q", got, want)
+	}
+}
+
+func TestComposeAcceptsCRLFRemovedWithReason(t *testing.T) {
+	got, err := Compose(crlf(crlfCanonical), crlf("## REMOVED Requirements\n\n### Requirement: B\n\n(Reason: gone)\n"))
+	if err != nil {
+		t.Fatalf("Compose() error = %v", err)
+	}
+	want := crlf("## Requirements\n\n### Requirement: A\n\nOld A.\n\n")
+	if got != want {
+		t.Fatalf("got %q, want %q", got, want)
+	}
+}
+
+func TestComposeMatchesNamesAcrossMixedLineEndings(t *testing.T) {
+	got, err := Compose(crlf(crlfCanonical), "## MODIFIED Requirements\n\n### Requirement: B\n\nNew B.\n")
+	if err != nil {
+		t.Fatalf("Compose() error = %v", err)
+	}
+	if !strings.Contains(got, "### Requirement: B\n\nNew B.\n") || !strings.Contains(got, "Old A.\r\n") {
+		t.Fatalf("got %q", got)
+	}
+}

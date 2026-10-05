@@ -52,11 +52,11 @@ func (e *UnappliedDeltaError) Error() string {
 	return fmt.Sprintf("spec-compose: unapplied %s delta for requirement %q: %s", e.Section, e.Requirement, e.Reason)
 }
 
-var specReqHeadingLine = regexp.MustCompile(`(?m)^### Requirement:[ \t]*(.+?)[ \t]*$`)
+var specReqHeadingLine = regexp.MustCompile(`(?m)^### Requirement:[ \t]*(.+?)[ \t\r]*$`)
 var specH2Heading = regexp.MustCompile(`(?m)^## \S`)
-var specDeltaSectionHeading = regexp.MustCompile(`(?m)^## (ADDED|MODIFIED|REMOVED|RENAMED) Requirements[ \t]*$`)
+var specDeltaSectionHeading = regexp.MustCompile(`(?m)^## (ADDED|MODIFIED|REMOVED|RENAMED) Requirements[ \t\r]*$`)
 var specRenameArrow = regexp.MustCompile(`[ \t]*(?:\x{2192}|->)[ \t]*`)
-var specReasonNote = regexp.MustCompile(`(?m)^\(Reason:.+\)[ \t]*$`)
+var specReasonNote = regexp.MustCompile(`(?m)^\(Reason:.+\)[ \t\r]*$`)
 
 type specRequirementBlock struct {
 	Name, Text string
@@ -251,7 +251,11 @@ func renameRequirementHeading(text, newName string) string {
 			return line
 		}
 		replaced = true
-		return "### Requirement: " + newName
+		heading := "### Requirement: " + newName
+		if strings.HasSuffix(line, "\r") {
+			heading += "\r" // keep the heading's own line ending
+		}
+		return heading
 	})
 }
 
