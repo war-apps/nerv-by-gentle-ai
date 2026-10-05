@@ -67,12 +67,14 @@ Branch `feature/require-gentle-ai-v4` from `develop` (`7647996`). This change is
   - 4 `skills/_shared/sdd-*.md` and `_shared/openspec-convention.md` (v3-only, unreferenced)
   - the `PreToolUse` hook `gentle-ai sdd-preflight-hook`, which failed on every Agent call
   - `~/.gentle-ai/state.json` still lists the `sdd-*` phase keys; left untouched.
-- [ ] T10 Require gentle-ai 4.x. The gate accepts only major 4. Messages say "4.x". "Tested against" becomes 4.0.0. The "4.x support is in progress" notes go away (install, `status.md`, README, bench). (route: delegated direct)
+- [x] T10 Require gentle-ai 4.x. The gate accepts only major 4. Messages say "4.x". "Tested against" becomes 4.0.0. The "4.x support is in progress" notes go away (install, `status.md`, README, bench). (route: delegated direct)
 
 ## Acceptance criteria
 
-- `gentle-ai 4.0.0` and `3.7.0` both yield `OK: true`; `2.x` and `5.x` are refused with a message
-  naming the supported majors. Tests prove it.
+- Phase 1: `gentle-ai 4.0.0` and `3.7.0` both yield `OK: true`; `2.x` and `5.x` are refused with a
+  message naming the supported majors. Tests prove it.
+- Phase 3 (T10, supersedes the above): only `4.x` yields `OK: true`; `3.x` is refused with the 4.x
+  requirement and an upgrade hint. Tests prove it.
 - No `sdd-status` call remains outside `odd/`, `CHANGELOG.md`, and phase-2 prose.
 - `go test ./...`, `go vet ./...`, `gofmt -l .` clean; hook test suites unchanged.
 
@@ -130,6 +132,8 @@ Branch `feature/require-gentle-ai-v4` from `develop` (`7647996`). This change is
   - R3-cross-section-conflict-silent: MODIFIED followed by REMOVED of the same name silently drops the modification.
 
 - 2026-10-05: Final stack review `review-4fdd4196d3650bae` (including `0f6aad4`) was approved and acknowledged; no new findings. PRs #61, #62 and #63 were merged to `develop` (`58dc6a1`, `9615ad5`, `7647996`) with CI green.
+
+- 2026-10-05: T10 done on `feature/require-gentle-ai-v4` (breaking, `feat(gentleai)!`, this commit; the hash is in `git log`). The gate accepts only major 4; install, wizard, help, `status.md`, README, CONTRIBUTING, docs and bench say "4.x" and "tested against 4.0.0"; a 3.x install gets the upgrade hint. RED: gentleai major-3 case (OK true, want false); install gate 3.x not refused, 2.x/5.x refusals lacked "NERV requires gentle-ai 4.x"; version line still "in progress; tested against 3.7.0". GREEN: `go test ./...`. The release tooling reads the `!` / `BREAKING CHANGE:` footer and bumps major.
 
 ## Next step
 

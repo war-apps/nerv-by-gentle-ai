@@ -16,7 +16,7 @@ import (
 func baseInstallRunner() *envtest.FakeRunner {
 	return &envtest.FakeRunner{
 		Responses: map[string]envtest.Response{
-			"gentle-ai --version":               {Stdout: "gentle-ai version 3.7.0\n", ExitCode: 0},
+			"gentle-ai --version":               {Stdout: "gentle-ai version 4.0.0\n", ExitCode: 0},
 			"claude plugin uninstall nerv@nerv": {Stdout: "uninstalled\n", ExitCode: 0},
 			"claude plugin install nerv@nerv":   {Stdout: "installed\n", ExitCode: 0},
 			"engram projects list":              {Stdout: "nerv\n", ExitCode: 0},

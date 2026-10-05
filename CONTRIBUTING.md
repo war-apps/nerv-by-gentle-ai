@@ -13,7 +13,7 @@ OpenCode, Codex, and Pi support is out of scope until it lands deliberately.
 
 - Go 1.26+
 - Claude Code CLI
-- gentle-ai 3.x or 4.x, installed and configured (`gentle-ai install`)
+- gentle-ai 4.x, installed and configured (`gentle-ai install`)
 - `actionlint` and `shellcheck` — optional, for linting the workflows and
   bash hooks/scripts locally before pushing
 

@@ -144,9 +144,9 @@ func printPrerequisites(ctx context.Context, deps Deps, out io.Writer) {
 	case prereq.GentleAI.Found && prereq.GentleAI.OK:
 		fmt.Fprintf(out, "gentle-ai      : %s (OK)\n", prereq.GentleAI.Version)
 	case prereq.GentleAI.Found && prereq.GentleAI.Version != "":
-		fmt.Fprintf(out, "gentle-ai      : %s (WARNING: NERV requires major version 3 or 4)\n", prereq.GentleAI.Version)
+		fmt.Fprintf(out, "gentle-ai      : %s (WARNING: NERV requires gentle-ai 4.x)\n", prereq.GentleAI.Version)
 	default:
-		fmt.Fprintln(out, "gentle-ai      : NOT FOUND on PATH (NERV requires gentle-ai 3.x or 4.x)")
+		fmt.Fprintln(out, "gentle-ai      : NOT FOUND on PATH (NERV requires gentle-ai 4.x)")
 	}
 
 	fmt.Fprintf(out, "engram         : %s\n", toolLine(prereq.Engram.Found, "found on PATH (optional)", "not found on PATH (optional)"))
