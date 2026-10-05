@@ -77,8 +77,8 @@ Expected, in order:
    orchestrator collected (never estimated), the two commits and no PR
    slices.
 9. `git log --oneline` shows the RED commit before the GREEN commit.
-10. `gentle-ai sdd-status subtract-method --cwd <repo> --json` succeeds with
-    the `nerv/` folder present.
+10. `openspec/changes/subtract-method/` holds the gentle-ai-owned files
+    with the `nerv/` folder present, and `/nerv:status` lists the change.
 
 Interactive variant: same request without the pre-answered context. Expected
 extra gates: the grouped preflight question (task, worktree, branch, base),
@@ -206,9 +206,8 @@ Expected, in order:
     `deviation`, or `ruling_issued` entries are expected on this
     straightforward change (nothing escalates, nothing deviates, no
     ruling is needed).
-17. `gentle-ai sdd-status multiply-and-ci --cwd <repo> --json` succeeds,
-    reporting the change with all gentle-ai-owned files present and the
-    `nerv/` folder alongside them.
+17. `/nerv:status` lists `multiply-and-ci` with all gentle-ai-owned files
+    present and the `nerv/` folder alongside them.
 
 Interactive variant: same request without the pre-answered context.
 Expected extra gates beyond J1's interactive variant: the corner-case

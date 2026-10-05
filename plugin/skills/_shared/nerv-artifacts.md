@@ -3,8 +3,8 @@
 One definition per NERV-owned artifact, referenced by every agent instead of
 repeating the shape inline. gentle-ai-owned filenames (`state.yaml`,
 `exploration.md`, `proposal.md`, `specs/{domain}/spec.md`, `design.md`,
-`tasks.md`) keep gentle-ai's own shape and stay where `gentle-ai sdd-status`
-expects them; only NERV-owned files are defined here. All NERV files live
+`tasks.md`) keep gentle-ai's own shape and stay where the
+change directory layout expects them; only NERV-owned files are defined here. All NERV files live
 under `openspec/changes/{change}/nerv/`, except `state.yaml` which lives at
 `openspec/changes/{change}/state.yaml` (gentle-ai's own file, extended with
 one NERV-owned key). Engram topic key for every artifact:
@@ -267,8 +267,8 @@ FULL adds these event types to the same append-only log, same shape
 
 ## gentle-ai-owned artifacts authored by NERV roles
 
-These keep gentle-ai's own filenames, location, and shape — `gentle-ai
-sdd-status` depends on it — but are authored by NERV roles, never by the
+These keep gentle-ai's own filenames, location, and shape — status and resume
+read them in place — but are authored by NERV roles, never by the
 `sdd-propose`/`spec`/`design`/`tasks` agents:
 
 - `exploration.md` — Ritsuko (MODE: intel). Full FULL-path exploration;

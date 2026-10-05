@@ -30,10 +30,10 @@ docs/integration.md diagram), then upgrade the local gentle-ai and release.
 
 ## Tasks
 
-- [x] T1 (commit PENDING_T1) Version gate accepts majors 3 and 4: `internal/gentleai`, install refusal/warnings,
+- [x] T1 (commit 484f00d) Version gate accepts majors 3 and 4: `internal/gentleai`, install refusal/warnings,
   wizard, `cmd/nerv/install.go` help, `plugin/commands/status.md` step, README, CONTRIBUTING,
   `docs/commands.md` (route: delegated direct; trigger: 2+ non-trivial files).
-- [ ] T2 Drop `gentle-ai sdd-status`: `plugin/commands/status.md`, `references/resume.md`,
+- [x] T2 (commit PENDING_T2) Drop `gentle-ai sdd-status`: `plugin/commands/status.md`, `references/resume.md`,
   `_shared/nerv-artifacts.md`, `bench/journeys.md` read the change artifacts directly
   (route: delegated direct, same writer).
 
@@ -54,3 +54,4 @@ docs/integration.md diagram), then upgrade the local gentle-ai and release.
 
 - 2026-10-05: branch created, baseline green except the known environmental failure above.
 - 2026-10-05: T1 done. RED: `TestCheckPreflight_MajorGate/major_4` got OK:false want OK:true; `TestInstall_RequireGentleAI_MajorGate/4.x_passes` refused 4.0.0. GREEN after the gate change; gofmt, go vet, go test clean.
+- 2026-10-05: T2 done. Status, resume, nerv-artifacts and bench journeys read change artifacts directly; remaining `sdd-status` mentions are phase-2 only (SKILL.md:32, docs/integration.md).

@@ -34,8 +34,9 @@ short and imperative — this is a status check, not a narrative.
    Never block on either case.
 
 4. **Active changes.** If `openspec/changes/` exists in the repo, for each
-   active change directory run `gentle-ai sdd-status --json` and list it
-   alongside which NERV-owned artifacts are present under that change's
+   active change directory read its directory and list which of `proposal.md`, `specs/`,
+   `design.md` and `tasks.md` exist, plus the checked state of `tasks.md`
+   (`[x]` of total), alongside which NERV-owned artifacts are present under that change's
    `nerv/` subfolder (for example `nerv/run-summary.md`). If no changes
    exist, say so plainly. For each active change, also read
    `nerv/.orchestrator.lock` if present (read-only — never refresh or
