@@ -91,7 +91,7 @@ flowchart LR
         R1["sdd-init"]
         R2["skill-registry refresh"]
         R3["sdd-status / sdd-continue"]
-        R4["sdd-archive-compose"]
+        R4["nerv spec-compose"]
         R5["review assess/status/start/mode + lenses + refuter"]
         R6["work-unit-commits"]
         R7["chained-pr"]
@@ -180,7 +180,7 @@ flowchart TB
     S4 --> S5{"NOW set empty?"}
     S5 -- no --> S6["Fix routing via the work-unit cycle, re-audit on the fix delta (cap 2)"]
     S6 --> S1
-    S5 -- yes --> S7["Docs (ritsuko), archive (aoba + sdd-archive-compose), curate (fuyutsuki)"]
+    S5 -- yes --> S7["Docs (ritsuko), archive (aoba + nerv spec-compose), curate (fuyutsuki)"]
     S7 --> T["Run summary (aoba)"]
     T --> U["Close (hyuga tracker close)"]
 ```

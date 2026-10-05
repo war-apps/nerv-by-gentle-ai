@@ -317,7 +317,7 @@ Expected, in order:
     `nerv/agent-config.md` (every launch across the whole run, audit
     passes included).
 11. `nerv:aoba` (Archive duty) composes specs via
-    `gentle-ai sdd-archive-compose` (one call per delta spec) and moves the
+    `nerv spec-compose` (one call per delta spec) and moves the
     change with `git mv` to
     `openspec/changes/archive/YYYY-MM-DD-divide-audit/`, `nerv/` folder
     included; the commit `docs: archive change divide-audit` appears in

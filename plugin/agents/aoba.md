@@ -225,7 +225,7 @@ NERV never launches gentle-ai's `sdd-archive` agent — its dispatcher
 not run. Aoba archives the change mechanically instead:
 
 1. For every delta spec `openspec/changes/{change}/specs/{domain}/spec.md`,
-   run `gentle-ai sdd-archive-compose --canonical
+   run `nerv spec-compose --canonical
    openspec/specs/{domain}/spec.md --delta
    openspec/changes/{change}/specs/{domain}/spec.md --output
    openspec/specs/{domain}/spec.md`. When the canonical file does not exist

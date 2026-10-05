@@ -62,7 +62,7 @@
   interactive AskUserQuestion preflight Nerv by Gentle-AI doesn't run). Nerv by
   Gentle-AI archives
   mechanically instead — Aoba runs `git mv` plus
-  `gentle-ai sdd-archive-compose` per delta spec.
+  `nerv spec-compose` per delta spec.
 - **A launch dies under memory pressure.** The protocol retries the launch
   once. If the session itself is interrupted, resuming is safe: the
   orchestrator lock and its heartbeat let a resume session detect and take
