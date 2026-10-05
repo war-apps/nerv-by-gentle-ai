@@ -95,6 +95,12 @@ docs/integration.md diagram), then upgrade the local gentle-ai and release.
   - `269b552`: adds the RENAMED duplicate test and splits the symlink test's error checks. The RENAMED case was mutation-checked: it fails when RENAMED is dropped from the repeat check.
   - Checks: gofmt, vet, go test and the hook suites are green.
 
+- 2026-10-05: The stop hook surfaced the accumulated branch (3 slices plus the fixes). The user granted consent. Native review lineage `review-c2436de7e432cc0c` was approved (reliability lens) and acknowledged. New advisories, all in the ported `nerv spec-compose` (inherited from upstream unless noted):
+  - R3-crlf-specs-refused-misleadingly (WARNING): CRLF deltas are refused as "no sections" and CRLF names capture `\r`. Relevant because the team works on Windows.
+  - R3-delta-parse-ignores-fences (WARNING): delta parsing splits on requirement headings inside fenced samples.
+  - R3-cross-section-conflict-unchecked: the same name in MODIFIED and REMOVED is accepted silently.
+  - R3-dangling-symlink-replaced: a dangling `--output` link becomes a regular file (from slice 3's symlink fix).
+
 ## Next step
 
 Phase 1 is complete locally. Next: PR to `develop` (user decision), then phase 2 (`/nerv:init` without `sdd-init`, Aoba archive without `sdd-archive-compose`, role catalogue `sdd-*` equivalents, orchestrator prose).
