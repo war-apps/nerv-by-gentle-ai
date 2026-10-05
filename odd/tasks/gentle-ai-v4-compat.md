@@ -90,6 +90,11 @@ docs/integration.md diagram), then upgrade the local gentle-ai and release.
   - R3-renamed-duplicate-uncovered: there is no test for a repeated RENAMED entry.
   - R3-symlink-test-nil-deref: the symlink test reads `Mode()` on a nil FileInfo when an error occurs.
 
+- 2026-10-05: Slice 3 advisories fixed, on user request.
+  - `71d9c75`: `/nerv:init` never rewrites an existing `openspec/config.yaml`. It warns when an existing `strict_tdd: true` cannot be honored.
+  - `269b552`: adds the RENAMED duplicate test and splits the symlink test's error checks. The RENAMED case was mutation-checked: it fails when RENAMED is dropped from the repeat check.
+  - Checks: gofmt, vet, go test and the hook suites are green.
+
 ## Next step
 
 Phase 1 is complete locally. Next: PR to `develop` (user decision), then phase 2 (`/nerv:init` without `sdd-init`, Aoba archive without `sdd-archive-compose`, role catalogue `sdd-*` equivalents, orchestrator prose).
