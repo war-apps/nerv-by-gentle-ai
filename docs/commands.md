@@ -216,7 +216,8 @@ Merges a change's delta spec into the canonical spec it amends. It applies
 `RENAMED`, `MODIFIED`, `REMOVED`, then `ADDED` requirements in that order
 and leaves every unrelated byte of the canonical spec untouched. Names must
 match exactly; a `RENAMED` or `REMOVED` entry needs a `(Reason: ...)` line.
-An unmatched or duplicate name, an empty delta, or a canonical spec with no
+An unmatched name, a name repeated within one delta section, an `ADDED`
+name that already exists, an empty delta, or a canonical spec with no
 requirements is an error: nothing is written, stderr names the section and
 requirement, and the exit code is 1 (2 for a usage or I/O error).
 
