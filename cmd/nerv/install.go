@@ -22,7 +22,7 @@ it then runs the interactive setup wizard when stdin is a terminal, or
 prints the "run nerv configure" hint otherwise.
 
 Flags:
-  --require-gentle-ai   Fail (exit 1) when gentle-ai is missing or not 3.x
+  --require-gentle-ai   Fail (exit 1) when gentle-ai is missing or not 3.x or 4.x
   --no-skills           Skip installing skills
   --no-configure        Skip the closing wizard/hint entirely
 `

@@ -50,7 +50,7 @@ type Deps struct {
 
 // Options are Install's command-line switches.
 type Options struct {
-	// RequireGentleAI turns a missing or non-3.x gentle-ai into a
+	// RequireGentleAI turns a missing or non-3.x/4.x gentle-ai into a
 	// RefusalError instead of a warning.
 	RequireGentleAI bool
 	// NoSkills skips the skills-install step entirely.

@@ -72,7 +72,7 @@ func preflightGentleAI(ctx context.Context, deps Deps, require bool) error {
 
 	switch {
 	case !preflight.Found:
-		fmt.Fprintln(deps.Stdout, "Warning: gentle-ai not found on PATH; NERV requires gentle-ai 3.x (https://github.com/Gentleman-Programming/gentle-ai)")
+		fmt.Fprintln(deps.Stdout, "Warning: gentle-ai not found on PATH; NERV requires gentle-ai 3.x or 4.x (https://github.com/Gentleman-Programming/gentle-ai)")
 		if require {
 			return &RefusalError{Err: errors.New("gentle-ai not found on PATH")}
 		}
@@ -82,9 +82,9 @@ func preflightGentleAI(ctx context.Context, deps Deps, require bool) error {
 			return &RefusalError{Err: errors.New("gentle-ai --version returned an unparseable value")}
 		}
 	case !preflight.OK:
-		fmt.Fprintf(deps.Stdout, "Warning: NERV requires gentle-ai 3.x; found %s\n", preflight.Version)
+		fmt.Fprintf(deps.Stdout, "Warning: NERV requires gentle-ai 3.x or 4.x; found %s\n", preflight.Version)
 		if require {
-			return &RefusalError{Err: fmt.Errorf("NERV requires gentle-ai 3.x; found %s", preflight.Version)}
+			return &RefusalError{Err: fmt.Errorf("NERV requires gentle-ai 3.x or 4.x; found %s", preflight.Version)}
 		}
 	default:
 		fmt.Fprintf(deps.Stdout, "gentle-ai version : %s (tested against 3.7.0)\n", preflight.Version)

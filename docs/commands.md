@@ -136,7 +136,7 @@ environment variables (`NERV_CHANNEL`, `NERV_INSTALL_DIR`,
 Usage: nerv install [flags]
 
 Flags:
-  --require-gentle-ai   Fail (exit 1) when gentle-ai is missing or not 3.x
+  --require-gentle-ai   Fail (exit 1) when gentle-ai is missing or not 3.x or 4.x
   --no-skills           Skip installing skills
   --no-configure        Skip the closing wizard/hint entirely
 ```

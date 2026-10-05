@@ -1,4 +1,4 @@
-// Package gentleai detects the gentle-ai CLI (presence, version, the 3.x
+// Package gentleai detects the gentle-ai CLI (presence, version, the 3.x/4.x
 // preflight rule) and reads its claude_phase_assignments state, without
 // ever touching a real process or the real home directory outside a
 // caller-supplied env.Runner / path.
@@ -22,8 +22,8 @@ import (
 // Preflight is the result of checking gentle-ai's presence and version.
 // Found means "gentle-ai --version" produced any non-blank output at all
 // — even when that output has no parseable MAJOR.MINOR.PATCH token, in
-// which case Version stays empty. OK means the parsed major version is 3
-// (NERV requires gentle-ai 3.x; tested against 3.7.0).
+// which case Version stays empty. OK means the parsed major version is 3 or 4
+// (NERV requires gentle-ai 3.x or 4.x; tested against 3.7.0, 4.x in progress).
 type Preflight struct {
 	Found   bool
 	Version string
@@ -48,7 +48,7 @@ var versionRe = regexp.MustCompile(`\d+\.\d+\.\d+`)
 
 // CheckPreflight runs "gentle-ai --version" through runner and computes
 // the Preflight result: Found, its parsed Version (when parseable), and
-// whether it satisfies NERV's 3.x requirement.
+// whether it satisfies NERV's 3.x or 4.x requirement.
 func CheckPreflight(ctx context.Context, runner env.Runner) Preflight {
 	line, found := firstOutputLine(ctx, runner)
 	if !found {
@@ -61,7 +61,7 @@ func CheckPreflight(ctx context.Context, runner env.Runner) Preflight {
 	}
 
 	major := majorOf(match)
-	return Preflight{Found: true, Version: match, OK: major == 3}
+	return Preflight{Found: true, Version: match, OK: major == 3 || major == 4}
 }
 
 func majorOf(semver string) int {
