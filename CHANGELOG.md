@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.0] - 2026-10-05
+
+### Breaking
+- gentleai: require gentle-ai 4.x (ebdc5ba)
+  - gentle-ai 4.0.0 retired SDD/OpenSpec, and NERV no longer depends on it. gentle-ai 3.x is
+    refused by `nerv install --require-gentle-ai` and flagged as unsupported elsewhere.
+  - To upgrade, run `go install github.com/gentleman-programming/gentle-ai/v4/cmd/gentle-ai@latest`
+    (or `brew upgrade gentle-ai`), then `gentle-ai sync`. On go installs, `gentle-ai upgrade` from
+    3.x cannot reach 4.x.
+  - The v4 sync leaves the v3 `~/.claude/skills/sdd-*`, `~/.claude/agents/sdd-*.md` and
+    `~/.claude/commands/gentle-sdd-*.md` in place. It also keeps a `PreToolUse` hook calling the
+    removed `gentle-ai sdd-preflight-hook`. NERV does not use any of them, so they are safe to
+    remove.
+
+### Added
+- cli: add nerv spec-compose ported from gentle-ai (20d00bc). It replaces
+  `gentle-ai sdd-archive-compose` for Aoba's archive merges.
+- plugin: bootstrap openspec config in /nerv:init without sdd-init (366fcbd)
+
+### Changed
+- config: map role equivalents to gentle-ai v4 agents (dcbdacb)
+
+### Fixed
+- plugin: read change artifacts instead of sdd-status (c38f182)
+- specs: accept CRLF headings in spec-compose (47babd0)
+- specs: refuse a requirement repeated within one delta section (b1f23f1)
+- atomicfile: write through a symlink to its target (bb29e87)
+- plugin: never rewrite an existing openspec config in /nerv:init (45f69f0)
+- specs: ignore fenced headings when parsing a delta (7f217c4)
+
 ## [1.0.0] - 2026-10-02
 
 ### Breaking
