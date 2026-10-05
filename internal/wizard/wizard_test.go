@@ -1019,14 +1019,17 @@ func TestRun_ModelsSection_PhasePickerListsEquivalentFirst(t *testing.T) {
 }
 
 // A role whose gentle-ai equivalent is a native review agent (not a
-// claude_phase_assignments key) gets no phase hint: nothing is marked
-// (equivalent) and no review-* agent is offered as a phase.
+// claude_phase_assignments key) gets no phase hint: even when that agent's
+// name is a state key, nothing is marked (equivalent) and the phases stay in
+// sorted order instead of listing it first.
 func TestRun_ModelsSection_PhasePickerMarksNothingForReviewAgentEquivalent(t *testing.T) {
 	root := t.TempDir()
 	home := t.TempDir()
 	writeFixture(t, filepath.Join(root, "nerv.yaml"))
 	paths := testPaths(root, home)
-	state := `{"claude_phase_assignments":{"jd-judge-a":{"model":"opus","effort":"high"},"jd-judge-b":{"model":"sonnet","effort":"medium"}}}`
+	// review-risk is present as a key so that a hint driven by the
+	// equivalent (instead of FromPhase) would surface it first and marked.
+	state := `{"claude_phase_assignments":{"jd-judge-a":{"model":"opus","effort":"high"},"jd-judge-b":{"model":"sonnet","effort":"medium"},"review-risk":{"model":"haiku","effort":"low"}}}`
 	if err := os.MkdirAll(filepath.Dir(paths.State), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -1048,11 +1051,6 @@ func TestRun_ModelsSection_PhasePickerMarksNothingForReviewAgentEquivalent(t *te
 	}
 	if strings.Contains(picker, "(equivalent)") {
 		t.Errorf("phase picker marks an equivalent for kaji-security:\n%s", picker)
-	}
-	for _, prefix := range []string{"  1) ", "  2) "} {
-		if line := phaseLine(out.String(), prefix); strings.Contains(line, "review-") {
-			t.Errorf("phase line %q offers a native review agent", line)
-		}
 	}
 	if first := phaseLine(out.String(), "  1) "); !strings.Contains(first, "jd-judge-a") {
 		t.Errorf("first phase = %q, want jd-judge-a (sorted order, no hint)", first)
