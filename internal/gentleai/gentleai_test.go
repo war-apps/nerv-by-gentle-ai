@@ -22,7 +22,7 @@ func TestCheckPreflight_MajorGate(t *testing.T) {
 		output string
 		want   gentleai.Preflight
 	}{
-		{"major 3", "gentle-ai 3.7.0\n", gentleai.Preflight{Found: true, Version: "3.7.0", OK: true}},
+		{"major 3", "gentle-ai 3.7.0\n", gentleai.Preflight{Found: true, Version: "3.7.0", OK: false}},
 		{"major 4", "gentle-ai 4.0.0\n", gentleai.Preflight{Found: true, Version: "4.0.0", OK: true}},
 		{"major 4 with version word", "gentle-ai version 4.0.0\n", gentleai.Preflight{Found: true, Version: "4.0.0", OK: true}},
 		{"major 2", "gentle-ai 2.1.0\n", gentleai.Preflight{Found: true, Version: "2.1.0", OK: false}},
@@ -125,7 +125,7 @@ func TestPhaseAssignments_MalformedFileErrors(t *testing.T) {
 
 func TestPrerequisites_ComputesAllThreeTools(t *testing.T) {
 	runner := &envtest.FakeRunner{Responses: map[string]envtest.Response{
-		"gentle-ai --version": {Stdout: "gentle-ai 3.7.0\n"},
+		"gentle-ai --version": {Stdout: "gentle-ai 4.0.0\n"},
 	}}
 	lookPath := func(name string) (string, error) {
 		if name == "engram" {
@@ -136,7 +136,7 @@ func TestPrerequisites_ComputesAllThreeTools(t *testing.T) {
 
 	got := gentleai.Prerequisites(context.Background(), runner, lookPath)
 
-	if !got.GentleAI.Found || got.GentleAI.Version != "3.7.0" || !got.GentleAI.OK {
+	if !got.GentleAI.Found || got.GentleAI.Version != "4.0.0" || !got.GentleAI.OK {
 		t.Fatalf("Prerequisites().GentleAI = %+v, unexpected", got.GentleAI)
 	}
 	if !got.Engram.Found {

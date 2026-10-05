@@ -1018,8 +1018,8 @@ func TestRun_ModelsSection_PhasePickerListsEquivalentFirst(t *testing.T) {
 	}
 }
 
-// A gentle-ai major outside 3 or 4 is warned about in the prerequisites
-// block, and the warning names both supported majors.
+// A gentle-ai major other than 4 is warned about in the prerequisites
+// block, and the warning names the required major.
 func TestRun_Prerequisites_UnsupportedMajorWarnsAndNamesSupportedMajors(t *testing.T) {
 	root := t.TempDir()
 	home := t.TempDir()
@@ -1033,8 +1033,8 @@ func TestRun_Prerequisites_UnsupportedMajorWarnsAndNamesSupportedMajors(t *testi
 	var out bytes.Buffer
 	_, _ = wizard.Run(deps, strings.NewReader(""), &out, opts) // EOF aborts after the prerequisites block
 
-	if line := lineWith(out.String(), "gentle-ai      :"); !strings.Contains(line, "2.9.0") || !strings.Contains(line, "WARNING: NERV requires major version 3 or 4") {
-		t.Errorf("gentle-ai line = %q, want a warning naming major version 3 or 4; output:\n%s", line, out.String())
+	if line := lineWith(out.String(), "gentle-ai      :"); !strings.Contains(line, "2.9.0") || !strings.Contains(line, "WARNING: NERV requires gentle-ai 4.x") {
+		t.Errorf("gentle-ai line = %q, want a warning naming gentle-ai 4.x; output:\n%s", line, out.String())
 	}
 }
 

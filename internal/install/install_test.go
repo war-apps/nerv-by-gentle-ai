@@ -83,7 +83,7 @@ func seedInstalledPlugins(t *testing.T, home, cachedVersion string) {
 func baseRunner() *envtest.FakeRunner {
 	return &envtest.FakeRunner{
 		Responses: map[string]envtest.Response{
-			"gentle-ai --version":               {Stdout: "gentle-ai version 3.7.0\n", ExitCode: 0},
+			"gentle-ai --version":               {Stdout: "gentle-ai version 4.0.0\n", ExitCode: 0},
 			"claude plugin uninstall nerv@nerv": {Stdout: "uninstalled\n", ExitCode: 0},
 			"claude plugin install nerv@nerv":   {Stdout: "installed\n", ExitCode: 0},
 			"engram projects list":              {Stdout: "nerv\n", ExitCode: 0},
@@ -219,7 +219,7 @@ func TestInstall_RequireGentleAI_MajorGate(t *testing.T) {
 		version string
 		refused bool
 	}{
-		{"3.x passes", "3.7.0", false},
+		{"3.x refused", "3.7.0", true},
 		{"4.x passes", "4.0.0", false},
 		{"2.x refused", "2.9.0", true},
 		{"5.x refused", "5.0.0", true},
@@ -245,40 +245,50 @@ func TestInstall_RequireGentleAI_MajorGate(t *testing.T) {
 			if !errors.As(err, &refusal) {
 				t.Fatalf("error = %v (%T), want *install.RefusalError for gentle-ai %s", err, err, tt.version)
 			}
-			if !strings.Contains(err.Error(), "3.x or 4.x") {
-				t.Errorf("refusal %q does not name the supported majors", err)
+			if !strings.Contains(err.Error(), "NERV requires gentle-ai 4.x; found "+tt.version) {
+				t.Errorf("refusal %q does not state the 4.x requirement", err)
+			}
+			if strings.Contains(err.Error(), "3.x or 4.x") {
+				t.Errorf("refusal %q still names 3.x as supported", err)
 			}
 		})
 	}
 }
 
 func TestInstall_GentleAIVersionNote(t *testing.T) {
-	tests := []struct {
-		name, version string
-		want, absent  string
-	}{
-		{"3.x states the tested version", "3.7.0", "tested against 3.7.0", "4.x support is in progress"},
-		{"4.x prints the in-progress note", "4.0.0", "4.x support is in progress", ""},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			home := t.TempDir()
-			runner := baseRunner()
-			runner.Responses["gentle-ai --version"] = envtest.Response{Stdout: "gentle-ai version " + tt.version + "\n"}
-			seedInstalledPlugins(t, home, pluginVersion(t))
-			var stdout bytes.Buffer
-			deps := install.Deps{Home: home, FS: nerv.PluginFS(), Runner: runner, Now: fixedNow, LookPath: lookPathAll, Stdout: &stdout}
+	home := t.TempDir()
+	runner := baseRunner()
+	runner.Responses["gentle-ai --version"] = envtest.Response{Stdout: "gentle-ai version 4.0.0\n"}
+	seedInstalledPlugins(t, home, pluginVersion(t))
+	var stdout bytes.Buffer
+	deps := install.Deps{Home: home, FS: nerv.PluginFS(), Runner: runner, Now: fixedNow, LookPath: lookPathAll, Stdout: &stdout}
 
-			if err := install.Install(context.Background(), deps, install.Options{RequireGentleAI: true, NoSkills: true}); err != nil {
-				t.Fatalf("Install() error = %v", err)
-			}
-			if !strings.Contains(stdout.String(), tt.want) {
-				t.Errorf("output lacks %q:\n%s", tt.want, stdout.String())
-			}
-			if tt.absent != "" && strings.Contains(stdout.String(), tt.absent) {
-				t.Errorf("output must not contain %q:\n%s", tt.absent, stdout.String())
-			}
-		})
+	if err := install.Install(context.Background(), deps, install.Options{RequireGentleAI: true, NoSkills: true}); err != nil {
+		t.Fatalf("Install() error = %v", err)
+	}
+	if !strings.Contains(stdout.String(), "gentle-ai version : 4.0.0 (tested against 4.0.0)") {
+		t.Errorf("output lacks the tested-against line:\n%s", stdout.String())
+	}
+	if strings.Contains(stdout.String(), "in progress") {
+		t.Errorf("output must not contain the in-progress note:\n%s", stdout.String())
+	}
+}
+
+func TestInstall_GentleAI3x_UpgradeHint(t *testing.T) {
+	home := t.TempDir()
+	runner := baseRunner()
+	runner.Responses["gentle-ai --version"] = envtest.Response{Stdout: "gentle-ai version 3.7.0\n"}
+	seedInstalledPlugins(t, home, pluginVersion(t))
+	var stdout bytes.Buffer
+	deps := install.Deps{Home: home, FS: nerv.PluginFS(), Runner: runner, Now: fixedNow, LookPath: lookPathAll, Stdout: &stdout}
+
+	if err := install.Install(context.Background(), deps, install.Options{NoSkills: true}); err != nil {
+		t.Fatalf("Install() error = %v, want a warning only", err)
+	}
+	for _, want := range []string{"NERV requires gentle-ai 4.x; found 3.7.0", "go install github.com/gentleman-programming/gentle-ai/v4/cmd/gentle-ai@latest", "brew upgrade gentle-ai", "gentle-ai sync"} {
+		if !strings.Contains(stdout.String(), want) {
+			t.Errorf("output lacks %q:\n%s", want, stdout.String())
+		}
 	}
 }
 

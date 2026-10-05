@@ -17,7 +17,7 @@ var _ env.Runner = (*envtest.FakeRunner)(nil)
 func TestFakeRunner_ReturnsScriptedResponseByExactCommand(t *testing.T) {
 	runner := &envtest.FakeRunner{
 		Responses: map[string]envtest.Response{
-			"gentle-ai --version": {Stdout: "gentle-ai 3.7.0\n", ExitCode: 0},
+			"gentle-ai --version": {Stdout: "gentle-ai 4.0.0\n", ExitCode: 0},
 		},
 	}
 
@@ -25,7 +25,7 @@ func TestFakeRunner_ReturnsScriptedResponseByExactCommand(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Run() error = %v", err)
 	}
-	if exitCode != 0 || stdout != "gentle-ai 3.7.0\n" {
+	if exitCode != 0 || stdout != "gentle-ai 4.0.0\n" {
 		t.Fatalf("Run() = (%q, _, %d), want scripted response", stdout, exitCode)
 	}
 }
