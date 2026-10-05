@@ -195,6 +195,13 @@ func TestComposeRefusesRequirementRepeatedWithinOneDeltaSection(t *testing.T) {
 			wantSection: "REMOVED",
 			wantReq:     "Widget Expiration",
 		},
+		{
+			name: "RENAMED repeats a rename",
+			delta: "## RENAMED Requirements\n\n### Requirement: Widget Expiration → Widget Retention\n\n(Reason: a)\n\n" +
+				"### Requirement: Widget Expiration → Widget Retention\n\n(Reason: b)\n",
+			wantSection: "RENAMED",
+			wantReq:     "Widget Expiration → Widget Retention",
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

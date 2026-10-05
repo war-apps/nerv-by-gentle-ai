@@ -201,15 +201,22 @@ func TestWrite_ThroughASymlinkUpdatesTheTargetAndKeepsTheLink(t *testing.T) {
 	}
 
 	info, err := os.Lstat(link)
-	if err != nil || info.Mode()&os.ModeSymlink == 0 {
-		t.Fatalf("link was replaced by a regular file (lstat err = %v, mode = %v)", err, info.Mode())
+	if err != nil {
+		t.Fatalf("Lstat(link): %v", err)
+	}
+	if info.Mode()&os.ModeSymlink == 0 {
+		t.Fatalf("link was replaced by a regular file (mode = %v)", info.Mode())
 	}
 	got, _ := os.ReadFile(target)
 	if string(got) != "new\n" {
 		t.Errorf("target content = %q, want %q", got, "new\n")
 	}
-	if tinfo, err := os.Stat(target); err != nil || tinfo.Mode().Perm() != 0o640 {
-		t.Errorf("target mode = %v (err %v), want the existing 0640", tinfo.Mode().Perm(), err)
+	tinfo, err := os.Stat(target)
+	if err != nil {
+		t.Fatalf("Stat(target): %v", err)
+	}
+	if tinfo.Mode().Perm() != 0o640 {
+		t.Errorf("target mode = %v, want the existing 0640", tinfo.Mode().Perm())
 	}
 }
 
