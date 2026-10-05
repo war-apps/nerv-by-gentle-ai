@@ -57,6 +57,12 @@ docs/integration.md diagram), then upgrade the local gentle-ai and release.
 - 2026-10-05: T2 done. Status, resume, nerv-artifacts and bench journeys read change artifacts directly; remaining `sdd-status` mentions are phase-2 only (SKILL.md:32, docs/integration.md).
 - 2026-10-05: RDD assess over 5b43239..8b61a5d (committed-only): risk medium, review_due false (under_budget, 216 authored lines); review stays pending in the slice. Parent spot check: `go test ./internal/gentleai/ ./internal/install/ -count=1` ok.
 
+- 2026-10-05: The stop hook surfaced the unreviewed slice (base `2db2c5c`, which also contains the earlier `155335d`/`a79d711`/`da75102` commits). The user granted consent. The native review ran one lens, reliability, and was approved. Lineage `review-bac6cb562d314407` was acknowledged and its authority burned. Advisory findings, all non-blocking:
+  - R3-v4-gate-activates-unmigrated-paths (WARNING): on 4.x the preflight reports OK even though `/nerv:init` and the Aoba archive still call removed SDD commands. The CLI prints no warning. Phase 2 closes this; an interim install/wizard note is an option.
+  - R3-install-gate-cases-incomplete: the install-level table lacks a 2.x case, and the wizard's "3 or 4" warning text is untested.
+  - R3-status-4x-note-not-mirrored: install still prints "tested against 3.7.0" for 4.x, while `/nerv:status` prints an "in progress" note.
+  - R3-width-assertion-dropped: from the earlier slice (`155335d`, PR #60), not this feature. This was a deliberate change; left as is.
+
 ## Next step
 
 Phase 1 is complete locally. Next: PR to `develop` (user decision), then phase 2 (`/nerv:init` without `sdd-init`, Aoba archive without `sdd-archive-compose`, role catalogue `sdd-*` equivalents, orchestrator prose).
