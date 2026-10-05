@@ -118,10 +118,12 @@ overwrites silently, and bootstraps `openspec/` and the skill registry itself.
      `dotnet test`, run from the repo root) covers every in-scope project.
      Otherwise write `strict_tdd: false`, set `testing.runner` and
      `rules.apply.test_command` to the single command when there is one (or
-     `none`), and tell the user why. An explicit `strict_tdd: false` already
-     present, from the user or an earlier file, is preserved; an explicit
-     `true` is kept only when that workspace-level command exists, else it
-     fails closed to `false` with an explanation.
+     `none`), and tell the user why. These rules decide only the values of a
+     new file. When `openspec/config.yaml` already exists, never rewrite it:
+     if it holds `strict_tdd: true` but no workspace-level command covers
+     every in-scope project, leave the file as is and warn the user that
+     strict TDD cannot be honored until they add such a command or set
+     `strict_tdd: false` themselves.
    - Then run `gentle-ai skill-registry refresh --cwd <repo>` to write
      `.atl/skill-registry.md`. If `gentle-ai` is not installed, say so and
      skip only this sub-step.
