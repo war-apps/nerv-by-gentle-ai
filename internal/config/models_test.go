@@ -182,6 +182,54 @@ func TestModelTable_GroupC(t *testing.T) {
 	})
 }
 
+func TestModelTable_FromPhaseResolution(t *testing.T) {
+	defaults := map[string]config.ModelOverride{
+		"rei": {Model: "sonnet", Effort: "medium"},
+	}
+
+	tests := []struct {
+		name             string
+		from             string
+		phaseAssignments map[string]config.PhaseAssignment
+		want             config.ModelRow
+	}{
+		{
+			name:             "missing phase with known assignments is flagged and falls back to plugin default",
+			from:             "review-risk",
+			phaseAssignments: map[string]config.PhaseAssignment{"jd-judge-b": {Model: "opus", Effort: "xhigh"}},
+			want:             config.ModelRow{Role: "rei", Model: "sonnet", Effort: "medium", Source: "gentle-ai:review-risk (missing; plugin default)"},
+		},
+		{
+			name:             "present phase resolves to its assignment",
+			from:             "jd-judge-b",
+			phaseAssignments: map[string]config.PhaseAssignment{"jd-judge-b": {Model: "opus", Effort: "xhigh"}},
+			want:             config.ModelRow{Role: "rei", Model: "opus", Effort: "xhigh", Source: "gentle-ai:jd-judge-b"},
+		},
+		{
+			name:             "unknown assignments (nil) keep the unflagged source",
+			from:             "review-risk",
+			phaseAssignments: nil,
+			want:             config.ModelRow{Role: "rei", Model: "sonnet", Effort: "medium", Source: "gentle-ai:review-risk"},
+		},
+		{
+			name:             "unknown assignments (absent state, empty map) keep the unflagged source",
+			from:             "review-risk",
+			phaseAssignments: map[string]config.PhaseAssignment{},
+			want:             config.ModelRow{Role: "rei", Model: "sonnet", Effort: "medium", Source: "gentle-ai:review-risk"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			overrides := map[string]config.ModelOverride{"rei": {From: tt.from}}
+			rows := config.ModelTable(defaults, overrides, tt.phaseAssignments)
+			if len(rows) != 1 || rows[0] != tt.want {
+				t.Errorf("got %+v, want [%+v]", rows, tt.want)
+			}
+		})
+	}
+}
+
 // ---------------------------------------------------------------------------
 // ReadModelsOverrides — the raw scan half of Read-NervModelsOverrides (the
 // cross-check against gentle-ai's resolved assignments needs the resolved

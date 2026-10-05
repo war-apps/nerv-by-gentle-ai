@@ -2,8 +2,11 @@ package configure
 
 import (
 	"fmt"
+	"sort"
+	"strings"
 
 	"github.com/war-apps/nerv-by-gentle-ai/internal/config"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/gentleai"
 )
 
 // SetModel applies one or more "role=<spec>" per-role model/effort override
@@ -13,6 +16,8 @@ import (
 // ResolveModelSpec) before its change is applied to the in-memory override
 // map; since the file is only ever written once, after every entry has been
 // processed, no partial write can happen when a later entry is invalid.
+// A from:<phase> missing from a readable, non-empty gentle-ai state file
+// adds a warning but is still written, since the state can change later.
 func SetModel(deps Deps, paths Paths, specs []string) (Result, error) {
 	store := Store{}
 	doc, exists, err := store.Load(paths.Config)
@@ -28,7 +33,11 @@ func SetModel(deps Deps, paths Paths, specs []string) (Result, error) {
 
 	overrides := config.ReadModelsOverrides(working)
 
+	// Unreadable state means the phases are unknown: skip the check.
+	phaseAssignments, _ := gentleai.PhaseAssignments(paths.State)
+
 	changes := emptyChanges()
+	warnings := emptyStrings()
 	touched := false
 	for _, raw := range specs {
 		role, spec, ok := config.ParseSetArg(raw)
@@ -54,6 +63,9 @@ func SetModel(deps Deps, paths Paths, specs []string) (Result, error) {
 		case override.From != "":
 			overrides[role] = override
 			newDisplay = "from:" + override.From
+			if w := missingPhaseWarning(role, override.From, paths.State, phaseAssignments); w != "" {
+				warnings = append(warnings, w)
+			}
 		default:
 			overrides[role] = override
 			newDisplay = spec
@@ -71,7 +83,31 @@ func SetModel(deps Deps, paths Paths, specs []string) (Result, error) {
 	}
 	config.SetModelsBlock(working, blockText)
 
-	return finalizeMutation(deps, paths, store, working, original, touched, changes)
+	result, err := finalizeMutation(deps, paths, store, working, original, touched, changes)
+	if err != nil {
+		return Result{}, err
+	}
+	result.Warnings = append(result.Warnings, warnings...)
+	return result, nil
+}
+
+// missingPhaseWarning returns the warning for a from:<phase> override whose
+// phase is not a key of a known, non-empty phaseAssignments, or "" when the
+// phase exists or the assignments are unknown (state absent or unreadable).
+func missingPhaseWarning(role, phase, statePath string, phaseAssignments map[string]config.PhaseAssignment) string {
+	if len(phaseAssignments) == 0 {
+		return ""
+	}
+	if _, ok := phaseAssignments[phase]; ok {
+		return ""
+	}
+	available := make([]string, 0, len(phaseAssignments))
+	for key := range phaseAssignments {
+		available = append(available, key)
+	}
+	sort.Strings(available)
+	return fmt.Sprintf("models.%s: phase '%s' is not in %s claude_phase_assignments (available: %s); the role uses its plugin default until it is.",
+		role, phase, statePath, strings.Join(available, ", "))
 }
 
 // displayOverride renders one role's current override for the "from ...
