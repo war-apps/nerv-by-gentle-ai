@@ -35,8 +35,11 @@ only the changes you confirm. Use it any time you want to change
 
 Sets up NERV in a repository that doesn't have it yet: asks only for the
 keys that aren't already resolved (task provider, Teamwork project/tasklist,
-base branch), writes `.nerv/nerv.yaml`, and delegates gentle-ai's own
-bootstrap (`sdd-init`) if it hasn't run yet. Use it once per repository.
+base branch), writes `.nerv/nerv.yaml`, creates `openspec/config.yaml`
+(`strict_tdd` and the test runner) and the `openspec/specs/` and
+`openspec/changes/archive/` folders when they are missing, and refreshes
+the skill registry with `gentle-ai skill-registry refresh`. An existing
+`openspec/config.yaml` is never overwritten. Use it once per repository.
 
 ```
 /nerv:init
