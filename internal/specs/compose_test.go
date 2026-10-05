@@ -416,3 +416,15 @@ func TestComposeMatchesNamesAcrossMixedLineEndings(t *testing.T) {
 		t.Fatalf("got %q", got)
 	}
 }
+
+func TestComposeIgnoresFencedHeadingsInsideDeltaBody(t *testing.T) {
+	delta := "## MODIFIED Requirements\n\n### Requirement: A\n\nNew A, with a sample:\n\n```md\n### Requirement: B\n\n## REMOVED Requirements\n```\n"
+	got, err := Compose(crlfCanonical, delta)
+	if err != nil {
+		t.Fatalf("Compose() error = %v", err)
+	}
+	want := "## Requirements\n\n" + delta[len("## MODIFIED Requirements\n\n"):] + "### Requirement: B\n\nOld B.\n"
+	if got != want {
+		t.Fatalf("got %q, want %q", got, want)
+	}
+}

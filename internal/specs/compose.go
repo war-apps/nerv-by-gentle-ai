@@ -143,18 +143,25 @@ func insideAnyRange(ranges [][2]int, pos int) bool {
 	return false
 }
 
+// unfencedMatches returns the submatch indexes of re in text that start
+// outside every fenced range.
+func unfencedMatches(re *regexp.Regexp, text string, fences [][2]int) [][]int {
+	var kept [][]int
+	for _, m := range re.FindAllStringSubmatchIndex(text, -1) {
+		if !insideAnyRange(fences, m[0]) {
+			kept = append(kept, m)
+		}
+	}
+	return kept
+}
+
 // parseSpecDocument partitions a spec at every "### Requirement:" and "## "
 // heading boundary that sits outside a fenced code block. Every byte of the
 // input belongs to exactly one segment.
 func parseSpecDocument(text string) specDocument {
 	fences := fencedRanges(text)
 
-	var reqMatches [][]int
-	for _, m := range specReqHeadingLine.FindAllStringSubmatchIndex(text, -1) {
-		if !insideAnyRange(fences, m[0]) {
-			reqMatches = append(reqMatches, m)
-		}
-	}
+	reqMatches := unfencedMatches(specReqHeadingLine, text, fences)
 	if len(reqMatches) == 0 {
 		if text == "" {
 			return specDocument{}
@@ -199,7 +206,7 @@ type specDelta struct {
 // parseDelta splits a delta spec into its ADDED/MODIFIED/REMOVED/
 // RENAMED requirement blocks (the OpenSpec delta format).
 func parseDelta(text string) specDelta {
-	sections := specDeltaSectionHeading.FindAllStringSubmatchIndex(text, -1)
+	sections := unfencedMatches(specDeltaSectionHeading, text, fencedRanges(text))
 	var delta specDelta
 	for i, m := range sections {
 		kind, start, end := text[m[2]:m[3]], m[1], len(text)
@@ -222,7 +229,7 @@ func parseDelta(text string) specDelta {
 }
 
 func parseDeltaRequirementBlocks(text string) []specRequirementBlock {
-	matches := specReqHeadingLine.FindAllStringSubmatchIndex(text, -1)
+	matches := unfencedMatches(specReqHeadingLine, text, fencedRanges(text))
 	blocks := make([]specRequirementBlock, 0, len(matches))
 	for i, m := range matches {
 		end := len(text)
