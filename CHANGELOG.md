@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.1] - 2026-10-05
+
+### Fixed
+- specs: refuse a requirement both modified and removed in one delta (d321c9a)
+- atomicfile: refuse to replace a dangling symlink (8faa5a0)
+- config: suggest only real phase keys as from: hints (3141729)
+  - `nerv configure --print` rows gain a `from_phase` field; `gentle_ai_equivalent` is now
+    informational only.
+- config: flag a from: phase missing from gentle-ai state (66a4bf9)
+  - The model source reads `gentle-ai:<phase> (missing; plugin default)`, and `--set-model` warns
+    with the available phases.
+
 ## [2.0.0] - 2026-10-05
 
 ### Breaking
