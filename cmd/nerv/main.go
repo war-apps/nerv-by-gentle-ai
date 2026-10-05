@@ -24,6 +24,7 @@ Commands:
   uninstall [flags]    Uninstall NERV (see "nerv uninstall --help")
   apply-models [flags] Apply model/effort assignments to the cached agents
   skills [flags]       Install or verify skills (see "nerv skills --help")
+  spec-compose [flags] Merge a delta spec into a canonical spec (see "nerv spec-compose --help")
 
 Maintainer commands:
   release <preview|apply|guard> [flags]
@@ -110,6 +111,8 @@ func run(args []string, stdout, stderr io.Writer, opts options) int {
 		return runApplyModels(args[1:], stdout, stderr, opts)
 	case "skills":
 		return runSkills(args[1:], stdout, stderr, opts)
+	case "spec-compose":
+		return runSpecCompose(args[1:], stdout, stderr)
 	case "release":
 		return runRelease(args[1:], stdout, stderr, opts)
 	default:
