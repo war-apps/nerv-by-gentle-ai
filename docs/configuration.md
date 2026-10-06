@@ -73,16 +73,21 @@ hand.
 ### Roles and their gentle-ai equivalents
 
 Every role below can be overridden under `models:`. The gentle-ai
-equivalent is the closest gentle-ai v4 agent that still exists (the `jd-judge`
-agents and the native review agents); roles with no such agent show none.
-It is informational only and never a `from:<phase>` value: the native
-review agents (`review-*`) are not keys of `claude_phase_assignments`.
-Only the `jd-judge` equivalents (melchor, balthasar, casper) double as a
-`from:` suggestion, exposed separately as `from_phase`. Neither changes how
-a model is resolved. The same data is shown in the wizard's models table,
-in `/nerv:configure` and `/nerv:status`, and as `purpose` /
-`gentle_ai_equivalent` / `from_phase` on each `nerv configure --print`
-models row. Roles are addressable by group: `magi` (the three voters),
+equivalents are the gentle-ai v4 agents whose duties the role covers (the
+`jd-*` agents and the native `review-*` agents); roles with none show none.
+Each of the 8 gentle-ai v4 agents is claimed by at least one role, and a test
+fails if one is left unclaimed. The pilots claim `jd-fix-agent` because fix
+routing goes through the owning pilot, with kaworu writing the RED test
+first. Equivalents are informational only and never a `from:<phase>` value:
+the native review agents (`review-*`) are not keys of
+`claude_phase_assignments`. Only the `jd-judge` equivalents (melchor,
+balthasar, casper) double as a `from:` suggestion, exposed separately as
+`from_phase`; the pilots get no suggestion. Neither changes how a model is
+resolved. The same data is shown in the wizard's models table, in
+`/nerv:configure` and `/nerv:status`, and as `purpose` /
+`gentle_ai_equivalents` (an array) / `from_phase` on each
+`nerv configure --print` models row. `gentle_ai_equivalent` carries the same
+list joined with `, ` for readers of the original single-string field. Roles are addressable by group: `magi` (the three voters),
 `pilots` (the implementers), `kaji-passes` (the audit passes) and `all`.
 
 | Role | Group | Purpose | gentle-ai equivalent | Default model / effort |
@@ -91,14 +96,14 @@ models row. Roles are addressable by group: `magi` (the three voters),
 | `ritsuko` | | intelligence, test planning, end-of-run docs | none | opus / high |
 | `hyuga` | | task criticality, dependency waves, tracking | none | sonnet / medium |
 | `melchor` | `magi` | MAGI vote: structure and security | `jd-judge-b` | fable / high |
-| `balthasar` | `magi` | MAGI vote: software principles, readability | `jd-judge-a` | sonnet / medium |
+| `balthasar` | `magi` | MAGI vote: software principles, readability | `jd-judge-a`, `review-readability` | sonnet / medium |
 | `casper` | `magi` | MAGI vote: process and documentation | `jd-judge-a` | sonnet / medium |
 | `fuyutsuki` | | governance veto on new skills/scripts/commands | none | sonnet / medium |
-| `kaworu` | `pilots` | writes the failing tests first | none | sonnet / medium |
-| `shinji` | `pilots` | backend pilot | none | sonnet / medium |
-| `asuka` | `pilots` | frontend pilot | none | sonnet / medium |
-| `rei` | `pilots` | data pilot (persistence, observability) | none | sonnet / medium |
-| `toji` | `pilots` | infrastructure pilot (CI/CD, containers) | none | sonnet / medium |
+| `kaworu` | `pilots` | writes the failing tests first | `jd-fix-agent` | sonnet / medium |
+| `shinji` | `pilots` | backend pilot | `jd-fix-agent` | sonnet / medium |
+| `asuka` | `pilots` | frontend pilot | `jd-fix-agent` | sonnet / medium |
+| `rei` | `pilots` | data pilot (persistence, observability) | `jd-fix-agent` | sonnet / medium |
+| `toji` | `pilots` | infrastructure pilot (CI/CD, containers) | `jd-fix-agent` | sonnet / medium |
 | `maya` | | quality gate (tests, lint, build) | none | sonnet / medium |
 | `kaji` | `kaji-passes` | audit compiler | none | opus / high |
 | `kaji-security` | `kaji-passes` | audit pass: security | `review-risk` | sonnet / medium |

@@ -2,6 +2,7 @@ package configure_test
 
 import (
 	"encoding/json"
+	"fmt"
 	"path/filepath"
 	"testing"
 
@@ -169,7 +170,7 @@ func TestPrint_ModelsRowsCarryPurposeAndEquivalent(t *testing.T) {
 
 	byRole := map[string]map[string]any{}
 	for _, row := range decoded.Models {
-		for _, key := range []string{"purpose", "gentle_ai_equivalent", "from_phase"} {
+		for _, key := range []string{"purpose", "gentle_ai_equivalent", "gentle_ai_equivalents", "from_phase"} {
 			if _, ok := row[key]; !ok {
 				t.Errorf("row %v missing key %q", row["role"], key)
 			}
@@ -195,8 +196,19 @@ func TestPrint_ModelsRowsCarryPurposeAndEquivalent(t *testing.T) {
 	if got := byRole["casper"]["from_phase"]; got != "jd-judge-a" {
 		t.Errorf("casper from_phase = %v, want jd-judge-a", got)
 	}
-	if got := byRole["kaworu"]["gentle_ai_equivalent"]; got != "" {
-		t.Errorf("kaworu gentle_ai_equivalent = %v, want empty", got)
+	if got := byRole["kaworu"]["gentle_ai_equivalent"]; got != "jd-fix-agent" {
+		t.Errorf("kaworu gentle_ai_equivalent = %v, want jd-fix-agent", got)
+	}
+	// A role covering two gentle-ai agents lists both; the singular field
+	// stays a string (the entries joined with ", ") for older readers.
+	if got := byRole["balthasar"]["gentle_ai_equivalent"]; got != "jd-judge-a, review-readability" {
+		t.Errorf("balthasar gentle_ai_equivalent = %v, want \"jd-judge-a, review-readability\"", got)
+	}
+	if got := fmt.Sprint(byRole["balthasar"]["gentle_ai_equivalents"]); got != "[jd-judge-a review-readability]" {
+		t.Errorf("balthasar gentle_ai_equivalents = %v, want [jd-judge-a review-readability]", got)
+	}
+	if got, ok := byRole["fuyutsuki"]["gentle_ai_equivalents"].([]any); !ok || len(got) != 0 {
+		t.Errorf("fuyutsuki gentle_ai_equivalents = %#v, want an empty array", byRole["fuyutsuki"]["gentle_ai_equivalents"])
 	}
 	if got := byRole["kaworu"]["purpose"]; got != "writes the failing tests first" {
 		t.Errorf("kaworu purpose = %v", got)

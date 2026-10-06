@@ -25,6 +25,16 @@ type docsRoleRow struct {
 
 func stripTicks(s string) string { return strings.Trim(strings.TrimSpace(s), "`") }
 
+// equivalentsCell normalises a "gentle-ai equivalent" cell such as
+// "`jd-judge-a`, `review-readability`" to "jd-judge-a, review-readability".
+func equivalentsCell(cell string) string {
+	parts := strings.Split(cell, ",")
+	for i, p := range parts {
+		parts[i] = stripTicks(p)
+	}
+	return strings.Join(parts, ", ")
+}
+
 // parseDocsRolesTable returns the rows of the "Roles and their gentle-ai
 // equivalents" table keyed by role.
 func parseDocsRolesTable(t *testing.T) map[string]docsRoleRow {
@@ -56,7 +66,7 @@ func parseDocsRolesTable(t *testing.T) map[string]docsRoleRow {
 		rows[role] = docsRoleRow{
 			group:      stripTicks(cells[1]),
 			purpose:    strings.TrimSpace(cells[2]),
-			equivalent: stripTicks(cells[3]),
+			equivalent: equivalentsCell(cells[3]),
 			defaults:   strings.TrimSpace(cells[4]),
 		}
 	}
@@ -88,7 +98,7 @@ func TestDocsRolesTable_MatchesCatalogue(t *testing.T) {
 		if row.purpose != info.Purpose {
 			t.Errorf("docs roles table: role %q purpose = %q, catalogue = %q", role, row.purpose, info.Purpose)
 		}
-		wantEquivalent := info.GentleAIEquivalent
+		wantEquivalent := strings.Join(info.GentleAIEquivalents, ", ")
 		if wantEquivalent == "" {
 			wantEquivalent = "none"
 		}

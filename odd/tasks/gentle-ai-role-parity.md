@@ -1,7 +1,7 @@
 # gentle-ai role parity
 
 Branch `feat/gentle-ai-role-parity` from `develop` (`eb781cb`). Started 2026-10-06.
-Delivery strategy: `ask-on-risk`; chain strategy: stacked to `develop` (user, 2026-10-06). Slices: PR1 = T1+T2, PR2 = T3 stacked on PR1.
+Delivery strategy: `ask-on-risk`; chain strategy: stacked to `develop` (user, 2026-10-06). Slices (re-cut at PR time to respect the 400-line budget): #75 = T1 (268 lines), #76 = T2 (444, size:exception: role plus every enumeration must move together), #77 = T3 (288).
 Forecast ~560 authored changed lines (T1 ~60, T2 ~300, T3 ~200).
 TDD: strict (global setting). Runner: `go test ./...` (plus `gofmt -l .` and `go vet ./...`).
 RDD: on (decided by global).
@@ -61,14 +61,14 @@ with RDD off or under budget nothing replaces them.
   `nerv-artifacts.md`, `SKILL.md`, `init.md` models block, status and integration docs, and
   every count test. RDD rule: always full scope (native review runs only when due). Commit
   `b826c89` (+326/-91).
-- [ ] T3 Catalogue parity guard (route: delegated direct, one writer). `GentleAIEquivalent`
+- [x] T3 Catalogue parity guard (route: delegated direct, one writer). `GentleAIEquivalent`
   becomes a list; update `print.go`, the wizard, the docs table and its parser, and pinned
   tests. New test: every gentle-ai v4 agent is claimed by at least one role. Also folds the
   PR1 review advisories that belong to this feature: R2-equivalent-column-understates-coverage,
   R3-parity-guard-deferred, R3-plugin-default-kaji-resilience-unpinned (pin its default model
   and effort), R2-hardcoded-role-count-duplicated (stop repeating the role count in comments),
   R2-kaji-coverage-determinism-category-drift (align the description with `flaky-risk`).
-  Branch `feat/gentle-ai-role-parity-guard`, stacked on PR1.
+  Branch `feat/gentle-ai-role-parity-guard`, stacked on PR1. Commit `8dc7ad3` (+191/-77).
 
 ## Acceptance criteria
 
@@ -104,3 +104,22 @@ with RDD off or under budget nothing replaces them.
   resilience 0 findings, readability 3 and reliability 2 advisories (non-blocking), state
   approved, acknowledged (`gentle-ai.review-acknowledged/v1`). Reviewed boundary is now
   `8e0163c`. Advisories are folded into T3.
+- 2026-10-06: T3 done by one delegated writer (`8dc7ad3`). `GentleAIV4Agents` (8 agents) and
+  `GentleAIEquivalents []string`; balthasar adds review-readability, the five pilots claim
+  jd-fix-agent. `gentleai_parity_test.go`: every agent claimed, every claim real, list exact.
+  JSON adds `gentle_ai_equivalents`; `gentle_ai_equivalent` stays joined (read by
+  `plugin/commands/status.md`). RED: build failures on the new identifiers plus print/wizard/
+  docs guards. Bite: dropping balthasar's review-readability and misspelling review-risk each
+  failed with the agent/role named. GREEN: `go test ./...` ok, vet clean, gofmt empty (parent
+  re-ran the config and root packages with -count=1: ok). All 8 agents are claimed.
+- 2026-10-06: PR2 slice (base `8e0163c`, 290 lines) assessed `medium`, `under_budget`: no
+  review due. Feature complete; push and PRs await the user.
+- 2026-10-06: the stop hook raised the selectorless candidate (base `942774d`, 29 files, 960
+  lines: PR1, T3, and #73/#74 already on develop). The user granted consent. Native review
+  `review-b2a3742af534495c`: risk and resilience 0 findings, 3 advisories (non-blocking),
+  approved and acknowledged. Advisories left as follow-ups: R2-role-count-still-hardcoded-in-prose
+  (`SKILL.md:125`, WARNING), R2-pilots-jd-fix-agent-not-offered-as-from-phase-unexplained
+  (`configure.md:109`), R3-001 (`release.yml:56-57`, from #74).
+- 2026-10-06: pushed and opened stacked PRs #75 (`feat/gentle-ai-role-parity-extend` -> develop,
+  `0b90206`+`54de5ad`), #76 (`feat/gentle-ai-role-parity` -> #75, `b826c89`..`84d4b5b`), #77
+  (`feat/gentle-ai-role-parity-guard` -> #76, `8dc7ad3`..). Merge is the user's call.

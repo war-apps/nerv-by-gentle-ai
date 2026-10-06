@@ -11,17 +11,24 @@ import (
 	"github.com/war-apps/nerv-by-gentle-ai/internal/config"
 )
 
-// wantEquivalents is the user-approved role -> gentle-ai v4 agent table (the jd-judge
-// and native review agents that still exist in v4). An empty value means
-// the role has no equivalent.
-var wantEquivalents = map[string]string{
-	"misato": "", "ritsuko": "", "hyuga": "",
-	"melchor": "jd-judge-b", "balthasar": "jd-judge-a", "casper": "jd-judge-a",
-	"fuyutsuki": "",
-	"kaworu":    "", "shinji": "", "asuka": "", "rei": "", "toji": "",
-	"maya": "", "kaji": "", "kaji-security": "review-risk",
-	"kaji-coverage": "review-reliability", "kaji-resilience": "review-resilience",
-	"kaji-refuter": "review-refuter", "aoba": "",
+// wantEquivalents is the user-approved role -> gentle-ai v4 agents table
+// (the jd-* and native review-* agents). A nil value means the role has no
+// equivalent. The pilots claim jd-fix-agent because fix routing goes through
+// the owning pilot, with kaworu writing the RED test first.
+var wantEquivalents = map[string][]string{
+	"misato": nil, "ritsuko": nil, "hyuga": nil,
+	"melchor":   {"jd-judge-b"},
+	"balthasar": {"jd-judge-a", "review-readability"},
+	"casper":    {"jd-judge-a"},
+	"fuyutsuki": nil,
+	"kaworu":    {"jd-fix-agent"}, "shinji": {"jd-fix-agent"}, "asuka": {"jd-fix-agent"},
+	"rei": {"jd-fix-agent"}, "toji": {"jd-fix-agent"},
+	"maya": nil, "kaji": nil,
+	"kaji-security":   {"review-risk"},
+	"kaji-coverage":   {"review-reliability"},
+	"kaji-resilience": {"review-resilience"},
+	"kaji-refuter":    {"review-refuter"},
+	"aoba":            nil,
 }
 
 func TestRoles_EveryRoleHasPurposeAndEquivalent(t *testing.T) {
@@ -43,8 +50,8 @@ func TestRoles_EveryRoleHasPurposeAndEquivalent(t *testing.T) {
 			t.Errorf("role %q missing from the expected equivalence table", role)
 			continue
 		}
-		if info.GentleAIEquivalent != want {
-			t.Errorf("role %q equivalent = %q, want %q", role, info.GentleAIEquivalent, want)
+		if !slices.Equal(info.GentleAIEquivalents, want) {
+			t.Errorf("role %q equivalents = %q, want %q", role, info.GentleAIEquivalents, want)
 		}
 	}
 	if len(cat.Info) != len(cat.AllRoles) {

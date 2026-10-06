@@ -28,6 +28,10 @@ func TestPluginDefaults_RealEmbeddedFS_19RolesAobaSonnetLow(t *testing.T) {
 	if !ok || aoba.Model != "sonnet" || aoba.Effort != "low" {
 		t.Fatalf("defaults[aoba] = %+v, ok=%v, want {Model:sonnet Effort:low}", aoba, ok)
 	}
+	resilience, ok := defaults["kaji-resilience"]
+	if !ok || resilience.Model != "sonnet" || resilience.Effort != "medium" {
+		t.Fatalf("defaults[kaji-resilience] = %+v, ok=%v, want {Model:sonnet Effort:medium}", resilience, ok)
+	}
 }
 
 func TestPluginDefaults_MapFS_ParsesModelAndEffort(t *testing.T) {

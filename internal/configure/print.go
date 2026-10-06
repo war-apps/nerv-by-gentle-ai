@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io/fs"
+	"strings"
 
 	"github.com/war-apps/nerv-by-gentle-ai/internal/config"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/gentleai"
@@ -76,11 +77,15 @@ type ModelRow struct {
 	Model  string `json:"model"`
 	Effort string `json:"effort"`
 	Source string `json:"source"`
-	// Purpose, GentleAIEquivalent and FromPhase come from config.Roles().
-	// The equivalent is informational ("" for a role with no gentle-ai
-	// counterpart); FromPhase is the only from:<phase> suggestion ("" for
-	// none).
-	Purpose            string `json:"purpose"`
+	// Purpose, GentleAIEquivalents and FromPhase come from config.Roles().
+	// The equivalents are informational (an empty array for a role with no
+	// gentle-ai counterpart); FromPhase is the only from:<phase> suggestion
+	// ("" for none).
+	Purpose             string   `json:"purpose"`
+	GentleAIEquivalents []string `json:"gentle_ai_equivalents"`
+	// GentleAIEquivalent is GentleAIEquivalents joined with ", " ("" for
+	// none), kept for backward compatibility with readers of the original
+	// single-string field.
 	GentleAIEquivalent string `json:"gentle_ai_equivalent"`
 	FromPhase          string `json:"from_phase"`
 }
@@ -146,7 +151,10 @@ func Print(deps Deps, paths Paths) (PrintResult, error) {
 		info := roleInfo[r.Role]
 		modelRows[i] = ModelRow{
 			Role: r.Role, Model: r.Model, Effort: r.Effort, Source: r.Source,
-			Purpose: info.Purpose, GentleAIEquivalent: info.GentleAIEquivalent, FromPhase: info.FromPhase,
+			Purpose:             info.Purpose,
+			GentleAIEquivalents: append([]string{}, info.GentleAIEquivalents...),
+			GentleAIEquivalent:  strings.Join(info.GentleAIEquivalents, ", "),
+			FromPhase:           info.FromPhase,
 		}
 	}
 
