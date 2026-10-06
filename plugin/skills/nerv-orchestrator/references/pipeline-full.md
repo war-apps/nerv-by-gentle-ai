@@ -160,7 +160,8 @@ the cap the user either accepts the residual (recorded in
 concerns — per-commit defects were already reviewed natively by RDD; Ikari
 states which scope applies in each pass launch. `casper` and
 `kaji-coverage` always keep full NERV scope (plan conformance and commit
-hygiene for Casper; test-plan coverage for kaji-coverage), regardless of
+hygiene for Casper; test-plan coverage, reliability and correctness for
+kaji-coverage), regardless of
 the RDD switch.
 
 ### Ratchet handling

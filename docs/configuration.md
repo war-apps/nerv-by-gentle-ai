@@ -91,7 +91,7 @@ models row. Roles are addressable by group: `magi` (the three voters),
 | `ritsuko` | | intelligence, test planning, end-of-run docs | none | opus / high |
 | `hyuga` | | task criticality, dependency waves, tracking | none | sonnet / medium |
 | `melchor` | `magi` | MAGI vote: structure and security | `jd-judge-b` | fable / high |
-| `balthasar` | `magi` | MAGI vote: software principles | `jd-judge-a` | sonnet / medium |
+| `balthasar` | `magi` | MAGI vote: software principles, readability | `jd-judge-a` | sonnet / medium |
 | `casper` | `magi` | MAGI vote: process and documentation | `jd-judge-a` | sonnet / medium |
 | `fuyutsuki` | | governance veto on new skills/scripts/commands | none | sonnet / medium |
 | `kaworu` | `pilots` | writes the failing tests first | none | sonnet / medium |
@@ -102,7 +102,7 @@ models row. Roles are addressable by group: `magi` (the three voters),
 | `maya` | | quality gate (tests, lint, build) | none | sonnet / medium |
 | `kaji` | `kaji-passes` | audit compiler | none | opus / high |
 | `kaji-security` | `kaji-passes` | audit pass: security | `review-risk` | sonnet / medium |
-| `kaji-coverage` | `kaji-passes` | audit pass: tests vs test plan | `review-reliability` | sonnet / medium |
+| `kaji-coverage` | `kaji-passes` | audit pass: test coverage, reliability, correctness | `review-reliability` | sonnet / medium |
 | `kaji-refuter` | `kaji-passes` | refutes severe audit findings | `review-refuter` | sonnet / medium |
 | `aoba` | | commits, PRs and run telemetry | none | sonnet / low |
 
