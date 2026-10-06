@@ -55,11 +55,12 @@ with RDD off or under budget nothing replaces them.
   complexity, review size and context). kaji-coverage gains reliability beyond the test plan
   (invalid inputs, failure paths, contracts, regressions) plus correctness and edge cases.
   Purpose strings and the docs roles table stay in sync. Commit `0b90206` (+154/-29).
-- [ ] T2 New audit pass `kaji-resilience` (route: delegated direct, one writer). Agent file
+- [x] T2 New audit pass `kaji-resilience` (route: delegated direct, one writer). Agent file
   modeled on kaji-security; resilience plus performance lens. Add to the catalogue (19
   roles, `kaji-passes` group), the five-to-six pass contract in kaji, `pipeline-full.md`,
   `nerv-artifacts.md`, `SKILL.md`, `init.md` models block, status and integration docs, and
-  every count test. Decide its RDD-narrowing rule like the other passes.
+  every count test. RDD rule: always full scope (native review runs only when due). Commit
+  `b826c89` (+326/-91).
 - [ ] T3 Catalogue parity guard (route: delegated direct, one writer). `GentleAIEquivalent`
   becomes a list; update `print.go`, the wizard, the docs table and its parser, and pinned
   tests. New test: every gentle-ai v4 agent is claimed by at least one role.
@@ -83,3 +84,13 @@ with RDD off or under budget nothing replaces them.
   meaningful RED; the purpose guard `TestDocsRolesTable_MatchesCatalogue` passes.
   Checks: `go test ./...` ok, `go vet ./...` clean, `gofmt -l .` empty (writer; parent re-ran
   `go test ./...`: ok).
+- 2026-10-06: T2 done by one delegated writer, plus a parent fix of four stale "five passes"
+  lines in kaji-security/kaji-coverage (outside the writer's surfaces), amended into `b826c89`.
+  RED: TestRoles, TestRoles_GroupMembership, TestPrint_ModelsRowsCarryPurposeAndEquivalent,
+  TestPluginDefaults_RealEmbeddedFS_19RolesAobaSonnetLow,
+  TestRun_ModelsSection_TableShowsPurposeEquivalentAndGroupLegend, then the docs guards.
+  GREEN: `go test ./...` ok (22 packages), `go vet` clean, `gofmt -l .` empty (parent re-ran
+  all three after the amend).
+- Follow-up for the user (pre-existing, not in scope): with RDD on, melchor, balthasar and
+  kaji-security narrow to cross-commit concerns, assuming native review covered each commit;
+  native review only runs when due and granted.
