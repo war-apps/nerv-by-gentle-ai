@@ -122,7 +122,7 @@ Inject only the configuration each agent needs, never the full document:
 | Hyuga | `tasks` block, `git` block |
 | Fuyutsuki, Hyuga | `critical_paths` |
 
-**Model and effort per role.** Resolve each of the 18 `nerv:<role>` launches'
+**Model and effort per role.** Resolve each of the 19 `nerv:<role>` launches'
 model and effort once per session, in this order: the project
 `models.<role>` entry in `<repo>/.nerv/nerv.yaml`, then the user
 `models.<role>` entry in `~/.claude/nerv/nerv.yaml`, then — for whichever
@@ -133,7 +133,7 @@ own built-in default (aoba sonnet/low; kaji, ritsuko opus/high; melchor,
 misato fable/high; every other role sonnet/medium). An explicit
 `model`/`effort` on a `models.<role>` entry always wins over that same
 entry's `from`; a role absent from both files keeps the plugin default.
-Cache the resolved 18-role table for the session, the same as the two-file
+Cache the resolved 19-role table for the session, the same as the two-file
 merge above; re-resolve only if `nerv.yaml` or `state.json` changes
 mid-session.
 
@@ -252,7 +252,7 @@ backend, asuka → frontend, toji → ci-cd/docker/k8s/infra, kaworu → tests
 be launched: `rei`, `asuka`, and `toji` ship as pilots alongside `shinji`
 and `kaworu`; `misato`, `hyuga`, `balthasar`, `melchor`, `casper`, and
 `fuyutsuki` ship for the FULL pipeline; `kaji`, `kaji-security`,
-`kaji-coverage`, and `kaji-refuter` ship for the audit stage (see
+`kaji-coverage`, `kaji-resilience`, and `kaji-refuter` ship for the audit stage (see
 `references/pipeline-full.md`). Never launch an agent that is not installed; a launch
 failure for a missing agent type is a stop, not a retry.
 
@@ -377,7 +377,8 @@ per task in scope, every `reject` carrying at least one finding with
 `proof_refs`, escalations only to `critical`. A malformed object is
 retried once with the parse failure quoted; a second failure stops the
 vote round and reports. Audit passes (`nerv:melchor`/`nerv:balthasar`/
-`nerv:casper` MODE: audit, `nerv:kaji-security`, `nerv:kaji-coverage`)
+`nerv:casper` MODE: audit, `nerv:kaji-security`, `nerv:kaji-coverage`,
+`nerv:kaji-resilience`)
 follow the same JSON-only rule and the same one-retry-then-stop mechanics,
 per the Audit stage mechanics section of `references/pipeline-full.md`.
 

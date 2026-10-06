@@ -48,7 +48,7 @@ short and imperative — this is a status check, not a narrative.
    minutes old and `waiting_on` is not `user` (see the Orchestrator lock
    section of `nerv-orchestrator/SKILL.md`).
 
-5. **Model/effort table.** Resolve each of the 18 `nerv:<role>` launches'
+5. **Model/effort table.** Resolve each of the 19 `nerv:<role>` launches'
    model and effort per `nerv-orchestrator/SKILL.md`'s Configuration
    resolution → **Model and effort per role** (project `models.<role>` >
    user `models.<role>` > `from` phase in `~/.gentle-ai/state.json` >

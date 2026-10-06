@@ -20,7 +20,8 @@ var wantEquivalents = map[string]string{
 	"fuyutsuki": "",
 	"kaworu":    "", "shinji": "", "asuka": "", "rei": "", "toji": "",
 	"maya": "", "kaji": "", "kaji-security": "review-risk",
-	"kaji-coverage": "review-reliability", "kaji-refuter": "review-refuter", "aoba": "",
+	"kaji-coverage": "review-reliability", "kaji-resilience": "review-resilience",
+	"kaji-refuter": "review-refuter", "aoba": "",
 }
 
 func TestRoles_EveryRoleHasPurposeAndEquivalent(t *testing.T) {
@@ -60,7 +61,7 @@ var wantFromPhases = map[string]string{
 	"fuyutsuki": "",
 	"kaworu":    "", "shinji": "", "asuka": "", "rei": "", "toji": "",
 	"maya": "", "kaji": "", "kaji-security": "",
-	"kaji-coverage": "", "kaji-refuter": "", "aoba": "",
+	"kaji-coverage": "", "kaji-resilience": "", "kaji-refuter": "", "aoba": "",
 }
 
 // v4PhaseKeys are the claude_phase_assignments keys that still have an
@@ -105,7 +106,7 @@ func TestRoles_GroupMembership(t *testing.T) {
 	want := map[string][]string{
 		"magi":        {"balthasar", "casper", "melchor"},
 		"pilots":      {"asuka", "kaworu", "rei", "shinji", "toji"},
-		"kaji-passes": {"kaji", "kaji-coverage", "kaji-refuter", "kaji-security"},
+		"kaji-passes": {"kaji", "kaji-coverage", "kaji-refuter", "kaji-resilience", "kaji-security"},
 	}
 	for name, members := range want {
 		got := append([]string(nil), groups[name]...)

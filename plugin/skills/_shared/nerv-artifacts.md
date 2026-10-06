@@ -486,16 +486,17 @@ created_at: "2026-09-24T15:10:00Z"
 - Author: Ikari (mechanical write of a pass's own final-text JSON, never
   edited).
 - Location: `nerv/audit/pass-<name>-round-N.json`, `<name>` one of
-  `melchor`, `balthasar`, `casper`, `kaji-security`, `kaji-coverage`.
+  `melchor`, `balthasar`, `casper`, `kaji-security`, `kaji-coverage`,
+  `kaji-resilience`.
 - Engram key: `nerv/{change}/audit-pass-<name>-round-N`.
 
 #### Audit pass JSON output contract
 
 Each of `nerv:melchor`, `nerv:balthasar`, `nerv:casper` (MODE: audit),
-`nerv:kaji-security`, `nerv:kaji-coverage` is launched in one parallel
-batch, blind to the other four, over the frozen `diff-round-N.patch` plus
-the plan artifacts (`proposal.md`, `design.md`, `tasks.md`, `specs/`,
-`nerv/test-plan.md`). Its final text is exactly one JSON object, no prose
+`nerv:kaji-security`, `nerv:kaji-coverage`, `nerv:kaji-resilience` is
+launched in one parallel batch, blind to the other five, over the frozen
+`diff-round-N.patch` plus the plan artifacts (`proposal.md`, `design.md`,
+`tasks.md`, `specs/`, `nerv/test-plan.md`). Its final text is exactly one JSON object, no prose
 before or after it (a `## Key Learnings` block may follow):
 
 ```json
@@ -545,7 +546,12 @@ implemented tests vs `nerv/test-plan.md` (missing cases, weakened
 assertions), reliability beyond the plan (invalid inputs, failure paths,
 contracts, boundaries, regressions, determinism), and correctness and
 edge cases in the changed implementation; findings outside the test plan
-follow the same candidate-causal admission. Passes never edit files and never persist their own output —
+follow the same candidate-causal admission; `kaji-resilience` —
+fallbacks and graceful degradation, retry/backoff safety, timeouts and
+cancellation, rollback or fix-forward safety, latency, load, resource use
+and SLO risk, performance regressions (N+1, unbounded loops or
+allocations, blocking I/O on hot paths, missing pagination, accidental
+quadratic work), and observability of failures. Passes never edit files and never persist their own output —
 Ikari writes the validated object to its locator.
 
 ## audit-report.md (Kaji)

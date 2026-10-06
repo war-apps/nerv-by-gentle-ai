@@ -103,6 +103,7 @@ models row. Roles are addressable by group: `magi` (the three voters),
 | `kaji` | `kaji-passes` | audit compiler | none | opus / high |
 | `kaji-security` | `kaji-passes` | audit pass: security | `review-risk` | sonnet / medium |
 | `kaji-coverage` | `kaji-passes` | audit pass: test coverage, reliability, correctness | `review-reliability` | sonnet / medium |
+| `kaji-resilience` | `kaji-passes` | audit pass: resilience and performance | `review-resilience` | sonnet / medium |
 | `kaji-refuter` | `kaji-passes` | refutes severe audit findings | `review-refuter` | sonnet / medium |
 | `aoba` | | commits, PRs and run telemetry | none | sonnet / low |
 
