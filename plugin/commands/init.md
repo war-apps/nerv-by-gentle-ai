@@ -65,6 +65,7 @@ overwrites silently, and bootstraps `openspec/` and the skill registry itself.
    #   kaji: { model: opus, effort: high }
    #   kaji-coverage: { model: sonnet, effort: medium }
    #   kaji-refuter: { model: sonnet, effort: medium }
+   #   kaji-resilience: { model: sonnet, effort: medium }
    #   kaji-security: { model: sonnet, effort: medium }
    #   kaworu: { model: sonnet, effort: medium }
    #   maya: { model: sonnet, effort: medium }

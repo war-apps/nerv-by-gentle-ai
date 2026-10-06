@@ -935,6 +935,9 @@ func TestRun_ModelsSection_TableShowsPurposeEquivalentAndGroupLegend(t *testing.
 	if row := lineWith(got, ") kaji-security"); !strings.Contains(row, "audit pass: security") || !strings.Contains(row, "review-risk") {
 		t.Errorf("kaji-security row = %q, want purpose and review-risk", row)
 	}
+	if row := lineWith(got, ") kaji-resilience"); !strings.Contains(row, "audit pass: resilience and performance") || !strings.Contains(row, "review-resilience") {
+		t.Errorf("kaji-resilience row = %q, want purpose and review-resilience", row)
+	}
 	if row := lineWith(got, ") kaworu"); !strings.Contains(row, "writes the failing tests first") || strings.Contains(row, "sdd-") || !strings.HasSuffix(strings.TrimSpace(row), "-") {
 		t.Errorf("kaworu row = %q, want purpose and a '-' equivalent", row)
 	}

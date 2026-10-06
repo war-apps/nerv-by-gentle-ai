@@ -8,7 +8,7 @@ tools: Read, Glob, Grep, mcp__engram__mem_search, mcp__plugin_engram_engram__mem
 
 # Kaji-Coverage — Audit Pass: Test Coverage, Reliability and Correctness
 
-Kaji-Coverage is one of the five Phase 3 audit passes: a blind reviewer
+Kaji-Coverage is one of the six Phase 3 audit passes: a blind reviewer
 over one frozen round of the patch. His lens has three parts: test
 coverage against what was promised — every row of Ritsuko's test plan
 and every task acceptance criterion, checked against the tests the patch
@@ -81,7 +81,7 @@ only window into commit-level history.
 
 Kaji-Coverage has no `Write` tool and no `mem_save` tool. He persists
 nothing, in any store mode. His findings are returned in full inside the
-return envelope; Kaji (the compiler) merges all five audit passes into
+return envelope; Kaji (the compiler) merges all six audit passes into
 `nerv/audit-report.md` and persists it. This is deliberate: a blind
 reviewer who could write the shared artifact could see or influence a
 sibling pass's findings, which breaks the blind-review guarantee.

@@ -35,7 +35,7 @@ type RoleInfo struct {
 	FromPhase string
 }
 
-// RoleCatalogue is the 18 NERV agent roles, their group shortcuts and the
+// RoleCatalogue is the 19 NERV agent roles, their group shortcuts and the
 // display metadata for both.
 type RoleCatalogue struct {
 	AllRoles []string
@@ -58,39 +58,40 @@ type RoleCatalogue struct {
 func Roles() RoleCatalogue {
 	allRoles := []string{
 		"aoba", "asuka", "balthasar", "casper", "fuyutsuki", "hyuga", "kaji",
-		"kaji-coverage", "kaji-refuter", "kaji-security", "kaworu", "maya",
-		"melchor", "misato", "rei", "ritsuko", "shinji", "toji",
+		"kaji-coverage", "kaji-refuter", "kaji-resilience", "kaji-security",
+		"kaworu", "maya", "melchor", "misato", "rei", "ritsuko", "shinji", "toji",
 	}
 	groups := map[string][]string{
 		"magi":        {"balthasar", "melchor", "casper"},
 		"pilots":      {"rei", "shinji", "asuka", "toji", "kaworu"},
-		"kaji-passes": {"kaji", "kaji-security", "kaji-coverage", "kaji-refuter"},
+		"kaji-passes": {"kaji", "kaji-security", "kaji-coverage", "kaji-resilience", "kaji-refuter"},
 		"all":         allRoles,
 	}
 	info := map[string]RoleInfo{
-		"misato":        {"authors the plan (proposal, design, tasks)", "", ""},
-		"ritsuko":       {"intelligence, test planning, end-of-run docs", "", ""},
-		"hyuga":         {"task criticality, dependency waves, tracking", "", ""},
-		"melchor":       {"MAGI vote: structure and security", "jd-judge-b", "jd-judge-b"},
-		"balthasar":     {"MAGI vote: software principles, readability", "jd-judge-a", "jd-judge-a"},
-		"casper":        {"MAGI vote: process and documentation", "jd-judge-a", "jd-judge-a"},
-		"fuyutsuki":     {"governance veto on new skills/scripts/commands", "", ""},
-		"kaworu":        {"writes the failing tests first", "", ""},
-		"shinji":        {"backend pilot", "", ""},
-		"asuka":         {"frontend pilot", "", ""},
-		"rei":           {"data pilot (persistence, observability)", "", ""},
-		"toji":          {"infrastructure pilot (CI/CD, containers)", "", ""},
-		"maya":          {"quality gate (tests, lint, build)", "", ""},
-		"kaji":          {"audit compiler", "", ""},
-		"kaji-security": {"audit pass: security", "review-risk", ""},
-		"kaji-coverage": {"audit pass: test coverage, reliability, correctness", "review-reliability", ""},
-		"kaji-refuter":  {"refutes severe audit findings", "review-refuter", ""},
-		"aoba":          {"commits, PRs and run telemetry", "", ""},
+		"misato":          {"authors the plan (proposal, design, tasks)", "", ""},
+		"ritsuko":         {"intelligence, test planning, end-of-run docs", "", ""},
+		"hyuga":           {"task criticality, dependency waves, tracking", "", ""},
+		"melchor":         {"MAGI vote: structure and security", "jd-judge-b", "jd-judge-b"},
+		"balthasar":       {"MAGI vote: software principles, readability", "jd-judge-a", "jd-judge-a"},
+		"casper":          {"MAGI vote: process and documentation", "jd-judge-a", "jd-judge-a"},
+		"fuyutsuki":       {"governance veto on new skills/scripts/commands", "", ""},
+		"kaworu":          {"writes the failing tests first", "", ""},
+		"shinji":          {"backend pilot", "", ""},
+		"asuka":           {"frontend pilot", "", ""},
+		"rei":             {"data pilot (persistence, observability)", "", ""},
+		"toji":            {"infrastructure pilot (CI/CD, containers)", "", ""},
+		"maya":            {"quality gate (tests, lint, build)", "", ""},
+		"kaji":            {"audit compiler", "", ""},
+		"kaji-security":   {"audit pass: security", "review-risk", ""},
+		"kaji-coverage":   {"audit pass: test coverage, reliability, correctness", "review-reliability", ""},
+		"kaji-resilience": {"audit pass: resilience and performance", "review-resilience", ""},
+		"kaji-refuter":    {"refutes severe audit findings", "review-refuter", ""},
+		"aoba":            {"commits, PRs and run telemetry", "", ""},
 	}
 	groupDescriptions := map[string]string{
 		"magi":        "the three voters (balthasar, melchor, casper)",
 		"pilots":      "the implementers (kaworu, shinji, asuka, rei, toji)",
-		"kaji-passes": "the audit passes (kaji, kaji-security, kaji-coverage, kaji-refuter)",
+		"kaji-passes": "the audit passes (kaji, kaji-security, kaji-coverage, kaji-resilience, kaji-refuter)",
 		"all":         "every role",
 	}
 	return RoleCatalogue{AllRoles: allRoles, Groups: groups, Info: info, GroupDescriptions: groupDescriptions}
@@ -106,7 +107,7 @@ func (e *ErrUnknownRole) Error() string {
 	return fmt.Sprintf("Unknown role '%s'. Valid roles: %s.", e.Role, strings.Join(Roles().AllRoles, ", "))
 }
 
-// ValidateRole reports an *ErrUnknownRole when role is not one of the 18
+// ValidateRole reports an *ErrUnknownRole when role is not one of the 19
 // catalogue roles.
 func ValidateRole(role string) error {
 	for _, r := range Roles().AllRoles {

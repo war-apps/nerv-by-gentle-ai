@@ -186,6 +186,12 @@ func TestPrint_ModelsRowsCarryPurposeAndEquivalent(t *testing.T) {
 	if got := byRole["kaji-security"]["from_phase"]; got != "" {
 		t.Errorf("kaji-security from_phase = %v, want empty (review-risk is not a phase key)", got)
 	}
+	if got := byRole["kaji-resilience"]["gentle_ai_equivalent"]; got != "review-resilience" {
+		t.Errorf("kaji-resilience gentle_ai_equivalent = %v, want review-resilience", got)
+	}
+	if got := byRole["kaji-resilience"]["from_phase"]; got != "" {
+		t.Errorf("kaji-resilience from_phase = %v, want empty (review-resilience is not a phase key)", got)
+	}
 	if got := byRole["casper"]["from_phase"]; got != "jd-judge-a" {
 		t.Errorf("casper from_phase = %v, want jd-judge-a", got)
 	}
