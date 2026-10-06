@@ -938,8 +938,11 @@ func TestRun_ModelsSection_TableShowsPurposeEquivalentAndGroupLegend(t *testing.
 	if row := lineWith(got, ") kaji-resilience"); !strings.Contains(row, "audit pass: resilience and performance") || !strings.Contains(row, "review-resilience") {
 		t.Errorf("kaji-resilience row = %q, want purpose and review-resilience", row)
 	}
-	if row := lineWith(got, ") kaworu"); !strings.Contains(row, "writes the failing tests first") || strings.Contains(row, "sdd-") || !strings.HasSuffix(strings.TrimSpace(row), "-") {
-		t.Errorf("kaworu row = %q, want purpose and a '-' equivalent", row)
+	if row := lineWith(got, ") kaworu"); !strings.Contains(row, "writes the failing tests first") || strings.Contains(row, "sdd-") || !strings.HasSuffix(strings.TrimSpace(row), "jd-fix-agent") {
+		t.Errorf("kaworu row = %q, want purpose and jd-fix-agent", row)
+	}
+	if row := lineWith(got, ") balthasar"); !strings.HasSuffix(strings.TrimSpace(row), "jd-judge-a, review-readability") {
+		t.Errorf("balthasar row = %q, want both equivalents joined", row)
 	}
 	if row := lineWith(got, ") fuyutsuki"); !strings.HasSuffix(strings.TrimSpace(row), "-") {
 		t.Errorf("fuyutsuki row = %q, want a '-' equivalent", row)

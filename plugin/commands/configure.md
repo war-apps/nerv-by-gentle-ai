@@ -92,7 +92,8 @@ changes confirmed — never more.
      comma-separated) and `artifacts.commit` (`with-change` | `at-close` |
      `never`) in the second group.
    - **models**: first print the `models` rows from step 2 as a table —
-     `role`, `purpose`, `gentle_ai_equivalent` (`-` when empty), `model`,
+     `role`, `purpose`, `gentle_ai_equivalent` (`-` when empty; a
+     comma-separated list when the role covers several agents), `model`,
      `effort`, `source` — and a one-line legend for the group keywords:
      `magi` = the three voters (balthasar, melchor, casper), `pilots` =
      the implementers (kaworu, shinji, asuka, rei, toji), `kaji-passes` =
@@ -105,7 +106,7 @@ changes confirmed — never more.
      changes resolution. A `from:`
      phase is a key of `claude_phase_assignments` in `~/.gentle-ai/state.json`
      that still has an agent in gentle-ai 4.x (`jd-judge-a`, `jd-judge-b`,
-     `jd-fix-agent`); most roles have no equivalent (`-`). Then ask one
+     `jd-fix-agent`); only melchor, balthasar and casper have a `from_phase`. Then ask one
      grouped question for which roles to override — free text, comma-separated role names or a group keyword (`magi`,
      `pilots`, `kaji-passes`, `all`), pre-filled `skip`. For each role
      confirmed, ask a grouped question (at most 2 roles per question, 2

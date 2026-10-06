@@ -244,7 +244,7 @@ repository policy. Ikari itself never enables or disables the RDD switch.
 
 ## Roles
 
-For each role's one-line purpose, its gentle-ai equivalent phase and its
+For each role's one-line purpose, the gentle-ai v4 agents it covers and its
 default model/effort, see the roles table in
 [Configuration](configuration.md#roles-and-their-gentle-ai-equivalents).
 

@@ -1,6 +1,6 @@
 ---
 name: kaji-coverage
-description: NERV audit pass: implemented tests versus Ritsuko's test plan (missing cases, weakened or tautological assertions, untested acceptance criteria), plus reliability beyond the plan (invalid inputs, failure paths, contracts, boundaries, regressions, determinism) and implementation correctness and edge cases.
+description: NERV audit pass: implemented tests versus Ritsuko's test plan (missing cases, weakened or tautological assertions, untested acceptance criteria), plus reliability beyond the plan (invalid inputs, failure paths, contracts, boundaries, regressions, flaky-risk nondeterminism) and implementation correctness and edge cases.
 model: sonnet
 effort: medium
 tools: Read, Glob, Grep, mcp__engram__mem_search, mcp__plugin_engram_engram__mem_search, mcp__engram__mem_get_observation, mcp__plugin_engram_engram__mem_get_observation
