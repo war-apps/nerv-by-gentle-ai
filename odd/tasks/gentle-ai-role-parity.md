@@ -1,7 +1,7 @@
 # gentle-ai role parity
 
 Branch `feat/gentle-ai-role-parity` from `develop` (`eb781cb`). Started 2026-10-06.
-Delivery strategy: `ask-on-risk`; chain strategy: stacked to `develop` (user, 2026-10-06). Slices: PR1 = T1+T2, PR2 = T3 stacked on PR1.
+Delivery strategy: `ask-on-risk`; chain strategy: stacked to `develop` (user, 2026-10-06). Slices (re-cut at PR time to respect the 400-line budget): #75 = T1 (268 lines), #76 = T2 (444, size:exception: role plus every enumeration must move together), #77 = T3 (288).
 Forecast ~560 authored changed lines (T1 ~60, T2 ~300, T3 ~200).
 TDD: strict (global setting). Runner: `go test ./...` (plus `gofmt -l .` and `go vet ./...`).
 RDD: on (decided by global).
@@ -120,3 +120,6 @@ with RDD off or under budget nothing replaces them.
   approved and acknowledged. Advisories left as follow-ups: R2-role-count-still-hardcoded-in-prose
   (`SKILL.md:125`, WARNING), R2-pilots-jd-fix-agent-not-offered-as-from-phase-unexplained
   (`configure.md:109`), R3-001 (`release.yml:56-57`, from #74).
+- 2026-10-06: pushed and opened stacked PRs #75 (`feat/gentle-ai-role-parity-extend` -> develop,
+  `0b90206`+`54de5ad`), #76 (`feat/gentle-ai-role-parity` -> #75, `b826c89`..`84d4b5b`), #77
+  (`feat/gentle-ai-role-parity-guard` -> #76, `8dc7ad3`..). Merge is the user's call.
