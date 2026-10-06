@@ -114,3 +114,9 @@ with RDD off or under budget nothing replaces them.
   re-ran the config and root packages with -count=1: ok). All 8 agents are claimed.
 - 2026-10-06: PR2 slice (base `8e0163c`, 290 lines) assessed `medium`, `under_budget`: no
   review due. Feature complete; push and PRs await the user.
+- 2026-10-06: the stop hook raised the selectorless candidate (base `942774d`, 29 files, 960
+  lines: PR1, T3, and #73/#74 already on develop). The user granted consent. Native review
+  `review-b2a3742af534495c`: risk and resilience 0 findings, 3 advisories (non-blocking),
+  approved and acknowledged. Advisories left as follow-ups: R2-role-count-still-hardcoded-in-prose
+  (`SKILL.md:125`, WARNING), R2-pilots-jd-fix-agent-not-offered-as-from-phase-unexplained
+  (`configure.md:109`), R3-001 (`release.yml:56-57`, from #74).
