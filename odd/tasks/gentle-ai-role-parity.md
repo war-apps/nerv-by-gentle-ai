@@ -61,14 +61,14 @@ with RDD off or under budget nothing replaces them.
   `nerv-artifacts.md`, `SKILL.md`, `init.md` models block, status and integration docs, and
   every count test. RDD rule: always full scope (native review runs only when due). Commit
   `b826c89` (+326/-91).
-- [ ] T3 Catalogue parity guard (route: delegated direct, one writer). `GentleAIEquivalent`
+- [x] T3 Catalogue parity guard (route: delegated direct, one writer). `GentleAIEquivalent`
   becomes a list; update `print.go`, the wizard, the docs table and its parser, and pinned
   tests. New test: every gentle-ai v4 agent is claimed by at least one role. Also folds the
   PR1 review advisories that belong to this feature: R2-equivalent-column-understates-coverage,
   R3-parity-guard-deferred, R3-plugin-default-kaji-resilience-unpinned (pin its default model
   and effort), R2-hardcoded-role-count-duplicated (stop repeating the role count in comments),
   R2-kaji-coverage-determinism-category-drift (align the description with `flaky-risk`).
-  Branch `feat/gentle-ai-role-parity-guard`, stacked on PR1.
+  Branch `feat/gentle-ai-role-parity-guard`, stacked on PR1. Commit `8dc7ad3` (+191/-77).
 
 ## Acceptance criteria
 
@@ -104,3 +104,11 @@ with RDD off or under budget nothing replaces them.
   resilience 0 findings, readability 3 and reliability 2 advisories (non-blocking), state
   approved, acknowledged (`gentle-ai.review-acknowledged/v1`). Reviewed boundary is now
   `8e0163c`. Advisories are folded into T3.
+- 2026-10-06: T3 done by one delegated writer (`8dc7ad3`). `GentleAIV4Agents` (8 agents) and
+  `GentleAIEquivalents []string`; balthasar adds review-readability, the five pilots claim
+  jd-fix-agent. `gentleai_parity_test.go`: every agent claimed, every claim real, list exact.
+  JSON adds `gentle_ai_equivalents`; `gentle_ai_equivalent` stays joined (read by
+  `plugin/commands/status.md`). RED: build failures on the new identifiers plus print/wizard/
+  docs guards. Bite: dropping balthasar's review-readability and misspelling review-risk each
+  failed with the agent/role named. GREEN: `go test ./...` ok, vet clean, gofmt empty (parent
+  re-ran the config and root packages with -count=1: ok). All 8 agents are claimed.
