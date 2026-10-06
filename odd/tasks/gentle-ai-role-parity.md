@@ -63,7 +63,12 @@ with RDD off or under budget nothing replaces them.
   `b826c89` (+326/-91).
 - [ ] T3 Catalogue parity guard (route: delegated direct, one writer). `GentleAIEquivalent`
   becomes a list; update `print.go`, the wizard, the docs table and its parser, and pinned
-  tests. New test: every gentle-ai v4 agent is claimed by at least one role.
+  tests. New test: every gentle-ai v4 agent is claimed by at least one role. Also folds the
+  PR1 review advisories that belong to this feature: R2-equivalent-column-understates-coverage,
+  R3-parity-guard-deferred, R3-plugin-default-kaji-resilience-unpinned (pin its default model
+  and effort), R2-hardcoded-role-count-duplicated (stop repeating the role count in comments),
+  R2-kaji-coverage-determinism-category-drift (align the description with `flaky-risk`).
+  Branch `feat/gentle-ai-role-parity-guard`, stacked on PR1.
 
 ## Acceptance criteria
 
@@ -94,3 +99,8 @@ with RDD off or under budget nothing replaces them.
 - Follow-up for the user (pre-existing, not in scope): with RDD on, melchor, balthasar and
   kaji-security narrow to cross-commit concerns, assuming native review covered each commit;
   native review only runs when due and granted.
+- 2026-10-06: PR1 slice (T1+T2, base `eb781cb`, 684 lines) assessed `high` (hot_path), review
+  due. User granted consent. Native review `review-4eee5199d25dfb73`: four lenses, risk and
+  resilience 0 findings, readability 3 and reliability 2 advisories (non-blocking), state
+  approved, acknowledged (`gentle-ai.review-acknowledged/v1`). Reviewed boundary is now
+  `8e0163c`. Advisories are folded into T3.
