@@ -72,7 +72,7 @@ func Roles() RoleCatalogue {
 		"ritsuko":       {"intelligence, test planning, end-of-run docs", "", ""},
 		"hyuga":         {"task criticality, dependency waves, tracking", "", ""},
 		"melchor":       {"MAGI vote: structure and security", "jd-judge-b", "jd-judge-b"},
-		"balthasar":     {"MAGI vote: software principles", "jd-judge-a", "jd-judge-a"},
+		"balthasar":     {"MAGI vote: software principles, readability", "jd-judge-a", "jd-judge-a"},
 		"casper":        {"MAGI vote: process and documentation", "jd-judge-a", "jd-judge-a"},
 		"fuyutsuki":     {"governance veto on new skills/scripts/commands", "", ""},
 		"kaworu":        {"writes the failing tests first", "", ""},
@@ -83,7 +83,7 @@ func Roles() RoleCatalogue {
 		"maya":          {"quality gate (tests, lint, build)", "", ""},
 		"kaji":          {"audit compiler", "", ""},
 		"kaji-security": {"audit pass: security", "review-risk", ""},
-		"kaji-coverage": {"audit pass: tests vs test plan", "review-reliability", ""},
+		"kaji-coverage": {"audit pass: test coverage, reliability, correctness", "review-reliability", ""},
 		"kaji-refuter":  {"refutes severe audit findings", "review-refuter", ""},
 		"aoba":          {"commits, PRs and run telemetry", "", ""},
 	}

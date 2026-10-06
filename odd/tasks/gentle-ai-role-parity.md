@@ -1,0 +1,85 @@
+# gentle-ai role parity
+
+Branch `feat/gentle-ai-role-parity` from `develop` (`eb781cb`). Started 2026-10-06.
+Delivery strategy: `ask-on-risk`; chain strategy: stacked to `develop` (user, 2026-10-06). Slices: PR1 = T1+T2, PR2 = T3 stacked on PR1.
+Forecast ~560 authored changed lines (T1 ~60, T2 ~300, T3 ~200).
+TDD: strict (global setting). Runner: `go test ./...` (plus `gofmt -l .` and `go vet ./...`).
+RDD: on (decided by global).
+Engram mirror: topic `odd/gentle-ai-role-parity/tasks`.
+
+## Objective
+
+Every capability of the gentle-ai v4 agents has an equivalent NERV role, so running NERV
+loses no gentle-ai functionality.
+
+## Problem / why
+
+User request 2026-10-06: "necesito que todos los roles de nerv sean equivalentes con los de
+gentle-ai, no se debe perder funcionalidad por parte de gentle-ai".
+
+gentle-ai v4.0.0 ships 8 Claude agents (`internal/assets/claude/agents/` at tag `v4.0.0`):
+`jd-fix-agent`, `jd-judge-a`, `jd-judge-b`, `review-readability`, `review-refuter`,
+`review-reliability`, `review-resilience`, `review-risk`. The `sdd-*` files present in
+`~/.claude/agents` do not come from gentle-ai v4 and are out of scope.
+
+A capability-level comparison (2026-10-06) found:
+- MISSING: `review-resilience` (fallbacks, retry/backoff, graceful degradation, rollback or
+  fix-forward, latency/load/SLO, observability review) and the performance lens of the
+  `jd-judge-*` agents. No audit pass covers them.
+- PARTIAL: `review-readability` (misleading names, unexplained constants, complexity, review
+  size and context); `review-reliability` (kaji-coverage is bound to the test plan: no invalid
+  inputs, failure paths, contracts or regressions outside it); `jd-judge-a/b` (no general
+  correctness and edge-case lens).
+- COVERED: `review-risk` (kaji-security), `review-refuter` (kaji-refuter), `jd-fix-agent`
+  (fix routing through the owning pilot, kaworu and aoba).
+
+Today the gentle-ai `review-*` agents only run through the RDD relay when a review is due;
+with RDD off or under budget nothing replaces them.
+
+## Scope and constraints
+
+- Decided approach (user, 2026-10-06): hybrid. One new audit pass `kaji-resilience` covering
+  resilience and performance; every other gap closes by extending an existing role's
+  `## Role contract`.
+- `RoleInfo.GentleAIEquivalent` is a single string, so it cannot record that one role covers
+  two gentle-ai agents (for example balthasar: `jd-judge-a` and `review-readability`). The
+  catalogue moves to a list, and a guard test asserts each of the 8 gentle-ai v4 agents is
+  claimed by at least one role.
+- `FromPhase` semantics stay unchanged (only `jd-*` keys, never `review-*`).
+- English artifacts; no change to how models resolve.
+
+## Tasks
+
+- [x] T1 Extend existing audit passes (route: delegated direct, one writer; prompt-only).
+  balthasar gains the readability lens (misleading names, unexplained business constants,
+  complexity, review size and context). kaji-coverage gains reliability beyond the test plan
+  (invalid inputs, failure paths, contracts, regressions) plus correctness and edge cases.
+  Purpose strings and the docs roles table stay in sync. Commit `0b90206` (+154/-29).
+- [ ] T2 New audit pass `kaji-resilience` (route: delegated direct, one writer). Agent file
+  modeled on kaji-security; resilience plus performance lens. Add to the catalogue (19
+  roles, `kaji-passes` group), the five-to-six pass contract in kaji, `pipeline-full.md`,
+  `nerv-artifacts.md`, `SKILL.md`, `init.md` models block, status and integration docs, and
+  every count test. Decide its RDD-narrowing rule like the other passes.
+- [ ] T3 Catalogue parity guard (route: delegated direct, one writer). `GentleAIEquivalent`
+  becomes a list; update `print.go`, the wizard, the docs table and its parser, and pinned
+  tests. New test: every gentle-ai v4 agent is claimed by at least one role.
+
+## Acceptance criteria
+
+- Each of the 8 gentle-ai v4 agents maps to at least one NERV role whose contract covers its
+  duties, and a test fails if one is left unclaimed.
+- An audit run produces six passes, including `kaji-resilience`.
+- `go test ./...`, `go vet ./...`, `gofmt -l .` clean.
+
+## Progress
+
+- 2026-10-06: gap map done (read-only explorer), sdd scope verified against the gentle-ai
+  v4.0.0 tree, branch created, document written.
+- 2026-10-06: T1 done by one delegated writer (`0b90206`). balthasar adds categories naming,
+  magic-value, complexity, intention, review-context (WARNING cap unless a proven correctness
+  failure). kaji-coverage adds invalid-input, failure-path, contract, boundary, regression,
+  low-value-test, logic-error, edge-case, concurrency, under the same candidate-causal bar.
+  Audit JSON has no category field, so kaji.md is unchanged. TDD exception: prompt prose, no
+  meaningful RED; the purpose guard `TestDocsRolesTable_MatchesCatalogue` passes.
+  Checks: `go test ./...` ok, `go vet ./...` clean, `gofmt -l .` empty (writer; parent re-ran
+  `go test ./...`: ok).

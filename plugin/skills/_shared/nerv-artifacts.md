@@ -533,14 +533,19 @@ everywhere in NERV (mirrors gentle-ai's native review lenses):
 
 Lens assignment for AUDIT mode mirrors VOTE mode's lenses, applied to the
 frozen patch instead of the plan: Melchor — architecture, design, dead
-code, duplication; Balthasar — SOLID, KISS, YAGNI, DRY, pattern fit;
+code, duplication; Balthasar — SOLID, KISS, YAGNI, DRY, pattern fit,
+plus readability (misleading names, unexplained constants, complexity,
+intention, review size and context);
 Casper — plan conformance (every task in `tasks.md` delivered as
 specified and nothing extra, BASE..HEAD), commit hygiene (atomic,
 conventional, correct scopes), and TDD commit order (the RED commit
 precedes the GREEN commit for every task, checked in git history);
 `kaji-security` — security across all layers; `kaji-coverage` —
 implemented tests vs `nerv/test-plan.md` (missing cases, weakened
-assertions). Passes never edit files and never persist their own output —
+assertions), reliability beyond the plan (invalid inputs, failure paths,
+contracts, boundaries, regressions, determinism), and correctness and
+edge cases in the changed implementation; findings outside the test plan
+follow the same candidate-causal admission. Passes never edit files and never persist their own output —
 Ikari writes the validated object to its locator.
 
 ## audit-report.md (Kaji)
