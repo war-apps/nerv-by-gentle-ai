@@ -47,9 +47,10 @@ User request 2026-10-07: "resolvamos primero todo lo pendiente". Open items:
 
 - [x] T5 Prose advisories from review `review-bd79021690281844` (route: inline, mechanical):
   status.md role count, docs/configuration.md agent count, kaji.md names melchor.
-- [ ] T6 Guard-test advisories (route: delegated direct, one writer): narrow the bare
+- [x] T6 Guard-test advisories (route: delegated direct, one writer): narrow the bare
   `exit_code=$?` check to the line after a nerv capture, glob `.yaml`, fix the threshold
   comment; new prose guard that every audit pass list names all six passes.
+  `audit_pass_lists_test.go`. Commit `870c4ff`.
 
 ## Acceptance criteria
 
@@ -72,3 +73,7 @@ User request 2026-10-07: "resolvamos primero todo lo pendiente". Open items:
   R2-docs-agent-count-hardcoded, R2-kaji-third-magi-lens-misnamed,
   R2-release-guard-comment-mismatches-threshold, R3-bare-exit-code-check-overbroad,
   R3-six-pass-batch-unguarded. Folded into T5 and T6; no further review loop on them.
+- 2026-10-07: T5 done inline (`0d87150`, prose). T6 done by one delegated writer (`870c4ff`).
+  Bites: regressed release.yml:57 failed at :57 and :58; dropping kaji-resilience from each of
+  the four pass lists failed once per list. `go test ./...` ok, vet ok, gofmt empty; parent
+  re-ran `go test -count=1 .`: ok.
