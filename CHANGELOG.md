@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Breaking
+- config: drop the `kaji-security` role and give each MAGI one gentle-ai equivalent (2f686de)
+  - The Phase 3 audit runs five passes. Melchor's audit pass now carries the full security lens
+    (injection, authz, secrets, data exposure, unsafe defaults, dependency risk, crypto, infra
+    hardening) and claims `review-risk` next to `jd-judge-b`.
+  - Balthasar keeps `jd-judge-a` only. Casper takes over the readability audit lens and
+    `review-readability`, and no longer suggests a `from:` phase.
+  - A `models.kaji-security` override left in `nerv.yaml` is not an error, but it no longer
+    applies to any agent: `nerv apply-models` skips it, and `nerv configure --print`,
+    `/nerv:status` and the wizard show it as a row with no purpose. `nerv configure --set-model
+    kaji-security=default` refuses the unknown role, so delete the line by hand (or move the
+    value to `melchor`).
+
 ## [2.0.1] - 2026-10-05
 
 ### Fixed

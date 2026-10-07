@@ -66,8 +66,8 @@ func TestRDDNarrowing_FailsClosed(t *testing.T) {
 	}
 
 	// The clause that launches cross-commit scope admits only the two
-	// evidence-backed reasons and narrows exactly melchor, balthasar and
-	// kaji-security.
+	// evidence-backed reasons and narrows exactly melchor (whose audit pass
+	// also carries the security lens) and balthasar.
 	narrow := sentenceWith(t, paragraph, "`RDD scope: cross-commit`")
 	for _, token := range []string{
 		"`review_due: false`",
@@ -75,7 +75,6 @@ func TestRDDNarrowing_FailsClosed(t *testing.T) {
 		"`passive`",
 		"`melchor`",
 		"`balthasar`",
-		"`kaji-security`",
 	} {
 		if !strings.Contains(narrow, token) {
 			t.Errorf("%s (cross-commit clause): required %q missing", rddNarrowingFile, token)
@@ -87,6 +86,7 @@ func TestRDDNarrowing_FailsClosed(t *testing.T) {
 		"`casper`",
 		"`kaji-coverage`",
 		"`kaji-resilience`",
+		"kaji-security",
 	} {
 		if strings.Contains(narrow, token) {
 			t.Errorf("%s (cross-commit clause): forbidden %q present", rddNarrowingFile, token)

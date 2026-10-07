@@ -33,7 +33,7 @@ const fixtureLF = "" +
 	"  code: [dotnet-best-practices, typescript-best-practices]         # pilots\n" +
 	"  best-practices: [best-practices, solid-principles, clean-code-guard]  # balthasar\n" +
 	"  architecture: [hexagonal-architecture, c4-architecture]          # melchor\n" +
-	"  audit: [security-review, clean-code-guard]                       # kaji passes\n" +
+	"  audit: [security-review, clean-code-guard]                       # kaji passes, melchor audit\n" +
 	"critical_paths: [auth/, payments/, migrations/, infra/]            # Hyuga auto-critical\n" +
 	"git:\n" +
 	"  base_branch: develop              # default base for the worktree offer\n" +

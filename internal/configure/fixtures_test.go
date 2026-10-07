@@ -16,7 +16,7 @@ const richFixtureLF = "" +
 	"  code: [dotnet-best-practices, typescript-best-practices]         # pilots\n" +
 	"  best-practices: [best-practices, solid-principles, clean-code-guard]  # balthasar\n" +
 	"  architecture: [hexagonal-architecture, c4-architecture]          # melchor\n" +
-	"  audit: [security-review, clean-code-guard]                       # kaji passes\n" +
+	"  audit: [security-review, clean-code-guard]                       # kaji passes, melchor audit\n" +
 	"models:                             # per-role model and effort; project overrides user, key by key\n" +
 	"  misato: { model: fable, effort: high }\n" +
 	"  melchor: { from: jd-judge-b }     # inherit gentle-ai's assignment for that phase (state.json)\n" +

@@ -271,17 +271,17 @@ Expected, in order:
 5. Audit stage, round 1:
    - `nerv:aoba` freezes `nerv/audit/diff-round-1.patch` and
      `nerv/audit/round-1.yaml` (base = branch point, head = current HEAD).
-   - Six passes launch in one parallel batch, blind:
-     `nerv:melchor`, `nerv:balthasar` (MODE: audit), `nerv:casper`
-     (MODE: audit), `nerv:kaji-security`, `nerv:kaji-coverage`,
-     `nerv:kaji-resilience`. Each
+   - Five passes launch in one parallel batch, blind:
+     `nerv:melchor` (MODE: audit, structure and security),
+     `nerv:balthasar` (MODE: audit), `nerv:casper` (MODE: audit),
+     `nerv:kaji-coverage`, `nerv:kaji-resilience`. Each
      writes its validated JSON to
      `nerv/audit/pass-<name>-round-1.json`.
    - Expected finding: `nerv:kaji-coverage` flags the missing
      division-by-zero case as `CRITICAL`, `evidence_class: deterministic`,
      `causal_disposition: introduced` (the task specified `a / b` with no
      guard and the test plan never asked for the zero case — both
-     candidate-caused). `nerv:kaji-security` or `nerv:balthasar` may
+     candidate-caused). `nerv:melchor` or `nerv:balthasar` may
      additionally flag the unchecked divisor (accept either or both;
      record whichever actually fired).
    - `nerv:kaji` compiles `nerv/audit-report.md`: the coverage finding
@@ -308,7 +308,7 @@ Expected, in order:
    RDD hook runs (no-op, RDD disabled in this bench clone).
 9. Re-audit round 2: `nerv:aoba` freezes
    `nerv/audit/diff-round-2.patch` scoped to the fix delta only (base =
-   round 1's HEAD); the same six passes run again over that delta; Kaji
+   round 1's HEAD); the same five passes run again over that delta; Kaji
    compiles round 2, carrying forward any round-1 item still unresolved.
    Expected: no candidate-caused `BLOCKER`/`CRITICAL` remains in round 2
    — the guard is in place and tested — so the loop ends here, under the
