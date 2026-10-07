@@ -191,7 +191,7 @@ Expected, in order:
     commit before its GREEN commit.
 13. `nerv:maya` (MODE: full) writes phases a→b→c→d into
     `nerv/maya-report.md`, each green before the next starts.
-14. Ikari states plainly that the audit stage (Kaji, 6 passes, ranking,
+14. Ikari states plainly that the audit stage (Kaji, 5 passes, ranking,
     issue gate) is not shipped in this build — no audit artifacts are
     produced.
 15. `nerv:aoba` writes `nerv/run-summary.md` (agents table with
@@ -334,20 +334,20 @@ Expected artifacts, in creation order: `state.yaml`, `exploration*.md`,
 `specs/`, `nerv/test-plan.md`, `proposal.md`, `design.md`, `tasks.md`,
 (FULL-only: `nerv/criticality.md`, `nerv/votes.md`, `nerv/veto-ruling.md`,
 `nerv/waves.md`), `nerv/maya-report.md`, `nerv/audit/diff-round-1.patch`,
-`nerv/audit/round-1.yaml`, `nerv/audit/pass-<name>-round-1.json` ×6,
+`nerv/audit/round-1.yaml`, `nerv/audit/pass-<name>-round-1.json` ×5,
 `nerv/audit-report.md`, `nerv/issue-ranking.md`,
 `nerv/audit/diff-round-2.patch`, `nerv/audit/round-2.yaml`,
-`nerv/audit/pass-<name>-round-2.json` ×6 (updated `audit-report.md`),
+`nerv/audit/pass-<name>-round-2.json` ×5 (updated `audit-report.md`),
 `nerv/issue-resolutions.md`, `nerv/agent-config.md`,
 `nerv/run-summary.md`.
 
 Expected log events, in order (Phase 1/2 event types included where the
 run's own classification exercises them, plus every Phase 3 event type):
 `classification`, `launch`, `envelope`, ..., `patch_frozen` (round 1),
-`audit_pass` ×6 (round 1), `dedupe_merge` (if any), `refuter_result` (if
+`audit_pass` ×5 (round 1), `dedupe_merge` (if any), `refuter_result` (if
 any), `ranking_issued`, `issue_gate_relayed`, `issue_gate_decision`,
 `fix_routed`, `commit_recorded` (RED and fix), `reaudit` (round 2),
-`patch_frozen` (round 2), `audit_pass` ×6 (round 2), `ranking_issued`
+`patch_frozen` (round 2), `audit_pass` ×5 (round 2), `ranking_issued`
 (round 2, empty NOW set) or its equivalent closure signal, `docs_written`,
 `archived`, `log_curated`, `stop`/close. No `residual_accepted` entry is
 expected in this journey since round 2 resolves clean under the cap.
