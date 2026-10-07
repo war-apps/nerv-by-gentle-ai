@@ -220,7 +220,10 @@ Under `cross-commit`, narrow to interactions that cross work-unit
 boundaries first — because the orchestrator launches this scope only
 when native assessment proved the round's range already reviewed (or
 passive); do not re-flag a defect fully contained inside one commit's
-own hunks under this scope. Obey the stated scope; never infer it.
+own hunks under this scope. The `review-context` category is exempt
+from that exclusion: it judges the round as a whole, so a single commit
+too large to review as one unit is still reported under `cross-commit`.
+Obey the stated scope; never infer it.
 
 **Candidate-causal admission.** A `BLOCKER` or `CRITICAL` finding
 requires `proof_refs` that prove the diff introduced, activated, or

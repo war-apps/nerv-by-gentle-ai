@@ -52,6 +52,11 @@ User request 2026-10-07: "resolvamos primero todo lo pendiente". Open items:
   comment; new prose guard that every audit pass list names all six passes.
   `audit_pass_lists_test.go`. Commit `870c4ff`.
 
+- [x] T7 Advisories from review `review-fe0298bb98f15127` (route: balthasar.md inline, tests
+  delegated to one writer): balthasar exempts `review-context` from the cross-commit
+  exclusion; the step-14 guard checks only the agents cell; new `rdd_narrowing_prose_test.go`
+  pins the fail-closed narrowing rule.
+
 ## Acceptance criteria
 
 - No role count in orchestrator prose; the pilots' missing `from_phase` is explained.
@@ -84,3 +89,12 @@ User request 2026-10-07: "resolvamos primero todo lo pendiente". Open items:
   R3-audit-pass-list-row-check-not-column-scoped (audit_pass_lists_test.go:96-104),
   R3-evidence-based-narrowing-unguarded (pipeline-full.md:160-175). Feature complete; push
   and PR await the user.
+- 2026-10-07: review `review-fe0298bb98f15127` (base `942774d`, 1280 lines; only the odd doc
+  changed since the previous approval), user granted: approved and acknowledged. Advisories:
+  R2-balthasar-review-context-contradicts-cross-commit-scope (WARNING),
+  R3-evidence-based-narrowing-unguarded, R3-row-check-not-column-scoped. User chose to fix all
+  three in one commit, then push and PR.
+- 2026-10-07: T7 done. Bites: dropping melchor from the step-14 agents cell, adding
+  under_budget to the cross-commit clause, and deleting "missing evidence never narrows" each
+  failed with the token named. `go test ./...` ok, vet ok, gofmt empty; parent re-ran
+  `go test -count=1 .`: ok.

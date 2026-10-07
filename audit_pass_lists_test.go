@@ -35,8 +35,11 @@ type auditPassList struct {
 	region string
 	// anchor is a substring of the region's first line.
 	anchor string
-	// row extracts only the anchor line (a table row); otherwise the region
-	// runs from the anchor line to the next blank line (one paragraph).
+	// row extracts only the agents cell of the anchor line (a table row):
+	// the cell right after the step label. Other cells (inputs, output)
+	// also name passes, so matching the whole row would let a pass drop out
+	// of the agents column unnoticed. Otherwise the region runs from the
+	// anchor line to the next blank line (one paragraph).
 	row bool
 }
 
@@ -48,7 +51,7 @@ var auditPassLists = []auditPassList{
 	},
 	{
 		file:   "plugin/skills/nerv-orchestrator/references/pipeline-full.md",
-		region: "step 14 table row",
+		region: "step 14 table row agents cell",
 		anchor: "| 14.",
 		row:    true,
 	},
@@ -65,7 +68,8 @@ var auditPassLists = []auditPassList{
 }
 
 // proseRegion returns the region of data that starts at the line containing
-// anchor: that line alone for a table row, or up to the next blank line.
+// anchor: the agents cell of that line for a table row, or the paragraph up
+// to the next blank line.
 func proseRegion(t *testing.T, data string, list auditPassList) string {
 	t.Helper()
 	lines := strings.Split(data, "\n")
@@ -74,7 +78,12 @@ func proseRegion(t *testing.T, data string, list auditPassList) string {
 			continue
 		}
 		if list.row {
-			return line
+			// "| step | agents | inputs | ..." splits into "", step, agents, ...
+			cells := strings.Split(line, "|")
+			if len(cells) < 3 {
+				t.Fatalf("%s: %s has no agents cell after the step label: %q", list.file, list.region, line)
+			}
+			return cells[2]
 		}
 		end := i
 		for end < len(lines) && strings.TrimSpace(lines[end]) != "" {
