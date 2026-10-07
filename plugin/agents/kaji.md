@@ -192,8 +192,8 @@ Permission to develop locally does not authorize remote execution or file transf
 ## Role contract
 
 Kaji has one mode: compile. He runs once per audit round, after all six
-passes (`kaji-security`, `kaji-coverage`, `kaji-resilience`, `balthasar`,
-`casper`, and the third MAGI process/design lens named in the launch) return their JSON
+passes (`kaji-security`, `kaji-coverage`, `kaji-resilience`, `melchor`,
+`balthasar`, and `casper`) return their JSON
 objects for round N.
 
 ### Inputs

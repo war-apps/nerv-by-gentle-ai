@@ -45,6 +45,12 @@ User request 2026-10-07: "resolvamos primero todo lo pendiente". Open items:
   kaji-security scope paragraphs (route: delegated direct, one writer: 4 prose files).
   Also fixed the step-14 table row. Commit `39f19e9`.
 
+- [x] T5 Prose advisories from review `review-bd79021690281844` (route: inline, mechanical):
+  status.md role count, docs/configuration.md agent count, kaji.md names melchor.
+- [ ] T6 Guard-test advisories (route: delegated direct, one writer): narrow the bare
+  `exit_code=$?` check to the line after a nerv capture, glob `.yaml`, fix the threshold
+  comment; new prose guard that every audit pass list names all six passes.
+
 ## Acceptance criteria
 
 - No role count in orchestrator prose; the pilots' missing `from_phase` is explained.
@@ -60,3 +66,9 @@ User request 2026-10-07: "resolvamos primero todo lo pendiente". Open items:
   `exit_code=$?` form at release.yml:57 failed with path:line. `gofmt -l .` empty, vet ok.
 - 2026-10-07: T4 done by one delegated writer (`39f19e9`). Writer: `go test ./...` ok, vet
   clean, gofmt empty; parent re-ran `go test -count=1 . ./internal/...`: ok. Feature complete.
+- 2026-10-07: candidate (base `942774d`, 32 files, 1123 lines) assessed high; user granted.
+  Native review `review-bd79021690281844`: approved and acknowledged (authority burned).
+  6 non-blocking advisories: R2-status-role-count-still-hardcoded (WARNING),
+  R2-docs-agent-count-hardcoded, R2-kaji-third-magi-lens-misnamed,
+  R2-release-guard-comment-mismatches-threshold, R3-bare-exit-code-check-overbroad,
+  R3-six-pass-batch-unguarded. Folded into T5 and T6; no further review loop on them.
