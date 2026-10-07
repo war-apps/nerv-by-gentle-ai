@@ -35,11 +35,15 @@ User request 2026-10-07: "resolvamos primero todo lo pendiente". Open items:
 
 ## Tasks
 
-- [ ] T1 SKILL.md stops hardcoding the role count (route: inline, one mechanical file).
-- [ ] T2 configure.md explains why the pilots have no `from_phase` (route: inline, one file).
-- [ ] T3 Guard test for the release.yml exit-code capture (route: inline, one new test file).
-- [ ] T4 Evidence-based RDD narrowing in `pipeline-full.md` and the melchor, balthasar,
+- [x] T1 SKILL.md stops hardcoding the role count (route: inline, one mechanical file).
+  Commit `267b977`.
+- [x] T2 configure.md explains why the pilots have no `from_phase` (route: inline, one file).
+  Commit `93835f2`.
+- [x] T3 Guard test for the release.yml exit-code capture (route: inline, one new test file).
+  `release_workflow_test.go`. Commit `f1d5c7a`.
+- [x] T4 Evidence-based RDD narrowing in `pipeline-full.md` and the melchor, balthasar,
   kaji-security scope paragraphs (route: delegated direct, one writer: 4 prose files).
+  Also fixed the step-14 table row. Commit `39f19e9`.
 
 ## Acceptance criteria
 
@@ -51,3 +55,8 @@ User request 2026-10-07: "resolvamos primero todo lo pendiente". Open items:
 ## Progress
 
 - 2026-10-07: document written, branch created.
+- 2026-10-07: T1, T2 done inline (prose; TDD exception: no meaningful RED; docs guards green).
+- 2026-10-07: T3 done inline. Guard passes on current workflows; bite: restoring the bare
+  `exit_code=$?` form at release.yml:57 failed with path:line. `gofmt -l .` empty, vet ok.
+- 2026-10-07: T4 done by one delegated writer (`39f19e9`). Writer: `go test ./...` ok, vet
+  clean, gofmt empty; parent re-ran `go test -count=1 . ./internal/...`: ok. Feature complete.
