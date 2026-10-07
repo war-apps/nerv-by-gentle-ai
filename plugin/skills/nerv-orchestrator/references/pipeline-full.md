@@ -27,7 +27,7 @@ the table below or downgrade FULL to LIGHT mid-run.
 | 11. Implementation wave N | `nerv:kaworu` (RED) → `nerv:aoba` (commit, user validates) → assigned pilot (GREEN/TRIANGULATE/REFACTOR) → `nerv:aoba` (commit, user validates) → RDD hook | wave task, skills, TDD mode+runner, `commit_ref` | code + TDD evidence rows | repeat for every wave in `waves.md` in dependency order; a wave starts only when every wave it depends on is closed with a `wave_report`; the loop terminates when the last wave is closed; pilots in a wave may run in one parallel batch when their tasks are independent; deviations → `nerv:hyuga` deviation → `nerv:misato` ruling |
 | 12. Maya full gate a→b→c→d | `nerv:maya` (MODE: full) | full change diff (base..HEAD), gathered once after the last wave closes — never per wave | `nerv/maya-report.md` phases a-d, each green before the next starts | `impl-wrong` → owning pilot; `spec-wrong` → Misato as a binding ruling (`MODE: ruling`, source `maya`); `ambiguous` → one Misato ruling → user only if a product decision is needed |
 | 13. Freeze patch | `nerv:aoba` | base (branch point for round 1, previous round's HEAD for re-audits), round number, change locator | `nerv/audit/diff-round-N.patch`, `nerv/audit/round-N.yaml` (`{round, base, head, created_at}`) | gatekeeper |
-| 14. Audit passes, 6 in parallel, blind | `nerv:melchor`, `nerv:balthasar`, `nerv:casper` (MODE: audit), `nerv:kaji-security`, `nerv:kaji-coverage`, `nerv:kaji-resilience` | `diff-round-N.patch` + proposal/design/tasks/specs/test-plan locators, skills; RDD-narrowed scope for melchor/balthasar/kaji-security when RDD is on | one JSON pass object each per the contract in `nerv-artifacts.md`; Ikari writes each to `nerv/audit/pass-<name>-round-N.json` | gatekeeper — JSON validation, one retry |
+| 14. Audit passes, 6 in parallel, blind | `nerv:melchor`, `nerv:balthasar`, `nerv:casper` (MODE: audit), `nerv:kaji-security`, `nerv:kaji-coverage`, `nerv:kaji-resilience` | `diff-round-N.patch` + proposal/design/tasks/specs/test-plan locators, skills; `RDD scope` for melchor/balthasar/kaji-security (`cross-commit` only with native assess evidence, else `full`; see RDD narrowing) | one JSON pass object each per the contract in `nerv-artifacts.md`; Ikari writes each to `nerv/audit/pass-<name>-round-N.json` | gatekeeper — JSON validation, one retry |
 | 15. Compile + refute | `nerv:kaji` (compile), `nerv:kaji-refuter` (one batch over that round's inferential BLOCKER/CRITICAL) | the six pass objects/files | `nerv/audit-report.md` with refuter outcomes merged (`refuted` → dropped to a `## Refuted` appendix, `inconclusive` → WARNING, kept) | none |
 | 16. Ranking + issue gate | `nerv:hyuga` (dispatch c) | `audit-report.md` (post-refuter) | `nerv/issue-ranking.md` | **user HARD** — Ikari relays the ranked NOW/DEFER list as one blocking prompt: approve the NOW set / edit it / accept residual and close |
 | 17. Fix routing + re-audit loop | owning pilot per approved issue (LIGHT work-unit cycle: Kaworu RED when behavioral, Aoba commit, pilot fix, Aoba commit, RDD hook), `nerv:aoba` (fix-delta patch), audit passes, `nerv:kaji` | fixes committed; `nerv/audit/diff-round-N+1.patch` scoped to the fix delta only; updated `audit-report.md` carrying forward unresolved items | cap 2 re-audits (loop back to step 14 over the fix-delta patch); at the cap the user accepts the residual (`residual_accepted` in `issue-ranking.md`) or declines the remainder; deviations → Misato ruling |
@@ -156,10 +156,23 @@ runs again, and the issue gate is relayed again. Capped at 2 re-audits; at
 the cap the user either accepts the residual (recorded in
 `issue-ranking.md` as `residual_accepted`) or declines the remainder.
 
-**RDD narrowing.** When the RDD switch is on for the repo, `melchor`,
-`balthasar`, and `kaji-security` narrow to cross-commit and integration
-concerns — per-commit defects were already reviewed natively by RDD; Ikari
-states which scope applies in each pass launch. `casper`,
+**RDD narrowing.** Narrowing is evidence-based, never assumed: native
+review runs only when a review is due and the human granted consent, so
+the RDD switch alone proves nothing about a commit. Before each round's
+passes, Ikari runs `gentle-ai review assess --cwd <repo> --base-ref
+<round base> --committed-only --json` over the round's frozen range
+(base..head from `nerv/audit/round-N.yaml`; a re-audit round uses its own
+fix-delta range). Ikari launches `melchor`, `balthasar`, and
+`kaji-security` with `RDD scope: cross-commit` (cross-commit and
+integration concerns only) ONLY when the RDD switch is on AND the
+assessment returns `review_due: false` with `review_due_reason`
+`already_reviewed` (terminal native authority covers that exact range)
+or `passive` (nothing reviewable). Every other outcome — RDD off or
+unknown, `review_due: true`, `under_budget`, any other reason, a failed
+assessment, or unparsable output — launches `RDD scope: full`. Fail
+closed: missing evidence never narrows. Ikari records the chosen scope
+and the assess reason in the round's phase note and in each pass
+launch, so the decision is auditable. `casper`,
 `kaji-coverage` and `kaji-resilience` always keep full NERV scope (plan
 conformance and commit hygiene for Casper; test-plan coverage,
 reliability and correctness for kaji-coverage; resilience and

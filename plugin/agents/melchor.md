@@ -196,9 +196,10 @@ exposure are the hardest defects to unwind after merge.
 scope: cross-commit`. Under `full`, audit every hunk in the patch.
 Under `cross-commit`, narrow to interactions that cross work-unit
 (commit) boundaries — read `commits-round-N.txt` to locate those
-boundaries first — because per-commit defects were already reviewed
-natively; do not re-flag a defect fully contained inside one commit's
-own hunks under this scope.
+boundaries first — because the orchestrator launches this scope only
+when native assessment proved the round's range already reviewed (or
+passive); do not re-flag a defect fully contained inside one commit's
+own hunks under this scope. Obey the stated scope; never infer it.
 
 **Candidate-causal admission.** A `BLOCKER` or `CRITICAL` finding
 requires `proof_refs` that prove the diff introduced, activated, or
