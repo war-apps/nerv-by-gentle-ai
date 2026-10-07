@@ -77,3 +77,10 @@ User request 2026-10-07: "resolvamos primero todo lo pendiente". Open items:
   Bites: regressed release.yml:57 failed at :57 and :58; dropping kaji-resilience from each of
   the four pass lists failed once per list. `go test ./...` ok, vet ok, gofmt empty; parent
   re-ran `go test -count=1 .`: ok.
+- 2026-10-07: candidate (base `942774d`, 33 files, 1273 lines) assessed high; user granted.
+  Native review `review-934950b3f665e62a`: approved and acknowledged (authority burned).
+  3 SUGGESTION advisories left as optional follow-ups (no review loop):
+  R2-kaji-resilience-full-scope-rationale-duplicated (pipeline-full.md:180-182),
+  R3-audit-pass-list-row-check-not-column-scoped (audit_pass_lists_test.go:96-104),
+  R3-evidence-based-narrowing-unguarded (pipeline-full.md:160-175). Feature complete; push
+  and PR await the user.
