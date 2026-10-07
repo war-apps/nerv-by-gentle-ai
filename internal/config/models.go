@@ -66,24 +66,27 @@ type RoleCatalogue struct {
 func Roles() RoleCatalogue {
 	allRoles := []string{
 		"aoba", "asuka", "balthasar", "casper", "fuyutsuki", "hyuga", "kaji",
-		"kaji-coverage", "kaji-refuter", "kaji-resilience", "kaji-security",
-		"kaworu", "maya", "melchor", "misato", "rei", "ritsuko", "shinji", "toji",
+		"kaji-coverage", "kaji-refuter", "kaji-resilience", "kaworu", "maya",
+		"melchor", "misato", "rei", "ritsuko", "shinji", "toji",
 	}
 	groups := map[string][]string{
 		"magi":        {"balthasar", "melchor", "casper"},
 		"pilots":      {"rei", "shinji", "asuka", "toji", "kaworu"},
-		"kaji-passes": {"kaji", "kaji-security", "kaji-coverage", "kaji-resilience", "kaji-refuter"},
+		"kaji-passes": {"kaji", "kaji-coverage", "kaji-resilience", "kaji-refuter"},
 		"all":         allRoles,
 	}
 	// Fix routing (jd-fix-agent) goes through the owning pilot, with kaworu
-	// writing the RED test first, so every pilot claims it.
+	// writing the RED test first, so every pilot claims it. Every other
+	// gentle-ai v4 agent has exactly one owner: one MAGI member per judge,
+	// melchor carrying the security audit pass (review-risk) and casper the
+	// readability audit pass (review-readability).
 	info := map[string]RoleInfo{
 		"misato":          {"authors the plan (proposal, design, tasks)", nil, ""},
 		"ritsuko":         {"intelligence, test planning, end-of-run docs", nil, ""},
 		"hyuga":           {"task criticality, dependency waves, tracking", nil, ""},
-		"melchor":         {"MAGI vote: structure and security", []string{"jd-judge-b"}, "jd-judge-b"},
-		"balthasar":       {"MAGI vote: software principles, readability", []string{"jd-judge-a", "review-readability"}, "jd-judge-a"},
-		"casper":          {"MAGI vote: process and documentation", []string{"jd-judge-a"}, "jd-judge-a"},
+		"melchor":         {"MAGI vote: structure and security; security audit", []string{"jd-judge-b", "review-risk"}, "jd-judge-b"},
+		"balthasar":       {"MAGI vote: software principles", []string{"jd-judge-a"}, "jd-judge-a"},
+		"casper":          {"MAGI vote: process and documentation; readability audit", []string{"review-readability"}, ""},
 		"fuyutsuki":       {"governance veto on new skills/scripts/commands", nil, ""},
 		"kaworu":          {"writes the failing tests first", []string{"jd-fix-agent"}, ""},
 		"shinji":          {"backend pilot", []string{"jd-fix-agent"}, ""},
@@ -92,7 +95,6 @@ func Roles() RoleCatalogue {
 		"toji":            {"infrastructure pilot (CI/CD, containers)", []string{"jd-fix-agent"}, ""},
 		"maya":            {"quality gate (tests, lint, build)", nil, ""},
 		"kaji":            {"audit compiler", nil, ""},
-		"kaji-security":   {"audit pass: security", []string{"review-risk"}, ""},
 		"kaji-coverage":   {"audit pass: test coverage, reliability, correctness", []string{"review-reliability"}, ""},
 		"kaji-resilience": {"audit pass: resilience and performance", []string{"review-resilience"}, ""},
 		"kaji-refuter":    {"refutes severe audit findings", []string{"review-refuter"}, ""},
@@ -101,7 +103,7 @@ func Roles() RoleCatalogue {
 	groupDescriptions := map[string]string{
 		"magi":        "the three voters (balthasar, melchor, casper)",
 		"pilots":      "the implementers (kaworu, shinji, asuka, rei, toji)",
-		"kaji-passes": "the audit passes (kaji, kaji-security, kaji-coverage, kaji-resilience, kaji-refuter)",
+		"kaji-passes": "the audit passes (kaji, kaji-coverage, kaji-resilience, kaji-refuter)",
 		"all":         "every role",
 	}
 	return RoleCatalogue{AllRoles: allRoles, Groups: groups, Info: info, GroupDescriptions: groupDescriptions}

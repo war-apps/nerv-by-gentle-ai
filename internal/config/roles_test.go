@@ -17,14 +17,13 @@ import (
 // the owning pilot, with kaworu writing the RED test first.
 var wantEquivalents = map[string][]string{
 	"misato": nil, "ritsuko": nil, "hyuga": nil,
-	"melchor":   {"jd-judge-b"},
-	"balthasar": {"jd-judge-a", "review-readability"},
-	"casper":    {"jd-judge-a"},
+	"melchor":   {"jd-judge-b", "review-risk"},
+	"balthasar": {"jd-judge-a"},
+	"casper":    {"review-readability"},
 	"fuyutsuki": nil,
 	"kaworu":    {"jd-fix-agent"}, "shinji": {"jd-fix-agent"}, "asuka": {"jd-fix-agent"},
 	"rei": {"jd-fix-agent"}, "toji": {"jd-fix-agent"},
 	"maya": nil, "kaji": nil,
-	"kaji-security":   {"review-risk"},
 	"kaji-coverage":   {"review-reliability"},
 	"kaji-resilience": {"review-resilience"},
 	"kaji-refuter":    {"review-refuter"},
@@ -64,10 +63,10 @@ func TestRoles_EveryRoleHasPurposeAndEquivalent(t *testing.T) {
 // that exist in gentle-ai 4.x state; an empty value means no suggestion.
 var wantFromPhases = map[string]string{
 	"misato": "", "ritsuko": "", "hyuga": "",
-	"melchor": "jd-judge-b", "balthasar": "jd-judge-a", "casper": "jd-judge-a",
+	"melchor": "jd-judge-b", "balthasar": "jd-judge-a", "casper": "",
 	"fuyutsuki": "",
 	"kaworu":    "", "shinji": "", "asuka": "", "rei": "", "toji": "",
-	"maya": "", "kaji": "", "kaji-security": "",
+	"maya": "", "kaji": "",
 	"kaji-coverage": "", "kaji-resilience": "", "kaji-refuter": "", "aoba": "",
 }
 
@@ -113,7 +112,7 @@ func TestRoles_GroupMembership(t *testing.T) {
 	want := map[string][]string{
 		"magi":        {"balthasar", "casper", "melchor"},
 		"pilots":      {"asuka", "kaworu", "rei", "shinji", "toji"},
-		"kaji-passes": {"kaji", "kaji-coverage", "kaji-refuter", "kaji-resilience", "kaji-security"},
+		"kaji-passes": {"kaji", "kaji-coverage", "kaji-refuter", "kaji-resilience"},
 	}
 	for name, members := range want {
 		got := append([]string(nil), groups[name]...)
