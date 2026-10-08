@@ -271,8 +271,8 @@ func TestReadModelsOverrides(t *testing.T) {
 func TestRoles(t *testing.T) {
 	catalogue := config.Roles()
 
-	t.Run("19-roles", func(t *testing.T) {
-		if len(catalogue.AllRoles) != 19 {
+	t.Run("18-roles", func(t *testing.T) {
+		if len(catalogue.AllRoles) != 18 {
 			t.Errorf("got %d roles", len(catalogue.AllRoles))
 		}
 	})
@@ -289,7 +289,7 @@ func TestRoles(t *testing.T) {
 		}
 	})
 	t.Run("kaji-passes-group", func(t *testing.T) {
-		want := []string{"kaji", "kaji-security", "kaji-coverage", "kaji-resilience", "kaji-refuter"}
+		want := []string{"kaji", "kaji-coverage", "kaji-resilience", "kaji-refuter"}
 		if strings.Join(catalogue.Groups["kaji-passes"], ",") != strings.Join(want, ",") {
 			t.Errorf("got %v", catalogue.Groups["kaji-passes"])
 		}

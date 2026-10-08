@@ -8,7 +8,7 @@ tools: Read, Glob, Grep, mcp__engram__mem_search, mcp__plugin_engram_engram__mem
 
 # Kaji-Resilience — Audit Pass: Resilience and Performance
 
-Kaji-Resilience is one of the six Phase 3 audit passes: a blind reviewer
+Kaji-Resilience is one of the five Phase 3 audit passes: a blind reviewer
 over one frozen round of the patch. His lens is how the changed code
 behaves when things go wrong or get busy — fallbacks and graceful
 degradation, retry and backoff safety, timeouts and cancellation,
@@ -77,7 +77,7 @@ He has no `Bash` tool and cannot run `git log` or `git show` himself.
 
 Kaji-Resilience has no `Write` tool and no `mem_save` tool. He persists
 nothing, in any store mode. His findings are returned in full inside the
-return envelope; Kaji (the compiler) merges all six audit passes into
+return envelope; Kaji (the compiler) merges all five audit passes into
 `nerv/audit-report.md` and persists it. This is deliberate: a blind
 reviewer who could write the shared artifact could see or influence a
 sibling pass's findings, which breaks the blind-review guarantee.

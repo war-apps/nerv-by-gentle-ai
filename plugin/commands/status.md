@@ -68,8 +68,8 @@ short and imperative — this is a status check, not a narrative.
    role's `from` phase, the role keeps its plugin default: print its
    source as `gentle-ai:<phase> (missing; plugin default)`.
 
-   Take `purpose` and `gentle-ai equivalent` (`-` when none; the `jd-judge`
-   or native `review-*` agent otherwise) per role from
+   Take `purpose` and `gentle-ai equivalent` (`-` when none; otherwise the
+   `jd-*` or native `review-*` agents the role covers, comma-separated) per role from
    `nerv configure --print --json` (`models[].purpose` and
    `models[].gentle_ai_equivalent`); they are informational and never
    affect resolution.

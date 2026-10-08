@@ -486,15 +486,14 @@ created_at: "2026-09-24T15:10:00Z"
 - Author: Ikari (mechanical write of a pass's own final-text JSON, never
   edited).
 - Location: `nerv/audit/pass-<name>-round-N.json`, `<name>` one of
-  `melchor`, `balthasar`, `casper`, `kaji-security`, `kaji-coverage`,
-  `kaji-resilience`.
+  `melchor`, `balthasar`, `casper`, `kaji-coverage`, `kaji-resilience`.
 - Engram key: `nerv/{change}/audit-pass-<name>-round-N`.
 
 #### Audit pass JSON output contract
 
 Each of `nerv:melchor`, `nerv:balthasar`, `nerv:casper` (MODE: audit),
-`nerv:kaji-security`, `nerv:kaji-coverage`, `nerv:kaji-resilience` is
-launched in one parallel batch, blind to the other five, over the frozen
+`nerv:kaji-coverage`, `nerv:kaji-resilience` is
+launched in one parallel batch, blind to the other four, over the frozen
 `diff-round-N.patch` plus the plan artifacts (`proposal.md`, `design.md`,
 `tasks.md`, `specs/`, `nerv/test-plan.md`). Its final text is exactly one JSON object, no prose
 before or after it (a `## Key Learnings` block may follow):
@@ -534,14 +533,15 @@ everywhere in NERV (mirrors gentle-ai's native review lenses):
 
 Lens assignment for AUDIT mode mirrors VOTE mode's lenses, applied to the
 frozen patch instead of the plan: Melchor — architecture, design, dead
-code, duplication; Balthasar — SOLID, KISS, YAGNI, DRY, pattern fit,
-plus readability (misleading names, unexplained constants, complexity,
-intention, review size and context);
+code, duplication, plus security across all layers (injection, authz,
+secrets, data exposure, unsafe defaults, dependency risk, crypto, infra
+hardening); Balthasar — SOLID, KISS, YAGNI, DRY, pattern fit;
 Casper — plan conformance (every task in `tasks.md` delivered as
 specified and nothing extra, BASE..HEAD), commit hygiene (atomic,
 conventional, correct scopes), and TDD commit order (the RED commit
-precedes the GREEN commit for every task, checked in git history);
-`kaji-security` — security across all layers; `kaji-coverage` —
+precedes the GREEN commit for every task, checked in git history), plus
+readability (misleading names, unexplained constants, complexity,
+intention, review size and context); `kaji-coverage` —
 implemented tests vs `nerv/test-plan.md` (missing cases, weakened
 assertions), reliability beyond the plan (invalid inputs, failure paths,
 contracts, boundaries, regressions, determinism), and correctness and
@@ -572,7 +572,7 @@ Ikari writes the validated object to its locator.
 | id | location | severity | claim | evidence_class | causal_disposition | credited_sources | refuter |
 |---|---|---|---|---|---|---|---|
 | kaji-coverage-divide-by-zero | src/Calc/Calculator.cs:42 | CRITICAL | Divide has no test for a zero divisor | deterministic | introduced | [kaji-coverage] | n/a |
-| balthasar-unchecked-divisor | src/Calc/Calculator.cs:42 | WARNING | Divisor not validated before use | inferential | introduced | [balthasar, kaji-security] | corroborated |
+| melchor-unchecked-divisor | src/Calc/Calculator.cs:42 | WARNING | Divisor not validated before use | inferential | introduced | [melchor, balthasar] | corroborated |
 
 ## Refuted
 

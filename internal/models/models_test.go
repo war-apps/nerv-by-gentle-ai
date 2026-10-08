@@ -16,13 +16,13 @@ import (
 // PluginDefaults — mirrors Get-NervPluginDefaults.
 // ---------------------------------------------------------------------------
 
-func TestPluginDefaults_RealEmbeddedFS_19RolesAobaSonnetLow(t *testing.T) {
+func TestPluginDefaults_RealEmbeddedFS_18RolesAobaSonnetLow(t *testing.T) {
 	defaults, err := models.PluginDefaults(nerv.PluginFS())
 	if err != nil {
 		t.Fatalf("PluginDefaults() error = %v", err)
 	}
-	if len(defaults) != 19 {
-		t.Fatalf("len(defaults) = %d, want 19", len(defaults))
+	if len(defaults) != 18 {
+		t.Fatalf("len(defaults) = %d, want 18", len(defaults))
 	}
 	aoba, ok := defaults["aoba"]
 	if !ok || aoba.Model != "sonnet" || aoba.Effort != "low" {

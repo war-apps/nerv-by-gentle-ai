@@ -14,7 +14,7 @@ skills:                             # stacks per consuming role; names must exis
   code: [dotnet-best-practices, typescript-best-practices]         # pilots
   best-practices: [best-practices, solid-principles, clean-code-guard]  # balthasar
   architecture: [hexagonal-architecture, c4-architecture]          # melchor
-  audit: [security-review, clean-code-guard]                       # kaji passes
+  audit: [security-review, clean-code-guard]                       # kaji passes, melchor audit
 models:                             # per-role model and effort; project overrides user, key by key
   misato: { model: fable, effort: high }
   melchor: { from: jd-judge-b }     # inherit gentle-ai's assignment for that phase (state.json)
@@ -77,13 +77,15 @@ equivalents are the gentle-ai v4 agents whose duties the role covers (the
 `jd-*` agents and the native `review-*` agents); roles with none show none.
 Every gentle-ai v4 agent (the `GentleAIV4Agents` list in
 `internal/config/models.go`) is claimed by at least one role, and a test
-fails if one is left unclaimed. The pilots claim `jd-fix-agent` because fix
-routing goes through the owning pilot, with kaworu writing the RED test
-first. Equivalents are informational only and never a `from:<phase>` value:
+fails if one is left unclaimed. No two roles share an equivalent except the
+pilots, which claim `jd-fix-agent` because fix routing goes through the
+owning pilot, with kaworu writing the RED test first. Equivalents are informational only and never a `from:<phase>` value:
 the native review agents (`review-*`) are not keys of
-`claude_phase_assignments`. Only the `jd-judge` equivalents (melchor,
-balthasar, casper) double as a `from:` suggestion, exposed separately as
-`from_phase`; the pilots get no suggestion. Neither changes how a model is
+`claude_phase_assignments`. Only the `jd-judge` equivalents (melchor's
+`jd-judge-b`, balthasar's `jd-judge-a`) double as a `from:` suggestion,
+exposed separately as `from_phase`; only melchor and balthasar carry one.
+casper (whose equivalent is the native `review-readability`) and the
+pilots get no suggestion. Neither changes how a model is
 resolved. The same data is shown in the wizard's models table, in
 `/nerv:configure` and `/nerv:status`, and as `purpose` /
 `gentle_ai_equivalents` (an array) / `from_phase` on each
@@ -96,9 +98,9 @@ list joined with `, ` for readers of the original single-string field. Roles are
 | `misato` | | authors the plan (proposal, design, tasks) | none | fable / high |
 | `ritsuko` | | intelligence, test planning, end-of-run docs | none | opus / high |
 | `hyuga` | | task criticality, dependency waves, tracking | none | sonnet / medium |
-| `melchor` | `magi` | MAGI vote: structure and security | `jd-judge-b` | fable / high |
-| `balthasar` | `magi` | MAGI vote: software principles, readability | `jd-judge-a`, `review-readability` | sonnet / medium |
-| `casper` | `magi` | MAGI vote: process and documentation | `jd-judge-a` | sonnet / medium |
+| `melchor` | `magi` | MAGI vote: structure and security; security audit | `jd-judge-b`, `review-risk` | fable / high |
+| `balthasar` | `magi` | MAGI vote: software principles | `jd-judge-a` | sonnet / medium |
+| `casper` | `magi` | MAGI vote: process and documentation; readability audit | `review-readability` | sonnet / medium |
 | `fuyutsuki` | | governance veto on new skills/scripts/commands | none | sonnet / medium |
 | `kaworu` | `pilots` | writes the failing tests first | `jd-fix-agent` | sonnet / medium |
 | `shinji` | `pilots` | backend pilot | `jd-fix-agent` | sonnet / medium |
@@ -107,7 +109,6 @@ list joined with `, ` for readers of the original single-string field. Roles are
 | `toji` | `pilots` | infrastructure pilot (CI/CD, containers) | `jd-fix-agent` | sonnet / medium |
 | `maya` | | quality gate (tests, lint, build) | none | sonnet / medium |
 | `kaji` | `kaji-passes` | audit compiler | none | opus / high |
-| `kaji-security` | `kaji-passes` | audit pass: security | `review-risk` | sonnet / medium |
 | `kaji-coverage` | `kaji-passes` | audit pass: test coverage, reliability, correctness | `review-reliability` | sonnet / medium |
 | `kaji-resilience` | `kaji-passes` | audit pass: resilience and performance | `review-resilience` | sonnet / medium |
 | `kaji-refuter` | `kaji-passes` | refutes severe audit findings | `review-refuter` | sonnet / medium |

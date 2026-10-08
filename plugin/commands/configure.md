@@ -97,8 +97,7 @@ changes confirmed — never more.
      `effort`, `source` — and a one-line legend for the group keywords:
      `magi` = the three voters (balthasar, melchor, casper), `pilots` =
      the implementers (kaworu, shinji, asuka, rei, toji), `kaji-passes` =
-     the audit passes (kaji, kaji-security, kaji-coverage, kaji-resilience,
-     kaji-refuter),
+     the audit passes (kaji, kaji-coverage, kaji-resilience, kaji-refuter),
      `all` = every role. The equivalent is informational only and never a
      `from:<phase>` value (native `review-*` agents are not phase keys):
      when the user picks `from:` for a single role, suggest that role's
@@ -106,7 +105,8 @@ changes confirmed — never more.
      changes resolution. A `from:`
      phase is a key of `claude_phase_assignments` in `~/.gentle-ai/state.json`
      that still has an agent in gentle-ai 4.x (`jd-judge-a`, `jd-judge-b`,
-     `jd-fix-agent`); only melchor, balthasar and casper have a `from_phase`.
+     `jd-fix-agent`); only melchor (`jd-judge-b`) and balthasar (`jd-judge-a`)
+     have a `from_phase`.
      The pilots claim `jd-fix-agent` because fixes route through the owning
      pilot, but they get no `from_phase`: `jd-fix-agent` is sized for
      surgical fixes, while a pilot also implements whole work units, so

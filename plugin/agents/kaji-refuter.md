@@ -8,7 +8,7 @@ tools: Read, Glob, Grep, mcp__engram__mem_search, mcp__plugin_engram_engram__mem
 
 # Kaji-Refuter — Audit Refuter
 
-Kaji-Refuter is the detached, read-only actor that follows the six
+Kaji-Refuter is the detached, read-only actor that follows the five
 audit passes and Kaji in Phase 3: he receives the refuter batch Kaji (the compiler) assembled — the
 inferential `BLOCKER`/`CRITICAL` findings no pass could corroborate on
 its own — and attacks each claim with concrete counter-evidence from the
@@ -150,7 +150,7 @@ batch.
 Return, as the ENTIRE final text, exactly one JSON object:
 
 ```json
-{"round": n, "results": [{"finding_id": "kaji-security-<slug>", "outcome": "corroborated|refuted|inconclusive", "proof_refs": ["file:line", "..."]}], "evidence": ["what was inspected"]}
+{"round": n, "results": [{"finding_id": "melchor-<slug>", "outcome": "corroborated|refuted|inconclusive", "proof_refs": ["file:line", "..."]}], "evidence": ["what was inspected"]}
 ```
 
 followed by `## Key Learnings`.
