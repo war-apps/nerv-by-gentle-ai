@@ -486,25 +486,25 @@ created_at: "2026-09-24T15:10:00Z"
 - Author: Ikari (mechanical write of a pass's own final-text JSON, never
   edited).
 - Location: `nerv/audit/pass-<name>-round-N.json`, `<name>` one of
-  `melchor`, `balthasar`, `casper`, `kaji-security`, `kaji-coverage`.
+  `melchor`, `balthasar`, `casper`, `kaji-audit`.
 - Engram key: `nerv/{change}/audit-pass-<name>-round-N`.
 
 #### Audit pass JSON output contract
 
 Each of `nerv:melchor`, `nerv:balthasar`, `nerv:casper` (MODE: audit),
-`nerv:kaji-security`, `nerv:kaji-coverage` is launched in one parallel
-batch, blind to the other four, over the frozen `diff-round-N.patch` plus
-the plan artifacts (`proposal.md`, `design.md`, `tasks.md`, `specs/`,
-`nerv/test-plan.md`). Its final text is exactly one JSON object, no prose
+and `nerv:kaji-audit` is
+launched in one parallel batch, blind to the other three, over the frozen
+`diff-round-N.patch` plus the plan artifacts (`proposal.md`, `design.md`,
+`tasks.md`, `specs/`, `nerv/test-plan.md`). Its final text is exactly one JSON object, no prose
 before or after it (a `## Key Learnings` block may follow):
 
 ```json
 {
-  "pass": "kaji-coverage",
+  "pass": "kaji-audit",
   "round": 1,
   "findings": [
     {
-      "id": "kaji-coverage-divide-by-zero",
+      "id": "kaji-audit-divide-by-zero",
       "location": "src/Calc/Calculator.cs:42",
       "severity": "CRITICAL",
       "claim": "Divide has no test for a zero divisor",
@@ -533,14 +533,26 @@ everywhere in NERV (mirrors gentle-ai's native review lenses):
 
 Lens assignment for AUDIT mode mirrors VOTE mode's lenses, applied to the
 frozen patch instead of the plan: Melchor — architecture, design, dead
-code, duplication; Balthasar — SOLID, KISS, YAGNI, DRY, pattern fit;
-Casper — plan conformance (every task in `tasks.md` delivered as
-specified and nothing extra, BASE..HEAD), commit hygiene (atomic,
-conventional, correct scopes), and TDD commit order (the RED commit
-precedes the GREEN commit for every task, checked in git history);
-`kaji-security` — security across all layers; `kaji-coverage` —
-implemented tests vs `nerv/test-plan.md` (missing cases, weakened
-assertions). Passes never edit files and never persist their own output —
+code, duplication, plus security across all layers (injection, authz,
+secrets, data exposure, unsafe defaults, dependency risk, crypto, infra
+hardening); Balthasar — SOLID, KISS, YAGNI, DRY, pattern fit, plus
+readability (misleading names, unexplained constants, complexity,
+intention, review size and context; `WARNING` at most unless the obscured
+behavior is a proven correctness failure); Casper — plan conformance
+(every task in `tasks.md` delivered as specified and nothing extra,
+BASE..HEAD), commit hygiene (atomic, conventional, correct scopes), and
+TDD commit order (the RED commit precedes the GREEN commit for every
+task, checked in git history); `kaji-audit` — implemented tests vs
+`nerv/test-plan.md` (missing cases, weakened assertions), reliability
+beyond the plan (invalid inputs, failure paths, contracts, boundaries,
+regressions, determinism), correctness and edge cases in the changed
+implementation, and resilience and performance (fallbacks and graceful
+degradation, retry/backoff safety, timeouts and cancellation, rollback
+or fix-forward safety, latency, load, resource use and SLO risk,
+performance regressions such as N+1, unbounded loops or allocations,
+blocking I/O on hot paths, missing pagination, accidental quadratic
+work, and observability of failures); findings outside the test plan
+follow the same candidate-causal admission. Passes never edit files and never persist their own output —
 Ikari writes the validated object to its locator.
 
 ## audit-report.md (Kaji)
@@ -548,7 +560,7 @@ Ikari writes the validated object to its locator.
 - Purpose: the merged, deduplicated audit findings for one round, ranked
   candidate-causal admission applied, refuter outcomes folded in.
 - Author: `nerv:kaji` (compile), refuter outcomes merged in by Ikari after
-  `nerv:kaji-refuter` runs.
+  `nerv:fuyutsuki` runs in `MODE: refute`.
 - Location: `nerv/audit-report.md` (one file, reused and extended each
   round — round N's compile carries forward unresolved items from N-1).
 - Engram key: `nerv/{change}/audit-report`.
@@ -560,8 +572,8 @@ Ikari writes the validated object to its locator.
 
 | id | location | severity | claim | evidence_class | causal_disposition | credited_sources | refuter |
 |---|---|---|---|---|---|---|---|
-| kaji-coverage-divide-by-zero | src/Calc/Calculator.cs:42 | CRITICAL | Divide has no test for a zero divisor | deterministic | introduced | [kaji-coverage] | n/a |
-| balthasar-unchecked-divisor | src/Calc/Calculator.cs:42 | WARNING | Divisor not validated before use | inferential | introduced | [balthasar, kaji-security] | corroborated |
+| kaji-audit-divide-by-zero | src/Calc/Calculator.cs:42 | CRITICAL | Divide has no test for a zero divisor | deterministic | introduced | [kaji-audit] | n/a |
+| melchor-unchecked-divisor | src/Calc/Calculator.cs:42 | WARNING | Divisor not validated before use | inferential | introduced | [melchor, balthasar] | corroborated |
 
 ## Refuted
 
@@ -579,8 +591,9 @@ returns).
 
 #### Refuter batch contract
 
-`nerv:kaji-refuter` runs once per audit round, reading only the frozen
-patch and repo history (read-only), over exactly that round's inferential
+`nerv:fuyutsuki` (MODE: refute) runs once per audit round, reading only
+the frozen patch and repo history (read-only; in this mode he writes
+nothing and calls no `mem_save`), over exactly that round's inferential
 `BLOCKER`/`CRITICAL` items. Its final text is exactly one JSON object:
 
 ```json
@@ -619,7 +632,7 @@ regardless of its original severity.
 
 | issue_id | severity | blast_radius | verification_cost | decision | reason | fix_order | owner |
 |---|---|---|---|---|---|---|---|
-| kaji-coverage-divide-by-zero | Critical | local | cheap | NOW | candidate-caused, unguarded divide | 1 | shinji |
+| kaji-audit-divide-by-zero | Critical | local | cheap | NOW | candidate-caused, unguarded divide | 1 | shinji |
 | balthasar-unchecked-divisor | Important | local | cheap | DEFER | same root cause as #1, covered by the guard fix | - | shinji |
 
 ## Gate decision
@@ -660,7 +673,7 @@ re-audit cap (2).
 
 | issue_id | severity | resolution | commit | notes |
 |---|---|---|---|---|
-| kaji-coverage-divide-by-zero | Critical | fixed | {hash} | DivideByZero guard added, regression test by kaworu |
+| kaji-audit-divide-by-zero | Critical | fixed | {hash} | DivideByZero guard added, regression test by kaworu |
 | balthasar-unchecked-divisor | Important | deferred | - | residual_accepted at re-audit cap round 2 |
 ```
 
@@ -683,7 +696,7 @@ guessing.
 | phase | agent | model | effort | skill_resolution |
 |---|---|---|---|---|
 | implementation W1/T1 | nerv:shinji | sonnet | medium | paths-injected |
-| audit round 1 | nerv:kaji-coverage | sonnet | medium | paths-injected |
+| audit round 1 | nerv:kaji-audit | sonnet | medium | paths-injected |
 ```
 
 One row per launch across the whole change, pilots and audit passes

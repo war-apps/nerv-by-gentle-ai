@@ -18,24 +18,32 @@ type ModelOverride struct {
 	From   string
 }
 
+// GentleAIV4Agents is every Claude agent gentle-ai v4.0.0 ships
+// (internal/assets/claude/agents/ at tag v4.0.0). Each must be claimed by at
+// least one role's GentleAIEquivalents so NERV loses no gentle-ai capability.
+var GentleAIV4Agents = []string{
+	"jd-fix-agent", "jd-judge-a", "jd-judge-b", "review-readability",
+	"review-refuter", "review-reliability", "review-resilience", "review-risk",
+}
+
 // RoleInfo describes one role for display: what it does, which gentle-ai
-// v4 agent it is comparable to, and which gentle-ai phase to suggest for a
+// v4 agents it covers, and which gentle-ai phase to suggest for a
 // from:<phase> override. Neither ever changes how a role's model is
 // resolved (from:<phase> stays explicit).
 type RoleInfo struct {
 	// Purpose is a one-line description of what the role does.
 	Purpose string
-	// GentleAIEquivalent is the closest gentle-ai v4 agent (a jd-judge or a
-	// native review agent), or "" when the role has none. It is
-	// informational only and never a from:<phase> value: native review
-	// agents are not claude_phase_assignments keys.
-	GentleAIEquivalent string
+	// GentleAIEquivalents lists every gentle-ai v4 agent (from
+	// GentleAIV4Agents) whose duties the role covers, or nil when it covers
+	// none. It is informational only and never a from:<phase> value: native
+	// review agents are not claude_phase_assignments keys.
+	GentleAIEquivalents []string
 	// FromPhase is the gentle-ai claude_phase_assignments key to suggest as
 	// from:<phase> for this role, or "" when no phase fits.
 	FromPhase string
 }
 
-// RoleCatalogue is the 18 NERV agent roles, their group shortcuts and the
+// RoleCatalogue is every NERV agent role, their group shortcuts and the
 // display metadata for both.
 type RoleCatalogue struct {
 	AllRoles []string
@@ -51,46 +59,52 @@ type RoleCatalogue struct {
 // --set-model"'s role validation.
 //
 // It returns role names, group membership and display metadata (purpose,
-// gentle-ai equivalent), not a per-role plugin default model/effort — those live in plugin/agents/*.md frontmatter on
+// gentle-ai equivalents), not a per-role plugin default model/effort — those live in plugin/agents/*.md frontmatter on
 // disk, read by internal/models (out of this file-I/O-free package's
 // scope). ModelTable below takes the resolved defaults as a parameter
 // instead.
 func Roles() RoleCatalogue {
 	allRoles := []string{
 		"aoba", "asuka", "balthasar", "casper", "fuyutsuki", "hyuga", "kaji",
-		"kaji-coverage", "kaji-refuter", "kaji-security", "kaworu", "maya",
-		"melchor", "misato", "rei", "ritsuko", "shinji", "toji",
+		"kaji-audit", "kaworu", "maya", "melchor", "misato", "rei", "ritsuko",
+		"shinji", "toji",
 	}
 	groups := map[string][]string{
 		"magi":        {"balthasar", "melchor", "casper"},
 		"pilots":      {"rei", "shinji", "asuka", "toji", "kaworu"},
-		"kaji-passes": {"kaji", "kaji-security", "kaji-coverage", "kaji-refuter"},
+		"kaji-passes": {"kaji", "kaji-audit"},
 		"all":         allRoles,
 	}
+	// Fix routing (jd-fix-agent) goes through the owning pilot, with kaworu
+	// writing the RED test first, so every pilot claims it. Every other
+	// gentle-ai v4 agent has exactly one owner: one MAGI member per judge,
+	// melchor carrying the security audit lens (review-risk), balthasar the
+	// readability audit lens (review-readability), kaji-audit the
+	// reliability and resilience lenses, and fuyutsuki the refuter (his
+	// read-only refute mode). casper and kaji (the compiler) claim none, so
+	// no role judges work it authored or compiles.
 	info := map[string]RoleInfo{
-		"misato":        {"authors the plan (proposal, design, tasks)", "", ""},
-		"ritsuko":       {"intelligence, test planning, end-of-run docs", "", ""},
-		"hyuga":         {"task criticality, dependency waves, tracking", "", ""},
-		"melchor":       {"MAGI vote: structure and security", "jd-judge-b", "jd-judge-b"},
-		"balthasar":     {"MAGI vote: software principles", "jd-judge-a", "jd-judge-a"},
-		"casper":        {"MAGI vote: process and documentation", "jd-judge-a", "jd-judge-a"},
-		"fuyutsuki":     {"governance veto on new skills/scripts/commands", "", ""},
-		"kaworu":        {"writes the failing tests first", "", ""},
-		"shinji":        {"backend pilot", "", ""},
-		"asuka":         {"frontend pilot", "", ""},
-		"rei":           {"data pilot (persistence, observability)", "", ""},
-		"toji":          {"infrastructure pilot (CI/CD, containers)", "", ""},
-		"maya":          {"quality gate (tests, lint, build)", "", ""},
-		"kaji":          {"audit compiler", "", ""},
-		"kaji-security": {"audit pass: security", "review-risk", ""},
-		"kaji-coverage": {"audit pass: tests vs test plan", "review-reliability", ""},
-		"kaji-refuter":  {"refutes severe audit findings", "review-refuter", ""},
-		"aoba":          {"commits, PRs and run telemetry", "", ""},
+		"misato":     {"authors the plan (proposal, design, tasks)", nil, ""},
+		"ritsuko":    {"intelligence, test planning, end-of-run docs", nil, ""},
+		"hyuga":      {"task criticality, dependency waves, tracking", nil, ""},
+		"melchor":    {"MAGI vote: structure and security; security audit", []string{"jd-judge-b", "review-risk"}, "jd-judge-b"},
+		"balthasar":  {"MAGI vote: software principles; readability audit", []string{"jd-judge-a", "review-readability"}, "jd-judge-a"},
+		"casper":     {"MAGI vote: process and documentation", nil, ""},
+		"fuyutsuki":  {"governance veto on new skills/scripts/commands; refutes severe audit findings", []string{"review-refuter"}, ""},
+		"kaworu":     {"writes the failing tests first", []string{"jd-fix-agent"}, ""},
+		"shinji":     {"backend pilot", []string{"jd-fix-agent"}, ""},
+		"asuka":      {"frontend pilot", []string{"jd-fix-agent"}, ""},
+		"rei":        {"data pilot (persistence, observability)", []string{"jd-fix-agent"}, ""},
+		"toji":       {"infrastructure pilot (CI/CD, containers)", []string{"jd-fix-agent"}, ""},
+		"maya":       {"quality gate (tests, lint, build)", nil, ""},
+		"kaji":       {"audit compiler", nil, ""},
+		"kaji-audit": {"audit pass: test coverage, reliability, correctness, resilience, performance", []string{"review-reliability", "review-resilience"}, ""},
+		"aoba":       {"commits, PRs and run telemetry", nil, ""},
 	}
 	groupDescriptions := map[string]string{
 		"magi":        "the three voters (balthasar, melchor, casper)",
 		"pilots":      "the implementers (kaworu, shinji, asuka, rei, toji)",
-		"kaji-passes": "the audit passes (kaji, kaji-security, kaji-coverage, kaji-refuter)",
+		"kaji-passes": "the audit compiler and its pass (kaji, kaji-audit)",
 		"all":         "every role",
 	}
 	return RoleCatalogue{AllRoles: allRoles, Groups: groups, Info: info, GroupDescriptions: groupDescriptions}
@@ -106,8 +120,8 @@ func (e *ErrUnknownRole) Error() string {
 	return fmt.Sprintf("Unknown role '%s'. Valid roles: %s.", e.Role, strings.Join(Roles().AllRoles, ", "))
 }
 
-// ValidateRole reports an *ErrUnknownRole when role is not one of the 18
-// catalogue roles.
+// ValidateRole reports an *ErrUnknownRole when role is not a catalogue
+// role.
 func ValidateRole(role string) error {
 	for _, r := range Roles().AllRoles {
 		if r == role {

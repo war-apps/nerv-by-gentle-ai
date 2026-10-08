@@ -2,6 +2,7 @@ package configure_test
 
 import (
 	"encoding/json"
+	"fmt"
 	"path/filepath"
 	"testing"
 
@@ -169,7 +170,7 @@ func TestPrint_ModelsRowsCarryPurposeAndEquivalent(t *testing.T) {
 
 	byRole := map[string]map[string]any{}
 	for _, row := range decoded.Models {
-		for _, key := range []string{"purpose", "gentle_ai_equivalent", "from_phase"} {
+		for _, key := range []string{"purpose", "gentle_ai_equivalent", "gentle_ai_equivalents", "from_phase"} {
 			if _, ok := row[key]; !ok {
 				t.Errorf("row %v missing key %q", row["role"], key)
 			}
@@ -180,23 +181,51 @@ func TestPrint_ModelsRowsCarryPurposeAndEquivalent(t *testing.T) {
 		}
 		byRole[role] = row
 	}
-	if got := byRole["kaji-security"]["gentle_ai_equivalent"]; got != "review-risk" {
-		t.Errorf("kaji-security gentle_ai_equivalent = %v, want review-risk", got)
+	for _, removed := range []string{"kaji-security", "kaji-coverage", "kaji-resilience", "kaji-refuter"} {
+		if _, ok := byRole[removed]; ok {
+			t.Errorf("%s is still a models row; the role was removed", removed)
+		}
 	}
-	if got := byRole["kaji-security"]["from_phase"]; got != "" {
-		t.Errorf("kaji-security from_phase = %v, want empty (review-risk is not a phase key)", got)
+	if got := byRole["balthasar"]["gentle_ai_equivalent"]; got != "jd-judge-a, review-readability" {
+		t.Errorf("balthasar gentle_ai_equivalent = %v, want \"jd-judge-a, review-readability\"", got)
 	}
-	if got := byRole["casper"]["from_phase"]; got != "jd-judge-a" {
-		t.Errorf("casper from_phase = %v, want jd-judge-a", got)
+	if got := byRole["fuyutsuki"]["gentle_ai_equivalent"]; got != "review-refuter" {
+		t.Errorf("fuyutsuki gentle_ai_equivalent = %v, want review-refuter", got)
 	}
-	if got := byRole["kaworu"]["gentle_ai_equivalent"]; got != "" {
-		t.Errorf("kaworu gentle_ai_equivalent = %v, want empty", got)
+	if got := byRole["fuyutsuki"]["from_phase"]; got != "" {
+		t.Errorf("fuyutsuki from_phase = %v, want empty (review-refuter is not a phase key)", got)
+	}
+	if got := byRole["kaji-audit"]["gentle_ai_equivalent"]; got != "review-reliability, review-resilience" {
+		t.Errorf("kaji-audit gentle_ai_equivalent = %v, want \"review-reliability, review-resilience\"", got)
+	}
+	if got := byRole["kaji-audit"]["from_phase"]; got != "" {
+		t.Errorf("kaji-audit from_phase = %v, want empty (review-* agents are not phase keys)", got)
+	}
+	if got := byRole["casper"]["from_phase"]; got != "" {
+		t.Errorf("casper from_phase = %v, want empty", got)
+	}
+	if got := byRole["balthasar"]["from_phase"]; got != "jd-judge-a" {
+		t.Errorf("balthasar from_phase = %v, want jd-judge-a", got)
+	}
+	if got := byRole["kaworu"]["gentle_ai_equivalent"]; got != "jd-fix-agent" {
+		t.Errorf("kaworu gentle_ai_equivalent = %v, want jd-fix-agent", got)
+	}
+	// A role covering two gentle-ai agents lists both; the singular field
+	// stays a string (the entries joined with ", ") for older readers.
+	if got := byRole["melchor"]["gentle_ai_equivalent"]; got != "jd-judge-b, review-risk" {
+		t.Errorf("melchor gentle_ai_equivalent = %v, want \"jd-judge-b, review-risk\"", got)
+	}
+	if got := fmt.Sprint(byRole["melchor"]["gentle_ai_equivalents"]); got != "[jd-judge-b review-risk]" {
+		t.Errorf("melchor gentle_ai_equivalents = %v, want [jd-judge-b review-risk]", got)
+	}
+	if got, ok := byRole["casper"]["gentle_ai_equivalents"].([]any); !ok || len(got) != 0 {
+		t.Errorf("casper gentle_ai_equivalents = %#v, want an empty array", byRole["casper"]["gentle_ai_equivalents"])
 	}
 	if got := byRole["kaworu"]["purpose"]; got != "writes the failing tests first" {
 		t.Errorf("kaworu purpose = %v", got)
 	}
-	if got := byRole["fuyutsuki"]["gentle_ai_equivalent"]; got != "" {
-		t.Errorf("fuyutsuki gentle_ai_equivalent = %v, want empty", got)
+	if got := byRole["casper"]["gentle_ai_equivalent"]; got != "" {
+		t.Errorf("casper gentle_ai_equivalent = %v, want empty", got)
 	}
 }
 

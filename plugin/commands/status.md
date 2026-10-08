@@ -48,7 +48,7 @@ short and imperative — this is a status check, not a narrative.
    minutes old and `waiting_on` is not `user` (see the Orchestrator lock
    section of `nerv-orchestrator/SKILL.md`).
 
-5. **Model/effort table.** Resolve each of the 18 `nerv:<role>` launches'
+5. **Model/effort table.** Resolve every `nerv:<role>` launch's
    model and effort per `nerv-orchestrator/SKILL.md`'s Configuration
    resolution → **Model and effort per role** (project `models.<role>` >
    user `models.<role>` > `from` phase in `~/.gentle-ai/state.json` >
@@ -68,8 +68,8 @@ short and imperative — this is a status check, not a narrative.
    role's `from` phase, the role keeps its plugin default: print its
    source as `gentle-ai:<phase> (missing; plugin default)`.
 
-   Take `purpose` and `gentle-ai equivalent` (`-` when none; the `jd-judge`
-   or native `review-*` agent otherwise) per role from
+   Take `purpose` and `gentle-ai equivalent` (`-` when none; otherwise the
+   `jd-*` or native `review-*` agents the role covers, comma-separated) per role from
    `nerv configure --print --json` (`models[].purpose` and
    `models[].gentle_ai_equivalent`); they are informational and never
    affect resolution.

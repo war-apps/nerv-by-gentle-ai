@@ -92,11 +92,12 @@ changes confirmed — never more.
      comma-separated) and `artifacts.commit` (`with-change` | `at-close` |
      `never`) in the second group.
    - **models**: first print the `models` rows from step 2 as a table —
-     `role`, `purpose`, `gentle_ai_equivalent` (`-` when empty), `model`,
+     `role`, `purpose`, `gentle_ai_equivalent` (`-` when empty; a
+     comma-separated list when the role covers several agents), `model`,
      `effort`, `source` — and a one-line legend for the group keywords:
      `magi` = the three voters (balthasar, melchor, casper), `pilots` =
      the implementers (kaworu, shinji, asuka, rei, toji), `kaji-passes` =
-     the audit passes (kaji, kaji-security, kaji-coverage, kaji-refuter),
+     the audit compiler and its pass (kaji, kaji-audit),
      `all` = every role. The equivalent is informational only and never a
      `from:<phase>` value (native `review-*` agents are not phase keys):
      when the user picks `from:` for a single role, suggest that role's
@@ -104,7 +105,12 @@ changes confirmed — never more.
      changes resolution. A `from:`
      phase is a key of `claude_phase_assignments` in `~/.gentle-ai/state.json`
      that still has an agent in gentle-ai 4.x (`jd-judge-a`, `jd-judge-b`,
-     `jd-fix-agent`); most roles have no equivalent (`-`). Then ask one
+     `jd-fix-agent`); only melchor (`jd-judge-b`) and balthasar (`jd-judge-a`)
+     have a `from_phase`.
+     The pilots claim `jd-fix-agent` because fixes route through the owning
+     pilot, but they get no `from_phase`: `jd-fix-agent` is sized for
+     surgical fixes, while a pilot also implements whole work units, so
+     inheriting that phase would undersize its main duty. Then ask one
      grouped question for which roles to override — free text, comma-separated role names or a group keyword (`magi`,
      `pilots`, `kaji-passes`, `all`), pre-filled `skip`. For each role
      confirmed, ask a grouped question (at most 2 roles per question, 2

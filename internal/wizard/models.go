@@ -179,7 +179,7 @@ func selectRoles(s *session, out io.Writer, catalogue config.RoleCatalogue, over
 // fromPhaseOf is the gentle-ai phase to suggest first in the phase picker:
 // the selected role's own FromPhase when exactly one role is selected, or
 // "" for a group (its members may differ) or a role with none. It never
-// uses GentleAIEquivalent, which may name a native review agent that is
+// uses GentleAIEquivalents, which may name a native review agent that is
 // not a claude_phase_assignments key.
 func fromPhaseOf(roles []string, catalogue config.RoleCatalogue) string {
 	if len(roles) != 1 {
@@ -390,7 +390,7 @@ func printModelTable(out io.Writer, table []config.ModelRow, configPath string) 
 		sourceW, "SOURCE", purposeW, "WHAT IT DOES", "GENTLE-AI")
 	for i, row := range table {
 		info := catalogue.Info[row.Role]
-		equivalent := info.GentleAIEquivalent
+		equivalent := strings.Join(info.GentleAIEquivalents, ", ")
 		if equivalent == "" {
 			equivalent = "-"
 		}
