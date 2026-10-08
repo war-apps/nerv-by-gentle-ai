@@ -106,7 +106,11 @@ changes confirmed — never more.
      changes resolution. A `from:`
      phase is a key of `claude_phase_assignments` in `~/.gentle-ai/state.json`
      that still has an agent in gentle-ai 4.x (`jd-judge-a`, `jd-judge-b`,
-     `jd-fix-agent`); only melchor, balthasar and casper have a `from_phase`. Then ask one
+     `jd-fix-agent`); only melchor, balthasar and casper have a `from_phase`.
+     The pilots claim `jd-fix-agent` because fixes route through the owning
+     pilot, but they get no `from_phase`: `jd-fix-agent` is sized for
+     surgical fixes, while a pilot also implements whole work units, so
+     inheriting that phase would undersize its main duty. Then ask one
      grouped question for which roles to override — free text, comma-separated role names or a group keyword (`magi`,
      `pilots`, `kaji-passes`, `all`), pre-filled `skip`. For each role
      confirmed, ask a grouped question (at most 2 roles per question, 2

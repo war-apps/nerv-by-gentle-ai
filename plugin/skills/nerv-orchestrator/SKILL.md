@@ -122,7 +122,7 @@ Inject only the configuration each agent needs, never the full document:
 | Hyuga | `tasks` block, `git` block |
 | Fuyutsuki, Hyuga | `critical_paths` |
 
-**Model and effort per role.** Resolve each of the 19 `nerv:<role>` launches'
+**Model and effort per role.** Resolve every `nerv:<role>` launch's
 model and effort once per session, in this order: the project
 `models.<role>` entry in `<repo>/.nerv/nerv.yaml`, then the user
 `models.<role>` entry in `~/.claude/nerv/nerv.yaml`, then — for whichever
@@ -133,7 +133,7 @@ own built-in default (aoba sonnet/low; kaji, ritsuko opus/high; melchor,
 misato fable/high; every other role sonnet/medium). An explicit
 `model`/`effort` on a `models.<role>` entry always wins over that same
 entry's `from`; a role absent from both files keeps the plugin default.
-Cache the resolved 19-role table for the session, the same as the two-file
+Cache the resolved per-role table for the session, the same as the two-file
 merge above; re-resolve only if `nerv.yaml` or `state.json` changes
 mid-session.
 

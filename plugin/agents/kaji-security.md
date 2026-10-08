@@ -127,8 +127,9 @@ re-audit unchanged code.
 
 The launch prompt states `RDD scope: full` or `RDD scope: cross-commit`.
 Under `full` scope, inspect every changed hunk in the round's patch.
-Under `cross-commit` scope — used when the repository's RDD switch
-already reviewed each individual commit natively — narrow inspection to
+Under `cross-commit` scope — launched by the orchestrator only when
+native assessment proved the round's range already reviewed (or
+passive); obey the stated scope, never infer it — narrow inspection to
 interactions across work-unit boundaries and integration seams: how
 commits compose once combined, not defects a per-commit review already
 covered in isolation. Kaji-Coverage and Kaji-Resilience always keep full

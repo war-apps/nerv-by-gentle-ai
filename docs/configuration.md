@@ -75,7 +75,8 @@ hand.
 Every role below can be overridden under `models:`. The gentle-ai
 equivalents are the gentle-ai v4 agents whose duties the role covers (the
 `jd-*` agents and the native `review-*` agents); roles with none show none.
-Each of the 8 gentle-ai v4 agents is claimed by at least one role, and a test
+Every gentle-ai v4 agent (the `GentleAIV4Agents` list in
+`internal/config/models.go`) is claimed by at least one role, and a test
 fails if one is left unclaimed. The pilots claim `jd-fix-agent` because fix
 routing goes through the owning pilot, with kaworu writing the RED test
 first. Equivalents are informational only and never a `from:<phase>` value:
