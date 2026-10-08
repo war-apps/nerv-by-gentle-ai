@@ -29,8 +29,8 @@ func auditPassNames(t *testing.T) []string {
 	return names
 }
 
-// auditPassList names one prose region that must list every audit pass.
-type auditPassList struct {
+// proseAnchor names one prose region of a file, found by its anchor line.
+type proseAnchor struct {
 	file   string
 	region string
 	// anchor is a substring of the region's first line.
@@ -43,7 +43,8 @@ type auditPassList struct {
 	row bool
 }
 
-var auditPassLists = []auditPassList{
+// auditPassLists are the prose regions that must list every audit pass.
+var auditPassLists = []proseAnchor{
 	{
 		file:   "plugin/skills/nerv-orchestrator/references/pipeline-full.md",
 		region: "Pass batch and JSON gatekeeping paragraph",
@@ -70,7 +71,7 @@ var auditPassLists = []auditPassList{
 // proseRegion returns the region of data that starts at the line containing
 // anchor: the agents cell of that line for a table row, or the paragraph up
 // to the next blank line.
-func proseRegion(t *testing.T, data string, list auditPassList) string {
+func proseRegion(t *testing.T, data string, list proseAnchor) string {
 	t.Helper()
 	lines := strings.Split(data, "\n")
 	for i, line := range lines {
