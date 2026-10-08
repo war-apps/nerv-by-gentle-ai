@@ -5,7 +5,7 @@ and a full audit-and-closure stage on top of the LIGHT primitives
 (RED/GREEN/REFACTOR, Aoba commits, the RDD hook, usage collection, the
 deliberation log — all reused unchanged, see the LIGHT pipeline above).
 Once every wave is closed and Maya's full gate is green, the run proceeds
-into the audit stage (steps 13-19 below): a frozen patch, five blind audit
+into the audit stage (steps 13-19 below): a frozen patch, four blind audit
 passes, Kaji's compilation and the refuter batch, Hyuga's ranking behind a
 user HARD issue gate, fix routing with a bounded re-audit loop, then
 documentation, archive, and the run summary. Never silently skip a step in
@@ -28,7 +28,7 @@ the table below or downgrade FULL to LIGHT mid-run.
 | 12. Maya full gate a→b→c→d | `nerv:maya` (MODE: full) | full change diff (base..HEAD), gathered once after the last wave closes — never per wave | `nerv/maya-report.md` phases a-d, each green before the next starts | `impl-wrong` → owning pilot; `spec-wrong` → Misato as a binding ruling (`MODE: ruling`, source `maya`); `ambiguous` → one Misato ruling → user only if a product decision is needed |
 | 13. Freeze patch | `nerv:aoba` | base (branch point for round 1, previous round's HEAD for re-audits), round number, change locator | `nerv/audit/diff-round-N.patch`, `nerv/audit/round-N.yaml` (`{round, base, head, created_at}`) | gatekeeper |
 | 14. Audit passes, 4 in parallel, blind | `nerv:melchor`, `nerv:balthasar`, `nerv:casper` (MODE: audit), `nerv:kaji-audit` | `diff-round-N.patch` + proposal/design/tasks/specs/test-plan locators, skills; `RDD scope` for melchor/balthasar (`cross-commit` only with native assess evidence, else `full`; see RDD narrowing) | one JSON pass object each per the contract in `nerv-artifacts.md`; Ikari writes each to `nerv/audit/pass-<name>-round-N.json` | gatekeeper — JSON validation, one retry |
-| 15. Compile + refute | `nerv:kaji` (compile), `nerv:kaji-refuter` (one batch over that round's inferential BLOCKER/CRITICAL) | the five pass objects/files | `nerv/audit-report.md` with refuter outcomes merged (`refuted` → dropped to a `## Refuted` appendix, `inconclusive` → WARNING, kept) | none |
+| 15. Compile + refute | `nerv:kaji` (compile), `nerv:fuyutsuki` (MODE: refute, read-only; one batch over that round's inferential BLOCKER/CRITICAL) | the four pass objects/files | `nerv/audit-report.md` with refuter outcomes merged (`refuted` → dropped to a `## Refuted` appendix, `inconclusive` → WARNING, kept) | none |
 | 16. Ranking + issue gate | `nerv:hyuga` (dispatch c) | `audit-report.md` (post-refuter) | `nerv/issue-ranking.md` | **user HARD** — Ikari relays the ranked NOW/DEFER list as one blocking prompt: approve the NOW set / edit it / accept residual and close |
 | 17. Fix routing + re-audit loop | owning pilot per approved issue (LIGHT work-unit cycle: Kaworu RED when behavioral, Aoba commit, pilot fix, Aoba commit, RDD hook), `nerv:aoba` (fix-delta patch), audit passes, `nerv:kaji` | fixes committed; `nerv/audit/diff-round-N+1.patch` scoped to the fix delta only; updated `audit-report.md` carrying forward unresolved items | cap 2 re-audits (loop back to step 14 over the fix-delta patch); at the cap the user accepts the residual (`residual_accepted` in `issue-ranking.md`) or declines the remainder; deviations → Misato ruling |
 | 18. Docs + archive + curate | `nerv:ritsuko` (MODE: docs), `nerv:aoba` (Archive duty), `nerv:fuyutsuki` (MODE: curate) | `issue-ranking.md`, fix commits, `tasks.md`, docs deltas | `nerv/issue-resolutions.md`, `nerv/agent-config.md`, repo doc deltas (Ikari writes them at Ritsuko-named locators), change archived to `openspec/changes/archive/YYYY-MM-DD-{change}/` via `nerv spec-compose` + `git mv`, `## Summary` appended to `nerv/deliberation-log.md` | gatekeeper |
@@ -106,7 +106,7 @@ object is retried once with the parse failure quoted; a second failure
 stops the audit round and reports. Ikari writes each validated object to
 `nerv/audit/pass-<name>-round-N.json`.
 
-**Kaji dedupe and compile.** `nerv:kaji` reads the five pass objects (from
+**Kaji dedupe and compile.** `nerv:kaji` reads the four pass objects (from
 the launch prompt or the written files) and writes `nerv/audit-report.md`:
 same file:line (or overlapping range) plus the same defect signature
 merges into one item, `credited_sources[]` listing every pass that found
@@ -118,9 +118,10 @@ Deterministic BLOCKER/CRITICAL need no refuter; every inferential
 BLOCKER/CRITICAL becomes the refuter batch. Kaji contacts nobody —
 clarifications route through Ikari.
 
-**Refuter batch.** `nerv:kaji-refuter` runs once per audit round over that
-round's inferential BLOCKER/CRITICAL items, reading the frozen patch and
-repo history read-only, returning `{"round": N, "results": [{finding_id,
+**Refuter batch.** `nerv:fuyutsuki` (MODE: refute) runs once per audit
+round over that round's inferential BLOCKER/CRITICAL items, reading the
+frozen patch and repo history read-only — in this mode he writes
+nothing and calls no `mem_save`, although his other modes may — returning `{"round": N, "results": [{finding_id,
 outcome: corroborated|refuted|inconclusive, proof_refs}]}`; it never adds
 findings. Ikari merges outcomes into `audit-report.md`: `refuted` items
 move to a `## Refuted` appendix and drop from the active list;
@@ -151,7 +152,7 @@ as a wave deviation.
 
 **Re-audit loop.** Once every approved fix lands, Aoba freezes
 `diff-round-N+1.patch` scoped to the fix delta only (base = the previous
-round's HEAD), the same five passes run over it, Kaji compiles round N+1
+round's HEAD), the same four passes run over it, Kaji compiles round N+1
 carrying forward unresolved items, the refuter batch runs again, ranking
 runs again, and the issue gate is relayed again. Capped at 2 re-audits; at
 the cap the user either accepts the residual (recorded in

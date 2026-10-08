@@ -19,6 +19,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     `/nerv:status` and the wizard show it as a row with no purpose. `nerv configure --set-model
     kaji-security=default` refuses the unknown role, so delete the line by hand (or move the
     value to `melchor`).
+- config: merge the kaji audit passes and move the refuter to fuyutsuki (868da54)
+  - Supersedes the pass count and the casper readability move above: the Phase 3 audit runs four
+    passes (`kaji-audit`, `melchor`, `balthasar`, `casper`), and no role judges work it authored
+    or compiles.
+  - `kaji-audit` merges `kaji-coverage` and `kaji-resilience` with every check of both, always at
+    full RDD scope, and claims `review-reliability` and `review-resilience`. Its findings land in
+    `nerv/audit/pass-kaji-audit-round-N.json`.
+  - Balthasar takes the readability audit lens back and claims `jd-judge-a` and
+    `review-readability`. Casper keeps the process lens only and claims no equivalent.
+  - Fuyutsuki gains a read-only `MODE: refute` with the whole `kaji-refuter` contract (no
+    writes, no `mem_save`, no new findings) and claims `review-refuter`. The `kaji-passes` group
+    is now `kaji` and `kaji-audit`.
+  - `models.kaji-coverage`, `models.kaji-resilience` and `models.kaji-refuter` overrides behave
+    like a stale `models.kaji-security` one: `nerv apply-models` skips them, `--print`,
+    `/nerv:status` and the wizard show them as rows with no purpose, and `--set-model
+    <role>=default` refuses them, so delete the lines by hand (or move the values to
+    `kaji-audit` or `fuyutsuki`).
 
 ## [2.0.1] - 2026-10-05
 

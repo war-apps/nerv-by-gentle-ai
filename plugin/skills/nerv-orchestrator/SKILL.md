@@ -251,8 +251,8 @@ backend, asuka → frontend, toji → ci-cd/docker/k8s/infra, kaworu → tests
 **All roles installed.** Every NERV role in this build is installed and may
 be launched: `rei`, `asuka`, and `toji` ship as pilots alongside `shinji`
 and `kaworu`; `misato`, `hyuga`, `balthasar`, `melchor`, `casper`, and
-`fuyutsuki` ship for the FULL pipeline; `kaji`,
-`kaji-coverage`, `kaji-resilience`, and `kaji-refuter` ship for the audit stage (see
+`fuyutsuki` ship for the FULL pipeline; `kaji` and `kaji-audit` ship for
+the audit stage, where `fuyutsuki` also refutes in `MODE: refute` (see
 `references/pipeline-full.md`). Never launch an agent that is not installed; a launch
 failure for a missing agent type is a stop, not a retry.
 
@@ -378,7 +378,7 @@ per task in scope, every `reject` carrying at least one finding with
 `proof_refs`, escalations only to `critical`. A malformed object is
 retried once with the parse failure quoted; a second failure stops the
 vote round and reports. Audit passes (`nerv:melchor`/`nerv:balthasar`/
-`nerv:casper` MODE: audit, `nerv:kaji-coverage`, `nerv:kaji-resilience`)
+`nerv:casper` MODE: audit, `nerv:kaji-audit`)
 follow the same JSON-only rule and the same one-retry-then-stop mechanics,
 per the Audit stage mechanics section of `references/pipeline-full.md`.
 

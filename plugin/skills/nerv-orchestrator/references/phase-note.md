@@ -8,8 +8,8 @@ now also running Hyuga's tracker dispatch. FULL ships Misato's plan
 authorship and rulings, MAGI (Balthasar, Melchor, Casper), Fuyutsuki's
 governance veto, Hyuga's criticality, waves, ranking, and tracker
 dispatches, all five pilots (`rei`, `shinji`, `asuka`, `toji`, `kaworu`),
-and the full audit-and-closure stage (Kaji, `kaji-coverage`,
-`kaji-resilience`, `kaji-refuter`, the ranked issue gate, fix routing, the
+and the full audit-and-closure stage (Kaji, `kaji-audit`, Fuyutsuki's
+read-only refute mode, the ranked issue gate, fix routing, the
 bounded re-audit loop, and Aoba's mechanical Archive duty). The task
 tracker (`nerv-tasks/SKILL.md`, the Teamwork adapter delegating to
 `~/.claude/commands/task/*.md`, and
