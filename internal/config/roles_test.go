@@ -18,16 +18,14 @@ import (
 var wantEquivalents = map[string][]string{
 	"misato": nil, "ritsuko": nil, "hyuga": nil,
 	"melchor":   {"jd-judge-b", "review-risk"},
-	"balthasar": {"jd-judge-a"},
-	"casper":    {"review-readability"},
-	"fuyutsuki": nil,
+	"balthasar": {"jd-judge-a", "review-readability"},
+	"casper":    nil,
+	"fuyutsuki": {"review-refuter"},
 	"kaworu":    {"jd-fix-agent"}, "shinji": {"jd-fix-agent"}, "asuka": {"jd-fix-agent"},
 	"rei": {"jd-fix-agent"}, "toji": {"jd-fix-agent"},
 	"maya": nil, "kaji": nil,
-	"kaji-coverage":   {"review-reliability"},
-	"kaji-resilience": {"review-resilience"},
-	"kaji-refuter":    {"review-refuter"},
-	"aoba":            nil,
+	"kaji-audit": {"review-reliability", "review-resilience"},
+	"aoba":       nil,
 }
 
 func TestRoles_EveryRoleHasPurposeAndEquivalent(t *testing.T) {
@@ -67,7 +65,7 @@ var wantFromPhases = map[string]string{
 	"fuyutsuki": "",
 	"kaworu":    "", "shinji": "", "asuka": "", "rei": "", "toji": "",
 	"maya": "", "kaji": "",
-	"kaji-coverage": "", "kaji-resilience": "", "kaji-refuter": "", "aoba": "",
+	"kaji-audit": "", "aoba": "",
 }
 
 // v4PhaseKeys are the claude_phase_assignments keys that still have an
@@ -112,7 +110,7 @@ func TestRoles_GroupMembership(t *testing.T) {
 	want := map[string][]string{
 		"magi":        {"balthasar", "casper", "melchor"},
 		"pilots":      {"asuka", "kaworu", "rei", "shinji", "toji"},
-		"kaji-passes": {"kaji", "kaji-coverage", "kaji-refuter", "kaji-resilience"},
+		"kaji-passes": {"kaji", "kaji-audit"},
 	}
 	for name, members := range want {
 		got := append([]string(nil), groups[name]...)

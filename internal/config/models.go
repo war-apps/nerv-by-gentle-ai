@@ -66,44 +66,45 @@ type RoleCatalogue struct {
 func Roles() RoleCatalogue {
 	allRoles := []string{
 		"aoba", "asuka", "balthasar", "casper", "fuyutsuki", "hyuga", "kaji",
-		"kaji-coverage", "kaji-refuter", "kaji-resilience", "kaworu", "maya",
-		"melchor", "misato", "rei", "ritsuko", "shinji", "toji",
+		"kaji-audit", "kaworu", "maya", "melchor", "misato", "rei", "ritsuko",
+		"shinji", "toji",
 	}
 	groups := map[string][]string{
 		"magi":        {"balthasar", "melchor", "casper"},
 		"pilots":      {"rei", "shinji", "asuka", "toji", "kaworu"},
-		"kaji-passes": {"kaji", "kaji-coverage", "kaji-resilience", "kaji-refuter"},
+		"kaji-passes": {"kaji", "kaji-audit"},
 		"all":         allRoles,
 	}
 	// Fix routing (jd-fix-agent) goes through the owning pilot, with kaworu
 	// writing the RED test first, so every pilot claims it. Every other
 	// gentle-ai v4 agent has exactly one owner: one MAGI member per judge,
-	// melchor carrying the security audit pass (review-risk) and casper the
-	// readability audit pass (review-readability).
+	// melchor carrying the security audit lens (review-risk), balthasar the
+	// readability audit lens (review-readability), kaji-audit the
+	// reliability and resilience lenses, and fuyutsuki the refuter (his
+	// read-only refute mode). casper and kaji (the compiler) claim none, so
+	// no role judges work it authored or compiles.
 	info := map[string]RoleInfo{
-		"misato":          {"authors the plan (proposal, design, tasks)", nil, ""},
-		"ritsuko":         {"intelligence, test planning, end-of-run docs", nil, ""},
-		"hyuga":           {"task criticality, dependency waves, tracking", nil, ""},
-		"melchor":         {"MAGI vote: structure and security; security audit", []string{"jd-judge-b", "review-risk"}, "jd-judge-b"},
-		"balthasar":       {"MAGI vote: software principles", []string{"jd-judge-a"}, "jd-judge-a"},
-		"casper":          {"MAGI vote: process and documentation; readability audit", []string{"review-readability"}, ""},
-		"fuyutsuki":       {"governance veto on new skills/scripts/commands", nil, ""},
-		"kaworu":          {"writes the failing tests first", []string{"jd-fix-agent"}, ""},
-		"shinji":          {"backend pilot", []string{"jd-fix-agent"}, ""},
-		"asuka":           {"frontend pilot", []string{"jd-fix-agent"}, ""},
-		"rei":             {"data pilot (persistence, observability)", []string{"jd-fix-agent"}, ""},
-		"toji":            {"infrastructure pilot (CI/CD, containers)", []string{"jd-fix-agent"}, ""},
-		"maya":            {"quality gate (tests, lint, build)", nil, ""},
-		"kaji":            {"audit compiler", nil, ""},
-		"kaji-coverage":   {"audit pass: test coverage, reliability, correctness", []string{"review-reliability"}, ""},
-		"kaji-resilience": {"audit pass: resilience and performance", []string{"review-resilience"}, ""},
-		"kaji-refuter":    {"refutes severe audit findings", []string{"review-refuter"}, ""},
-		"aoba":            {"commits, PRs and run telemetry", nil, ""},
+		"misato":     {"authors the plan (proposal, design, tasks)", nil, ""},
+		"ritsuko":    {"intelligence, test planning, end-of-run docs", nil, ""},
+		"hyuga":      {"task criticality, dependency waves, tracking", nil, ""},
+		"melchor":    {"MAGI vote: structure and security; security audit", []string{"jd-judge-b", "review-risk"}, "jd-judge-b"},
+		"balthasar":  {"MAGI vote: software principles; readability audit", []string{"jd-judge-a", "review-readability"}, "jd-judge-a"},
+		"casper":     {"MAGI vote: process and documentation", nil, ""},
+		"fuyutsuki":  {"governance veto on new skills/scripts/commands; refutes severe audit findings", []string{"review-refuter"}, ""},
+		"kaworu":     {"writes the failing tests first", []string{"jd-fix-agent"}, ""},
+		"shinji":     {"backend pilot", []string{"jd-fix-agent"}, ""},
+		"asuka":      {"frontend pilot", []string{"jd-fix-agent"}, ""},
+		"rei":        {"data pilot (persistence, observability)", []string{"jd-fix-agent"}, ""},
+		"toji":       {"infrastructure pilot (CI/CD, containers)", []string{"jd-fix-agent"}, ""},
+		"maya":       {"quality gate (tests, lint, build)", nil, ""},
+		"kaji":       {"audit compiler", nil, ""},
+		"kaji-audit": {"audit pass: test coverage, reliability, correctness, resilience, performance", []string{"review-reliability", "review-resilience"}, ""},
+		"aoba":       {"commits, PRs and run telemetry", nil, ""},
 	}
 	groupDescriptions := map[string]string{
 		"magi":        "the three voters (balthasar, melchor, casper)",
 		"pilots":      "the implementers (kaworu, shinji, asuka, rei, toji)",
-		"kaji-passes": "the audit passes (kaji, kaji-coverage, kaji-resilience, kaji-refuter)",
+		"kaji-passes": "the audit compiler and its pass (kaji, kaji-audit)",
 		"all":         "every role",
 	}
 	return RoleCatalogue{AllRoles: allRoles, Groups: groups, Info: info, GroupDescriptions: groupDescriptions}

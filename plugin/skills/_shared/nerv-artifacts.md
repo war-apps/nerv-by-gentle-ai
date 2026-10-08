@@ -492,8 +492,8 @@ created_at: "2026-09-24T15:10:00Z"
 #### Audit pass JSON output contract
 
 Each of `nerv:melchor`, `nerv:balthasar`, `nerv:casper` (MODE: audit),
-`nerv:kaji-coverage`, `nerv:kaji-resilience` is
-launched in one parallel batch, blind to the other four, over the frozen
+and `nerv:kaji-audit` is
+launched in one parallel batch, blind to the other three, over the frozen
 `diff-round-N.patch` plus the plan artifacts (`proposal.md`, `design.md`,
 `tasks.md`, `specs/`, `nerv/test-plan.md`). Its final text is exactly one JSON object, no prose
 before or after it (a `## Key Learnings` block may follow):

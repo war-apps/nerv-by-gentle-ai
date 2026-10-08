@@ -84,8 +84,9 @@ func TestRDDNarrowing_FailsClosed(t *testing.T) {
 		"under_budget",
 		"review_due: true",
 		"`casper`",
-		"`kaji-coverage`",
-		"`kaji-resilience`",
+		"`kaji-audit`",
+		"kaji-coverage",
+		"kaji-resilience",
 		"kaji-security",
 	} {
 		if strings.Contains(narrow, token) {
@@ -101,9 +102,9 @@ func TestRDDNarrowing_FailsClosed(t *testing.T) {
 		}
 	}
 
-	// The remaining three passes never narrow.
+	// The remaining two passes never narrow.
 	always := sentenceWith(t, paragraph, "always keep full NERV scope")
-	for _, token := range []string{"`casper`", "`kaji-coverage`", "`kaji-resilience`"} {
+	for _, token := range []string{"`casper`", "`kaji-audit`"} {
 		if !strings.Contains(always, token) {
 			t.Errorf("%s (always-full clause): required %q missing", rddNarrowingFile, token)
 		}

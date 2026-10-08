@@ -97,7 +97,7 @@ changes confirmed — never more.
      `effort`, `source` — and a one-line legend for the group keywords:
      `magi` = the three voters (balthasar, melchor, casper), `pilots` =
      the implementers (kaworu, shinji, asuka, rei, toji), `kaji-passes` =
-     the audit passes (kaji, kaji-coverage, kaji-resilience, kaji-refuter),
+     the audit compiler and its pass (kaji, kaji-audit),
      `all` = every role. The equivalent is informational only and never a
      `from:<phase>` value (native `review-*` agents are not phase keys):
      when the user picks `from:` for a single role, suggest that role's

@@ -181,20 +181,28 @@ func TestPrint_ModelsRowsCarryPurposeAndEquivalent(t *testing.T) {
 		}
 		byRole[role] = row
 	}
-	if _, ok := byRole["kaji-security"]; ok {
-		t.Errorf("kaji-security is still a models row; the role was removed")
+	for _, removed := range []string{"kaji-security", "kaji-coverage", "kaji-resilience", "kaji-refuter"} {
+		if _, ok := byRole[removed]; ok {
+			t.Errorf("%s is still a models row; the role was removed", removed)
+		}
 	}
-	if got := byRole["casper"]["gentle_ai_equivalent"]; got != "review-readability" {
-		t.Errorf("casper gentle_ai_equivalent = %v, want review-readability", got)
+	if got := byRole["balthasar"]["gentle_ai_equivalent"]; got != "jd-judge-a, review-readability" {
+		t.Errorf("balthasar gentle_ai_equivalent = %v, want \"jd-judge-a, review-readability\"", got)
 	}
-	if got := byRole["kaji-resilience"]["gentle_ai_equivalent"]; got != "review-resilience" {
-		t.Errorf("kaji-resilience gentle_ai_equivalent = %v, want review-resilience", got)
+	if got := byRole["fuyutsuki"]["gentle_ai_equivalent"]; got != "review-refuter" {
+		t.Errorf("fuyutsuki gentle_ai_equivalent = %v, want review-refuter", got)
 	}
-	if got := byRole["kaji-resilience"]["from_phase"]; got != "" {
-		t.Errorf("kaji-resilience from_phase = %v, want empty (review-resilience is not a phase key)", got)
+	if got := byRole["fuyutsuki"]["from_phase"]; got != "" {
+		t.Errorf("fuyutsuki from_phase = %v, want empty (review-refuter is not a phase key)", got)
+	}
+	if got := byRole["kaji-audit"]["gentle_ai_equivalent"]; got != "review-reliability, review-resilience" {
+		t.Errorf("kaji-audit gentle_ai_equivalent = %v, want \"review-reliability, review-resilience\"", got)
+	}
+	if got := byRole["kaji-audit"]["from_phase"]; got != "" {
+		t.Errorf("kaji-audit from_phase = %v, want empty (review-* agents are not phase keys)", got)
 	}
 	if got := byRole["casper"]["from_phase"]; got != "" {
-		t.Errorf("casper from_phase = %v, want empty (review-readability is not a phase key)", got)
+		t.Errorf("casper from_phase = %v, want empty", got)
 	}
 	if got := byRole["balthasar"]["from_phase"]; got != "jd-judge-a" {
 		t.Errorf("balthasar from_phase = %v, want jd-judge-a", got)
@@ -210,14 +218,14 @@ func TestPrint_ModelsRowsCarryPurposeAndEquivalent(t *testing.T) {
 	if got := fmt.Sprint(byRole["melchor"]["gentle_ai_equivalents"]); got != "[jd-judge-b review-risk]" {
 		t.Errorf("melchor gentle_ai_equivalents = %v, want [jd-judge-b review-risk]", got)
 	}
-	if got, ok := byRole["fuyutsuki"]["gentle_ai_equivalents"].([]any); !ok || len(got) != 0 {
-		t.Errorf("fuyutsuki gentle_ai_equivalents = %#v, want an empty array", byRole["fuyutsuki"]["gentle_ai_equivalents"])
+	if got, ok := byRole["casper"]["gentle_ai_equivalents"].([]any); !ok || len(got) != 0 {
+		t.Errorf("casper gentle_ai_equivalents = %#v, want an empty array", byRole["casper"]["gentle_ai_equivalents"])
 	}
 	if got := byRole["kaworu"]["purpose"]; got != "writes the failing tests first" {
 		t.Errorf("kaworu purpose = %v", got)
 	}
-	if got := byRole["fuyutsuki"]["gentle_ai_equivalent"]; got != "" {
-		t.Errorf("fuyutsuki gentle_ai_equivalent = %v, want empty", got)
+	if got := byRole["casper"]["gentle_ai_equivalent"]; got != "" {
+		t.Errorf("casper gentle_ai_equivalent = %v, want empty", got)
 	}
 }
 

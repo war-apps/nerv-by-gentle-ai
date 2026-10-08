@@ -9,22 +9,22 @@ import (
 	"github.com/war-apps/nerv-by-gentle-ai/internal/config"
 )
 
-// auditPassNames derives the five Phase 3 audit passes from the role
+// auditPassNames derives the four Phase 3 audit passes from the role
 // catalogue: the three MAGI (audit mode) plus the kaji-passes group without
-// the compiler (kaji) and the detached refuter (kaji-refuter), which run
-// after the parallel batch rather than inside it.
+// the compiler (kaji), which runs after the parallel batch rather than
+// inside it. The refuter (fuyutsuki in refute mode) is outside the group.
 func auditPassNames(t *testing.T) []string {
 	t.Helper()
 	groups := config.Roles().Groups
 	names := append([]string(nil), groups["magi"]...)
 	for _, role := range groups["kaji-passes"] {
-		if role == "kaji" || role == "kaji-refuter" {
+		if role == "kaji" {
 			continue
 		}
 		names = append(names, role)
 	}
-	if len(names) != 5 {
-		t.Fatalf("derived %d audit passes from config.Roles() (%v), want 5", len(names), names)
+	if len(names) != 4 {
+		t.Fatalf("derived %d audit passes from config.Roles() (%v), want 4", len(names), names)
 	}
 	return names
 }
@@ -95,7 +95,7 @@ func proseRegion(t *testing.T, data string, list auditPassList) string {
 	return ""
 }
 
-func TestAuditPassLists_NameAllFivePasses(t *testing.T) {
+func TestAuditPassLists_NameAllFourPasses(t *testing.T) {
 	passes := auditPassNames(t)
 	for _, list := range auditPassLists {
 		data, err := os.ReadFile(list.file)
@@ -104,7 +104,7 @@ func TestAuditPassLists_NameAllFivePasses(t *testing.T) {
 		}
 		region := proseRegion(t, string(data), list)
 		for _, pass := range passes {
-			// Bound the name so `kaji-coverage` never satisfies a bare `kaji`
+			// Bound the name so `kaji-audit` never satisfies a bare `kaji`
 			// and a pass name never matches inside a longer identifier.
 			re := regexp.MustCompile(`(^|[^a-z-])` + regexp.QuoteMeta(pass) + `([^a-z-]|$)`)
 			if !re.MatchString(region) {

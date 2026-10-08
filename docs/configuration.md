@@ -84,14 +84,17 @@ the native review agents (`review-*`) are not keys of
 `claude_phase_assignments`. Only the `jd-judge` equivalents (melchor's
 `jd-judge-b`, balthasar's `jd-judge-a`) double as a `from:` suggestion,
 exposed separately as `from_phase`; only melchor and balthasar carry one.
-casper (whose equivalent is the native `review-readability`) and the
-pilots get no suggestion. Neither changes how a model is
+The roles whose equivalents are only native `review-*` agents
+(`kaji-audit`, and `fuyutsuki` for his read-only refute mode) and the
+pilots get no suggestion. casper and kaji (the compiler) claim no
+equivalent, so no role judges work it authored or compiles. Neither changes how a model is
 resolved. The same data is shown in the wizard's models table, in
 `/nerv:configure` and `/nerv:status`, and as `purpose` /
 `gentle_ai_equivalents` (an array) / `from_phase` on each
 `nerv configure --print` models row. `gentle_ai_equivalent` carries the same
 list joined with `, ` for readers of the original single-string field. Roles are addressable by group: `magi` (the three voters),
-`pilots` (the implementers), `kaji-passes` (the audit passes) and `all`.
+`pilots` (the implementers), `kaji-passes` (the audit compiler and its
+pass) and `all`.
 
 | Role | Group | Purpose | gentle-ai equivalent | Default model / effort |
 |---|---|---|---|---|
@@ -99,9 +102,9 @@ list joined with `, ` for readers of the original single-string field. Roles are
 | `ritsuko` | | intelligence, test planning, end-of-run docs | none | opus / high |
 | `hyuga` | | task criticality, dependency waves, tracking | none | sonnet / medium |
 | `melchor` | `magi` | MAGI vote: structure and security; security audit | `jd-judge-b`, `review-risk` | fable / high |
-| `balthasar` | `magi` | MAGI vote: software principles | `jd-judge-a` | sonnet / medium |
-| `casper` | `magi` | MAGI vote: process and documentation; readability audit | `review-readability` | sonnet / medium |
-| `fuyutsuki` | | governance veto on new skills/scripts/commands | none | sonnet / medium |
+| `balthasar` | `magi` | MAGI vote: software principles; readability audit | `jd-judge-a`, `review-readability` | sonnet / medium |
+| `casper` | `magi` | MAGI vote: process and documentation | none | sonnet / medium |
+| `fuyutsuki` | | governance veto on new skills/scripts/commands; refutes severe audit findings | `review-refuter` | sonnet / medium |
 | `kaworu` | `pilots` | writes the failing tests first | `jd-fix-agent` | sonnet / medium |
 | `shinji` | `pilots` | backend pilot | `jd-fix-agent` | sonnet / medium |
 | `asuka` | `pilots` | frontend pilot | `jd-fix-agent` | sonnet / medium |
@@ -109,9 +112,7 @@ list joined with `, ` for readers of the original single-string field. Roles are
 | `toji` | `pilots` | infrastructure pilot (CI/CD, containers) | `jd-fix-agent` | sonnet / medium |
 | `maya` | | quality gate (tests, lint, build) | none | sonnet / medium |
 | `kaji` | `kaji-passes` | audit compiler | none | opus / high |
-| `kaji-coverage` | `kaji-passes` | audit pass: test coverage, reliability, correctness | `review-reliability` | sonnet / medium |
-| `kaji-resilience` | `kaji-passes` | audit pass: resilience and performance | `review-resilience` | sonnet / medium |
-| `kaji-refuter` | `kaji-passes` | refutes severe audit findings | `review-refuter` | sonnet / medium |
+| `kaji-audit` | `kaji-passes` | audit pass: test coverage, reliability, correctness, resilience, performance | `review-reliability`, `review-resilience` | sonnet / medium |
 | `aoba` | | commits, PRs and run telemetry | none | sonnet / low |
 
 ### Configuring models and effort
