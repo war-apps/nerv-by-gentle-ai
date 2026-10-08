@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.0.0] - 2026-10-08
+
+### Breaking
+- release: re-publish 2.1.0 under a major version, since it removes roles
+  - 2.1.0 removed the `kaji-security`, `kaji-coverage`, `kaji-resilience` and `kaji-refuter`
+    roles and changed the Phase 3 audit to four passes. That breaks existing `models:` overrides
+    and audit artifact names, so it needed a major bump instead of a minor one.
+  - 3.0.0 has the same code and plugin content as 2.1.0. Read the 2.1.0 section below for the
+    full list of changes and how to migrate leftover overrides.
+
 ## [2.1.0] - 2026-10-08
 
 ### Breaking
