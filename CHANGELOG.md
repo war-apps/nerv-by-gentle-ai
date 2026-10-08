@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.1.0] - 2026-10-08
+
 ### Breaking
 - config: drop the `kaji-security` role and give each MAGI one gentle-ai equivalent (2f686de)
   - The Phase 3 audit runs five passes. Melchor's audit pass now carries the full security lens
@@ -36,6 +38,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     `/nerv:status` and the wizard show them as rows with no purpose, and `--set-model
     <role>=default` refuses them, so delete the lines by hand (or move the values to
     `kaji-audit` or `fuyutsuki`).
+
+### Added
+- agents: extend balthasar and kaji-coverage to cover gentle-ai readability and reliability (0b90206)
+- agents: add kaji-resilience audit pass for resilience and performance (b826c89)
+- config: list every gentle-ai equivalent per role and guard v4 agent parity (8dc7ad3)
 
 ## [2.0.1] - 2026-10-05
 
