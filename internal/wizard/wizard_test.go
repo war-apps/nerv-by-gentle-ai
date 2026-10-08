@@ -932,23 +932,28 @@ func TestRun_ModelsSection_TableShowsPurposeEquivalentAndGroupLegend(t *testing.
 			t.Errorf("table header %q lacks column %q", header, col)
 		}
 	}
-	if row := lineWith(got, ") casper"); !strings.Contains(row, "readability audit") || !strings.HasSuffix(strings.TrimSpace(row), "review-readability") {
-		t.Errorf("casper row = %q, want purpose and review-readability", row)
+	if row := lineWith(got, ") balthasar"); !strings.Contains(row, "readability audit") || !strings.HasSuffix(strings.TrimSpace(row), "jd-judge-a, review-readability") {
+		t.Errorf("balthasar row = %q, want purpose and jd-judge-a, review-readability", row)
 	}
-	if strings.Contains(got, ") kaji-security") {
-		t.Errorf("models table still lists the removed kaji-security role")
+	if row := lineWith(got, ") casper"); !strings.Contains(row, "process and documentation") || !strings.HasSuffix(strings.TrimSpace(row), "-") {
+		t.Errorf("casper row = %q, want purpose and a '-' equivalent", row)
 	}
-	if row := lineWith(got, ") kaji-resilience"); !strings.Contains(row, "audit pass: resilience and performance") || !strings.Contains(row, "review-resilience") {
-		t.Errorf("kaji-resilience row = %q, want purpose and review-resilience", row)
+	for _, removed := range []string{"kaji-security", "kaji-coverage", "kaji-resilience", "kaji-refuter"} {
+		if strings.Contains(got, ") "+removed) {
+			t.Errorf("models table still lists the removed %s role", removed)
+		}
+	}
+	if row := lineWith(got, ") kaji-audit"); !strings.Contains(row, "resilience") || !strings.HasSuffix(strings.TrimSpace(row), "review-reliability, review-resilience") {
+		t.Errorf("kaji-audit row = %q, want purpose and review-reliability, review-resilience", row)
+	}
+	if row := lineWith(got, ") fuyutsuki"); !strings.Contains(row, "refutes severe audit findings") || !strings.HasSuffix(strings.TrimSpace(row), "review-refuter") {
+		t.Errorf("fuyutsuki row = %q, want purpose and review-refuter", row)
 	}
 	if row := lineWith(got, ") kaworu"); !strings.Contains(row, "writes the failing tests first") || strings.Contains(row, "sdd-") || !strings.HasSuffix(strings.TrimSpace(row), "jd-fix-agent") {
 		t.Errorf("kaworu row = %q, want purpose and jd-fix-agent", row)
 	}
 	if row := lineWith(got, ") melchor"); !strings.HasSuffix(strings.TrimSpace(row), "jd-judge-b, review-risk") {
 		t.Errorf("melchor row = %q, want both equivalents joined", row)
-	}
-	if row := lineWith(got, ") fuyutsuki"); !strings.HasSuffix(strings.TrimSpace(row), "-") {
-		t.Errorf("fuyutsuki row = %q, want a '-' equivalent", row)
 	}
 	// Every purpose starts under its header and is printed whole, whatever
 	// the fixture's model and source widths are.
@@ -1036,9 +1041,9 @@ func TestRun_ModelsSection_PhasePickerMarksNothingForReviewAgentEquivalent(t *te
 	home := t.TempDir()
 	writeFixture(t, filepath.Join(root, "nerv.yaml"))
 	paths := testPaths(root, home)
-	// review-readability is present as a key so that a hint driven by the
+	// review-reliability is present as a key so that a hint driven by the
 	// equivalent (instead of FromPhase) would surface it first and marked.
-	state := `{"claude_phase_assignments":{"jd-judge-a":{"model":"opus","effort":"high"},"jd-judge-b":{"model":"sonnet","effort":"medium"},"review-readability":{"model":"haiku","effort":"low"}}}`
+	state := `{"claude_phase_assignments":{"jd-judge-a":{"model":"opus","effort":"high"},"jd-judge-b":{"model":"sonnet","effort":"medium"},"review-reliability":{"model":"haiku","effort":"low"}}}`
 	if err := os.MkdirAll(filepath.Dir(paths.State), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -1049,7 +1054,7 @@ func TestRun_ModelsSection_PhasePickerMarksNothingForReviewAgentEquivalent(t *te
 	opts := wizard.Options{Paths: paths, SkipSkills: true, SkipRepos: true, SkipCommands: true, NoRefresh: true}
 
 	var out bytes.Buffer
-	in := modelsInput(&out, "casper", "7", "1", "", "done", "y")
+	in := modelsInput(&out, "kaji-audit", "7", "1", "", "done", "y")
 	if _, err := wizard.Run(deps, in, &out, opts); err != nil {
 		t.Fatalf("Run() error = %v; output:\n%s", err, out.String())
 	}
@@ -1059,7 +1064,7 @@ func TestRun_ModelsSection_PhasePickerMarksNothingForReviewAgentEquivalent(t *te
 		t.Fatalf("phase picker not shown; output:\n%s", out.String())
 	}
 	if strings.Contains(picker, "(equivalent)") {
-		t.Errorf("phase picker marks an equivalent for casper:\n%s", picker)
+		t.Errorf("phase picker marks an equivalent for kaji-audit:\n%s", picker)
 	}
 	if first := phaseLine(out.String(), "  1) "); !strings.Contains(first, "jd-judge-a") {
 		t.Errorf("first phase = %q, want jd-judge-a (sorted order, no hint)", first)

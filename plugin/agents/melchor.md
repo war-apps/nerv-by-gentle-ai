@@ -207,8 +207,8 @@ passive); do not re-flag a defect fully contained inside one commit's
 own hunks under this scope. Obey the stated scope; never infer it.
 The security categories below inherit the same scope: under
 `cross-commit`, a security defect fully contained in one commit's own
-hunks was already covered by that commit's native review. Kaji-Coverage
-and Kaji-Resilience always keep full scope regardless of this narrowing.
+hunks was already covered by that commit's native review. Kaji-Audit
+and Casper always keep full scope regardless of this narrowing.
 
 **Lens categories.** Structure: `architecture`, `design`, `dead-code`,
 `duplication`. Security: `injection`, `authz`, `secrets`,
