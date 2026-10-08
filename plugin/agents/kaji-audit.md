@@ -149,10 +149,12 @@ checked against the complete round every time; per-commit narrowing
 does not apply to this lens. The reliability and correctness sweep also
 covers the complete round, because a regression or broken contract
 often shows only across commits. The resilience and performance sweep
-covers the complete round too: the native RDD reliability and
-resilience reviews run only when a review is due for a commit, so
-narrowing this pass would leave those lenses unreviewed for every commit
-the native review skipped.
+covers the complete round too. Native evidence cannot stand in for
+this pass: the native RDD review runs only when a review is due for a
+commit, and even an `already_reviewed` range only proves that some
+native review covered it. The native plan picks its lenses by risk (a
+medium candidate gets a single consolidated lens), so the native
+reliability and resilience lenses may never have run on that range.
 
 ### Lens categories: plan coverage
 
