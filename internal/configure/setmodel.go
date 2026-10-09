@@ -18,6 +18,8 @@ import (
 // processed, no partial write can happen when a later entry is invalid.
 // A from:<phase> missing from a readable, non-empty gentle-ai state file
 // adds a warning but is still written, since the state can change later.
+// A role no longer in the catalogue is refused, except role=default when the
+// file still holds an override for it, so a stale override can be cleared.
 func SetModel(deps Deps, paths Paths, specs []string) (Result, error) {
 	store := Store{}
 	doc, exists, err := store.Load(paths.Config)
@@ -48,7 +50,11 @@ func SetModel(deps Deps, paths Paths, specs []string) (Result, error) {
 			return Result{}, &RefusalError{Err: fmt.Errorf("Invalid --set-model entry '%s'; expected role=model[/effort], role=from:<phase>, or role=default.", raw)}
 		}
 		if err := config.ValidateRole(role); err != nil {
-			return Result{}, &RefusalError{Err: err}
+			// A role removed from the catalogue may still have an override in
+			// the file; clearing it is the only change allowed for that role.
+			if _, stale := overrides[role]; !stale || !strings.EqualFold(spec, "default") {
+				return Result{}, &RefusalError{Err: err}
+			}
 		}
 
 		oldDisplay := displayOverride(overrides[role])

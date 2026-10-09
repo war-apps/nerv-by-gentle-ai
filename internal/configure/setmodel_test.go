@@ -115,6 +115,75 @@ func TestSetModel_UnknownRole_Refused(t *testing.T) {
 	}
 }
 
+// A role removed from the catalogue (e.g. kaji-security in 3.0.0) can leave
+// its override behind in nerv.yaml; role=default must still clear it.
+func TestSetModel_ClearsStaleOverrideOfRemovedRole(t *testing.T) {
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "nerv.yaml")
+	stale := strings.Replace(richFixtureLF,
+		"misato: { model: fable, effort: high }",
+		"misato: { model: fable, effort: high }\n  kaji-security: { model: opus, effort: high }", 1)
+	if stale == richFixtureLF {
+		t.Fatal("fixture has no misato override to anchor the stale role")
+	}
+	writeFixture(t, configPath, stale)
+
+	deps := newTestDeps(dir, time.Now())
+	paths := configure.Paths{Config: configPath}
+
+	result, err := configure.SetModel(deps, paths, []string{"kaji-security=default"})
+	if err != nil {
+		t.Fatalf("SetModel() error = %v", err)
+	}
+	want := configure.Change{Key: "models.kaji-security", From: "opus/high", To: "default"}
+	if len(result.Changes) != 1 || result.Changes[0] != want {
+		t.Errorf("Changes = %+v, want [%+v]", result.Changes, want)
+	}
+
+	after, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(after), "kaji-security") {
+		t.Error("stale kaji-security override still present")
+	}
+	if !strings.Contains(string(after), "misato: { model: fable, effort: high }") {
+		t.Error("existing role override not preserved")
+	}
+}
+
+// Only clearing is allowed for a removed role: setting a value, or clearing
+// a role that has no override, is still refused as unknown.
+func TestSetModel_RemovedRole_OnlyStaleClearAllowed(t *testing.T) {
+	stale := strings.Replace(richFixtureLF,
+		"misato: { model: fable, effort: high }",
+		"misato: { model: fable, effort: high }\n  kaji-security: { model: opus, effort: high }", 1)
+	for _, tc := range []struct{ name, fixture, spec string }{
+		{"set value on stale role", stale, "kaji-security=sonnet"},
+		{"clear role with no override", richFixtureLF, "kaji-security=default"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			configPath := filepath.Join(dir, "nerv.yaml")
+			writeFixture(t, configPath, tc.fixture)
+
+			deps := newTestDeps(dir, time.Now())
+			_, err := configure.SetModel(deps, configure.Paths{Config: configPath}, []string{tc.spec})
+			var unknownRole *config.ErrUnknownRole
+			if !errors.As(err, &unknownRole) {
+				t.Fatalf("error = %v, want to wrap *config.ErrUnknownRole", err)
+			}
+			after, err := os.ReadFile(configPath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if string(after) != tc.fixture {
+				t.Error("file changed after a refused --set-model")
+			}
+		})
+	}
+}
+
 // ---------------------------------------------------------------------------
 // invalid model / effort tokens.
 // ---------------------------------------------------------------------------
