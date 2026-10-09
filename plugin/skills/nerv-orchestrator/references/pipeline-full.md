@@ -18,7 +18,7 @@ the table below or downgrade FULL to LIGHT mid-run.
 | 2. Spec + test plan | `nerv:ritsuko` (MODE: test-plan) | `exploration.md` locator, skills | `specs/{domain}/spec.md`, `nerv/test-plan.md` with `## Corner-case questions` | **user HARD** — Ikari relays the questions as one grouped blocking prompt; the answers are written into `## Answers` and gate the plan |
 | 3. Plan | `nerv:misato` | `exploration.md`, `spec.md`, `test-plan.md` (with answers), skills | `proposal.md`, `design.md` (must contain `## New skills, scripts and commands`), `tasks.md` (ids `T1`, `T2`, ... with `pilot` and `depends_on`) | gatekeeper — verifies the `## New skills, scripts and commands` section exists in `design.md` |
 | 4. Criticality | `nerv:hyuga` (dispatch a) | `tasks.md`, `critical_paths` | `nerv/criticality.md` | none |
-| 5. MAGI vote round | `nerv:balthasar`, `nerv:melchor`, `nerv:casper` (MODE: vote), one parallel batch, blind | Balthasar: `design.md`+`tasks.md`; Melchor: `design.md`; Casper: `spec.md`+`tasks.md`+`proposal.md` | one JSON object each per the contract in `nerv-artifacts.md`, merged by Ikari into `nerv/votes.md` | critical task = unanimous approve; standard = 2-of-3; rejected tasks → step 6 |
+| 5. MAGI vote round | `nerv:balthasar`, `nerv:melchior`, `nerv:casper` (MODE: vote), one parallel batch, blind | Balthasar: `design.md`+`tasks.md`; Melchior: `design.md`; Casper: `spec.md`+`tasks.md`+`proposal.md` | one JSON object each per the contract in `nerv-artifacts.md`, merged by Ikari into `nerv/votes.md` | critical task = unanimous approve; standard = 2-of-3; rejected tasks → step 6 |
 | 6. Revise loop | `nerv:misato` (`misato-revise`) | rejected tasks + their findings | revised tasks only, re-voted at step 5 (revised tasks only; approved tasks stay `frozen`) | cap 2 re-votes per task; at cap, user: override-approve / kill task / Misato ruling |
 | 7. Governance veto | `nerv:fuyutsuki` | `design.md`'s `## New skills, scripts and commands` | `nerv/veto-ruling.md` | a veto reopens only the owning task (frozen siblings stay frozen); cap 2 revision rounds; at cap, user: drop the item or abandon the task |
 | 8. Plan approval | Ikari relays | tasks with criticality, vote results, veto rulings, test-plan summary | user decision logged | **user HARD** — no implementation before this gate |
@@ -27,7 +27,7 @@ the table below or downgrade FULL to LIGHT mid-run.
 | 11. Implementation wave N | `nerv:kaworu` (RED) → `nerv:aoba` (commit, user validates) → assigned pilot (GREEN/TRIANGULATE/REFACTOR) → `nerv:aoba` (commit, user validates) → RDD hook | wave task, skills, TDD mode+runner, `commit_ref` | code + TDD evidence rows | repeat for every wave in `waves.md` in dependency order; a wave starts only when every wave it depends on is closed with a `wave_report`; the loop terminates when the last wave is closed; pilots in a wave may run in one parallel batch when their tasks are independent; deviations → `nerv:hyuga` deviation → `nerv:misato` ruling |
 | 12. Maya full gate a→b→c→d | `nerv:maya` (MODE: full) | full change diff (base..HEAD), gathered once after the last wave closes — never per wave | `nerv/maya-report.md` phases a-d, each green before the next starts | `impl-wrong` → owning pilot; `spec-wrong` → Misato as a binding ruling (`MODE: ruling`, source `maya`); `ambiguous` → one Misato ruling → user only if a product decision is needed |
 | 13. Freeze patch | `nerv:aoba` | base (branch point for round 1, previous round's HEAD for re-audits), round number, change locator | `nerv/audit/diff-round-N.patch`, `nerv/audit/round-N.yaml` (`{round, base, head, created_at}`) | gatekeeper |
-| 14. Audit passes, 4 in parallel, blind | `nerv:melchor`, `nerv:balthasar`, `nerv:casper` (MODE: audit), `nerv:kaji-audit` | `diff-round-N.patch` + proposal/design/tasks/specs/test-plan locators, skills; `RDD scope` for melchor/balthasar (`cross-commit` only with native assess evidence, else `full`; see RDD narrowing) | one JSON pass object each per the contract in `nerv-artifacts.md`; Ikari writes each to `nerv/audit/pass-<name>-round-N.json` | gatekeeper — JSON validation, one retry |
+| 14. Audit passes, 4 in parallel, blind | `nerv:melchior`, `nerv:balthasar`, `nerv:casper` (MODE: audit), `nerv:gendo` | `diff-round-N.patch` + proposal/design/tasks/specs/test-plan locators, skills; `RDD scope` for melchior/balthasar (`cross-commit` only with native assess evidence, else `full`; see RDD narrowing) | one JSON pass object each per the contract in `nerv-artifacts.md`; Ikari writes each to `nerv/audit/pass-<name>-round-N.json` | gatekeeper — JSON validation, one retry |
 | 15. Compile + refute | `nerv:kaji` (compile), `nerv:fuyutsuki` (MODE: refute, read-only; one batch over that round's inferential BLOCKER/CRITICAL) | the four pass objects/files | `nerv/audit-report.md` with refuter outcomes merged (`refuted` → dropped to a `## Refuted` appendix, `inconclusive` → WARNING, kept) | none |
 | 16. Ranking + issue gate | `nerv:hyuga` (dispatch c) | `audit-report.md` (post-refuter) | `nerv/issue-ranking.md` | **user HARD** — Ikari relays the ranked NOW/DEFER list as one blocking prompt: approve the NOW set / edit it / accept residual and close |
 | 17. Fix routing + re-audit loop | owning pilot per approved issue (LIGHT work-unit cycle: Kaworu RED when behavioral, Aoba commit, pilot fix, Aoba commit, RDD hook), `nerv:aoba` (fix-delta patch), audit passes, `nerv:kaji` | fixes committed; `nerv/audit/diff-round-N+1.patch` scoped to the fix delta only; updated `audit-report.md` carrying forward unresolved items | cap 2 re-audits (loop back to step 14 over the fix-delta patch); at the cap the user accepts the residual (`residual_accepted` in `issue-ranking.md`) or declines the remainder; deviations → Misato ruling |
@@ -92,9 +92,9 @@ round's HEAD for every re-audit (step 17) — a re-audit patch scopes only
 the fix delta, never the cumulative diff.
 
 **Pass batch and JSON gatekeeping.** Ikari launches all four audit passes
-— the three MAGI in MODE: audit, `nerv:melchor` (structure and security),
+— the three MAGI in MODE: audit, `nerv:melchior` (structure and security),
 `nerv:balthasar` (software principles and readability) and `nerv:casper`
-(process), plus `nerv:kaji-audit` (coverage, reliability, correctness,
+(process), plus `nerv:gendo` (coverage, reliability, correctness,
 resilience and performance) — in one parallel batch, blind
 to each other, each reading only the frozen patch plus the plan artifacts
 (`proposal.md`, `design.md`, `tasks.md`, `specs/`, `nerv/test-plan.md`).
@@ -164,9 +164,9 @@ the RDD switch alone proves nothing about a commit. Before each round's
 passes, Ikari runs `gentle-ai review assess --cwd <repo> --base-ref
 <round base> --committed-only --json` over the round's frozen range
 (base..head from `nerv/audit/round-N.yaml`; a re-audit round uses its own
-fix-delta range). Ikari launches `melchor` and `balthasar`
+fix-delta range). Ikari launches `melchior` and `balthasar`
 with `RDD scope: cross-commit` (cross-commit and integration concerns
-only; melchor's security lens and balthasar's readability lens inherit
+only; melchior's security lens and balthasar's readability lens inherit
 this evidence gate, except balthasar's `review-context` category, which
 judges the round as a whole) ONLY when the RDD switch is on AND the
 assessment returns `review_due: false` with `review_due_reason`
@@ -177,14 +177,14 @@ assessment, or unparsable output — launches `RDD scope: full`. Fail
 closed: missing evidence never narrows. Ikari records the chosen scope
 and the assess reason in the round's phase note and in each pass
 launch, so the decision is auditable. `casper` and
-`kaji-audit` always keep full NERV scope (plan conformance, commit
+`gendo` always keep full NERV scope (plan conformance, commit
 hygiene and TDD commit order for Casper; test-plan coverage, reliability,
-correctness, resilience and performance for kaji-audit), regardless of
-the RDD switch. Native evidence cannot replace kaji-audit: an
+correctness, resilience and performance for gendo), regardless of
+the RDD switch. Native evidence cannot replace gendo: an
 `already_reviewed` range only proves that some native review covered it,
 and the native plan picks its lenses by risk (a medium candidate gets a
 single consolidated lens), so the native reliability and resilience
-lenses may never have run on it; `kaji-audit.md` carries the full
+lenses may never have run on it; `gendo.md` carries the full
 rationale.
 
 ### Ratchet handling
@@ -197,12 +197,12 @@ exactly like any other task — there is no free pass for pre-plan work.
 
 ### MAGI vote mechanics
 
-`nerv:balthasar`, `nerv:melchor`, `nerv:casper` (MODE: vote) launch
+`nerv:balthasar`, `nerv:melchior`, `nerv:casper` (MODE: vote) launch
 together in exactly one parallel batch, never sequentially and never with
 visibility into each other's output — a blind vote loses its meaning the
 moment one member sees another's findings first. Each receives only the
 locators its own lens needs (Balthasar: `design.md` + `tasks.md`;
-Melchor: `design.md`; Casper: `spec.md` + `tasks.md` + `proposal.md`) and
+Melchior: `design.md`; Casper: `spec.md` + `tasks.md` + `proposal.md`) and
 returns exactly the JSON contract from `nerv-artifacts.md` as its final
 text — one object per launch, never a tool call as the last action.
 

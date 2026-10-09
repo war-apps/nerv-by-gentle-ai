@@ -61,12 +61,12 @@ overwrites silently, and bootstraps `openspec/` and the skill registry itself.
    #   balthasar: { model: sonnet, effort: medium }
    #   casper: { model: sonnet, effort: medium }
    #   fuyutsuki: { model: sonnet, effort: medium }
+   #   gendo: { model: sonnet, effort: medium }
    #   hyuga: { model: sonnet, effort: medium }
    #   kaji: { model: opus, effort: high }
-   #   kaji-audit: { model: sonnet, effort: medium }
    #   kaworu: { model: sonnet, effort: medium }
    #   maya: { model: sonnet, effort: medium }
-   #   melchor: { model: fable, effort: high }
+   #   melchior: { model: fable, effort: high }
    #   misato: { model: fable, effort: high }
    #   rei: { model: sonnet, effort: medium }
    #   ritsuko: { model: opus, effort: high }

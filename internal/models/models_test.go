@@ -28,9 +28,9 @@ func TestPluginDefaults_RealEmbeddedFS_16RolesAobaSonnetLow(t *testing.T) {
 	if !ok || aoba.Model != "sonnet" || aoba.Effort != "low" {
 		t.Fatalf("defaults[aoba] = %+v, ok=%v, want {Model:sonnet Effort:low}", aoba, ok)
 	}
-	audit, ok := defaults["kaji-audit"]
+	audit, ok := defaults["gendo"]
 	if !ok || audit.Model != "sonnet" || audit.Effort != "medium" {
-		t.Fatalf("defaults[kaji-audit] = %+v, ok=%v, want {Model:sonnet Effort:medium}", audit, ok)
+		t.Fatalf("defaults[gendo] = %+v, ok=%v, want {Model:sonnet Effort:medium}", audit, ok)
 	}
 }
 

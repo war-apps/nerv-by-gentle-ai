@@ -10,14 +10,14 @@ import (
 )
 
 // auditPassNames derives the four Phase 3 audit passes from the role
-// catalogue: the three MAGI (audit mode) plus the kaji-passes group without
+// catalogue: the three MAGI (audit mode) plus the audit-passes group without
 // the compiler (kaji), which runs after the parallel batch rather than
 // inside it. The refuter (fuyutsuki in refute mode) is outside the group.
 func auditPassNames(t *testing.T) []string {
 	t.Helper()
 	groups := config.Roles().Groups
 	names := append([]string(nil), groups["magi"]...)
-	for _, role := range groups["kaji-passes"] {
+	for _, role := range groups["audit-passes"] {
 		if role == "kaji" {
 			continue
 		}
@@ -59,7 +59,7 @@ var auditPassLists = []proseAnchor{
 	{
 		file:   "plugin/skills/_shared/nerv-artifacts.md",
 		region: "audit pass JSON output contract launch paragraph",
-		anchor: "Each of `nerv:melchor`",
+		anchor: "Each of `nerv:melchior`",
 	},
 	{
 		file:   "plugin/agents/kaji.md",
@@ -105,8 +105,8 @@ func TestAuditPassLists_NameAllFourPasses(t *testing.T) {
 		}
 		region := proseRegion(t, string(data), list)
 		for _, pass := range passes {
-			// Bound the name so `kaji-audit` never satisfies a bare `kaji`
-			// and a pass name never matches inside a longer identifier.
+			// Bound the name so a pass name never matches inside a longer
+			// identifier (a hyphenated agent or file name).
 			re := regexp.MustCompile(`(^|[^a-z-])` + regexp.QuoteMeta(pass) + `([^a-z-]|$)`)
 			if !re.MatchString(region) {
 				t.Errorf("%s (%s): audit pass %q missing from the launch list", list.file, list.region, pass)

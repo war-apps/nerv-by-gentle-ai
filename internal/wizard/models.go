@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/war-apps/nerv-by-gentle-ai/internal/config"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/configure"
@@ -22,7 +23,7 @@ var (
 	resetRe = regexp.MustCompile(`(?i)^reset\s*(.*)$`)
 
 	// groupOrder is the order the group legend lists the shortcuts in.
-	groupOrder = []string{"magi", "pilots", "kaji-passes", "all"}
+	groupOrder = []string{"magi", "pilots", "audit-passes", "all"}
 )
 
 // menuOf builds a "1"->tokens[0], "2"->tokens[1], ... menu-choice map, the
@@ -37,7 +38,7 @@ func menuOf(tokens []string) map[string]string {
 
 // runModelsSection is Section 2: an offer to edit per-role model/effort
 // overrides role by role or group by group ("magi", "pilots",
-// "kaji-passes", "all"), "reset <target>" to clear one, "done" to finish,
+// "audit-passes", "all"), "reset <target>" to clear one, "done" to finish,
 // then one write through config.SetModelsBlock + configure.Store.Save.
 func runModelsSection(deps Deps, paths configure.Paths, s *session, out io.Writer) (bool, error) {
 	fmt.Fprintln(out)
@@ -140,7 +141,7 @@ func selectRoles(s *session, out io.Writer, catalogue config.RoleCatalogue, over
 	}
 
 	roleAnswer := strings.TrimSpace(s.promptExhausted(
-		`Role (name, number, magi | pilots | kaji-passes | all), "reset" to clear an override, "done" to finish:`, "done"))
+		`Role (name, number, magi | pilots | audit-passes | all), "reset" to clear an override, "done" to finish:`, "done"))
 
 	if roleAnswer == "" {
 		return nil, false
@@ -365,10 +366,11 @@ func writeModelsBlock(deps Deps, s *session, out io.Writer, paths configure.Path
 	return written, nil
 }
 
-// printModelTable prints the resolved table (with each role's purpose and
-// gentle-ai equivalent) followed by a legend for the group shortcuts the
-// role prompt accepts. Every column sizes to its longest value (the purpose
-// column to the longest catalogue purpose), so no purpose is cut off and a
+// printModelTable prints the resolved table (with each role's display name,
+// purpose and gentle-ai equivalent) followed by a legend for the group
+// shortcuts the role prompt accepts. Every column sizes to its longest value
+// in runes (the name and purpose columns to the longest catalogue entry), so
+// no purpose is cut off and a
 // custom model id or a long gentle-ai source never shifts the columns after
 // it; such values widen the row instead.
 func printModelTable(out io.Writer, table []config.ModelRow, configPath string) {
@@ -376,26 +378,33 @@ func printModelTable(out io.Writer, table []config.ModelRow, configPath string) 
 	fmt.Fprintln(out)
 	fmt.Fprintf(out, "Config: %s\n", configPath)
 	roleW, modelW, effortW, sourceW := len("ROLE"), len("MODEL"), len("EFFORT"), len("SOURCE")
-	purposeW := len("WHAT IT DOES")
+	nameW, purposeW := len("NAME"), len("WHAT IT DOES")
 	for _, info := range catalogue.Info {
-		purposeW = max(purposeW, len(info.Purpose))
+		nameW = max(nameW, utf8.RuneCountInString(info.DisplayName))
+		purposeW = max(purposeW, utf8.RuneCountInString(info.Purpose))
 	}
 	for _, row := range table {
-		roleW = max(roleW, len(row.Role))
-		modelW = max(modelW, len(row.Model))
-		effortW = max(effortW, len(row.Effort))
-		sourceW = max(sourceW, len(row.Source))
+		roleW = max(roleW, utf8.RuneCountInString(row.Role))
+		modelW = max(modelW, utf8.RuneCountInString(row.Model))
+		effortW = max(effortW, utf8.RuneCountInString(row.Effort))
+		sourceW = max(sourceW, utf8.RuneCountInString(row.Source))
 	}
-	fmt.Fprintf(out, "    %-*s %-*s %-*s %-*s %-*s %s\n", roleW, "ROLE", modelW, "MODEL", effortW, "EFFORT",
-		sourceW, "SOURCE", purposeW, "WHAT IT DOES", "GENTLE-AI")
+	fmt.Fprintf(out, "    %s %s %s %s %s %s %s\n", padRight("ROLE", roleW), padRight("NAME", nameW),
+		padRight("MODEL", modelW), padRight("EFFORT", effortW), padRight("SOURCE", sourceW),
+		padRight("WHAT IT DOES", purposeW), "GENTLE-AI")
 	for i, row := range table {
 		info := catalogue.Info[row.Role]
+		name := info.DisplayName
+		if name == "" {
+			name = "-"
+		}
 		equivalent := strings.Join(info.GentleAIEquivalents, ", ")
 		if equivalent == "" {
 			equivalent = "-"
 		}
-		fmt.Fprintf(out, "%2d) %-*s %-*s %-*s %-*s %-*s %s\n", i+1, roleW, row.Role, modelW, row.Model,
-			effortW, row.Effort, sourceW, row.Source, purposeW, info.Purpose, equivalent)
+		fmt.Fprintf(out, "%2d) %s %s %s %s %s %s %s\n", i+1, padRight(row.Role, roleW), padRight(name, nameW),
+			padRight(row.Model, modelW), padRight(row.Effort, effortW), padRight(row.Source, sourceW),
+			padRight(info.Purpose, purposeW), equivalent)
 	}
 	fmt.Fprintln(out)
 	fmt.Fprintln(out, "Groups:")
@@ -405,7 +414,16 @@ func printModelTable(out io.Writer, table []config.ModelRow, configPath string) 
 	fmt.Fprintln(out)
 }
 
+// padRight pads s with spaces to width runes. fmt's %-*s pads by bytes, which
+// would misalign a display name holding multi-byte letters ("Kōzō").
+func padRight(s string, width int) string {
+	if n := utf8.RuneCountInString(s); n < width {
+		return s + strings.Repeat(" ", width-n)
+	}
+	return s
+}
+
 func printUnknownRoleTarget(out io.Writer, target string, allRoles []string) {
-	fmt.Fprintf(out, "Unknown role/group/number: %s. Valid roles: %s; groups: magi, pilots, kaji-passes, all.\n",
+	fmt.Fprintf(out, "Unknown role/group/number: %s. Valid roles: %s; groups: magi, pilots, audit-passes, all.\n",
 		target, strings.Join(allRoles, ", "))
 }

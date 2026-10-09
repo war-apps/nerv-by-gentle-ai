@@ -2,6 +2,7 @@ package config_test
 
 import (
 	"errors"
+	"reflect"
 	"regexp"
 	"strings"
 	"testing"
@@ -248,7 +249,7 @@ func TestReadModelsOverrides(t *testing.T) {
 		}
 	})
 	t.Run("parses-from", func(t *testing.T) {
-		got, ok := overrides["melchor"]
+		got, ok := overrides["melchior"]
 		if !ok || got.From != "jd-judge-b" {
 			t.Errorf("got %+v, ok=%v", got, ok)
 		}
@@ -259,6 +260,115 @@ func TestReadModelsOverrides(t *testing.T) {
 			t.Errorf("got %v", empty)
 		}
 	})
+}
+
+// A nerv.yaml written before the melchor -> melchior and kaji-audit -> gendo
+// renames keeps applying: legacy keys resolve to the new role ID, and when
+// both the legacy and the new key are present the new key wins, whatever
+// their order in the file.
+func TestReadModelsOverrides_LegacyAliases(t *testing.T) {
+	cases := []struct {
+		name  string
+		block string
+		want  map[string]config.ModelOverride
+	}{
+		{
+			name:  "legacy-keys-resolve-to-new-ids",
+			block: "models:\n  melchor: { from: jd-judge-b }\n  kaji-audit: { model: opus, effort: high }\n",
+			want: map[string]config.ModelOverride{
+				"melchior": {From: "jd-judge-b"},
+				"gendo":    {Model: "opus", Effort: "high"},
+			},
+		},
+		{
+			name:  "new-key-after-legacy-wins",
+			block: "models:\n  melchor: { model: haiku }\n  melchior: { model: opus }\n",
+			want:  map[string]config.ModelOverride{"melchior": {Model: "opus"}},
+		},
+		{
+			name:  "new-key-before-legacy-wins",
+			block: "models:\n  gendo: { model: opus }\n  kaji-audit: { model: haiku, effort: low }\n",
+			want:  map[string]config.ModelOverride{"gendo": {Model: "opus"}},
+		},
+		{
+			name:  "unknown-keys-kept-as-written",
+			block: "models:\n  retired-role: { model: opus }\n",
+			want:  map[string]config.ModelOverride{"retired-role": {Model: "opus"}},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := config.ReadModelsOverrides(config.Parse("enabled: true\n" + tc.block))
+			if !reflect.DeepEqual(got, tc.want) {
+				t.Errorf("got %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+// ModelTable, fed from ReadModelsOverrides, shows a legacy override on the
+// renamed role's row and adds no row for the legacy name.
+func TestModelTableFromDocument_LegacyAliasAppliesToRenamedRole(t *testing.T) {
+	doc := config.Parse("models:\n  kaji-audit: { model: opus, effort: xhigh }\n")
+	defaults := map[string]config.ModelOverride{
+		"gendo":    {Model: "sonnet", Effort: "medium"},
+		"melchior": {Model: "fable", Effort: "high"},
+	}
+	rows := config.ModelTableFromDocument(doc, defaults, nil)
+	want := []config.ModelRow{
+		{Role: "gendo", Model: "opus", Effort: "xhigh", Source: "override"},
+		{Role: "melchior", Model: "fable", Effort: "high", Source: "default"},
+	}
+	if !reflect.DeepEqual(rows, want) {
+		t.Errorf("got %+v, want %+v", rows, want)
+	}
+}
+
+// The user and project models: blocks are layered by the orchestrator (no Go
+// code merges the two scopes; apply-models reads the user scope only). The
+// layering is correct only if each scope is canonicalised before the project
+// entry overrides the user entry role by role, so a legacy key in one scope
+// and the new key in the other meet under the same role ID. These cases pin
+// that ReadModelsOverrides delivers those per-scope canonical maps.
+func TestReadModelsOverrides_LayeredScopesMeetUnderCanonicalIDs(t *testing.T) {
+	cases := []struct {
+		name          string
+		user, project string
+		want          map[string]config.ModelOverride
+	}{
+		{
+			name:    "project-legacy-key-overrides-user-new-key",
+			user:    "models:\n  melchior: { model: opus }\n",
+			project: "models:\n  melchor: { model: sonnet }\n",
+			want:    map[string]config.ModelOverride{"melchior": {Model: "sonnet"}},
+		},
+		{
+			name:    "project-new-key-overrides-user-legacy-key",
+			user:    "models:\n  kaji-audit: { model: opus, effort: high }\n",
+			project: "models:\n  gendo: { model: sonnet }\n",
+			want:    map[string]config.ModelOverride{"gendo": {Model: "sonnet"}},
+		},
+		{
+			name:    "user-legacy-key-applies-when-project-is-silent",
+			user:    "models:\n  melchor: { model: haiku }\n",
+			project: "models:\n  aoba: { model: sonnet }\n",
+			want: map[string]config.ModelOverride{
+				"melchior": {Model: "haiku"},
+				"aoba":     {Model: "sonnet"},
+			},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := config.ReadModelsOverrides(config.Parse(tc.user))
+			for role, entry := range config.ReadModelsOverrides(config.Parse(tc.project)) {
+				got[role] = entry
+			}
+			if !reflect.DeepEqual(got, tc.want) {
+				t.Errorf("layered overrides = %v, want %v", got, tc.want)
+			}
+		})
+	}
 }
 
 // ---------------------------------------------------------------------------
@@ -277,7 +387,7 @@ func TestRoles(t *testing.T) {
 		}
 	})
 	t.Run("magi-group", func(t *testing.T) {
-		want := []string{"balthasar", "melchor", "casper"}
+		want := []string{"balthasar", "melchior", "casper"}
 		if strings.Join(catalogue.Groups["magi"], ",") != strings.Join(want, ",") {
 			t.Errorf("got %v", catalogue.Groups["magi"])
 		}
@@ -288,10 +398,10 @@ func TestRoles(t *testing.T) {
 			t.Errorf("got %v", catalogue.Groups["pilots"])
 		}
 	})
-	t.Run("kaji-passes-group", func(t *testing.T) {
-		want := []string{"kaji", "kaji-audit"}
-		if strings.Join(catalogue.Groups["kaji-passes"], ",") != strings.Join(want, ",") {
-			t.Errorf("got %v", catalogue.Groups["kaji-passes"])
+	t.Run("audit-passes-group", func(t *testing.T) {
+		want := []string{"kaji", "gendo"}
+		if strings.Join(catalogue.Groups["audit-passes"], ",") != strings.Join(want, ",") {
+			t.Errorf("got %v", catalogue.Groups["audit-passes"])
 		}
 	})
 	t.Run("all-group-equals-all-roles", func(t *testing.T) {
@@ -317,11 +427,16 @@ func TestResolveRoleTarget(t *testing.T) {
 		want   []string
 	}{
 		{"empty", "", nil},
-		{"group-lowercase", "magi", []string{"balthasar", "melchor", "casper"}},
-		{"group-case-insensitive", "MAGI", []string{"balthasar", "melchor", "casper"}},
+		{"group-lowercase", "magi", []string{"balthasar", "melchior", "casper"}},
+		{"group-case-insensitive", "MAGI", []string{"balthasar", "melchior", "casper"}},
 		{"number", "1", []string{"aoba"}},
 		{"role-name", "aoba", []string{"aoba"}},
 		{"role-name-case-insensitive", "AOBA", []string{"aoba"}},
+		{"audit-passes-group", "audit-passes", []string{"kaji", "gendo"}},
+		{"legacy-group-alias", "kaji-passes", []string{"kaji", "gendo"}},
+		{"legacy-group-alias-case-insensitive", "KAJI-PASSES", []string{"kaji", "gendo"}},
+		{"legacy-role-alias-melchor", "melchor", []string{"melchior"}},
+		{"legacy-role-alias-kaji-audit", "Kaji-Audit", []string{"gendo"}},
 		{"unknown", "not-a-role", nil},
 	}
 	for _, tc := range cases {
@@ -356,7 +471,7 @@ func TestResolveModelSpec(t *testing.T) {
 		}
 	})
 	t.Run("from-phase", func(t *testing.T) {
-		override, clear, err := config.ResolveModelSpec("melchor", "from:jd-judge-b")
+		override, clear, err := config.ResolveModelSpec("melchior", "from:jd-judge-b")
 		if err != nil || clear || override.From != "jd-judge-b" {
 			t.Errorf("got %+v, clear=%v, err=%v", override, clear, err)
 		}

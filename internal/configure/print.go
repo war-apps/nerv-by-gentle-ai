@@ -73,10 +73,13 @@ type Prerequisites struct {
 
 // ModelRow is one row of -Print's `models` table.
 type ModelRow struct {
-	Role   string `json:"role"`
-	Model  string `json:"model"`
-	Effort string `json:"effort"`
-	Source string `json:"source"`
+	Role string `json:"role"`
+	// DisplayName is the role's full character name from config.Roles()
+	// ("" for a role outside the catalogue); Role stays the ID.
+	DisplayName string `json:"display_name"`
+	Model       string `json:"model"`
+	Effort      string `json:"effort"`
+	Source      string `json:"source"`
 	// Purpose, GentleAIEquivalents and FromPhase come from config.Roles().
 	// The equivalents are informational (an empty array for a role with no
 	// gentle-ai counterpart); FromPhase is the only from:<phase> suggestion
@@ -150,7 +153,7 @@ func Print(deps Deps, paths Paths) (PrintResult, error) {
 	for i, r := range modelTable {
 		info := roleInfo[r.Role]
 		modelRows[i] = ModelRow{
-			Role: r.Role, Model: r.Model, Effort: r.Effort, Source: r.Source,
+			Role: r.Role, DisplayName: info.DisplayName, Model: r.Model, Effort: r.Effort, Source: r.Source,
 			Purpose:             info.Purpose,
 			GentleAIEquivalents: append([]string{}, info.GentleAIEquivalents...),
 			GentleAIEquivalent:  strings.Join(info.GentleAIEquivalents, ", "),
