@@ -58,6 +58,13 @@ role IDs, so renaming every ID would orphan every user override.
   table, agent descriptions) and remaining orchestration/command/docs prose
   renames, plus CHANGELOG (route: delegated, same writer).
 
+- [x] T3 — review follow-ups (user authorized 2026-10-09): Kaji falls back
+  to legacy pass file names (`pass-melchor-round-N.json`,
+  `pass-kaji-audit-round-N.json`) when the new ones are missing in a round
+  started before the upgrade; test the layered user+project merge and
+  `apply-models` with mixed legacy and new keys (route: delegated, writer
+  trigger: prose + Go tests).
+
 ## Acceptance criteria
 
 - `go test ./...`, `go vet ./...` pass; `gofmt -l .` clean.
@@ -144,6 +151,48 @@ Branch created from 555add4.
   keeps pass files under the old names (`pass-melchor-*`,
   `pass-kaji-audit-*`), which the compiler would report missing.
 - Parent spot check: `go test ./...` ok.
+
+### T3 (delegated writer)
+
+- Pass-file fallback: `nerv-artifacts.md` gained "Legacy pass names", the
+  one canonical statement: a round started before the rename may hold
+  `pass-melchor-round-N.json` / `pass-kaji-audit-round-N.json` (and the
+  matching `audit-pass-*` Engram keys); Kaji, or Ikari on resume, reads the
+  legacy name only when the new one is absent and counts it as the
+  `melchior` / `gendo` pass whatever its `pass` field says. `kaji.md`
+  points to it. The legacy-name guard now tolerates exactly those tokens,
+  only in that file (checked to still fail on an injected
+  `pass-melchor-round-N.json` in `kaji.md`).
+- RED: `TestAuditPasses_LegacyPassNameFallbackDocumented` failed (5 missing
+  strings in `nerv-artifacts.md`, no pointer in `kaji.md`); GREEN after the
+  prose.
+- Layered merge: no Go code merges the user and project `models:` blocks;
+  Ikari does it in prose (`SKILL.md` "Model and effort per role", which
+  `/nerv:status` reuses) and `apply-models` reads the user scope only. The
+  Go tests are characterization tests, green on first run (the one initial
+  failure was the test's own assertion tripping on a trailing frontmatter
+  comment, not a product bug):
+  `TestReadModelsOverrides_LayeredScopesMeetUnderCanonicalIDs` (project
+  legacy over user new, project new over user legacy, user legacy kept
+  when the project is silent) and
+  `TestApplyModels_LegacyRoleKeysApplyToRenamedAgents` (legacy user key
+  rewrites `melchior.md`; new key wins over legacy in one file).
+- Bug found in prose: Ikari's per-launch model resolution looked up only
+  `models.<current id>`, so a project-scope legacy override (the only way a
+  project file sets a model) was ignored. RED:
+  `TestOrchestrator_ModelResolutionReadsLegacyRoleKeys` failed; fixed by
+  one sentence in `SKILL.md` (read the legacy key per file when the current
+  ID has no entry, before falling back to the next file); GREEN. The guard
+  tolerates `models.melchor` / `models.kaji-audit` only in `SKILL.md`.
+- Side observation (out of scope): `apply-models` keeps an agent file's
+  trailing `model:` comment, so `melchior.md` overridden to haiku still
+  says "alias for Claude Fable 5.1".
+- Checks: `go test ./...` ok, `go vet ./...` clean, `gofmt -l .` empty.
+- Commits: `af0bd9b` fix(audit): let kaji read pre-rename pass files (3
+  files, +68/-1); `0bfdde8` test(config): cover layered models scopes and
+  apply-models with legacy role keys (2 files, +104); `97b2920`
+  fix(orchestrator): read legacy models keys in each scope before layering
+  (2 files, +33/-12).
 
 ## Next step
 
