@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- orchestrator: label each agent launch `{Display name}: {action}` (e.g. `nerv:melchior(Melchior-Magi 1: security audit, round 2)`), and open its deliberation-log `launch` entry with the same label.
 - config: give every role its full character name for display (31a6c90)
   - Role IDs stay short lowercase slugs (agent names, `nerv:<id>` subagent types, `models:`
     keys); each role now also has a display name, such as `misato` = Misato Katsuragi and
