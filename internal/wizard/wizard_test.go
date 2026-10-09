@@ -32,8 +32,8 @@ const fixtureLF = "" +
 	"  testing: [tdd, playwright-best-practices]                        # ritsuko, kaworu, maya\n" +
 	"  code: [dotnet-best-practices, typescript-best-practices]         # pilots\n" +
 	"  best-practices: [best-practices, solid-principles, clean-code-guard]  # balthasar\n" +
-	"  architecture: [hexagonal-architecture, c4-architecture]          # melchor\n" +
-	"  audit: [security-review, clean-code-guard]                       # kaji passes, melchor audit\n" +
+	"  architecture: [hexagonal-architecture, c4-architecture]          # melchior\n" +
+	"  audit: [security-review, clean-code-guard]                       # audit passes, melchior audit\n" +
 	"critical_paths: [auth/, payments/, migrations/, infra/]            # Hyuga auto-critical\n" +
 	"git:\n" +
 	"  base_branch: develop              # default base for the worktree offer\n" +
@@ -769,7 +769,7 @@ func TestRun_WorktreePatternMenu_ChoosesDefault(t *testing.T) {
 
 // ---------------------------------------------------------------------------
 // Models section: the "magi" group keyword assigns model+effort to all
-// three MAGI roles (balthasar, melchor, casper) in one answer.
+// three MAGI roles (balthasar, melchior, casper) in one answer.
 // ---------------------------------------------------------------------------
 
 func TestRun_ModelsSection_MagiGroup(t *testing.T) {
@@ -943,8 +943,8 @@ func TestRun_ModelsSection_TableShowsPurposeEquivalentAndGroupLegend(t *testing.
 			t.Errorf("models table still lists the removed %s role", removed)
 		}
 	}
-	if row := lineWith(got, ") kaji-audit"); !strings.Contains(row, "resilience") || !strings.HasSuffix(strings.TrimSpace(row), "review-reliability, review-resilience") {
-		t.Errorf("kaji-audit row = %q, want purpose and review-reliability, review-resilience", row)
+	if row := lineWith(got, ") gendo"); !strings.Contains(row, "resilience") || !strings.HasSuffix(strings.TrimSpace(row), "review-reliability, review-resilience") {
+		t.Errorf("gendo row = %q, want purpose and review-reliability, review-resilience", row)
 	}
 	if row := lineWith(got, ") fuyutsuki"); !strings.Contains(row, "refutes severe audit findings") || !strings.HasSuffix(strings.TrimSpace(row), "review-refuter") {
 		t.Errorf("fuyutsuki row = %q, want purpose and review-refuter", row)
@@ -952,8 +952,8 @@ func TestRun_ModelsSection_TableShowsPurposeEquivalentAndGroupLegend(t *testing.
 	if row := lineWith(got, ") kaworu"); !strings.Contains(row, "writes the failing tests first") || strings.Contains(row, "sdd-") || !strings.HasSuffix(strings.TrimSpace(row), "jd-fix-agent") {
 		t.Errorf("kaworu row = %q, want purpose and jd-fix-agent", row)
 	}
-	if row := lineWith(got, ") melchor"); !strings.HasSuffix(strings.TrimSpace(row), "jd-judge-b, review-risk") {
-		t.Errorf("melchor row = %q, want both equivalents joined", row)
+	if row := lineWith(got, ") melchior"); !strings.HasSuffix(strings.TrimSpace(row), "jd-judge-b, review-risk") {
+		t.Errorf("melchior row = %q, want both equivalents joined", row)
 	}
 	// Every purpose starts under its header and is printed whole, whatever
 	// the fixture's model and source widths are.
@@ -1032,6 +1032,46 @@ func TestRun_ModelsSection_PhasePickerListsEquivalentFirst(t *testing.T) {
 	}
 }
 
+// The wizard accepts the retired role and group names (melchor, kaji-audit,
+// kaji-passes) as aliases, shows a legacy override on the renamed role's row,
+// and writes the new role ID only.
+func TestRun_ModelsSection_AcceptsLegacyNamesAndWritesNewIDs(t *testing.T) {
+	root := t.TempDir()
+	home := t.TempDir()
+	paths := testPaths(root, home)
+	legacy := "enabled: true\nmodels:\n  melchor: { model: haiku }\n  kaji-audit: { model: haiku }\n"
+	if err := os.WriteFile(paths.Config, []byte(legacy), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	deps := configure.Deps{Home: home, FS: nerv.PluginFS(), Runner: noRunner(), Now: fixedNow, LookPath: lookPathNone}
+	opts := wizard.Options{Paths: paths, SkipSkills: true, SkipRepos: true, SkipCommands: true, NoRefresh: true}
+
+	var out bytes.Buffer
+	in := modelsInput(&out, "reset kaji-passes", "melchor", "2", "3", "done", "y")
+	if _, err := wizard.Run(deps, in, &out, opts); err != nil {
+		t.Fatalf("Run() error = %v; output:\n%s", err, out.String())
+	}
+
+	if row := lineWith(out.String(), ") melchior"); !strings.Contains(row, "haiku") || !strings.Contains(row, "override") {
+		t.Errorf("melchior row = %q, want the legacy melchor override (haiku, override)", row)
+	}
+	if strings.Contains(out.String(), "Unknown role/group/number") {
+		t.Errorf("a legacy name was rejected:\n%s", out.String())
+	}
+	got, err := os.ReadFile(paths.Config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := "melchior: { model: opus, effort: high }"; !strings.Contains(string(got), want) {
+		t.Errorf("expected %q in models: block:\n%s", want, got)
+	}
+	for _, key := range []string{"melchor:", "kaji-audit:", "gendo:", "kaji:"} {
+		if strings.Contains(string(got), "  "+key) {
+			t.Errorf("models: block still holds %q after the reset and rewrite:\n%s", key, got)
+		}
+	}
+}
+
 // A role whose gentle-ai equivalent is a native review agent (not a
 // claude_phase_assignments key) gets no phase hint: even when that agent's
 // name is a state key, nothing is marked (equivalent) and the phases stay in
@@ -1054,7 +1094,7 @@ func TestRun_ModelsSection_PhasePickerMarksNothingForReviewAgentEquivalent(t *te
 	opts := wizard.Options{Paths: paths, SkipSkills: true, SkipRepos: true, SkipCommands: true, NoRefresh: true}
 
 	var out bytes.Buffer
-	in := modelsInput(&out, "kaji-audit", "7", "1", "", "done", "y")
+	in := modelsInput(&out, "gendo", "7", "1", "", "done", "y")
 	if _, err := wizard.Run(deps, in, &out, opts); err != nil {
 		t.Fatalf("Run() error = %v; output:\n%s", err, out.String())
 	}
@@ -1064,7 +1104,7 @@ func TestRun_ModelsSection_PhasePickerMarksNothingForReviewAgentEquivalent(t *te
 		t.Fatalf("phase picker not shown; output:\n%s", out.String())
 	}
 	if strings.Contains(picker, "(equivalent)") {
-		t.Errorf("phase picker marks an equivalent for kaji-audit:\n%s", picker)
+		t.Errorf("phase picker marks an equivalent for gendo:\n%s", picker)
 	}
 	if first := phaseLine(out.String(), "  1) "); !strings.Contains(first, "jd-judge-a") {
 		t.Errorf("first phase = %q, want jd-judge-a (sorted order, no hint)", first)

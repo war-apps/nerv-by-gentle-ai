@@ -2,6 +2,7 @@ package config_test
 
 import (
 	"io/fs"
+	"regexp"
 	"slices"
 	"sort"
 	"strings"
@@ -17,15 +18,15 @@ import (
 // the owning pilot, with kaworu writing the RED test first.
 var wantEquivalents = map[string][]string{
 	"misato": nil, "ritsuko": nil, "hyuga": nil,
-	"melchor":   {"jd-judge-b", "review-risk"},
+	"melchior":  {"jd-judge-b", "review-risk"},
 	"balthasar": {"jd-judge-a", "review-readability"},
 	"casper":    nil,
 	"fuyutsuki": {"review-refuter"},
 	"kaworu":    {"jd-fix-agent"}, "shinji": {"jd-fix-agent"}, "asuka": {"jd-fix-agent"},
 	"rei": {"jd-fix-agent"}, "toji": {"jd-fix-agent"},
 	"maya": nil, "kaji": nil,
-	"kaji-audit": {"review-reliability", "review-resilience"},
-	"aoba":       nil,
+	"gendo": {"review-reliability", "review-resilience"},
+	"aoba":  nil,
 }
 
 func TestRoles_EveryRoleHasPurposeAndEquivalent(t *testing.T) {
@@ -61,11 +62,11 @@ func TestRoles_EveryRoleHasPurposeAndEquivalent(t *testing.T) {
 // that exist in gentle-ai 4.x state; an empty value means no suggestion.
 var wantFromPhases = map[string]string{
 	"misato": "", "ritsuko": "", "hyuga": "",
-	"melchor": "jd-judge-b", "balthasar": "jd-judge-a", "casper": "",
+	"melchior": "jd-judge-b", "balthasar": "jd-judge-a", "casper": "",
 	"fuyutsuki": "",
 	"kaworu":    "", "shinji": "", "asuka": "", "rei": "", "toji": "",
 	"maya": "", "kaji": "",
-	"kaji-audit": "", "aoba": "",
+	"gendo": "", "aoba": "",
 }
 
 // v4PhaseKeys are the claude_phase_assignments keys that still have an
@@ -108,9 +109,9 @@ func TestRoles_EveryGroupHasADescription(t *testing.T) {
 func TestRoles_GroupMembership(t *testing.T) {
 	groups := config.Roles().Groups
 	want := map[string][]string{
-		"magi":        {"balthasar", "casper", "melchor"},
-		"pilots":      {"asuka", "kaworu", "rei", "shinji", "toji"},
-		"kaji-passes": {"kaji", "kaji-audit"},
+		"magi":         {"balthasar", "casper", "melchior"},
+		"pilots":       {"asuka", "kaworu", "rei", "shinji", "toji"},
+		"audit-passes": {"gendo", "kaji"},
 	}
 	for name, members := range want {
 		got := append([]string(nil), groups[name]...)
@@ -118,6 +119,99 @@ func TestRoles_GroupMembership(t *testing.T) {
 		if strings.Join(got, ",") != strings.Join(members, ",") {
 			t.Errorf("group %q = %v, want %v", name, got, members)
 		}
+	}
+}
+
+// wantDisplayNames is the user-approved role ID -> full character name
+// table. IDs stay short lowercase slugs; the display name is for people.
+var wantDisplayNames = map[string]string{
+	"misato":    "Misato Katsuragi",
+	"ritsuko":   "Ritsuko Akagi",
+	"hyuga":     "Makoto Hyuga",
+	"melchior":  "Melchior-Magi 1",
+	"balthasar": "Balthasar-Magi 2",
+	"casper":    "Casper-Magi 3",
+	"fuyutsuki": "Kōzō Fuyutsuki",
+	"kaworu":    "Kaworu Nagisa",
+	"shinji":    "Shinji Ikari",
+	"asuka":     "Asuka Langley Sohryu",
+	"rei":       "Rei Ayanami",
+	"toji":      "Tōji Suzuhara",
+	"maya":      "Maya Ibuki",
+	"kaji":      "Ryoji Kaji",
+	"gendo":     "Gendo Ikari",
+	"aoba":      "Shigeru Aoba",
+}
+
+func TestRoles_EveryRoleHasItsDisplayName(t *testing.T) {
+	cat := config.Roles()
+	for _, role := range cat.AllRoles {
+		want, known := wantDisplayNames[role]
+		if !known {
+			t.Errorf("role %q missing from the expected display-name table", role)
+			continue
+		}
+		if got := cat.Info[role].DisplayName; got != want {
+			t.Errorf("role %q DisplayName = %q, want %q", role, got, want)
+		}
+	}
+	if len(wantDisplayNames) != len(cat.AllRoles) {
+		t.Errorf("display-name table has %d entries, AllRoles has %d", len(wantDisplayNames), len(cat.AllRoles))
+	}
+}
+
+// Every role ID stays a short lowercase slug usable as a Claude Code agent
+// name, a nerv:<id> subagent type and a nerv.yaml models: key.
+func TestRoles_IDsAreLowercaseSlugs(t *testing.T) {
+	slug := regexp.MustCompile(`^[a-z]+(-[a-z]+)*$`)
+	for _, role := range config.Roles().AllRoles {
+		if !slug.MatchString(role) {
+			t.Errorf("role ID %q is not a lowercase slug", role)
+		}
+	}
+}
+
+// The renamed roles and group keep their old names as legacy aliases.
+func TestCanonicalRole(t *testing.T) {
+	cases := []struct{ in, want string }{
+		{"melchor", "melchior"},
+		{"kaji-audit", "gendo"},
+		{"melchior", "melchior"},
+		{"gendo", "gendo"},
+		{"misato", "misato"},
+		// Unknown names pass through unchanged so callers keep reporting them.
+		{"not-a-role", "not-a-role"},
+	}
+	for _, tc := range cases {
+		if got := config.CanonicalRole(tc.in); got != tc.want {
+			t.Errorf("CanonicalRole(%q) = %q, want %q", tc.in, got, tc.want)
+		}
+	}
+}
+
+func TestLegacyAliases_PointAtCatalogueEntries(t *testing.T) {
+	cat := config.Roles()
+	for old, id := range config.LegacyRoleAliases() {
+		if slices.Contains(cat.AllRoles, old) {
+			t.Errorf("legacy alias %q is still a catalogue role", old)
+		}
+		if !slices.Contains(cat.AllRoles, id) {
+			t.Errorf("legacy alias %q -> %q, which is not a catalogue role", old, id)
+		}
+	}
+	for old, group := range config.LegacyGroupAliases() {
+		if _, ok := cat.Groups[old]; ok {
+			t.Errorf("legacy group alias %q is still a catalogue group", old)
+		}
+		if _, ok := cat.Groups[group]; !ok {
+			t.Errorf("legacy group alias %q -> %q, which is not a catalogue group", old, group)
+		}
+	}
+	if got := config.LegacyRoleAliases(); got["melchor"] != "melchior" || got["kaji-audit"] != "gendo" || len(got) != 2 {
+		t.Errorf("LegacyRoleAliases() = %v, want melchor->melchior, kaji-audit->gendo", got)
+	}
+	if got := config.LegacyGroupAliases(); got["kaji-passes"] != "audit-passes" || len(got) != 1 {
+		t.Errorf("LegacyGroupAliases() = %v, want kaji-passes->audit-passes", got)
 	}
 }
 

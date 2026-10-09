@@ -147,8 +147,8 @@ func FormatSkillsBlock(v SkillsValues) string {
 		"  testing: [" + v.Testing + "]                        # ritsuko, kaworu, maya",
 		"  code: [" + v.Code + "]         # pilots",
 		"  best-practices: [" + v.BestPractices + "]  # balthasar",
-		"  architecture: [" + v.Architecture + "]          # melchor",
-		"  audit: [" + v.Audit + "]                       # kaji passes, melchor audit",
+		"  architecture: [" + v.Architecture + "]          # melchior",
+		"  audit: [" + v.Audit + "]                       # audit passes, melchior audit",
 	}
 	return strings.Join(lines, "\n")
 }

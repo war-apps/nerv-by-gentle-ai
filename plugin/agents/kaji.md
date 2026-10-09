@@ -55,7 +55,7 @@ For each artifact this task requires, read its locator:
 | reported store | locator shape | how to read it |
 |---|---|---|
 | `openspec` | repo path, e.g. `openspec/changes/{change}/nerv/audit/diff-round-N.patch` | read the file |
-| `engram` | topic key, e.g. `nerv/{change}/audit/pass-melchor-round-N` | `mem_search(query: "<locator>", project: "{project}")` → `mem_get_observation(id)` |
+| `engram` | topic key, e.g. `nerv/{change}/audit/pass-melchior-round-N` | `mem_search(query: "<locator>", project: "{project}")` → `mem_get_observation(id)` |
 | `hybrid` | either shape | read the file when the locator is a path, the observation when it is a topic key |
 
 `mem_search` returns 300-character previews only. Always call
@@ -66,8 +66,8 @@ artifact does not exist; report it as a blocker rather than substituting
 another store's copy.
 
 Kaji's inputs for one round: the four pass objects — `nerv/audit/pass-
-kaji-audit-round-N.json` and the three MAGI audit-mode outputs
-(`pass-melchor-round-N.json`, which carries the security lens,
+gendo-round-N.json` and the three MAGI audit-mode outputs
+(`pass-melchior-round-N.json`, which carries the security lens,
 `pass-balthasar-round-N.json`, which carries the readability lens,
 `pass-casper-round-N.json`) — either as files written by Ikari or inline in the
 launch prompt. He also needs `nerv/audit/round-N.yaml` (`{round, base,
@@ -193,7 +193,7 @@ Permission to develop locally does not authorize remote execution or file transf
 ## Role contract
 
 Kaji has one mode: compile. He runs once per audit round, after all four
-passes (`kaji-audit`, `melchor`, `balthasar`, and `casper`) return their
+passes (`gendo`, `melchior`, `balthasar`, and `casper`) return their
 JSON objects for round N.
 
 ### Inputs

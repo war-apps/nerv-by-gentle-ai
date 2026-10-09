@@ -82,7 +82,7 @@ func TestDocsRolesTable_MatchesCatalogue(t *testing.T) {
 	rows := parseDocsRolesTable(t)
 
 	groupOf := map[string]string{}
-	for _, group := range []string{"magi", "pilots", "kaji-passes"} {
+	for _, group := range []string{"magi", "pilots", "audit-passes"} {
 		for _, role := range cat.Groups[group] {
 			groupOf[role] = group
 		}
@@ -120,7 +120,7 @@ func TestDocsRolesTable_MatchesCatalogue(t *testing.T) {
 	}
 }
 
-var legendEntryRe = regexp.MustCompile("`(magi|pilots|kaji-passes)` = (?:the [a-z ]+ )?\\(([^)]*)\\)")
+var legendEntryRe = regexp.MustCompile("`(magi|pilots|audit-passes)` = (?:the [a-z ]+ )?\\(([^)]*)\\)")
 
 func namesIn(list string) []string {
 	var names []string
@@ -154,7 +154,7 @@ func TestConfigureCommandLegend_MatchesCatalogueGroups(t *testing.T) {
 			t.Errorf("commands/configure.md legend: group %q members = %v, catalogue = %v", group, got, want)
 		}
 	}
-	for _, group := range []string{"magi", "pilots", "kaji-passes"} {
+	for _, group := range []string{"magi", "pilots", "audit-passes"} {
 		if !found[group] {
 			t.Errorf("commands/configure.md has no legend entry for group %q", group)
 		}
@@ -173,7 +173,7 @@ func TestConfigureCommandLegend_MatchesCatalogueGroups(t *testing.T) {
 func TestGroupDescriptions_NameTheGroupMembers(t *testing.T) {
 	cat := config.Roles()
 	parens := regexp.MustCompile(`\(([^)]*)\)`)
-	for _, group := range []string{"magi", "pilots", "kaji-passes"} {
+	for _, group := range []string{"magi", "pilots", "audit-passes"} {
 		m := parens.FindStringSubmatch(cat.GroupDescriptions[group])
 		if m == nil {
 			t.Errorf("GroupDescriptions[%q] = %q lists no members in parentheses", group, cat.GroupDescriptions[group])
@@ -183,5 +183,33 @@ func TestGroupDescriptions_NameTheGroupMembers(t *testing.T) {
 		if strings.Join(got, ",") != strings.Join(want, ",") {
 			t.Errorf("GroupDescriptions[%q] names %v, Groups[%q] = %v", group, got, group, want)
 		}
+	}
+}
+
+// legacyNameRe matches the retired role IDs, group name and their
+// capitalised prose forms. They survive only as aliases in internal/config
+// (LegacyRoleAliases, LegacyGroupAliases) and in released history.
+var legacyNameRe = regexp.MustCompile(`(?i)\bmelchor\b|\bkaji-audit\b|\bkaji-passes\b|\bkaji passes\b`)
+
+// The plugin the user installs names every renamed role by its new ID, so
+// no orchestration prose launches a subagent type that no longer exists.
+func TestPlugin_NamesNoLegacyRoleIDs(t *testing.T) {
+	err := fs.WalkDir(nerv.PluginFS(), ".", func(path string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return err
+		}
+		data, err := fs.ReadFile(nerv.PluginFS(), path)
+		if err != nil {
+			return err
+		}
+		for i, line := range strings.Split(string(data), "\n") {
+			if m := legacyNameRe.FindString(line); m != "" {
+				t.Errorf("plugin/%s:%d names legacy role %q", path, i+1, m)
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
 }

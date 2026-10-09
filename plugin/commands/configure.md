@@ -95,9 +95,9 @@ changes confirmed — never more.
      `role`, `purpose`, `gentle_ai_equivalent` (`-` when empty; a
      comma-separated list when the role covers several agents), `model`,
      `effort`, `source` — and a one-line legend for the group keywords:
-     `magi` = the three voters (balthasar, melchor, casper), `pilots` =
-     the implementers (kaworu, shinji, asuka, rei, toji), `kaji-passes` =
-     the audit compiler and its pass (kaji, kaji-audit),
+     `magi` = the three voters (balthasar, melchior, casper), `pilots` =
+     the implementers (kaworu, shinji, asuka, rei, toji), `audit-passes` =
+     the audit compiler and its pass (kaji, gendo),
      `all` = every role. The equivalent is informational only and never a
      `from:<phase>` value (native `review-*` agents are not phase keys):
      when the user picks `from:` for a single role, suggest that role's
@@ -105,14 +105,14 @@ changes confirmed — never more.
      changes resolution. A `from:`
      phase is a key of `claude_phase_assignments` in `~/.gentle-ai/state.json`
      that still has an agent in gentle-ai 4.x (`jd-judge-a`, `jd-judge-b`,
-     `jd-fix-agent`); only melchor (`jd-judge-b`) and balthasar (`jd-judge-a`)
+     `jd-fix-agent`); only melchior (`jd-judge-b`) and balthasar (`jd-judge-a`)
      have a `from_phase`.
      The pilots claim `jd-fix-agent` because fixes route through the owning
      pilot, but they get no `from_phase`: `jd-fix-agent` is sized for
      surgical fixes, while a pilot also implements whole work units, so
      inheriting that phase would undersize its main duty. Then ask one
      grouped question for which roles to override — free text, comma-separated role names or a group keyword (`magi`,
-     `pilots`, `kaji-passes`, `all`), pre-filled `skip`. For each role
+     `pilots`, `audit-passes`, `all`), pre-filled `skip`. For each role
      confirmed, ask a grouped question (at most 2 roles per question, 2
      sub-questions each: model, effort) with:
      - model: `sonnet` | `opus` | `haiku` | `fable` | a custom `claude-...`

@@ -22,7 +22,7 @@ var (
 	resetRe = regexp.MustCompile(`(?i)^reset\s*(.*)$`)
 
 	// groupOrder is the order the group legend lists the shortcuts in.
-	groupOrder = []string{"magi", "pilots", "kaji-passes", "all"}
+	groupOrder = []string{"magi", "pilots", "audit-passes", "all"}
 )
 
 // menuOf builds a "1"->tokens[0], "2"->tokens[1], ... menu-choice map, the
@@ -37,7 +37,7 @@ func menuOf(tokens []string) map[string]string {
 
 // runModelsSection is Section 2: an offer to edit per-role model/effort
 // overrides role by role or group by group ("magi", "pilots",
-// "kaji-passes", "all"), "reset <target>" to clear one, "done" to finish,
+// "audit-passes", "all"), "reset <target>" to clear one, "done" to finish,
 // then one write through config.SetModelsBlock + configure.Store.Save.
 func runModelsSection(deps Deps, paths configure.Paths, s *session, out io.Writer) (bool, error) {
 	fmt.Fprintln(out)
@@ -140,7 +140,7 @@ func selectRoles(s *session, out io.Writer, catalogue config.RoleCatalogue, over
 	}
 
 	roleAnswer := strings.TrimSpace(s.promptExhausted(
-		`Role (name, number, magi | pilots | kaji-passes | all), "reset" to clear an override, "done" to finish:`, "done"))
+		`Role (name, number, magi | pilots | audit-passes | all), "reset" to clear an override, "done" to finish:`, "done"))
 
 	if roleAnswer == "" {
 		return nil, false
@@ -406,6 +406,6 @@ func printModelTable(out io.Writer, table []config.ModelRow, configPath string) 
 }
 
 func printUnknownRoleTarget(out io.Writer, target string, allRoles []string) {
-	fmt.Fprintf(out, "Unknown role/group/number: %s. Valid roles: %s; groups: magi, pilots, kaji-passes, all.\n",
+	fmt.Fprintf(out, "Unknown role/group/number: %s. Valid roles: %s; groups: magi, pilots, audit-passes, all.\n",
 		target, strings.Join(allRoles, ", "))
 }

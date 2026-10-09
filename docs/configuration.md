@@ -101,7 +101,7 @@ pass) and `all`.
 | `misato` | | authors the plan (proposal, design, tasks) | none | fable / high |
 | `ritsuko` | | intelligence, test planning, end-of-run docs | none | opus / high |
 | `hyuga` | | task criticality, dependency waves, tracking | none | sonnet / medium |
-| `melchor` | `magi` | MAGI vote: structure and security; security audit | `jd-judge-b`, `review-risk` | fable / high |
+| `melchior` | `magi` | MAGI vote: structure and security; security audit | `jd-judge-b`, `review-risk` | fable / high |
 | `balthasar` | `magi` | MAGI vote: software principles; readability audit | `jd-judge-a`, `review-readability` | sonnet / medium |
 | `casper` | `magi` | MAGI vote: process and documentation | none | sonnet / medium |
 | `fuyutsuki` | | governance veto on new skills/scripts/commands; refutes severe audit findings | `review-refuter` | sonnet / medium |
@@ -111,8 +111,8 @@ pass) and `all`.
 | `rei` | `pilots` | data pilot (persistence, observability) | `jd-fix-agent` | sonnet / medium |
 | `toji` | `pilots` | infrastructure pilot (CI/CD, containers) | `jd-fix-agent` | sonnet / medium |
 | `maya` | | quality gate (tests, lint, build) | none | sonnet / medium |
-| `kaji` | `kaji-passes` | audit compiler | none | opus / high |
-| `kaji-audit` | `kaji-passes` | audit pass: test coverage, reliability, correctness, resilience, performance | `review-reliability`, `review-resilience` | sonnet / medium |
+| `kaji` | `audit-passes` | audit compiler | none | opus / high |
+| `gendo` | `audit-passes` | audit pass: test coverage, reliability, correctness, resilience, performance | `review-reliability`, `review-resilience` | sonnet / medium |
 | `aoba` | | commits, PRs and run telemetry | none | sonnet / low |
 
 ### Configuring models and effort

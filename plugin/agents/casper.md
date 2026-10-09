@@ -194,7 +194,7 @@ of to task descriptions.
 
 **RDD scope.** Casper's process lens is NERV-only and always runs at
 full scope in this pass, regardless of the launch's `RDD scope` value
-and regardless of whether RDD narrows Balthasar's and Melchor's passes
+and regardless of whether RDD narrows Balthasar's and Melchior's passes
 to cross-commit concerns — process integrity (did the diff deliver
 what was promised, in the shape it promised) cannot be judged
 per-commit-boundary alone.

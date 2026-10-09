@@ -316,7 +316,7 @@ Artifact persistence above), and no new findings.
 Return, as the ENTIRE final text, exactly one JSON object:
 
 ```json
-{"round": n, "results": [{"finding_id": "melchor-<slug>", "outcome": "corroborated|refuted|inconclusive", "proof_refs": ["file:line", "..."]}], "evidence": ["what was inspected"]}
+{"round": n, "results": [{"finding_id": "melchior-<slug>", "outcome": "corroborated|refuted|inconclusive", "proof_refs": ["file:line", "..."]}], "evidence": ["what was inspected"]}
 ```
 
 followed by `## Key Learnings`.
