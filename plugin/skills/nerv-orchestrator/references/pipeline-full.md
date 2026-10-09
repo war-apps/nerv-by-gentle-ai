@@ -92,10 +92,10 @@ round's HEAD for every re-audit (step 17) — a re-audit patch scopes only
 the fix delta, never the cumulative diff.
 
 **Pass batch and JSON gatekeeping.** Ikari launches all four audit passes
-— `nerv:melchor` (structure and security), `nerv:balthasar` (software
-principles and readability), `nerv:casper` (process) (MODE: audit), and
-`nerv:kaji-audit` (coverage, reliability, correctness, resilience and
-performance) — in one parallel batch, blind
+— the three MAGI in MODE: audit, `nerv:melchor` (structure and security),
+`nerv:balthasar` (software principles and readability) and `nerv:casper`
+(process), plus `nerv:kaji-audit` (coverage, reliability, correctness,
+resilience and performance) — in one parallel batch, blind
 to each other, each reading only the frozen patch plus the plan artifacts
 (`proposal.md`, `design.md`, `tasks.md`, `specs/`, `nerv/test-plan.md`).
 Each pass returns exactly one JSON object as its final text — the same
@@ -180,10 +180,12 @@ launch, so the decision is auditable. `casper` and
 `kaji-audit` always keep full NERV scope (plan conformance, commit
 hygiene and TDD commit order for Casper; test-plan coverage, reliability,
 correctness, resilience and performance for kaji-audit), regardless of
-the RDD switch. The native RDD reliability and resilience reviews run
-only when a review is due for a commit, so narrowing kaji-audit would
-leave those lenses unreviewed for every commit the native review
-skipped.
+the RDD switch. Native evidence cannot replace kaji-audit: an
+`already_reviewed` range only proves that some native review covered it,
+and the native plan picks its lenses by risk (a medium candidate gets a
+single consolidated lens), so the native reliability and resilience
+lenses may never have run on it; `kaji-audit.md` carries the full
+rationale.
 
 ### Ratchet handling
 

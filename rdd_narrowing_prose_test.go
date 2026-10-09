@@ -19,7 +19,7 @@ func rddNarrowingParagraph(t *testing.T) string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	region := proseRegion(t, string(data), auditPassList{
+	region := proseRegion(t, string(data), proseAnchor{
 		file:   rddNarrowingFile,
 		region: "RDD narrowing paragraph",
 		anchor: "**RDD narrowing.**",
