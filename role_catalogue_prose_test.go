@@ -196,21 +196,25 @@ func TestGroupDescriptions_NameTheGroupMembers(t *testing.T) {
 // (LegacyRoleAliases, LegacyGroupAliases) and in released history.
 var legacyNameRe = regexp.MustCompile(`(?i)\bmelchor\b|\bkaji-audit\b|\bkaji-passes\b|\bkaji passes\b`)
 
-// legacyPassFileTokens are the pre-rename audit pass names (file stem and
-// Engram key suffix) that nerv-artifacts.md must name so an audit round in
-// flight across the upgrade still compiles. They are the only legacy names the
-// guard tolerates, and only in that file.
-var legacyPassFileTokens = []string{"pass-melchor-round-N", "pass-kaji-audit-round-N"}
+// allowedLegacyTokens are the only legacy names the guard tolerates, each
+// only in the one plugin file that documents its read fallback: the
+// pre-rename audit pass names (file stem and Engram key suffix), so an audit
+// round in flight across the upgrade still compiles, and the legacy models:
+// keys the orchestrator resolves per scope before layering project over user.
+var allowedLegacyTokens = map[string][]string{
+	legacyPassFallbackDoc: {"pass-melchor-round-N", "pass-kaji-audit-round-N"},
+	legacyModelsKeysDoc:   {"models.melchor", "models.kaji-audit"},
+}
 
-const legacyPassFallbackDoc = "skills/_shared/nerv-artifacts.md"
+const (
+	legacyPassFallbackDoc = "skills/_shared/nerv-artifacts.md"
+	legacyModelsKeysDoc   = "skills/nerv-orchestrator/SKILL.md"
+)
 
-// stripAllowedLegacy removes the legacy pass-file tokens from a line of the
-// one file that documents the fallback; every other file is checked verbatim.
+// stripAllowedLegacy removes the allowed legacy tokens from a line of the
+// file that documents them; every other file is checked verbatim.
 func stripAllowedLegacy(path, line string) string {
-	if path != legacyPassFallbackDoc {
-		return line
-	}
-	for _, tok := range legacyPassFileTokens {
+	for _, tok := range allowedLegacyTokens[path] {
 		line = strings.ReplaceAll(line, tok, "")
 	}
 	return line
@@ -269,6 +273,19 @@ func TestAuditPasses_LegacyPassNameFallbackDocumented(t *testing.T) {
 	}
 	if kaji := readPluginFile(t, "agents/kaji.md"); !strings.Contains(kaji, "Legacy pass names") {
 		t.Errorf("agents/kaji.md does not point to the legacy pass-name fallback in nerv-artifacts.md")
+	}
+}
+
+// Ikari resolves each launch's model from the project and user models:
+// blocks itself, so its resolution rule must read the legacy keys too, or a
+// models.melchor / models.kaji-audit override (the only way a project-scope
+// file can set a model) would be silently ignored after the rename.
+func TestOrchestrator_ModelResolutionReadsLegacyRoleKeys(t *testing.T) {
+	skill := readPluginFile(t, legacyModelsKeysDoc)
+	for _, want := range []string{"`models.melchor`", "`models.kaji-audit`"} {
+		if !strings.Contains(skill, want) {
+			t.Errorf("%s model resolution does not read the legacy key %s", legacyModelsKeysDoc, want)
+		}
 	}
 }
 

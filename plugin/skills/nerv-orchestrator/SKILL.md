@@ -133,6 +133,10 @@ own built-in default (aoba sonnet/low; kaji, ritsuko opus/high; melchior,
 misato fable/high; every other role sonnet/medium). An explicit
 `model`/`effort` on a `models.<role>` entry always wins over that same
 entry's `from`; a role absent from both files keeps the plugin default.
+Within each file, a role's entry may sit under its pre-rename key
+(`models.melchor` for `melchior`, `models.kaji-audit` for `gendo`): read it
+when the file has no entry under the current ID, before falling back to the
+next file, so a project legacy key still wins over a user current key.
 Cache the resolved per-role table for the session, the same as the two-file
 merge above; re-resolve only if `nerv.yaml` or `state.json` changes
 mid-session.
