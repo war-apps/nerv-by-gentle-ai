@@ -324,6 +324,53 @@ func TestModelTableFromDocument_LegacyAliasAppliesToRenamedRole(t *testing.T) {
 	}
 }
 
+// The user and project models: blocks are layered by the orchestrator (no Go
+// code merges the two scopes; apply-models reads the user scope only). The
+// layering is correct only if each scope is canonicalised before the project
+// entry overrides the user entry role by role, so a legacy key in one scope
+// and the new key in the other meet under the same role ID. These cases pin
+// that ReadModelsOverrides delivers those per-scope canonical maps.
+func TestReadModelsOverrides_LayeredScopesMeetUnderCanonicalIDs(t *testing.T) {
+	cases := []struct {
+		name          string
+		user, project string
+		want          map[string]config.ModelOverride
+	}{
+		{
+			name:    "project-legacy-key-overrides-user-new-key",
+			user:    "models:\n  melchior: { model: opus }\n",
+			project: "models:\n  melchor: { model: sonnet }\n",
+			want:    map[string]config.ModelOverride{"melchior": {Model: "sonnet"}},
+		},
+		{
+			name:    "project-new-key-overrides-user-legacy-key",
+			user:    "models:\n  kaji-audit: { model: opus, effort: high }\n",
+			project: "models:\n  gendo: { model: sonnet }\n",
+			want:    map[string]config.ModelOverride{"gendo": {Model: "sonnet"}},
+		},
+		{
+			name:    "user-legacy-key-applies-when-project-is-silent",
+			user:    "models:\n  melchor: { model: haiku }\n",
+			project: "models:\n  aoba: { model: sonnet }\n",
+			want: map[string]config.ModelOverride{
+				"melchior": {Model: "haiku"},
+				"aoba":     {Model: "sonnet"},
+			},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := config.ReadModelsOverrides(config.Parse(tc.user))
+			for role, entry := range config.ReadModelsOverrides(config.Parse(tc.project)) {
+				got[role] = entry
+			}
+			if !reflect.DeepEqual(got, tc.want) {
+				t.Errorf("layered overrides = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
 // ---------------------------------------------------------------------------
 // Role catalogue (Get-NervRoleCatalogue). No direct PS unit-test case group
 // exists for this function in tests/configure-models.test.ps1 (it is only
