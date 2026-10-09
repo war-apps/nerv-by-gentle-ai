@@ -214,7 +214,7 @@ estimated.
 - {ts} | {phase} | {actor} | preflight_answer | {payload_ref}
 - {ts} | {phase} | {actor} | classification | {payload_ref}
 - {ts} | {phase} | {actor} | ratchet | {payload_ref}
-- {ts} | {phase} | {actor} | launch | {payload_ref}
+- {ts} | {phase} | {actor} | launch | {Display name}: {action}; {payload_ref}
 - {ts} | {phase} | {actor} | effort_drift | {payload_ref}
 - {ts} | {phase} | {actor} | envelope | {payload_ref}
 - {ts} | {phase} | {actor} | model_mismatch | {payload_ref}
@@ -234,7 +234,9 @@ by the Mandatory model gate when an envelope readback's reported model
 differs from the resolved one; a warning, never a stop. `effort_drift`
 (payload: `{role, resolved, cached}`) — logged once per role per session
 when the resolved effort differs from that role's cached agent frontmatter
-effort; the pipeline continues either way.
+effort; the pipeline continues either way. A `launch` line's payload opens
+with the launch's `{Display name}: {action}` label — the same text as its
+Agent tool `description` — before the pointer.
 
 ### Phase 2 event types
 

@@ -70,6 +70,11 @@ carries "Do NOT delegate" in its own file and has no Agent tool access.
   never infers a decision, and never defaults one.
 - Every launch names the agent as `nerv:<role>` (e.g. `nerv:aoba`,
   `nerv:kaworu`), never the bare role name.
+- Every launch's Agent tool `description` reads `{Display name}: {action}`:
+  the display name from the role catalogue (as `/nerv:configure` and
+  `docs/configuration.md` show it), the action short, concrete and in English
+  (phase step, task id, round) — e.g. `Melchior-Magi 1: security audit, round 2`,
+  `Shinji Ikari: implement task 3.2`. The full brief stays in the launch prompt.
 
 ## Orchestrator lock
 
