@@ -92,7 +92,8 @@ changes confirmed — never more.
      comma-separated) and `artifacts.commit` (`with-change` | `at-close` |
      `never`) in the second group.
    - **models**: first print the `models` rows from step 2 as a table —
-     `role`, `purpose`, `gentle_ai_equivalent` (`-` when empty; a
+     `role`, `display_name` (the role's full character name; `role` stays
+     the ID to type), `purpose`, `gentle_ai_equivalent` (`-` when empty; a
      comma-separated list when the role covers several agents), `model`,
      `effort`, `source` — and a one-line legend for the group keywords:
      `magi` = the three voters (balthasar, melchior, casper), `pilots` =

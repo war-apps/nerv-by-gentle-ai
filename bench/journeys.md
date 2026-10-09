@@ -164,7 +164,7 @@ Expected, in order:
    `pilot: toji`, `depends_on: []`).
 6. `nerv:hyuga` (dispatch a) writes `nerv/criticality.md` for T1 and T2
    (both `standard` unless a `critical_paths` entry matches).
-7. MAGI vote round 1: `nerv:balthasar`, `nerv:melchor`, `nerv:casper`
+7. MAGI vote round 1: `nerv:balthasar`, `nerv:melchior`, `nerv:casper`
    launched in one parallel batch, blind, each returning the JSON
    contract from `nerv-artifacts.md`; Ikari merges into `nerv/votes.md`
    with three member entries per task (T1, T2), `rule` applied per each
@@ -272,16 +272,16 @@ Expected, in order:
    - `nerv:aoba` freezes `nerv/audit/diff-round-1.patch` and
      `nerv/audit/round-1.yaml` (base = branch point, head = current HEAD).
    - Four passes launch in one parallel batch, blind:
-     `nerv:melchor` (MODE: audit, structure and security),
+     `nerv:melchior` (MODE: audit, structure and security),
      `nerv:balthasar` (MODE: audit, software principles and readability),
-     `nerv:casper` (MODE: audit, process), `nerv:kaji-audit`. Each
+     `nerv:casper` (MODE: audit, process), `nerv:gendo`. Each
      writes its validated JSON to
      `nerv/audit/pass-<name>-round-1.json`.
-   - Expected finding: `nerv:kaji-audit` flags the missing
+   - Expected finding: `nerv:gendo` flags the missing
      division-by-zero case as `CRITICAL`, `evidence_class: deterministic`,
      `causal_disposition: introduced` (the task specified `a / b` with no
      guard and the test plan never asked for the zero case — both
-     candidate-caused). `nerv:melchor` or `nerv:balthasar` may
+     candidate-caused). `nerv:melchior` or `nerv:balthasar` may
      additionally flag the unchecked divisor (accept either or both;
      record whichever actually fired).
    - `nerv:kaji` compiles `nerv/audit-report.md`: the coverage finding

@@ -12,6 +12,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	nerv "github.com/war-apps/nerv-by-gentle-ai"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/config"
@@ -901,6 +902,16 @@ func phaseLine(out, needle string) string {
 	return lineWith(after, needle)
 }
 
+// runeIndex is strings.Index counted in runes (terminal columns for the
+// table's text), or -1 when sub is absent.
+func runeIndex(s, sub string) int {
+	i := strings.Index(s, sub)
+	if i < 0 {
+		return -1
+	}
+	return utf8.RuneCountInString(s[:i])
+}
+
 func lineWith(out, needle string) string {
 	for _, l := range strings.Split(out, "\n") {
 		if strings.Contains(l, needle) {
@@ -927,7 +938,7 @@ func TestRun_ModelsSection_TableShowsPurposeEquivalentAndGroupLegend(t *testing.
 	got := out.String()
 
 	header := lineWith(got, "ROLE ")
-	for _, col := range []string{"WHAT IT DOES", "GENTLE-AI"} {
+	for _, col := range []string{"NAME", "WHAT IT DOES", "GENTLE-AI"} {
 		if !strings.Contains(header, col) {
 			t.Errorf("table header %q lacks column %q", header, col)
 		}
@@ -955,11 +966,14 @@ func TestRun_ModelsSection_TableShowsPurposeEquivalentAndGroupLegend(t *testing.
 	if row := lineWith(got, ") melchior"); !strings.HasSuffix(strings.TrimSpace(row), "jd-judge-b, review-risk") {
 		t.Errorf("melchior row = %q, want both equivalents joined", row)
 	}
-	// Every purpose starts under its header and is printed whole, whatever
-	// the fixture's model and source widths are.
-	purposeCol, equivalentCol := strings.Index(header, "WHAT IT DOES"), strings.Index(header, "GENTLE-AI")
-	if purposeCol < 0 || equivalentCol <= purposeCol {
-		t.Fatalf("table header %q: WHAT IT DOES at %d, GENTLE-AI at %d", header, purposeCol, equivalentCol)
+	// Every display name and purpose starts under its header and is printed
+	// whole, whatever the fixture's model and source widths are. Columns are
+	// counted in runes: display names such as "Kōzō Fuyutsuki" hold
+	// multi-byte letters that still take one terminal column each.
+	nameCol := runeIndex(header, "NAME")
+	purposeCol, equivalentCol := runeIndex(header, "WHAT IT DOES"), runeIndex(header, "GENTLE-AI")
+	if nameCol < 0 || purposeCol <= nameCol || equivalentCol <= purposeCol {
+		t.Fatalf("table header %q: NAME at %d, WHAT IT DOES at %d, GENTLE-AI at %d", header, nameCol, purposeCol, equivalentCol)
 	}
 	info := config.Roles().Info
 	checked := 0
@@ -973,11 +987,15 @@ func TestRun_ModelsSection_TableShowsPurposeEquivalentAndGroupLegend(t *testing.
 			continue // a numbered row of another menu
 		}
 		checked++
+		if runeIndex(l, role.DisplayName) != nameCol {
+			t.Errorf("%s display name %q not aligned under NAME (col %d): %q", m[1], role.DisplayName, nameCol, l)
+		}
 		purpose := role.Purpose
-		if strings.Index(l, purpose) != purposeCol {
+		if runeIndex(l, purpose) != purposeCol {
 			t.Errorf("%s purpose not aligned under WHAT IT DOES (col %d): %q", m[1], purposeCol, l)
 		}
-		if len(l) < equivalentCol || strings.TrimSpace(l[purposeCol:equivalentCol]) != purpose {
+		runes := []rune(l)
+		if len(runes) < equivalentCol || strings.TrimSpace(string(runes[purposeCol:equivalentCol])) != purpose {
 			t.Errorf("%s purpose cut off or GENTLE-AI misaligned (col %d): %q", m[1], equivalentCol, l)
 		}
 	}

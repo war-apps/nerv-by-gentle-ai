@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strings"
 	"testing"
+	"testing/fstest"
 
 	nerv "github.com/war-apps/nerv-by-gentle-ai"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/config"
@@ -20,7 +21,7 @@ import (
 
 // docsRoleRow is one parsed row of the roles table in docs/configuration.md.
 type docsRoleRow struct {
-	group, purpose, equivalent, defaults string
+	name, group, purpose, equivalent, defaults string
 }
 
 func stripTicks(s string) string { return strings.Trim(strings.TrimSpace(s), "`") }
@@ -56,18 +57,19 @@ func parseDocsRolesTable(t *testing.T) map[string]docsRoleRow {
 			continue
 		}
 		cells := strings.Split(strings.Trim(line, "| "), "|")
-		if len(cells) != 5 {
-			t.Fatalf("docs roles table row has %d cells, want 5: %q", len(cells), line)
+		if len(cells) != 6 {
+			t.Fatalf("docs roles table row has %d cells, want 6: %q", len(cells), line)
 		}
 		role := stripTicks(cells[0])
 		if _, dup := rows[role]; dup {
 			t.Errorf("docs roles table lists role %q twice", role)
 		}
 		rows[role] = docsRoleRow{
-			group:      stripTicks(cells[1]),
-			purpose:    strings.TrimSpace(cells[2]),
-			equivalent: equivalentsCell(cells[3]),
-			defaults:   strings.TrimSpace(cells[4]),
+			name:       strings.TrimSpace(cells[1]),
+			group:      stripTicks(cells[2]),
+			purpose:    strings.TrimSpace(cells[3]),
+			equivalent: equivalentsCell(cells[4]),
+			defaults:   strings.TrimSpace(cells[5]),
 		}
 	}
 	return rows
@@ -95,6 +97,9 @@ func TestDocsRolesTable_MatchesCatalogue(t *testing.T) {
 			continue
 		}
 		info := cat.Info[role]
+		if row.name != info.DisplayName {
+			t.Errorf("docs roles table: role %q name = %q, catalogue = %q", role, row.name, info.DisplayName)
+		}
 		if row.purpose != info.Purpose {
 			t.Errorf("docs roles table: role %q purpose = %q, catalogue = %q", role, row.purpose, info.Purpose)
 		}
@@ -191,25 +196,69 @@ func TestGroupDescriptions_NameTheGroupMembers(t *testing.T) {
 // (LegacyRoleAliases, LegacyGroupAliases) and in released history.
 var legacyNameRe = regexp.MustCompile(`(?i)\bmelchor\b|\bkaji-audit\b|\bkaji-passes\b|\bkaji passes\b`)
 
-// The plugin the user installs names every renamed role by its new ID, so
-// no orchestration prose launches a subagent type that no longer exists.
-func TestPlugin_NamesNoLegacyRoleIDs(t *testing.T) {
-	err := fs.WalkDir(nerv.PluginFS(), ".", func(path string, d fs.DirEntry, err error) error {
-		if err != nil || d.IsDir() {
-			return err
-		}
-		data, err := fs.ReadFile(nerv.PluginFS(), path)
-		if err != nil {
-			return err
-		}
-		for i, line := range strings.Split(string(data), "\n") {
-			if m := legacyNameRe.FindString(line); m != "" {
-				t.Errorf("plugin/%s:%d names legacy role %q", path, i+1, m)
+// The plugin the user installs, the bench journeys and the integration guide
+// name every renamed role by its new ID, so no orchestration prose launches a
+// subagent type that no longer exists. docs/configuration.md is left out on
+// purpose: it documents the legacy aliases.
+func TestProse_NamesNoLegacyRoleIDs(t *testing.T) {
+	check := func(fsys fs.FS, prefix string) {
+		t.Helper()
+		err := fs.WalkDir(fsys, ".", func(path string, d fs.DirEntry, err error) error {
+			if err != nil || d.IsDir() {
+				return err
 			}
+			data, err := fs.ReadFile(fsys, path)
+			if err != nil {
+				return err
+			}
+			for i, line := range strings.Split(string(data), "\n") {
+				if m := legacyNameRe.FindString(line); m != "" {
+					t.Errorf("%s%s:%d names legacy role %q", prefix, path, i+1, m)
+				}
+			}
+			return nil
+		})
+		if err != nil {
+			t.Fatal(err)
 		}
-		return nil
-	})
+	}
+	check(nerv.PluginFS(), "plugin/")
+	check(os.DirFS("bench"), "bench/")
+	check(fstest.MapFS{"integration.md": mustReadFile(t, "docs/integration.md")}, "docs/")
+}
+
+func mustReadFile(t *testing.T, path string) *fstest.MapFile {
+	t.Helper()
+	data, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)
+	}
+	return &fstest.MapFile{Data: data}
+}
+
+var (
+	agentDescriptionRe = regexp.MustCompile(`(?m)^description: (.*)$`)
+	agentHeadingRe     = regexp.MustCompile(`(?m)^# (.*)$`)
+)
+
+// Every agent introduces itself by its full character name: the frontmatter
+// description starts with "<display name>, " and the first heading with
+// "<display name> — ", while the file name and name: stay the role ID.
+func TestAgents_IntroduceTheirDisplayName(t *testing.T) {
+	for _, role := range config.Roles().AllRoles {
+		display := config.Roles().Info[role].DisplayName
+		data, err := fs.ReadFile(nerv.PluginFS(), "agents/"+role+".md")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(string(data), "\nname: "+role+"\n") {
+			t.Errorf("agents/%s.md: frontmatter name is not the role ID %q", role, role)
+		}
+		if m := agentDescriptionRe.FindStringSubmatch(string(data)); m == nil || !strings.HasPrefix(m[1], display+", ") {
+			t.Errorf("agents/%s.md: description must start with %q", role, display+", ")
+		}
+		if m := agentHeadingRe.FindStringSubmatch(string(data)); m == nil || !strings.HasPrefix(m[1], display+" — ") {
+			t.Errorf("agents/%s.md: first heading must start with %q", role, display+" — ")
+		}
 	}
 }

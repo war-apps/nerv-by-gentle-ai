@@ -60,17 +60,18 @@ short and imperative — this is a status check, not a narrative.
    directory is missing, print `cache: not found` once and leave `cached
    effort` blank for every row. Print one table:
 
-   | role | purpose | gentle-ai equivalent | model | effort | source | cached effort |
-   |---|---|---|---|---|---|---|
-   | ... | ... | ... | ... | ... | project\|user\|gentle-ai:\<phase\>\|default | ... |
+   | role | name | purpose | gentle-ai equivalent | model | effort | source | cached effort |
+   |---|---|---|---|---|---|---|---|
+   | ... | ... | ... | ... | ... | ... | project\|user\|gentle-ai:\<phase\>\|default | ... |
 
    When `~/.gentle-ai/state.json` has phase assignments but not the
    role's `from` phase, the role keeps its plugin default: print its
    source as `gentle-ai:<phase> (missing; plugin default)`.
 
-   Take `purpose` and `gentle-ai equivalent` (`-` when none; otherwise the
-   `jd-*` or native `review-*` agents the role covers, comma-separated) per role from
-   `nerv configure --print --json` (`models[].purpose` and
+   Take `name`, `purpose` and `gentle-ai equivalent` (`-` when none;
+   otherwise the `jd-*` or native `review-*` agents the role covers,
+   comma-separated) per role from `nerv configure --print --json`
+   (`models[].display_name`, `models[].purpose` and
    `models[].gentle_ai_equivalent`); they are informational and never
    affect resolution.
 

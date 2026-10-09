@@ -54,7 +54,7 @@ role IDs, so renaming every ID would orphan every user override.
   alias resolution, agent files renamed, every test that pins them, and the
   prose the root tests pin (route: delegated, writer trigger: 2+ non-trivial
   files).
-- [ ] T2 — display names on user surfaces (`--print`, wizard, docs roles
+- [x] T2 — display names on user surfaces (`--print`, wizard, docs roles
   table, agent descriptions) and remaining orchestration/command/docs prose
   renames, plus CHANGELOG (route: delegated, same writer).
 
@@ -107,8 +107,32 @@ Branch created from 555add4.
 - Size: 29 files changed, 571 insertions(+), 189 deletions(-) (above the
   ~400 heuristic: the catalogue map realigns and the alias tests are
   table-driven; no split, as planned for `single-pr`).
-- Commit: recorded in the next commit (amend not allowed).
+- Commit: `31a6c90` feat(config)!: rename melchor and kaji-audit, add role
+  display names (30 files changed, 685 insertions(+), 189 deletions(-),
+  feature doc included).
+
+### T2 (same delegated writer)
+
+- `--print` models rows carry `display_name`; the wizard's models table has
+  a NAME column, padded in runes (`fmt`'s `%-*s` pads by bytes and would
+  misalign "Kōzō Fuyutsuki" / "Tōji Suzuhara"); `/nerv:configure` and
+  `/nerv:status` tables show the name; `docs/configuration.md` roles table
+  gained a Name column plus a paragraph on IDs vs names and the legacy
+  aliases (new key wins); every agent's `description:` starts with
+  "<display name>, " and its first heading with "<display name> — ".
+- Remaining `docs/integration.md`, `bench/journeys.md` and
+  `docs/configuration.md` references renamed; CHANGELOG `[Unreleased]`
+  gained Added (display names) and Changed (renames, aliases, group).
+- RED: `go test ./...` failed `TestDocsRolesTable_MatchesCatalogue` (6
+  cells), `TestProse_NamesNoLegacyRoleIDs` (bench/docs),
+  `TestAgents_IntroduceTheirDisplayName`,
+  `TestPrint_ModelsRowsCarryPurposeAndEquivalent` (`display_name`) and
+  `TestRun_ModelsSection_TableShowsPurposeEquivalentAndGroupLegend` (NAME).
+- GREEN: `go test ./...` ok, `go vet ./...` clean, `gofmt -l .` empty.
+- Size before the doc update: 27 files changed, 270 insertions(+),
+  131 deletions(-).
+- Commit: recorded in a following `docs(odd)` commit.
 
 ## Next step
 
-T2: display names on user surfaces, remaining docs/bench prose, CHANGELOG.
+Parent review of both commits, then PR (`single-pr`).

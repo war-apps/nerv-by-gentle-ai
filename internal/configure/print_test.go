@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	nerv "github.com/war-apps/nerv-by-gentle-ai"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/config"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/configure"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/env/envtest"
 )
@@ -147,8 +148,8 @@ func TestPrint_ModelsTableHasOverrideRole(t *testing.T) {
 	}
 }
 
-// The role catalogue's purpose and gentle-ai equivalent ride along on every
-// models row as additive JSON fields.
+// The role catalogue's display name, purpose and gentle-ai equivalent ride
+// along on every models row as additive JSON fields.
 func TestPrint_ModelsRowsCarryPurposeAndEquivalent(t *testing.T) {
 	home := t.TempDir()
 	paths := configure.ResolvePaths(home, "")
@@ -170,7 +171,7 @@ func TestPrint_ModelsRowsCarryPurposeAndEquivalent(t *testing.T) {
 
 	byRole := map[string]map[string]any{}
 	for _, row := range decoded.Models {
-		for _, key := range []string{"purpose", "gentle_ai_equivalent", "gentle_ai_equivalents", "from_phase"} {
+		for _, key := range []string{"display_name", "purpose", "gentle_ai_equivalent", "gentle_ai_equivalents", "from_phase"} {
 			if _, ok := row[key]; !ok {
 				t.Errorf("row %v missing key %q", row["role"], key)
 			}
@@ -226,6 +227,16 @@ func TestPrint_ModelsRowsCarryPurposeAndEquivalent(t *testing.T) {
 	}
 	if got := byRole["casper"]["gentle_ai_equivalent"]; got != "" {
 		t.Errorf("casper gentle_ai_equivalent = %v, want empty", got)
+	}
+	// Every row carries the role's full character name; the role stays the ID.
+	info := config.Roles().Info
+	for role, row := range byRole {
+		if got, want := row["display_name"], info[role].DisplayName; got != want {
+			t.Errorf("%s display_name = %v, want %q", role, got, want)
+		}
+	}
+	if got := byRole["fuyutsuki"]["display_name"]; got != "Kōzō Fuyutsuki" {
+		t.Errorf("fuyutsuki display_name = %v, want \"Kōzō Fuyutsuki\"", got)
 	}
 }
 
