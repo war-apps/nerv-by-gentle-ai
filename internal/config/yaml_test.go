@@ -17,11 +17,11 @@ skills:                             # stacks per consuming role; names must exis
   testing: [tdd, playwright-best-practices]                        # ritsuko, kaworu, maya
   code: [dotnet-best-practices, typescript-best-practices]         # pilots
   best-practices: [best-practices, solid-principles, clean-code-guard]  # balthasar
-  architecture: [hexagonal-architecture, c4-architecture]          # melchor
-  audit: [security-review, clean-code-guard]                       # kaji passes, melchor audit
+  architecture: [hexagonal-architecture, c4-architecture]          # melchior
+  audit: [security-review, clean-code-guard]                       # audit passes, melchior audit
 models:                             # per-role model and effort; project overrides user, key by key
   misato: { model: fable, effort: high }
-  melchor: { from: jd-judge-b }     # inherit gentle-ai's assignment for that phase (state.json)
+  melchior: { from: jd-judge-b }     # inherit gentle-ai's assignment for that phase (state.json)
 critical_paths: [auth/, payments/, migrations/, infra/]            # Hyuga auto-critical
 artifacts:
   commit: at-close                  # with-change | at-close | never (default: at-close)

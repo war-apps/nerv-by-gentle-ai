@@ -1,6 +1,6 @@
 ---
 type: regex
-pattern: "nerv:(melchor|balthasar|casper)"
+pattern: "nerv:(melchior|balthasar|casper)"
 target: last_message
 arm: both
 ---

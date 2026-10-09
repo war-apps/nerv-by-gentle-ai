@@ -19,7 +19,7 @@ func rddNarrowingParagraph(t *testing.T) string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	region := proseRegion(t, string(data), auditPassList{
+	region := proseRegion(t, string(data), proseAnchor{
 		file:   rddNarrowingFile,
 		region: "RDD narrowing paragraph",
 		anchor: "**RDD narrowing.**",
@@ -66,14 +66,14 @@ func TestRDDNarrowing_FailsClosed(t *testing.T) {
 	}
 
 	// The clause that launches cross-commit scope admits only the two
-	// evidence-backed reasons and narrows exactly melchor (whose audit pass
+	// evidence-backed reasons and narrows exactly melchior (whose audit pass
 	// also carries the security lens) and balthasar.
 	narrow := sentenceWith(t, paragraph, "`RDD scope: cross-commit`")
 	for _, token := range []string{
 		"`review_due: false`",
 		"`already_reviewed`",
 		"`passive`",
-		"`melchor`",
+		"`melchior`",
 		"`balthasar`",
 	} {
 		if !strings.Contains(narrow, token) {
@@ -84,7 +84,7 @@ func TestRDDNarrowing_FailsClosed(t *testing.T) {
 		"under_budget",
 		"review_due: true",
 		"`casper`",
-		"`kaji-audit`",
+		"`gendo`",
 		"kaji-coverage",
 		"kaji-resilience",
 		"kaji-security",
@@ -104,7 +104,7 @@ func TestRDDNarrowing_FailsClosed(t *testing.T) {
 
 	// The remaining two passes never narrow.
 	always := sentenceWith(t, paragraph, "always keep full NERV scope")
-	for _, token := range []string{"`casper`", "`kaji-audit`"} {
+	for _, token := range []string{"`casper`", "`gendo`"} {
 		if !strings.Contains(always, token) {
 			t.Errorf("%s (always-full clause): required %q missing", rddNarrowingFile, token)
 		}

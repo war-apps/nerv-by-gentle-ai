@@ -214,7 +214,7 @@ estimated.
 - {ts} | {phase} | {actor} | preflight_answer | {payload_ref}
 - {ts} | {phase} | {actor} | classification | {payload_ref}
 - {ts} | {phase} | {actor} | ratchet | {payload_ref}
-- {ts} | {phase} | {actor} | launch | {payload_ref}
+- {ts} | {phase} | {actor} | launch | {Display name}: {action}; {payload_ref}
 - {ts} | {phase} | {actor} | effort_drift | {payload_ref}
 - {ts} | {phase} | {actor} | envelope | {payload_ref}
 - {ts} | {phase} | {actor} | model_mismatch | {payload_ref}
@@ -234,7 +234,9 @@ by the Mandatory model gate when an envelope readback's reported model
 differs from the resolved one; a warning, never a stop. `effort_drift`
 (payload: `{role, resolved, cached}`) — logged once per role per session
 when the resolved effort differs from that role's cached agent frontmatter
-effort; the pipeline continues either way.
+effort; the pipeline continues either way. A `launch` line's payload opens
+with the launch's `{Display name}: {action}` label — the same text as its
+Agent tool `description` — before the pointer.
 
 ### Phase 2 event types
 
@@ -361,7 +363,7 @@ value for that round.
 | member | vote | findings | escalation |
 |---|---|---|---|
 | balthasar | approve\|reject | [{claim, category, evidence_class, proof_refs}] | null\|{to: critical, reason} |
-| melchor | approve\|reject | [{claim, category, evidence_class, proof_refs}] | null\|{to: critical, reason} |
+| melchior | approve\|reject | [{claim, category, evidence_class, proof_refs}] | null\|{to: critical, reason} |
 | casper | approve\|reject | [{claim, category, evidence_class, proof_refs}] | null\|{to: critical, reason} |
 
 escalations: [{member, task_id, to: critical, reason}]
@@ -379,7 +381,7 @@ approved tasks stay `frozen: true` and are never re-voted).
 
 ### MAGI member JSON output contract
 
-Each of `nerv:balthasar`, `nerv:melchor`, `nerv:casper` (MODE: vote) is
+Each of `nerv:balthasar`, `nerv:melchior`, `nerv:casper` (MODE: vote) is
 launched blind in the same parallel batch, with identical task locators
 and no visibility into the other members' output. Its final text is
 exactly one JSON object:
@@ -407,7 +409,7 @@ exactly one JSON object:
 ```
 
 Lens assignment: Balthasar reviews design.md and tasks.md for SOLID/KISS/
-YAGNI/DRY and pattern fit; Melchor reviews design.md for architecture,
+YAGNI/DRY and pattern fit; Melchior reviews design.md for architecture,
 design, dead code, duplication, and security; Casper reviews spec.md,
 tasks.md, and proposal.md for docs, comments, scope, commit hygiene, and
 plan consistency. Every member votes every task in scope from its own
@@ -486,13 +488,24 @@ created_at: "2026-09-24T15:10:00Z"
 - Author: Ikari (mechanical write of a pass's own final-text JSON, never
   edited).
 - Location: `nerv/audit/pass-<name>-round-N.json`, `<name>` one of
-  `melchor`, `balthasar`, `casper`, `kaji-audit`.
+  `melchior`, `balthasar`, `casper`, `gendo`.
 - Engram key: `nerv/{change}/audit-pass-<name>-round-N`.
+
+#### Legacy pass names
+
+A round started before the `melchior`/`gendo` rename and resumed after it
+may hold `pass-melchor-round-N.json` and `pass-kaji-audit-round-N.json`
+(Engram `nerv/{change}/audit-pass-melchor-round-N` and
+`nerv/{change}/audit-pass-kaji-audit-round-N`). Whoever reads a round's
+passes (Kaji, or Ikari on resume) reads the legacy name only when the new
+one is absent and counts it as the `melchior` or `gendo` pass
+respectively, whatever its own `pass` field says; nothing is renamed or
+rewritten.
 
 #### Audit pass JSON output contract
 
-Each of `nerv:melchor`, `nerv:balthasar`, `nerv:casper` (MODE: audit),
-and `nerv:kaji-audit` is
+Each of `nerv:melchior`, `nerv:balthasar`, `nerv:casper` (MODE: audit),
+and `nerv:gendo` is
 launched in one parallel batch, blind to the other three, over the frozen
 `diff-round-N.patch` plus the plan artifacts (`proposal.md`, `design.md`,
 `tasks.md`, `specs/`, `nerv/test-plan.md`). Its final text is exactly one JSON object, no prose
@@ -500,11 +513,11 @@ before or after it (a `## Key Learnings` block may follow):
 
 ```json
 {
-  "pass": "kaji-audit",
+  "pass": "gendo",
   "round": 1,
   "findings": [
     {
-      "id": "kaji-audit-divide-by-zero",
+      "id": "gendo-divide-by-zero",
       "location": "src/Calc/Calculator.cs:42",
       "severity": "CRITICAL",
       "claim": "Divide has no test for a zero divisor",
@@ -532,7 +545,7 @@ everywhere in NERV (mirrors gentle-ai's native review lenses):
   `BLOCKER`/`CRITICAL` block closure.
 
 Lens assignment for AUDIT mode mirrors VOTE mode's lenses, applied to the
-frozen patch instead of the plan: Melchor — architecture, design, dead
+frozen patch instead of the plan: Melchior — architecture, design, dead
 code, duplication, plus security across all layers (injection, authz,
 secrets, data exposure, unsafe defaults, dependency risk, crypto, infra
 hardening); Balthasar — SOLID, KISS, YAGNI, DRY, pattern fit, plus
@@ -542,7 +555,7 @@ behavior is a proven correctness failure); Casper — plan conformance
 (every task in `tasks.md` delivered as specified and nothing extra,
 BASE..HEAD), commit hygiene (atomic, conventional, correct scopes), and
 TDD commit order (the RED commit precedes the GREEN commit for every
-task, checked in git history); `kaji-audit` — implemented tests vs
+task, checked in git history); `gendo` — implemented tests vs
 `nerv/test-plan.md` (missing cases, weakened assertions), reliability
 beyond the plan (invalid inputs, failure paths, contracts, boundaries,
 regressions, determinism), correctness and edge cases in the changed
@@ -572,8 +585,8 @@ Ikari writes the validated object to its locator.
 
 | id | location | severity | claim | evidence_class | causal_disposition | credited_sources | refuter |
 |---|---|---|---|---|---|---|---|
-| kaji-audit-divide-by-zero | src/Calc/Calculator.cs:42 | CRITICAL | Divide has no test for a zero divisor | deterministic | introduced | [kaji-audit] | n/a |
-| melchor-unchecked-divisor | src/Calc/Calculator.cs:42 | WARNING | Divisor not validated before use | inferential | introduced | [melchor, balthasar] | corroborated |
+| gendo-divide-by-zero | src/Calc/Calculator.cs:42 | CRITICAL | Divide has no test for a zero divisor | deterministic | introduced | [gendo] | n/a |
+| melchior-unchecked-divisor | src/Calc/Calculator.cs:42 | WARNING | Divisor not validated before use | inferential | introduced | [melchior, balthasar] | corroborated |
 
 ## Refuted
 
@@ -632,7 +645,7 @@ regardless of its original severity.
 
 | issue_id | severity | blast_radius | verification_cost | decision | reason | fix_order | owner |
 |---|---|---|---|---|---|---|---|
-| kaji-audit-divide-by-zero | Critical | local | cheap | NOW | candidate-caused, unguarded divide | 1 | shinji |
+| gendo-divide-by-zero | Critical | local | cheap | NOW | candidate-caused, unguarded divide | 1 | shinji |
 | balthasar-unchecked-divisor | Important | local | cheap | DEFER | same root cause as #1, covered by the guard fix | - | shinji |
 
 ## Gate decision
@@ -673,7 +686,7 @@ re-audit cap (2).
 
 | issue_id | severity | resolution | commit | notes |
 |---|---|---|---|---|
-| kaji-audit-divide-by-zero | Critical | fixed | {hash} | DivideByZero guard added, regression test by kaworu |
+| gendo-divide-by-zero | Critical | fixed | {hash} | DivideByZero guard added, regression test by kaworu |
 | balthasar-unchecked-divisor | Important | deferred | - | residual_accepted at re-audit cap round 2 |
 ```
 
@@ -696,7 +709,7 @@ guessing.
 | phase | agent | model | effort | skill_resolution |
 |---|---|---|---|---|
 | implementation W1/T1 | nerv:shinji | sonnet | medium | paths-injected |
-| audit round 1 | nerv:kaji-audit | sonnet | medium | paths-injected |
+| audit round 1 | nerv:gendo | sonnet | medium | paths-injected |
 ```
 
 One row per launch across the whole change, pilots and audit passes

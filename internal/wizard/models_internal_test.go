@@ -15,7 +15,7 @@ import (
 func TestPrintModelTable_LongValuesKeepColumnsAligned(t *testing.T) {
 	table := []config.ModelRow{
 		{Role: "aoba", Model: "sonnet", Effort: "low", Source: "default"},
-		{Role: "kaji-audit", Model: "claude-sonnet-5-5-20260101", Effort: "medium", Source: "override"},
+		{Role: "gendo", Model: "claude-sonnet-5-5-20260101", Effort: "medium", Source: "override"},
 		{Role: "misato", Model: "fable", Effort: "high", Source: "gentle-ai:jd-fix-agent-extended"},
 	}
 	var out bytes.Buffer
@@ -34,7 +34,7 @@ func TestPrintModelTable_LongValuesKeepColumnsAligned(t *testing.T) {
 	want := strings.Index(rows[0], "WHAT IT DOES")
 	purposes := []string{
 		config.Roles().Info["aoba"].Purpose,
-		config.Roles().Info["kaji-audit"].Purpose,
+		config.Roles().Info["gendo"].Purpose,
 		config.Roles().Info["misato"].Purpose,
 	}
 	for i, purpose := range purposes {

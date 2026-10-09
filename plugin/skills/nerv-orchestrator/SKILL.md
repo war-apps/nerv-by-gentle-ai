@@ -70,6 +70,13 @@ carries "Do NOT delegate" in its own file and has no Agent tool access.
   never infers a decision, and never defaults one.
 - Every launch names the agent as `nerv:<role>` (e.g. `nerv:aoba`,
   `nerv:kaworu`), never the bare role name.
+- Every launch's Agent tool `description` reads `{Display name}: {action}`:
+  the display name from the role catalogue (as `/nerv:configure` and
+  `docs/configuration.md` show it), the action short, concrete and in English
+  (phase step, task id, round) — e.g. `Melchior-Magi 1: security audit, round 2`,
+  `Shinji Ikari: implement task 3.2`. The action never contains `|` or `;`,
+  the deliberation log's field delimiters. The full brief stays in the launch
+  prompt.
 
 ## Orchestrator lock
 
@@ -129,10 +136,14 @@ model and effort once per session, in this order: the project
 entry resolved and names a phase via `from: <phase>` instead of an explicit
 `model`/`effort` — that phase's `{model, effort}` in
 `~/.gentle-ai/state.json`'s `claude_phase_assignments`, then the plugin's
-own built-in default (aoba sonnet/low; kaji, ritsuko opus/high; melchor,
+own built-in default (aoba sonnet/low; kaji, ritsuko opus/high; melchior,
 misato fable/high; every other role sonnet/medium). An explicit
 `model`/`effort` on a `models.<role>` entry always wins over that same
 entry's `from`; a role absent from both files keeps the plugin default.
+Within each file, a role's entry may sit under its pre-rename key
+(`models.melchor` for `melchior`, `models.kaji-audit` for `gendo`): read it
+when the file has no entry under the current ID, before falling back to the
+next file, so a project legacy key still wins over a user current key.
 Cache the resolved per-role table for the session, the same as the two-file
 merge above; re-resolve only if `nerv.yaml` or `state.json` changes
 mid-session.
@@ -250,8 +261,8 @@ backend, asuka → frontend, toji → ci-cd/docker/k8s/infra, kaworu → tests
 
 **All roles installed.** Every NERV role in this build is installed and may
 be launched: `rei`, `asuka`, and `toji` ship as pilots alongside `shinji`
-and `kaworu`; `misato`, `hyuga`, `balthasar`, `melchor`, `casper`, and
-`fuyutsuki` ship for the FULL pipeline; `kaji` and `kaji-audit` ship for
+and `kaworu`; `misato`, `hyuga`, `balthasar`, `melchior`, `casper`, and
+`fuyutsuki` ship for the FULL pipeline; `kaji` and `gendo` ship for
 the audit stage, where `fuyutsuki` also refutes in `MODE: refute` (see
 `references/pipeline-full.md`). Never launch an agent that is not installed; a launch
 failure for a missing agent type is a stop, not a retry.
@@ -360,7 +371,7 @@ above it.
 
 Ikari reads the role's category list from the merged config (`testing` →
 ritsuko, kaworu, maya; `code` → pilots; `best-practices` → balthasar;
-`architecture` → melchor; `audit` → kaji passes and melchor's audit pass,
+`architecture` → melchior; `audit` → audit passes and melchior's audit pass,
 which carries the security lens), resolves each name to its
 exact path through `.atl/skill-registry.md` following the registry protocol
 in `skill-resolver.md` (cap 5 per launch), and injects the
@@ -377,8 +388,8 @@ validates that object the same way: parseable, `round` present, one entry
 per task in scope, every `reject` carrying at least one finding with
 `proof_refs`, escalations only to `critical`. A malformed object is
 retried once with the parse failure quoted; a second failure stops the
-vote round and reports. Audit passes (`nerv:melchor`/`nerv:balthasar`/
-`nerv:casper` MODE: audit, `nerv:kaji-audit`)
+vote round and reports. Audit passes (`nerv:melchior`/`nerv:balthasar`/
+`nerv:casper` MODE: audit, `nerv:gendo`)
 follow the same JSON-only rule and the same one-retry-then-stop mechanics,
 per the Audit stage mechanics section of `references/pipeline-full.md`.
 

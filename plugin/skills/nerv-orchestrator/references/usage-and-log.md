@@ -31,7 +31,9 @@ also defined in `nerv-artifacts.md`: `patch_frozen`, `audit_pass`,
 once per Hyuga tracker op — Preflight, Maya's full-gate start, the issue
 gate, and Close. Phase 5 adds `resume` (`{from_step, took_over_from}`) and
 `lock_refused`, also defined in `nerv-artifacts.md`, logged by the
-Orchestrator lock and Resume protocols.
+Orchestrator lock and Resume protocols. A `launch` entry's payload opens with
+the launch's `{Display name}: {action}` label, the same text as its Agent
+tool `description`.
 
 **Completeness rule.** The log is the run's only chronological record, so
 it never skips a step that happened: every launch gets its `launch` line

@@ -115,6 +115,75 @@ func TestSetModel_UnknownRole_Refused(t *testing.T) {
 	}
 }
 
+// A role removed from the catalogue (e.g. kaji-security in 3.0.0) can leave
+// its override behind in nerv.yaml; role=default must still clear it.
+func TestSetModel_ClearsStaleOverrideOfRemovedRole(t *testing.T) {
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "nerv.yaml")
+	stale := strings.Replace(richFixtureLF,
+		"misato: { model: fable, effort: high }",
+		"misato: { model: fable, effort: high }\n  kaji-security: { model: opus, effort: high }", 1)
+	if stale == richFixtureLF {
+		t.Fatal("fixture has no misato override to anchor the stale role")
+	}
+	writeFixture(t, configPath, stale)
+
+	deps := newTestDeps(dir, time.Now())
+	paths := configure.Paths{Config: configPath}
+
+	result, err := configure.SetModel(deps, paths, []string{"kaji-security=default"})
+	if err != nil {
+		t.Fatalf("SetModel() error = %v", err)
+	}
+	want := configure.Change{Key: "models.kaji-security", From: "opus/high", To: "default"}
+	if len(result.Changes) != 1 || result.Changes[0] != want {
+		t.Errorf("Changes = %+v, want [%+v]", result.Changes, want)
+	}
+
+	after, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(after), "kaji-security") {
+		t.Error("stale kaji-security override still present")
+	}
+	if !strings.Contains(string(after), "misato: { model: fable, effort: high }") {
+		t.Error("existing role override not preserved")
+	}
+}
+
+// Only clearing is allowed for a removed role: setting a value, or clearing
+// a role that has no override, is still refused as unknown.
+func TestSetModel_RemovedRole_OnlyStaleClearAllowed(t *testing.T) {
+	stale := strings.Replace(richFixtureLF,
+		"misato: { model: fable, effort: high }",
+		"misato: { model: fable, effort: high }\n  kaji-security: { model: opus, effort: high }", 1)
+	for _, tc := range []struct{ name, fixture, spec string }{
+		{"set value on stale role", stale, "kaji-security=sonnet"},
+		{"clear role with no override", richFixtureLF, "kaji-security=default"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			configPath := filepath.Join(dir, "nerv.yaml")
+			writeFixture(t, configPath, tc.fixture)
+
+			deps := newTestDeps(dir, time.Now())
+			_, err := configure.SetModel(deps, configure.Paths{Config: configPath}, []string{tc.spec})
+			var unknownRole *config.ErrUnknownRole
+			if !errors.As(err, &unknownRole) {
+				t.Fatalf("error = %v, want to wrap *config.ErrUnknownRole", err)
+			}
+			after, err := os.ReadFile(configPath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if string(after) != tc.fixture {
+				t.Error("file changed after a refused --set-model")
+			}
+		})
+	}
+}
+
 // ---------------------------------------------------------------------------
 // invalid model / effort tokens.
 // ---------------------------------------------------------------------------
@@ -185,11 +254,11 @@ func TestSetModel_FromPhase_Display(t *testing.T) {
 	deps := newTestDeps(dir, time.Now())
 	paths := configure.Paths{Config: configPath}
 
-	result, err := configure.SetModel(deps, paths, []string{"melchor=from:jd-judge-a"})
+	result, err := configure.SetModel(deps, paths, []string{"melchior=from:jd-judge-a"})
 	if err != nil {
 		t.Fatalf("SetModel() error = %v", err)
 	}
-	want := configure.Change{Key: "models.melchor", From: "from:jd-judge-b", To: "from:jd-judge-a"}
+	want := configure.Change{Key: "models.melchior", From: "from:jd-judge-b", To: "from:jd-judge-a"}
 	if len(result.Changes) != 1 || result.Changes[0] != want {
 		t.Errorf("Changes = %+v, want [%+v]", result.Changes, want)
 	}
@@ -198,8 +267,99 @@ func TestSetModel_FromPhase_Display(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(after), "melchor: { from: jd-judge-a }") {
+	if !strings.Contains(string(after), "melchior: { from: jd-judge-a }") {
 		t.Error("from: override not written")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Legacy role aliases: melchor -> melchior, kaji-audit -> gendo. An old key
+// in the file or on the command line resolves to the new role ID, and every
+// write stores the new ID once (never a duplicate legacy entry).
+// ---------------------------------------------------------------------------
+
+// modelKeyLines returns the trimmed models: entries of text whose key is one
+// of keys.
+func modelKeyLines(text string, keys ...string) []string {
+	var found []string
+	for _, line := range strings.Split(text, "\n") {
+		trimmed := strings.TrimSpace(line)
+		for _, key := range keys {
+			if strings.HasPrefix(trimmed, key+":") {
+				found = append(found, trimmed)
+			}
+		}
+	}
+	return found
+}
+
+func TestSetModel_LegacyAliases(t *testing.T) {
+	tests := []struct {
+		name       string
+		file       string
+		spec       string
+		wantChange configure.Change
+		wantLines  []string
+	}{
+		{
+			name:       "legacy key on the command line and in the file",
+			file:       "models:\n  melchor: { from: jd-judge-b }\n",
+			spec:       "melchor=opus",
+			wantChange: configure.Change{Key: "models.melchior", From: "from:jd-judge-b", To: "opus"},
+			wantLines:  []string{"melchior: { model: opus }"},
+		},
+		{
+			name:       "new key on the command line, legacy key in the file",
+			file:       "models:\n  kaji-audit: { model: haiku }\n",
+			spec:       "gendo=sonnet/high",
+			wantChange: configure.Change{Key: "models.gendo", From: "haiku", To: "sonnet/high"},
+			wantLines:  []string{"gendo: { model: sonnet, effort: high }"},
+		},
+		{
+			name:       "legacy key on the command line, nothing in the file",
+			file:       "enabled: true\n",
+			spec:       "kaji-audit=opus/xhigh",
+			wantChange: configure.Change{Key: "models.gendo", From: "default", To: "opus/xhigh"},
+			wantLines:  []string{"gendo: { model: opus, effort: xhigh }"},
+		},
+		{
+			name:       "legacy alias clears the resolved override",
+			file:       "models:\n  kaji-audit: { model: haiku }\n",
+			spec:       "kaji-audit=default",
+			wantChange: configure.Change{Key: "models.gendo", From: "haiku", To: "default"},
+			wantLines:  nil,
+		},
+		{
+			name:       "both keys in the file: the new key wins and the legacy one is dropped",
+			file:       "models:\n  melchior: { model: opus }\n  melchor: { model: haiku }\n",
+			spec:       "misato=fable",
+			wantChange: configure.Change{Key: "models.misato", From: "default", To: "fable"},
+			wantLines:  []string{"melchior: { model: opus }"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := t.TempDir()
+			configPath := filepath.Join(dir, "nerv.yaml")
+			writeFixture(t, configPath, tt.file)
+
+			result, err := configure.SetModel(newTestDeps(dir, time.Now()), configure.Paths{Config: configPath}, []string{tt.spec})
+			if err != nil {
+				t.Fatalf("SetModel() error = %v", err)
+			}
+			if len(result.Changes) != 1 || result.Changes[0] != tt.wantChange {
+				t.Errorf("Changes = %+v, want [%+v]", result.Changes, tt.wantChange)
+			}
+
+			after, err := os.ReadFile(configPath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			got := modelKeyLines(string(after), "melchor", "melchior", "kaji-audit", "gendo")
+			if strings.Join(got, "\n") != strings.Join(tt.wantLines, "\n") {
+				t.Errorf("renamed-role entries = %q, want %q\nfile:\n%s", got, tt.wantLines, after)
+			}
+		})
 	}
 }
 

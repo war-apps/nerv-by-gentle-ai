@@ -10,14 +10,14 @@ import (
 )
 
 // auditPassNames derives the four Phase 3 audit passes from the role
-// catalogue: the three MAGI (audit mode) plus the kaji-passes group without
+// catalogue: the three MAGI (audit mode) plus the audit-passes group without
 // the compiler (kaji), which runs after the parallel batch rather than
 // inside it. The refuter (fuyutsuki in refute mode) is outside the group.
 func auditPassNames(t *testing.T) []string {
 	t.Helper()
 	groups := config.Roles().Groups
 	names := append([]string(nil), groups["magi"]...)
-	for _, role := range groups["kaji-passes"] {
+	for _, role := range groups["audit-passes"] {
 		if role == "kaji" {
 			continue
 		}
@@ -29,8 +29,8 @@ func auditPassNames(t *testing.T) []string {
 	return names
 }
 
-// auditPassList names one prose region that must list every audit pass.
-type auditPassList struct {
+// proseAnchor names one prose region of a file, found by its anchor line.
+type proseAnchor struct {
 	file   string
 	region string
 	// anchor is a substring of the region's first line.
@@ -43,7 +43,8 @@ type auditPassList struct {
 	row bool
 }
 
-var auditPassLists = []auditPassList{
+// auditPassLists are the prose regions that must list every audit pass.
+var auditPassLists = []proseAnchor{
 	{
 		file:   "plugin/skills/nerv-orchestrator/references/pipeline-full.md",
 		region: "Pass batch and JSON gatekeeping paragraph",
@@ -58,7 +59,7 @@ var auditPassLists = []auditPassList{
 	{
 		file:   "plugin/skills/_shared/nerv-artifacts.md",
 		region: "audit pass JSON output contract launch paragraph",
-		anchor: "Each of `nerv:melchor`",
+		anchor: "Each of `nerv:melchior`",
 	},
 	{
 		file:   "plugin/agents/kaji.md",
@@ -70,7 +71,7 @@ var auditPassLists = []auditPassList{
 // proseRegion returns the region of data that starts at the line containing
 // anchor: the agents cell of that line for a table row, or the paragraph up
 // to the next blank line.
-func proseRegion(t *testing.T, data string, list auditPassList) string {
+func proseRegion(t *testing.T, data string, list proseAnchor) string {
 	t.Helper()
 	lines := strings.Split(data, "\n")
 	for i, line := range lines {
@@ -104,8 +105,8 @@ func TestAuditPassLists_NameAllFourPasses(t *testing.T) {
 		}
 		region := proseRegion(t, string(data), list)
 		for _, pass := range passes {
-			// Bound the name so `kaji-audit` never satisfies a bare `kaji`
-			// and a pass name never matches inside a longer identifier.
+			// Bound the name so a pass name never matches inside a longer
+			// identifier (a hyphenated agent or file name).
 			re := regexp.MustCompile(`(^|[^a-z-])` + regexp.QuoteMeta(pass) + `([^a-z-]|$)`)
 			if !re.MatchString(region) {
 				t.Errorf("%s (%s): audit pass %q missing from the launch list", list.file, list.region, pass)

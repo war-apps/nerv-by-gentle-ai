@@ -31,6 +31,10 @@ var GentleAIV4Agents = []string{
 // from:<phase> override. Neither ever changes how a role's model is
 // resolved (from:<phase> stays explicit).
 type RoleInfo struct {
+	// DisplayName is the role's full character name, for people; the role
+	// ID (the catalogue key) stays the short lowercase slug used as agent
+	// name, nerv:<id> subagent type and nerv.yaml models: key.
+	DisplayName string
 	// Purpose is a one-line description of what the role does.
 	Purpose string
 	// GentleAIEquivalents lists every gentle-ai v4 agent (from
@@ -58,56 +62,86 @@ type RoleCatalogue struct {
 // the interactive wizard's role/group prompts and "nerv configure
 // --set-model"'s role validation.
 //
-// It returns role names, group membership and display metadata (purpose,
-// gentle-ai equivalents), not a per-role plugin default model/effort — those live in plugin/agents/*.md frontmatter on
+// It returns role IDs, group membership and display metadata (display
+// name, purpose, gentle-ai equivalents), not a per-role plugin default model/effort — those live in plugin/agents/*.md frontmatter on
 // disk, read by internal/models (out of this file-I/O-free package's
 // scope). ModelTable below takes the resolved defaults as a parameter
 // instead.
 func Roles() RoleCatalogue {
 	allRoles := []string{
-		"aoba", "asuka", "balthasar", "casper", "fuyutsuki", "hyuga", "kaji",
-		"kaji-audit", "kaworu", "maya", "melchor", "misato", "rei", "ritsuko",
+		"aoba", "asuka", "balthasar", "casper", "fuyutsuki", "gendo", "hyuga",
+		"kaji", "kaworu", "maya", "melchior", "misato", "rei", "ritsuko",
 		"shinji", "toji",
 	}
 	groups := map[string][]string{
-		"magi":        {"balthasar", "melchor", "casper"},
-		"pilots":      {"rei", "shinji", "asuka", "toji", "kaworu"},
-		"kaji-passes": {"kaji", "kaji-audit"},
-		"all":         allRoles,
+		"magi":         {"balthasar", "melchior", "casper"},
+		"pilots":       {"rei", "shinji", "asuka", "toji", "kaworu"},
+		"audit-passes": {"kaji", "gendo"},
+		"all":          allRoles,
 	}
 	// Fix routing (jd-fix-agent) goes through the owning pilot, with kaworu
 	// writing the RED test first, so every pilot claims it. Every other
 	// gentle-ai v4 agent has exactly one owner: one MAGI member per judge,
-	// melchor carrying the security audit lens (review-risk), balthasar the
-	// readability audit lens (review-readability), kaji-audit the
-	// reliability and resilience lenses, and fuyutsuki the refuter (his
-	// read-only refute mode). casper and kaji (the compiler) claim none, so
-	// no role judges work it authored or compiles.
+	// melchior carrying the security audit lens (review-risk), balthasar the
+	// readability audit lens (review-readability), gendo the reliability and
+	// resilience lenses, and fuyutsuki the refuter (his read-only refute
+	// mode). casper and kaji (the compiler) claim none, so no role judges
+	// work it authored or compiles.
 	info := map[string]RoleInfo{
-		"misato":     {"authors the plan (proposal, design, tasks)", nil, ""},
-		"ritsuko":    {"intelligence, test planning, end-of-run docs", nil, ""},
-		"hyuga":      {"task criticality, dependency waves, tracking", nil, ""},
-		"melchor":    {"MAGI vote: structure and security; security audit", []string{"jd-judge-b", "review-risk"}, "jd-judge-b"},
-		"balthasar":  {"MAGI vote: software principles; readability audit", []string{"jd-judge-a", "review-readability"}, "jd-judge-a"},
-		"casper":     {"MAGI vote: process and documentation", nil, ""},
-		"fuyutsuki":  {"governance veto on new skills/scripts/commands; refutes severe audit findings", []string{"review-refuter"}, ""},
-		"kaworu":     {"writes the failing tests first", []string{"jd-fix-agent"}, ""},
-		"shinji":     {"backend pilot", []string{"jd-fix-agent"}, ""},
-		"asuka":      {"frontend pilot", []string{"jd-fix-agent"}, ""},
-		"rei":        {"data pilot (persistence, observability)", []string{"jd-fix-agent"}, ""},
-		"toji":       {"infrastructure pilot (CI/CD, containers)", []string{"jd-fix-agent"}, ""},
-		"maya":       {"quality gate (tests, lint, build)", nil, ""},
-		"kaji":       {"audit compiler", nil, ""},
-		"kaji-audit": {"audit pass: test coverage, reliability, correctness, resilience, performance", []string{"review-reliability", "review-resilience"}, ""},
-		"aoba":       {"commits, PRs and run telemetry", nil, ""},
+		"misato":    {"Misato Katsuragi", "authors the plan (proposal, design, tasks)", nil, ""},
+		"ritsuko":   {"Ritsuko Akagi", "intelligence, test planning, end-of-run docs", nil, ""},
+		"hyuga":     {"Makoto Hyuga", "task criticality, dependency waves, tracking", nil, ""},
+		"melchior":  {"Melchior-Magi 1", "MAGI vote: structure and security; security audit", []string{"jd-judge-b", "review-risk"}, "jd-judge-b"},
+		"balthasar": {"Balthasar-Magi 2", "MAGI vote: software principles; readability audit", []string{"jd-judge-a", "review-readability"}, "jd-judge-a"},
+		"casper":    {"Casper-Magi 3", "MAGI vote: process and documentation", nil, ""},
+		"fuyutsuki": {"Kōzō Fuyutsuki", "governance veto on new skills/scripts/commands; refutes severe audit findings", []string{"review-refuter"}, ""},
+		"kaworu":    {"Kaworu Nagisa", "writes the failing tests first", []string{"jd-fix-agent"}, ""},
+		"shinji":    {"Shinji Ikari", "backend pilot", []string{"jd-fix-agent"}, ""},
+		"asuka":     {"Asuka Langley Sohryu", "frontend pilot", []string{"jd-fix-agent"}, ""},
+		"rei":       {"Rei Ayanami", "data pilot (persistence, observability)", []string{"jd-fix-agent"}, ""},
+		"toji":      {"Tōji Suzuhara", "infrastructure pilot (CI/CD, containers)", []string{"jd-fix-agent"}, ""},
+		"maya":      {"Maya Ibuki", "quality gate (tests, lint, build)", nil, ""},
+		"kaji":      {"Ryoji Kaji", "audit compiler", nil, ""},
+		"gendo":     {"Gendo Ikari", "audit pass: test coverage, reliability, correctness, resilience, performance", []string{"review-reliability", "review-resilience"}, ""},
+		"aoba":      {"Shigeru Aoba", "commits, PRs and run telemetry", nil, ""},
 	}
 	groupDescriptions := map[string]string{
-		"magi":        "the three voters (balthasar, melchor, casper)",
-		"pilots":      "the implementers (kaworu, shinji, asuka, rei, toji)",
-		"kaji-passes": "the audit compiler and its pass (kaji, kaji-audit)",
-		"all":         "every role",
+		"magi":         "the three voters (balthasar, melchior, casper)",
+		"pilots":       "the implementers (kaworu, shinji, asuka, rei, toji)",
+		"audit-passes": "the audit compiler and its pass (kaji, gendo)",
+		"all":          "every role",
 	}
 	return RoleCatalogue{AllRoles: allRoles, Groups: groups, Info: info, GroupDescriptions: groupDescriptions}
+}
+
+// LegacyRoleAliases maps every retired role ID to the role ID that replaced
+// it. Old names stay accepted wherever a user types or stores a role key
+// (nerv.yaml models: keys, --set-model, the wizard) and resolve to the new
+// ID; every write stores the new ID. A fresh map is returned on each call.
+func LegacyRoleAliases() map[string]string {
+	return map[string]string{
+		"melchor":    "melchior",
+		"kaji-audit": "gendo",
+	}
+}
+
+// LegacyGroupAliases maps every retired group name to the group that
+// replaced it, accepted by the wizard's role/group prompt like
+// LegacyRoleAliases. A fresh map is returned on each call.
+func LegacyGroupAliases() map[string]string {
+	return map[string]string{
+		"kaji-passes": "audit-passes",
+	}
+}
+
+// CanonicalRole returns the current role ID for name: the replacement ID for
+// a legacy alias, or name unchanged otherwise (including an unknown name, so
+// callers keep validating and reporting it as written).
+func CanonicalRole(name string) string {
+	if id, ok := LegacyRoleAliases()[name]; ok {
+		return id
+	}
+	return name
 }
 
 // ErrUnknownRole is returned by ValidateRole for a role outside the
@@ -134,13 +168,18 @@ func ValidateRole(role string) error {
 // ResolveRoleTarget resolves one role-selection answer from the
 // interactive models wizard — a role name, a group name, or a 1-based row
 // number — into the role names it designates, or nil when it matches
-// none. Mirrors Resolve-NervRoleTarget.
+// none. A legacy role or group name (LegacyRoleAliases, LegacyGroupAliases)
+// resolves like its replacement. Mirrors Resolve-NervRoleTarget.
 func ResolveRoleTarget(target string, allRoles []string, groups map[string][]string, numberMap map[string]string) []string {
 	t := strings.TrimSpace(target)
 	if t == "" {
 		return nil
 	}
 	lower := strings.ToLower(t)
+	if g, ok := LegacyGroupAliases()[lower]; ok {
+		lower = g
+	}
+	lower = CanonicalRole(lower)
 	if g, ok := groups[lower]; ok {
 		return g
 	}
@@ -213,8 +252,15 @@ var modelEntryRe = regexp.MustCompile(`^\s*([A-Za-z0-9_-]+):\s*\{([^}]*)\}\s*(#.
 // (that needs filesystem access, out of this package's scope). ModelTable
 // below takes the resolved phase assignments as a parameter so callers
 // can apply that display-time resolution themselves.
+//
+// Keys are canonical role IDs: a legacy key (LegacyRoleAliases) is stored
+// under the role ID that replaced it. When the file holds both a legacy key
+// and its replacement, the replacement's entry wins regardless of order, so
+// a rewrite of the block keeps exactly one entry per role.
 func ReadModelsOverrides(doc *Document) map[string]ModelOverride {
 	result := map[string]ModelOverride{}
+	// fromCurrentKey marks roles whose entry was written under the current ID.
+	fromCurrentKey := map[string]bool{}
 
 	blockText, found := doc.Block("models")
 	if !found {
@@ -247,8 +293,17 @@ func ReadModelsOverrides(doc *Document) map[string]ModelOverride {
 				entry.Effort = value
 			}
 		}
-		if entry != (ModelOverride{}) {
-			result[role] = entry
+		if entry == (ModelOverride{}) {
+			continue
+		}
+		id := CanonicalRole(role)
+		legacy := id != role
+		if legacy && fromCurrentKey[id] {
+			continue
+		}
+		result[id] = entry
+		if !legacy {
+			fromCurrentKey[id] = true
 		}
 	}
 

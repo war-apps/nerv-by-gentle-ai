@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strings"
 	"testing"
+	"testing/fstest"
 
 	nerv "github.com/war-apps/nerv-by-gentle-ai"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/config"
@@ -20,7 +21,7 @@ import (
 
 // docsRoleRow is one parsed row of the roles table in docs/configuration.md.
 type docsRoleRow struct {
-	group, purpose, equivalent, defaults string
+	name, group, purpose, equivalent, defaults string
 }
 
 func stripTicks(s string) string { return strings.Trim(strings.TrimSpace(s), "`") }
@@ -56,18 +57,19 @@ func parseDocsRolesTable(t *testing.T) map[string]docsRoleRow {
 			continue
 		}
 		cells := strings.Split(strings.Trim(line, "| "), "|")
-		if len(cells) != 5 {
-			t.Fatalf("docs roles table row has %d cells, want 5: %q", len(cells), line)
+		if len(cells) != 6 {
+			t.Fatalf("docs roles table row has %d cells, want 6: %q", len(cells), line)
 		}
 		role := stripTicks(cells[0])
 		if _, dup := rows[role]; dup {
 			t.Errorf("docs roles table lists role %q twice", role)
 		}
 		rows[role] = docsRoleRow{
-			group:      stripTicks(cells[1]),
-			purpose:    strings.TrimSpace(cells[2]),
-			equivalent: equivalentsCell(cells[3]),
-			defaults:   strings.TrimSpace(cells[4]),
+			name:       strings.TrimSpace(cells[1]),
+			group:      stripTicks(cells[2]),
+			purpose:    strings.TrimSpace(cells[3]),
+			equivalent: equivalentsCell(cells[4]),
+			defaults:   strings.TrimSpace(cells[5]),
 		}
 	}
 	return rows
@@ -82,7 +84,7 @@ func TestDocsRolesTable_MatchesCatalogue(t *testing.T) {
 	rows := parseDocsRolesTable(t)
 
 	groupOf := map[string]string{}
-	for _, group := range []string{"magi", "pilots", "kaji-passes"} {
+	for _, group := range []string{"magi", "pilots", "audit-passes"} {
 		for _, role := range cat.Groups[group] {
 			groupOf[role] = group
 		}
@@ -95,6 +97,9 @@ func TestDocsRolesTable_MatchesCatalogue(t *testing.T) {
 			continue
 		}
 		info := cat.Info[role]
+		if row.name != info.DisplayName {
+			t.Errorf("docs roles table: role %q name = %q, catalogue = %q", role, row.name, info.DisplayName)
+		}
 		if row.purpose != info.Purpose {
 			t.Errorf("docs roles table: role %q purpose = %q, catalogue = %q", role, row.purpose, info.Purpose)
 		}
@@ -120,7 +125,7 @@ func TestDocsRolesTable_MatchesCatalogue(t *testing.T) {
 	}
 }
 
-var legendEntryRe = regexp.MustCompile("`(magi|pilots|kaji-passes)` = (?:the [a-z ]+ )?\\(([^)]*)\\)")
+var legendEntryRe = regexp.MustCompile("`(magi|pilots|audit-passes)` = (?:the [a-z ]+ )?\\(([^)]*)\\)")
 
 func namesIn(list string) []string {
 	var names []string
@@ -154,7 +159,7 @@ func TestConfigureCommandLegend_MatchesCatalogueGroups(t *testing.T) {
 			t.Errorf("commands/configure.md legend: group %q members = %v, catalogue = %v", group, got, want)
 		}
 	}
-	for _, group := range []string{"magi", "pilots", "kaji-passes"} {
+	for _, group := range []string{"magi", "pilots", "audit-passes"} {
 		if !found[group] {
 			t.Errorf("commands/configure.md has no legend entry for group %q", group)
 		}
@@ -173,7 +178,7 @@ func TestConfigureCommandLegend_MatchesCatalogueGroups(t *testing.T) {
 func TestGroupDescriptions_NameTheGroupMembers(t *testing.T) {
 	cat := config.Roles()
 	parens := regexp.MustCompile(`\(([^)]*)\)`)
-	for _, group := range []string{"magi", "pilots", "kaji-passes"} {
+	for _, group := range []string{"magi", "pilots", "audit-passes"} {
 		m := parens.FindStringSubmatch(cat.GroupDescriptions[group])
 		if m == nil {
 			t.Errorf("GroupDescriptions[%q] = %q lists no members in parentheses", group, cat.GroupDescriptions[group])
@@ -182,6 +187,149 @@ func TestGroupDescriptions_NameTheGroupMembers(t *testing.T) {
 		got, want := namesIn(m[1]), sortedCopy(cat.Groups[group])
 		if strings.Join(got, ",") != strings.Join(want, ",") {
 			t.Errorf("GroupDescriptions[%q] names %v, Groups[%q] = %v", group, got, group, want)
+		}
+	}
+}
+
+// legacyNameRe matches the retired role IDs, group name and their
+// capitalised prose forms. They survive only as aliases in internal/config
+// (LegacyRoleAliases, LegacyGroupAliases) and in released history.
+var legacyNameRe = regexp.MustCompile(`(?i)\bmelchor\b|\bkaji-audit\b|\bkaji-passes\b|\bkaji passes\b`)
+
+// allowedLegacyTokens are the only legacy names the guard tolerates, each
+// only in the one plugin file that documents its read fallback: the
+// pre-rename audit pass names (file stem and Engram key suffix), so an audit
+// round in flight across the upgrade still compiles, and the legacy models:
+// keys the orchestrator resolves per scope before layering project over user.
+var allowedLegacyTokens = map[string][]string{
+	legacyPassFallbackDoc: {"pass-melchor-round-N", "pass-kaji-audit-round-N"},
+	legacyModelsKeysDoc:   {"models.melchor", "models.kaji-audit"},
+}
+
+const (
+	legacyPassFallbackDoc = "skills/_shared/nerv-artifacts.md"
+	legacyModelsKeysDoc   = "skills/nerv-orchestrator/SKILL.md"
+)
+
+// stripAllowedLegacy removes the allowed legacy tokens from a line of the
+// file that documents them; every other file is checked verbatim.
+func stripAllowedLegacy(path, line string) string {
+	for _, tok := range allowedLegacyTokens[path] {
+		line = strings.ReplaceAll(line, tok, "")
+	}
+	return line
+}
+
+// The plugin the user installs, the bench journeys and the integration guide
+// name every renamed role by its new ID, so no orchestration prose launches a
+// subagent type that no longer exists. docs/configuration.md is left out on
+// purpose: it documents the legacy aliases.
+func TestProse_NamesNoLegacyRoleIDs(t *testing.T) {
+	check := func(fsys fs.FS, prefix string) {
+		t.Helper()
+		err := fs.WalkDir(fsys, ".", func(path string, d fs.DirEntry, err error) error {
+			if err != nil || d.IsDir() {
+				return err
+			}
+			data, err := fs.ReadFile(fsys, path)
+			if err != nil {
+				return err
+			}
+			for i, line := range strings.Split(string(data), "\n") {
+				if prefix == "plugin/" {
+					line = stripAllowedLegacy(path, line)
+				}
+				if m := legacyNameRe.FindString(line); m != "" {
+					t.Errorf("%s%s:%d names legacy role %q", prefix, path, i+1, m)
+				}
+			}
+			return nil
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	check(nerv.PluginFS(), "plugin/")
+	check(os.DirFS("bench"), "bench/")
+	check(fstest.MapFS{"integration.md": mustReadFile(t, "docs/integration.md")}, "docs/")
+}
+
+// An audit round started before the melchior/gendo rename keeps its pass
+// files under the old names. nerv-artifacts.md states the read fallback once
+// (both legacy file names, both legacy Engram keys, the canonical pass each
+// counts as) and Kaji, who compiles the passes, points to it.
+func TestAuditPasses_LegacyPassNameFallbackDocumented(t *testing.T) {
+	artifacts := readPluginFile(t, legacyPassFallbackDoc)
+	for _, want := range []string{
+		"`pass-melchor-round-N.json`",
+		"`pass-kaji-audit-round-N.json`",
+		"`nerv/{change}/audit-pass-melchor-round-N`",
+		"`nerv/{change}/audit-pass-kaji-audit-round-N`",
+		"#### Legacy pass names",
+	} {
+		if !strings.Contains(artifacts, want) {
+			t.Errorf("%s does not document the legacy pass fallback: missing %s", legacyPassFallbackDoc, want)
+		}
+	}
+	if kaji := readPluginFile(t, "agents/kaji.md"); !strings.Contains(kaji, "Legacy pass names") {
+		t.Errorf("agents/kaji.md does not point to the legacy pass-name fallback in nerv-artifacts.md")
+	}
+}
+
+// Ikari resolves each launch's model from the project and user models:
+// blocks itself, so its resolution rule must read the legacy keys too, or a
+// models.melchor / models.kaji-audit override (the only way a project-scope
+// file can set a model) would be silently ignored after the rename.
+func TestOrchestrator_ModelResolutionReadsLegacyRoleKeys(t *testing.T) {
+	skill := readPluginFile(t, legacyModelsKeysDoc)
+	for _, want := range []string{"`models.melchor`", "`models.kaji-audit`"} {
+		if !strings.Contains(skill, want) {
+			t.Errorf("%s model resolution does not read the legacy key %s", legacyModelsKeysDoc, want)
+		}
+	}
+}
+
+func readPluginFile(t *testing.T, path string) string {
+	t.Helper()
+	data, err := fs.ReadFile(nerv.PluginFS(), path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(data)
+}
+
+func mustReadFile(t *testing.T, path string) *fstest.MapFile {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return &fstest.MapFile{Data: data}
+}
+
+var (
+	agentDescriptionRe = regexp.MustCompile(`(?m)^description: (.*)$`)
+	agentHeadingRe     = regexp.MustCompile(`(?m)^# (.*)$`)
+)
+
+// Every agent introduces itself by its full character name: the frontmatter
+// description starts with "<display name>, " and the first heading with
+// "<display name> — ", while the file name and name: stay the role ID.
+func TestAgents_IntroduceTheirDisplayName(t *testing.T) {
+	for _, role := range config.Roles().AllRoles {
+		display := config.Roles().Info[role].DisplayName
+		data, err := fs.ReadFile(nerv.PluginFS(), "agents/"+role+".md")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(string(data), "\nname: "+role+"\n") {
+			t.Errorf("agents/%s.md: frontmatter name is not the role ID %q", role, role)
+		}
+		if m := agentDescriptionRe.FindStringSubmatch(string(data)); m == nil || !strings.HasPrefix(m[1], display+", ") {
+			t.Errorf("agents/%s.md: description must start with %q", role, display+", ")
+		}
+		if m := agentHeadingRe.FindStringSubmatch(string(data)); m == nil || !strings.HasPrefix(m[1], display+" — ") {
+			t.Errorf("agents/%s.md: first heading must start with %q", role, display+" — ")
 		}
 	}
 }
