@@ -135,6 +135,16 @@ Branch created from 555add4.
   melchior/gendo rename (28 files changed, 297 insertions(+),
   134 deletions(-), feature doc included).
 
+### Review
+
+- Native review of 555add4..d227dba (medium, reliability lens, user
+  granted): approved and acknowledged. Two informational suggestions:
+  R3-001 no test covers `apply-models` or the user/project merge with mixed
+  legacy and new keys; R3-002 an audit round in flight across the upgrade
+  keeps pass files under the old names (`pass-melchor-*`,
+  `pass-kaji-audit-*`), which the compiler would report missing.
+- Parent spot check: `go test ./...` ok.
+
 ## Next step
 
-Parent review of both commits, then PR (`single-pr`).
+User decides on push and PR (`single-pr`).
