@@ -70,6 +70,13 @@ func TestApplyModels_LegacyRoleKeysApplyToRenamedAgents(t *testing.T) {
 			agent: "gendo.md",
 			want:  []string{"model: opus", "effort: xhigh"},
 		},
+		{
+			// The new key wins whatever the order: here it comes last.
+			name:  "legacy-key-first-new-key-still-wins",
+			yaml:  "models:\n  kaji-audit: { model: haiku, effort: low }\n  gendo: { model: opus, effort: xhigh }\n",
+			agent: "gendo.md",
+			want:  []string{"model: opus", "effort: xhigh"},
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

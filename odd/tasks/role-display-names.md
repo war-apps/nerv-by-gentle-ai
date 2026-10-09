@@ -205,6 +205,11 @@ Branch created from 555add4.
   the test body, not through product code), R3-prose-presence-only (the
   orchestrator prose test only checks the legacy keys appear).
 
+- R3-applymodels-key-order addressed (user asked): case
+  `legacy-key-first-new-key-still-wins` added to
+  `TestApplyModels_LegacyRoleKeysApplyToRenamedAgents`; characterization,
+  it passed on first run (the behaviour was already correct).
+
 ## Next step
 
 User decides on push and PR (`single-pr`).
