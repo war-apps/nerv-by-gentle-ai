@@ -74,7 +74,9 @@ carries "Do NOT delegate" in its own file and has no Agent tool access.
   the display name from the role catalogue (as `/nerv:configure` and
   `docs/configuration.md` show it), the action short, concrete and in English
   (phase step, task id, round) — e.g. `Melchior-Magi 1: security audit, round 2`,
-  `Shinji Ikari: implement task 3.2`. The full brief stays in the launch prompt.
+  `Shinji Ikari: implement task 3.2`. The action never contains `|` or `;`,
+  the deliberation log's field delimiters. The full brief stays in the launch
+  prompt.
 
 ## Orchestrator lock
 
