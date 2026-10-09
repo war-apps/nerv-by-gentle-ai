@@ -131,7 +131,9 @@ Branch created from 555add4.
 - GREEN: `go test ./...` ok, `go vet ./...` clean, `gofmt -l .` empty.
 - Size before the doc update: 27 files changed, 270 insertions(+),
   131 deletions(-).
-- Commit: recorded in a following `docs(odd)` commit.
+- Commit: `8a236e5` docs: show role display names and finish the
+  melchior/gendo rename (28 files changed, 297 insertions(+),
+  134 deletions(-), feature doc included).
 
 ## Next step
 
