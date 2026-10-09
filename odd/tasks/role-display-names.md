@@ -194,6 +194,17 @@ Branch created from 555add4.
   fix(orchestrator): read legacy models keys in each scope before layering
   (2 files, +33/-12).
 
+### T3 review
+
+- The cumulative candidate from 3f53343 (2786 lines) stopped with
+  `lens_context_budget_exceeded` (terminal, no authority created).
+- Native review of the T3 slice bef2f50..adc8829 (medium, reliability lens,
+  user granted): approved and acknowledged. Advisory findings:
+  R3-applymodels-key-order (WARNING: the new-key-wins case only puts the new
+  key first), R3-layering-reimplemented-in-test (the layering test merges in
+  the test body, not through product code), R3-prose-presence-only (the
+  orchestrator prose test only checks the legacy keys appear).
+
 ## Next step
 
 User decides on push and PR (`single-pr`).
