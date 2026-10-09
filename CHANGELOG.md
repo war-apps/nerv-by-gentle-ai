@@ -7,8 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.0.0] - 2026-10-09
+
+### Breaking
+- config: rename melchor to melchior and kaji-audit to gendo (31a6c90)
+  - Anything that launches the agents directly must use the subagent types
+    `nerv:melchior` and `nerv:gendo` instead of `nerv:melchor` and `nerv:kaji-audit`; the
+    audit pass files are `pass-melchior-round-N.json` and `pass-gendo-round-N.json`.
+  - The group `kaji-passes` is now `audit-passes` (`kaji`, `gendo`).
+  - The old names stay accepted as legacy aliases: `models.melchor` and `models.kaji-audit`
+    in `nerv.yaml` keep applying to the renamed roles, and `nerv configure --set-model` and the
+    wizard accept the old role and group names. Every write stores the new ID once; when a
+    file holds both keys, the new one wins.
+
 ### Added
-- orchestrator: label each agent launch `{Display name}: {action}` (e.g. `nerv:melchior(Melchior-Magi 1: security audit, round 2)`), and open its deliberation-log `launch` entry with the same label.
 - config: give every role its full character name for display (31a6c90)
   - Role IDs stay short lowercase slugs (agent names, `nerv:<id>` subagent types, `models:`
     keys); each role now also has a display name, such as `misato` = Misato Katsuragi and
@@ -16,17 +28,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - The name is shown as `display_name` on each `nerv configure --print` models row, as the
     NAME column of the wizard's models table, in `/nerv:configure` and `/nerv:status`, in the
     roles table of `docs/configuration.md`, and at the start of each agent's description.
+- orchestrator: label each agent launch `{Display name}: {action}` (e.g.
+  `nerv:melchior(Melchior-Magi 1: security audit, round 2)`), and open its deliberation-log
+  `launch` entry with the same label (ca15ec4, 6d53de8)
 
-### Changed
-- config: rename melchor to melchior and kaji-audit to gendo (31a6c90)
-  - Breaking for anything that launches the agents directly: the subagent types
-    `nerv:melchor` and `nerv:kaji-audit` are now `nerv:melchior` and `nerv:gendo`, and the
-    audit pass files are `pass-melchior-round-N.json` and `pass-gendo-round-N.json`.
-  - The group `kaji-passes` is now `audit-passes` (`kaji`, `gendo`).
-  - The old names stay accepted as legacy aliases: `models.melchor` and `models.kaji-audit`
-    in `nerv.yaml` keep applying to the renamed roles, and `nerv configure --set-model` and the
-    wizard accept the old role and group names. Every write stores the new ID once; when a
-    file holds both keys, the new one wins.
+### Fixed
+- configure: `--set-model <role>=default` clears a stale override left for a role removed
+  from the catalogue (b8f2267)
+- audit: an audit round started before the rename resumes with its pre-rename pass files
+  (af0bd9b)
+- orchestrator: a project `nerv.yaml` holding a legacy `models.melchor` or
+  `models.kaji-audit` key applies it to the renamed role (97b2920)
 
 ## [3.0.0] - 2026-10-08
 
