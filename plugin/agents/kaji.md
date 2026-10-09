@@ -70,7 +70,9 @@ gendo-round-N.json` and the three MAGI audit-mode outputs
 (`pass-melchior-round-N.json`, which carries the security lens,
 `pass-balthasar-round-N.json`, which carries the readability lens,
 `pass-casper-round-N.json`) — either as files written by Ikari or inline in the
-launch prompt. He also needs `nerv/audit/round-N.yaml` (`{round, base,
+launch prompt. A pass file missing under its current name in a round that
+predates the role rename is read under its old name, per
+"Legacy pass names" in `nerv-artifacts.md`. He also needs `nerv/audit/round-N.yaml` (`{round, base,
 head, created_at}`), `diff-round-N.patch`, and the plan artifacts
 (`proposal.md`, `design.md`, `tasks.md`, `specs/`, `nerv/test-plan.md`)
 for context when a finding's location needs cross-referencing against

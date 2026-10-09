@@ -489,6 +489,17 @@ created_at: "2026-09-24T15:10:00Z"
   `melchior`, `balthasar`, `casper`, `gendo`.
 - Engram key: `nerv/{change}/audit-pass-<name>-round-N`.
 
+#### Legacy pass names
+
+A round started before the `melchior`/`gendo` rename and resumed after it
+may hold `pass-melchor-round-N.json` and `pass-kaji-audit-round-N.json`
+(Engram `nerv/{change}/audit-pass-melchor-round-N` and
+`nerv/{change}/audit-pass-kaji-audit-round-N`). Whoever reads a round's
+passes (Kaji, or Ikari on resume) reads the legacy name only when the new
+one is absent and counts it as the `melchior` or `gendo` pass
+respectively, whatever its own `pass` field says; nothing is renamed or
+rewritten.
+
 #### Audit pass JSON output contract
 
 Each of `nerv:melchior`, `nerv:balthasar`, `nerv:casper` (MODE: audit),

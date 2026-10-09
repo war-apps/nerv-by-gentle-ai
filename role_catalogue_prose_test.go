@@ -196,6 +196,26 @@ func TestGroupDescriptions_NameTheGroupMembers(t *testing.T) {
 // (LegacyRoleAliases, LegacyGroupAliases) and in released history.
 var legacyNameRe = regexp.MustCompile(`(?i)\bmelchor\b|\bkaji-audit\b|\bkaji-passes\b|\bkaji passes\b`)
 
+// legacyPassFileTokens are the pre-rename audit pass names (file stem and
+// Engram key suffix) that nerv-artifacts.md must name so an audit round in
+// flight across the upgrade still compiles. They are the only legacy names the
+// guard tolerates, and only in that file.
+var legacyPassFileTokens = []string{"pass-melchor-round-N", "pass-kaji-audit-round-N"}
+
+const legacyPassFallbackDoc = "skills/_shared/nerv-artifacts.md"
+
+// stripAllowedLegacy removes the legacy pass-file tokens from a line of the
+// one file that documents the fallback; every other file is checked verbatim.
+func stripAllowedLegacy(path, line string) string {
+	if path != legacyPassFallbackDoc {
+		return line
+	}
+	for _, tok := range legacyPassFileTokens {
+		line = strings.ReplaceAll(line, tok, "")
+	}
+	return line
+}
+
 // The plugin the user installs, the bench journeys and the integration guide
 // name every renamed role by its new ID, so no orchestration prose launches a
 // subagent type that no longer exists. docs/configuration.md is left out on
@@ -212,6 +232,9 @@ func TestProse_NamesNoLegacyRoleIDs(t *testing.T) {
 				return err
 			}
 			for i, line := range strings.Split(string(data), "\n") {
+				if prefix == "plugin/" {
+					line = stripAllowedLegacy(path, line)
+				}
 				if m := legacyNameRe.FindString(line); m != "" {
 					t.Errorf("%s%s:%d names legacy role %q", prefix, path, i+1, m)
 				}
@@ -225,6 +248,37 @@ func TestProse_NamesNoLegacyRoleIDs(t *testing.T) {
 	check(nerv.PluginFS(), "plugin/")
 	check(os.DirFS("bench"), "bench/")
 	check(fstest.MapFS{"integration.md": mustReadFile(t, "docs/integration.md")}, "docs/")
+}
+
+// An audit round started before the melchior/gendo rename keeps its pass
+// files under the old names. nerv-artifacts.md states the read fallback once
+// (both legacy file names, both legacy Engram keys, the canonical pass each
+// counts as) and Kaji, who compiles the passes, points to it.
+func TestAuditPasses_LegacyPassNameFallbackDocumented(t *testing.T) {
+	artifacts := readPluginFile(t, legacyPassFallbackDoc)
+	for _, want := range []string{
+		"`pass-melchor-round-N.json`",
+		"`pass-kaji-audit-round-N.json`",
+		"`nerv/{change}/audit-pass-melchor-round-N`",
+		"`nerv/{change}/audit-pass-kaji-audit-round-N`",
+		"#### Legacy pass names",
+	} {
+		if !strings.Contains(artifacts, want) {
+			t.Errorf("%s does not document the legacy pass fallback: missing %s", legacyPassFallbackDoc, want)
+		}
+	}
+	if kaji := readPluginFile(t, "agents/kaji.md"); !strings.Contains(kaji, "Legacy pass names") {
+		t.Errorf("agents/kaji.md does not point to the legacy pass-name fallback in nerv-artifacts.md")
+	}
+}
+
+func readPluginFile(t *testing.T, path string) string {
+	t.Helper()
+	data, err := fs.ReadFile(nerv.PluginFS(), path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(data)
 }
 
 func mustReadFile(t *testing.T, path string) *fstest.MapFile {
