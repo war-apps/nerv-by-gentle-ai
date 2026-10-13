@@ -36,9 +36,12 @@ const (
 	DefaultShell = "bash"
 )
 
-// DefaultDockerTags are the tags a docker image receives when tags is not
-// set: every tag kind (DockerTags). Load gives each image its own copy.
-var DefaultDockerTags = []string{"version", "channel", "latest"}
+// DefaultDockerTags returns the tags a docker image receives when tags is
+// not set: every tag kind (DockerTags). Each call returns a fresh slice, so
+// a caller cannot change the defaults of later loads.
+func DefaultDockerTags() []string {
+	return []string{"version", "channel", "latest"}
+}
 
 // applyDefaults fills every unset field with its documented default.
 func (r *Release) applyDefaults() {
@@ -105,7 +108,7 @@ func (p *Project) applyPresetDefaults() {
 				img.Context = DefaultDockerContext
 			}
 			if len(img.Tags) == 0 {
-				img.Tags = slices.Clone(DefaultDockerTags)
+				img.Tags = DefaultDockerTags()
 			}
 			if img.Push == nil {
 				push := true

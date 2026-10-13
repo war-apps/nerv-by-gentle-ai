@@ -171,7 +171,11 @@ such as `presets: docker`) stops at the decoding problems.
   indentation, so a YAML error elsewhere in the file never affects the
   release commands. When the file's layout does not allow the cut
   (`---` between documents, an indented or flow top level), the whole file
-  is parsed instead.
+  is parsed instead. The key may be quoted (`"release":`, `'release':`) or
+  carry an anchor or a tag (`&r release:`, `!!str release:`). If the file
+  is not valid YAML and a top-level line may still be the release key
+  without being recognised (e.g. an escaped quoted key), that is an error
+  naming the line, not a repository without release configuration.
 - Anchors and merge keys work inside the section, e.g. to share settings
   between projects:
 
@@ -189,7 +193,9 @@ such as `presets: docker`) stops at the decoding problems.
 
   Keys reached through a merge are checked like any other.
 - An alias inside the section cannot refer to an anchor defined outside
-  it; that is reported as an error.
+  it; that is reported as an error. An alias whose anchor is defined
+  nowhere before it (a typo, or an alias used before its anchor) is
+  reported as an undefined anchor, with the line of the alias.
 - A file whose top level is not a mapping is an error; an empty file, or
   one without `release:`, means the repository has no release
   configuration.

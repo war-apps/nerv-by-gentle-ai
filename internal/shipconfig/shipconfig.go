@@ -145,7 +145,7 @@ type DockerImage struct {
 	BuildArgs map[string]string `yaml:"build_args"`
 	// Tags selects the image tags: version (the release version), channel
 	// (the release channel, e.g. alpha or rc) and latest (only applied on a
-	// release of the default channel). Default: DefaultDockerTags.
+	// release of the default channel). Default: DefaultDockerTags().
 	Tags []string `yaml:"tags"`
 	// Push pushes the tags after the build. Default: true; Load always sets
 	// it, read it through ShouldPush.

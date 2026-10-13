@@ -180,6 +180,105 @@ release:
 	}
 }
 
+// An alias whose anchor is defined nowhere before it (a typo, or an alias
+// used before its anchor) is reported as undefined, not as an outside anchor.
+func TestLoad_AliasToUndefinedAnchor(t *testing.T) {
+	tests := []struct{ name, yaml, alias, line string }{
+		{"typo", `release:
+  projects:
+    - name: app
+      path: .
+      hooks:
+        prepare:
+          - &bump { run: scripts/bump.sh }
+      stages:
+        test: *bmup
+`, "*bmup", "line 9"},
+		{"used before its definition", `release:
+  projects:
+    - name: app
+      path: .
+      stages:
+        test: *cmd
+      hooks:
+        prepare:
+          - &cmd { run: scripts/test.sh }
+`, "*cmd", "line 6"},
+		{"only a longer anchor name outside", `defaults: &cmdx { run: scripts/test.sh }
+release:
+  projects:
+    - name: app
+      path: .
+      stages:
+        test: *cmd
+`, "*cmd", "line 7"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := shipconfig.Load(writeConfig(t, tt.yaml))
+			var verr *shipconfig.ValidationError
+			if !errors.As(err, &verr) {
+				t.Fatalf("err = %v, want a *ValidationError", err)
+			}
+			for _, want := range []string{tt.alias, tt.line, "undefined anchor"} {
+				if !strings.Contains(err.Error(), want) {
+					t.Errorf("err = %v, want it to contain %q", err, want)
+				}
+			}
+			if strings.Contains(err.Error(), "outside") {
+				t.Errorf("err = %v, want no mention of an outside anchor", err)
+			}
+		})
+	}
+}
+
+// A top-level release key written with a node property or quoted is still
+// found, even when the rest of the file is not valid YAML.
+func TestLoad_ReleaseKeyForms(t *testing.T) {
+	const body = "\n  projects:\n    - name: app\n      path: .\n"
+	const broken = "models:\n\tmisato: fable\n"
+	tests := []struct{ name, key string }{
+		{"anchored", "&r release:"},
+		{"tagged", "!!str release:"},
+		{"anchored and tagged", "&r !!str release:"},
+		{"verbatim tag", "!<tag:yaml.org,2002:str> release:"},
+		{"double-quoted", `"release":`},
+		{"single-quoted", "'release':"},
+	}
+	for _, tt := range tests {
+		for _, layout := range []struct{ name, before string }{
+			{"after another key", "enabled: true\n"},
+			{"first key", ""},
+		} {
+			t.Run(tt.name+"/"+layout.name, func(t *testing.T) {
+				rel := mustLoad(t, layout.before+tt.key+body+broken)
+				if len(rel.Projects) != 1 || rel.Projects[0].Name != "app" {
+					t.Fatalf("projects = %+v, want [app]", rel.Projects)
+				}
+			})
+		}
+	}
+}
+
+// A broken file with a line that may be a top-level release key the cut
+// cannot recognise is an error, never a repository without configuration.
+func TestLoad_UnrecognisedReleaseKeyInBrokenFile(t *testing.T) {
+	_, err := shipconfig.Load(writeConfig(t, `enabled: true
+"rel\x65ase":
+  projects:
+    - name: app
+      path: .
+models:
+	misato: fable
+`))
+	if err == nil || errors.Is(err, shipconfig.ErrNotConfigured) {
+		t.Fatalf("err = %v, want a parse error", err)
+	}
+	if !strings.Contains(err.Error(), "line 2") {
+		t.Errorf("err = %v, want it to name line 2", err)
+	}
+}
+
 // Billion laughs through merge keys: the unknown-field walk has a budget and
 // fails fast instead of expanding 10^9 nodes.
 func TestLoad_AliasExpansionBudget(t *testing.T) {
@@ -352,7 +451,7 @@ func TestLoad_PresetDefaults(t *testing.T) {
 	}
 	img := p.Docker.Images[0]
 	if img.Dockerfile != shipconfig.DefaultDockerfile || img.Context != shipconfig.DefaultDockerContext || !img.ShouldPush() ||
-		!reflect.DeepEqual(img.Tags, shipconfig.DefaultDockerTags) ||
+		!reflect.DeepEqual(img.Tags, []string{"version", "channel", "latest"}) ||
 		img.BuildArgs["APP_VERSION"] != "${version}" {
 		t.Errorf("image[0] = %+v", img)
 	}
@@ -417,8 +516,27 @@ func TestDefaults_MatchDocs(t *testing.T) {
 			t.Errorf("docs/release-commands.md does not mention the default `%s`", documented)
 		}
 	}
-	if !reflect.DeepEqual(shipconfig.DefaultDockerTags, []string{"version", "channel", "latest"}) {
-		t.Errorf("DefaultDockerTags = %v", shipconfig.DefaultDockerTags)
+	if got := shipconfig.DefaultDockerTags(); !reflect.DeepEqual(got, []string{"version", "channel", "latest"}) {
+		t.Errorf("DefaultDockerTags() = %v", got)
+	}
+	for _, tag := range shipconfig.DefaultDockerTags() {
+		if !strings.Contains(string(doc), tag) {
+			t.Errorf("docs/release-commands.md does not mention the default tag %s", tag)
+		}
+	}
+}
+
+// The default docker tags cannot be changed from outside the package: a
+// caller mutating the returned slice does not affect later loads.
+func TestDefaultDockerTags_ReturnsACopy(t *testing.T) {
+	tags := shipconfig.DefaultDockerTags()
+	tags[0] = "mutated"
+	if again := shipconfig.DefaultDockerTags(); again[0] != "version" {
+		t.Fatalf("DefaultDockerTags() = %v after mutating a previous result", again)
+	}
+	rel := mustLoad(t, "release:\n  projects:\n    - name: app\n      path: .\n      presets: [docker]\n      docker:\n        images:\n          - name: ghcr.io/org/app\n")
+	if got := rel.Projects[0].Docker.Images[0].Tags; !reflect.DeepEqual(got, []string{"version", "channel", "latest"}) {
+		t.Fatalf("image tags = %v, want the documented defaults", got)
 	}
 }
 
