@@ -604,6 +604,19 @@ delegated (one writer). Test-first.
   `d2d10f1` `fix(semrel): link release notes to the public origin, or not
   at all` (8 files changed, 256 insertions(+), 16 deletions(-)).
 
+### T3 follow-up review
+
+- Native review of a1b20f0..ddc6c48 (medium, user granted): approved and
+  acknowledged. One WARNING, R3-no-section-project-name-coupling-untested:
+  without a release: section the CLI required the result's project name to
+  equal the git top-level's base name, so a name the engine derives
+  differently (symlink, Windows case) became "no result". Fixed inline by
+  the parent in `ddb79a1` (route: inline, one mechanical file + test):
+  a sectionless repository prints the engine's single result whatever its
+  name. RED: `TestVersionNext_NoSectionPrintsTheSingleResultWhateverItsName`
+  failed; GREEN after the fix; `go test ./...`, `go vet ./...`,
+  `GOOS=windows go vet ./cmd/nerv/`, `gofmt -l .` clean.
+
 ## Next step
 
 Review of the T3 follow-ups, then the acceptance comparison against
