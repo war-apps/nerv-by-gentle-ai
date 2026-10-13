@@ -425,6 +425,20 @@ Route: delegated (one writer). Test-first.
   `120d447` `fix(semrel): require git 2.31 before filtering project commits
   by path` (6 files changed, 188 insertions(+), 2 deletions(-)).
 
+### T2 second follow-up review
+
+- Native review of 3a7e2ab..80d7e40 (high risk, 4 lenses, user granted):
+  approved and acknowledged. Advisory: R4-setpgid-background-tty and
+  R3-setpgid-tty-prompt-stops-child (WARNING: a background process group
+  gets SIGTTIN/SIGTTOU when a helper opens the terminal, so it stops until
+  the timeout), R4-windows-new-group-ctrlc (WARNING: CREATE_NEW_PROCESS_GROUP
+  drops console Ctrl-C for children; taskkill is unbounded),
+  R3-waitdelay-turns-success-into-error (a lingering descendant turns a
+  successful exit into ErrWaitDelay), R3-windows-tree-kill-unproved,
+  R2-unasserted-ran-counter, R2-ctrlc-consequence-undocumented-in-code.
+- T3 must cancel the context on SIGINT/SIGTERM (signal.NotifyContext) so a
+  terminal Ctrl-C still stops git, npm and node.
+
 ## Next step
 
 T3 (`nerv version` CLI) on top of T2.
