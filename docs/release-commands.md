@@ -227,6 +227,12 @@ its version.
 - It runs on a disposable mirror of the repository (all local branches and
   tags), checked out on the requested local branch: the working tree,
   branches and tags of the repository are never changed.
+- The release notes link to the repository's public address, as in CI:
+  the `repositoryUrl` of its semantic-release configuration, the
+  `package.json` `repository`, or the `origin` remote's URL (offline too;
+  user info, query and fragment removed, so credentials never reach the
+  notes). With none of these, or a local path, the notes have no links
+  (`## 1.0.1 (2026-10-13)`, `* fix thing (c1918a5)`).
 - Release tags and semantic-release's git notes are read from the `origin`
   remote first (read access is enough). semantic-release records each
   release's channel in a note that a plain `git fetch` never brings; without

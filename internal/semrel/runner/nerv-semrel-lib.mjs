@@ -199,3 +199,30 @@ export function raiseReleaseType(analyzed, minimum, order) {
   if (analyzed === null || analyzed === undefined) return minimum;
   return order.indexOf(minimum) > order.indexOf(analyzed) ? minimum : analyzed;
 }
+
+// NO_REMOTE_URL stands in for the repository URL of the release notes when
+// the repository has no public address (no repositoryUrl in its
+// configuration, no package.json repository and no public origin, or a local
+// path there). release-notes-generator needs a URL it can parse and its
+// templates link the version header (compare) whenever there is a previous
+// tag, whatever the URL; stripNoRemoteLinks then turns every link to this
+// placeholder back into plain text. The .invalid top-level domain is reserved
+// (RFC 2606), so the placeholder can never be a real repository.
+export const NO_REMOTE_URL = "https://nerv-no-remote.invalid/repository/repository";
+
+// notesRepositoryUrl is the URL the notes are generated with: the
+// repository's own when it is a public address, NO_REMOTE_URL otherwise.
+export function notesRepositoryUrl(own) {
+  if (!own) return NO_REMOTE_URL;
+  const local =
+    own.startsWith("file:") || own.startsWith("/") || own.startsWith("\\") || /^[A-Za-z]:[\\/]/.test(own) || /^\.\.?[\\/]/.test(own);
+  return local ? NO_REMOTE_URL : own;
+}
+
+const placeholderLinkRe = new RegExp(`\\[([^\\]]*)\\]\\(${NO_REMOTE_URL.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}[^)]*\\)`, "g");
+
+// stripNoRemoteLinks replaces every Markdown link to NO_REMOTE_URL with its
+// text; other links are kept.
+export function stripNoRemoteLinks(notes) {
+  return typeof notes === "string" ? notes.replace(placeholderLinkRe, "$1") : notes;
+}

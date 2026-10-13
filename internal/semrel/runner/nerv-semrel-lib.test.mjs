@@ -11,14 +11,17 @@ import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 import {
+  NO_REMOTE_URL,
   RESULT_MARKER,
   commitFileLister,
   commitScopes,
   makeFilter,
   neededPackages,
+  notesRepositoryUrl,
   parseDiffTree,
   pathMatcher,
   raiseReleaseType,
+  stripNoRemoteLinks,
 } from "./nerv-semrel-lib.mjs";
 
 const libURL = pathToFileURL(path.join(path.dirname(fileURLToPath(import.meta.url)), "nerv-semrel-lib.mjs")).href;
@@ -245,3 +248,38 @@ function hasGit() {
     return false;
   }
 }
+
+test("notesRepositoryUrl keeps a public address and replaces a local or missing one", () => {
+  assert.equal(notesRepositoryUrl("https://github.com/example/repo.git"), "https://github.com/example/repo.git");
+  assert.equal(notesRepositoryUrl("git@github.com:example/repo.git"), "git@github.com:example/repo.git");
+  for (const local of [undefined, "", "/home/me/repo", "C:\\git\\repo", "file:///home/me/repo", "../origin.git", "./repo"]) {
+    assert.equal(notesRepositoryUrl(local), NO_REMOTE_URL, String(local));
+  }
+});
+
+test("stripNoRemoteLinks turns the placeholder's links into plain text and keeps real ones", () => {
+  const u = NO_REMOTE_URL;
+  const notes = [
+    `## [1.0.1](${u}/compare/v1.0.0...v1.0.1) (2026-10-13)`,
+    "",
+    "### Bug Fixes",
+    "",
+    `* **api:** handle empty input ([c1918a5](${u}/commit/c1918a53581d83a5f8ba787da39446550e1bb166)), closes [#12](${u}/issues/12)`,
+    "* see [the docs](https://example.com/docs)",
+    "",
+  ].join("\n");
+  assert.equal(
+    stripNoRemoteLinks(notes),
+    [
+      "## 1.0.1 (2026-10-13)",
+      "",
+      "### Bug Fixes",
+      "",
+      "* **api:** handle empty input (c1918a5), closes #12",
+      "* see [the docs](https://example.com/docs)",
+      "",
+    ].join("\n"),
+  );
+  assert.equal(stripNoRemoteLinks(""), "");
+  assert.equal(stripNoRemoteLinks(undefined), undefined);
+});

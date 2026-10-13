@@ -143,10 +143,12 @@ func (e *Engine) Compute(ctx context.Context, opts Options) ([]ProjectResult, er
 	if remote.Timeout <= 0 {
 		remote.Timeout = DefaultFetchTimeout
 	}
+	// No origin remote means there is nothing to sync from and no public
+	// address for the notes' links. Reading the URL is local, offline too.
+	originURL, _ := e.git(ctx, top, env, "remote", "get-url", "origin")
+	remote.Public = publicURL(originURL)
 	if !opts.Offline {
-		// No origin remote means there is nothing to sync from.
-		url, _ := e.git(ctx, top, env, "remote", "get-url", "origin")
-		remote.URL = resolveRemoteURL(url, top)
+		remote.URL = resolveRemoteURL(originURL, top)
 		if remote.URL != "" {
 			remote.SSHCommand, _ = e.git(ctx, top, env, "config", "--get", "core.sshCommand")
 		}
@@ -238,6 +240,12 @@ func (e *Engine) git(ctx context.Context, dir string, env []string, args ...stri
 //     like a default-channel release, so the last prerelease is missed.
 //     The fetch never prompts (see fetchEnv), never gets the URL on its
 //     command line, and is bounded by remote.Timeout.
+//   - The mirror's own origin (the user's repository path, set by the clone)
+//     becomes remote.Public, or is removed when there is none:
+//     semantic-release takes the repository URL of the release-notes links
+//     from remote.origin.url when the repository's configuration does not
+//     name one, and a local path there produced links such as
+//     https:/home/me/repo/compare/....
 //   - worktree: a worktree of the mirror on branch (semantic-release needs a
 //     named branch).
 func (e *Engine) withCheckout(ctx context.Context, repo, branch string, remote origin, env []string, fn func(worktree, mirror string) error) error {
@@ -256,6 +264,13 @@ func (e *Engine) withCheckout(ctx context.Context, repo, branch string, remote o
 		if err := e.fetchOrigin(ctx, mirror, remote, env); err != nil {
 			return err
 		}
+	}
+	originArgs := []string{"remote", "remove", "origin"}
+	if remote.Public != "" {
+		originArgs = []string{"remote", "set-url", "origin", remote.Public}
+	}
+	if _, err := e.git(ctx, mirror, env, originArgs...); err != nil {
+		return fmt.Errorf("setting the copy's origin: %w", err)
 	}
 	if _, err := e.git(ctx, mirror, env, "worktree", "add", "--quiet", wt, branch); err != nil {
 		return err

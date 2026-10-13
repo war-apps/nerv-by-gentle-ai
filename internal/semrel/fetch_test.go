@@ -267,3 +267,83 @@ func TestRedact(t *testing.T) {
 		}
 	}
 }
+
+func TestPublicURL(t *testing.T) {
+	tests := []struct{ in, want string }{
+		{"https://github.com/example/repo.git", "https://github.com/example/repo.git"},
+		{"https://nerv:s3cr3t@github.com/example/repo.git?access_token=tok#frag", "https://github.com/example/repo.git"},
+		{"http://git.example.com:8080/team/repo", "http://git.example.com:8080/team/repo"},
+		{"ssh://git@github.com/example/repo.git", "ssh://github.com/example/repo.git"},
+		{"git+ssh://git@github.com/example/repo.git", "git+ssh://github.com/example/repo.git"},
+		{"git://github.com/example/repo.git", "git://github.com/example/repo.git"},
+		{"git@github.com:example/repo.git", "git@github.com:example/repo.git"},
+		{"github.com:example/repo.git", "github.com:example/repo.git"},
+		// Local repositories have no public address for release-notes links.
+		{"", ""},
+		{"../origin.git", ""},
+		{"/srv/git/repo.git", ""},
+		{`C:\git\repo.git`, ""},
+		{"file:///srv/git/repo.git", ""},
+		{"https://", ""},
+	}
+	for _, tt := range tests {
+		if got := publicURL(tt.in); got != tt.want {
+			t.Errorf("publicURL(%q) = %q, want %q", tt.in, got, tt.want)
+		}
+	}
+}
+
+// TestCompute_MirrorOriginIsThePublicURL: semantic-release reads the
+// repository URL for the release-notes links from the checkout's
+// remote.origin.url, which in the mirror is the user's repository path. The
+// mirror's origin must be the user's public origin (without credentials), or
+// absent when there is none, offline too.
+func TestCompute_MirrorOriginIsThePublicURL(t *testing.T) {
+	tests := []struct {
+		name    string
+		origin  string // "" means no origin remote
+		offline bool
+		want    []string // the git command run on the mirror after the clone
+	}{
+		{"https origin", "https://github.com/example/repo.git", false, []string{"remote", "set-url", "origin", "https://github.com/example/repo.git"}},
+		{"credentials stripped", "https://nerv:s3cr3t@github.com/example/repo.git", false, []string{"remote", "set-url", "origin", "https://github.com/example/repo.git"}},
+		{"offline still names origin", "git@github.com:example/repo.git", true, []string{"remote", "set-url", "origin", "git@github.com:example/repo.git"}},
+		{"local origin", "../origin.git", false, []string{"remote", "remove", "origin"}},
+		{"no origin", "", false, []string{"remote", "remove", "origin"}},
+		{"no origin offline", "", true, []string{"remote", "remove", "origin"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			root := t.TempDir()
+			f := originRepo(t, root, tt.origin)
+			inner := f.handle
+			f.handle = func(c Command) (Result, error) {
+				if tt.origin == "" && isGit(c, "remote", "get-url", "origin") {
+					return Result{Stderr: []byte("error: No such remote 'origin'")}, errors.New("exit status 2")
+				}
+				return inner(c)
+			}
+			if _, err := (&Engine{Runner: f}).Compute(context.Background(), Options{RepoRoot: root, Branch: "main", Offline: tt.offline, CacheDir: t.TempDir()}); err != nil {
+				t.Fatal(err)
+			}
+			clones := f.find(func(c Command) bool { return isGit(c, "clone") })
+			if len(clones) != 1 {
+				t.Fatalf("clones %d", len(clones))
+			}
+			mirror := clones[0].Args[len(clones[0].Args)-1]
+			got := f.find(func(c Command) bool {
+				return isGit(c, "remote", "set-url") || isGit(c, "remote", "remove")
+			})
+			if len(got) != 1 || got[0].Args[0] != "-C" || got[0].Args[1] != mirror || !slices.Equal(got[0].Args[2:], tt.want) {
+				t.Fatalf("mirror origin commands %v, want one `git -C %s %s`", got, mirror, strings.Join(tt.want, " "))
+			}
+			for _, c := range f.calls {
+				for _, a := range c.Args {
+					if strings.Contains(a, "s3cr3t") {
+						t.Errorf("credentials on the command line: %v", c)
+					}
+				}
+			}
+		})
+	}
+}

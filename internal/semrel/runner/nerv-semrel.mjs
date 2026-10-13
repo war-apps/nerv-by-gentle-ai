@@ -56,8 +56,9 @@
 //   no-op on the same refs and the push check needs no credentials. The
 //   release notes still get the repository's public URL (the configured
 //   repositoryUrl, package.json repository or remote.origin.url, exactly
-//   what semantic-release would use) so their
-//   links match a CI run.
+//   what semantic-release would use; the mirror's origin is set to the
+//   user's public origin) so their links match a CI run; with no public URL
+//   the notes have no links.
 
 import { createRequire } from "node:module";
 import { execFileSync } from "node:child_process";
@@ -65,7 +66,18 @@ import { readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 
-import { commitFileLister, finish, isPackage, makeFilter, neededPackages, packageName, raiseReleaseType } from "./nerv-semrel-lib.mjs";
+import {
+  NO_REMOTE_URL,
+  commitFileLister,
+  finish,
+  isPackage,
+  makeFilter,
+  neededPackages,
+  notesRepositoryUrl,
+  packageName,
+  raiseReleaseType,
+  stripNoRemoteLinks,
+} from "./nerv-semrel-lib.mjs";
 
 async function readStdin() {
   const chunks = [];
@@ -151,15 +163,13 @@ async function run(req) {
   const context = { cwd, env, stdout: process.stderr, stderr: process.stderr };
   context.logger = getLogger(context);
   const { plugins: own, options: ownOptions } = await getConfig(context, baseOptions);
-  // release-notes-generator parses the URL with `new URL()`; a local path
-  // (a remote on disk, or no remote at all) becomes a file: URL instead of
-  // failing.
-  const ownUrl = ownOptions.repositoryUrl;
-  const publicUrl = !ownUrl
-    ? pathToFileURL(repositoryUrl).href
-    : path.isAbsolute(ownUrl)
-      ? pathToFileURL(ownUrl).href
-      : ownUrl;
+  // The notes link to the repository's public address: its configured
+  // repositoryUrl, package.json repository or origin (the mirror's origin is
+  // the user's public origin, or absent; see internal/semrel withCheckout).
+  // Without one (or with a local path) they are generated against a
+  // placeholder whose links are then removed, instead of links such as
+  // https:/home/me/repo/compare/....
+  const publicUrl = notesRepositoryUrl(ownOptions.repositoryUrl);
   // The files of the commits, listed with one git call per pass for the
   // commits not listed yet in this NERV run (see commitFileLister).
   const knownFiles = loadKnownFiles(commitFilesCache);
@@ -173,11 +183,12 @@ async function run(req) {
     return raiseReleaseType(analyzed, minReleaseType, RELEASE_TYPE);
   }
   async function nervGenerateNotes(_pluginConfig, input) {
-    return own.generateNotes({
+    const notes = await own.generateNotes({
       ...input,
       commits: select(input.commits),
       options: { ...input.options, repositoryUrl: publicUrl },
     });
+    return publicUrl === NO_REMOTE_URL ? stripNoRemoteLinks(notes) : notes;
   }
 
   const result = await semanticRelease(
