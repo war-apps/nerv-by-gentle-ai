@@ -13,7 +13,6 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
-	"path/filepath"
 	"slices"
 	"strings"
 	"sync"
@@ -212,9 +211,12 @@ func runVersionNext(args []string, stdout, stderr io.Writer, opts options) int {
 // outputShape is decided by the request, never by how many results the
 // engine returned: Several (a JSON array, project-prefixed env keys) when
 // the release: section declares more than one project and no --project is
-// given; otherwise exactly one result, the project named Only.
+// given; otherwise exactly one result: the project named Only, or, for a
+// repository without a release: section (Whole), the single project the
+// engine computed, whatever name it gave it.
 type outputShape struct {
 	Several bool
+	Whole   bool
 	Only    string
 }
 
@@ -225,6 +227,12 @@ func (s outputShape) selectResults(results []semrel.ProjectResult) ([]semrel.Pro
 	if s.Several {
 		if len(results) == 0 {
 			return nil, errors.New("the engine returned no result")
+		}
+		return results, nil
+	}
+	if s.Whole {
+		if len(results) != 1 {
+			return nil, fmt.Errorf("the engine returned no result for the repository (%d results, want 1)", len(results))
 		}
 		return results, nil
 	}
@@ -321,15 +329,15 @@ func gitTopLevel(ctx context.Context, runner env.Runner, dir string) (string, er
 // requestShape loads the release: section once before the (slow) engine
 // runs, so an invalid configuration or an unknown --project is refused at
 // once, naming the projects that exist, and decides the output shape.
-// Without a release: section the only project is named after the
-// repository directory, as the engine names it.
+// Without a release: section the whole repository is the only project; the
+// engine names it, so the CLI does not predict the name.
 func requestShape(top, name string) (outputShape, error) {
 	rel, err := shipconfig.Load(top)
 	if errors.Is(err, shipconfig.ErrNotConfigured) {
 		if name != "" {
 			return outputShape{}, &refusal.Error{Err: fmt.Errorf("--project %q: the repository has no release: section in .nerv/nerv.yaml, so it is a single project; drop --project", name)}
 		}
-		return outputShape{Only: filepath.Base(filepath.Clean(top))}, nil
+		return outputShape{Whole: true}, nil
 	}
 	if err != nil {
 		return outputShape{}, err

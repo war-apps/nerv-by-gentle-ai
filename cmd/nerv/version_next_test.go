@@ -744,6 +744,21 @@ func TestVersionNext_SingleProjectSectionIsAnObject(t *testing.T) {
 	}
 }
 
+// Without a release: section the engine computes the whole repository as one
+// project and names it itself; the CLI prints that single result whatever
+// its name, so a path that resolves differently (symlinks, Windows case)
+// cannot turn a computed version into "no result".
+func TestVersionNext_NoSectionPrintsTheSingleResultWhateverItsName(t *testing.T) {
+	f := newNextFixture(t, "")
+	f.results = []semrel.ProjectResult{released("Other-Name", "1.0.0", "")}
+
+	code, stdout, stderr := f.run(t, "--json")
+	var got map[string]any
+	if code != 0 || json.Unmarshal([]byte(stdout), &got) != nil || got["project"] != "Other-Name" {
+		t.Fatalf("code=%d stdout=%q stderr=%q, want exit 0 and the single result", code, stdout, stderr)
+	}
+}
+
 func TestVersionNext_MissingRequestedResultIsAnError(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -752,7 +767,6 @@ func TestVersionNext_MissingRequestedResultIsAnError(t *testing.T) {
 		results []semrel.ProjectResult
 	}{
 		{"no section, no result", "", nil, nil},
-		{"no section, another name", "", nil, []semrel.ProjectResult{released("other", "1.0.0", "")}},
 		{"project flag, only its dependency", threeProjectsYAML, []string{"--project", "api"}, []semrel.ProjectResult{released("core", "1.0.1", "")}},
 		{"single project, no result", oneProjectYAML, nil, nil},
 		{"monorepo, no result", twoProjectsYAML, nil, nil},
