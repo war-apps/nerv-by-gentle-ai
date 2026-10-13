@@ -572,8 +572,40 @@ delegated (one writer). Test-first where a test can express the defect.
   R4-json-text-write-errors-ignored, R2-fetch-timeout-implicit-default,
   R3-shape-depends-on-result-count, R3-empty-results-json-null.
 
+### T3 follow-ups
+
+All T3 review advisories but the refuted R3-env-key-prefix-collision fixed,
+plus the T2 notes-link defect found in the T3 run (user authorized). Route:
+delegated (one writer). Test-first.
+
+| Item | Fix | Evidence |
+|---|---|---|
+| R4-second-signal-swallowed | `signalContext` (own `signal.Notify` loop instead of `signal.NotifyContext`) calls `signal.Stop` as soon as the context is done (first signal, parent or stop), before the cancellation is visible; a second Ctrl-C gets the default handler. `signalNotify`/`signalStop` package seams. | RED: `signal_test.go` failed to build (`undefined: signalStop`, `signalContext returns 2 values`); no behavioural RED for the release itself (the seam did not exist). GREEN: `TestSignalContext_FirstSignalReleasesTheHandler` (handler released once, before the cancellation), `..._ParentCancellationReleasesTheHandler`, `..._StopWithoutASignalReleasesTheHandler`; `go test -race -count=3` clean. |
+| Interrupted exit codes | `received()` reports the signal; exit `128 + signal` (SIGINT 130, SIGTERM 143, SIGHUP 129), `2` when cancelled without one; stderr `interrupted (<signal>)`. The `SignalContext` seam returns `(ctx, stop, received)`. | RED: build failure as above. GREEN: `TestVersionNext_InterruptedExitsWith128PlusTheSignal` (4 cases); the real-signal Unix test also checks `received()`. |
+| R4-json-text-write-errors-ignored | `writeVersionResult` renders every format into memory, writes once and calls `Flush()` when the writer has one; an error is `writing the result: ...`, exit 2. | RED: `TestVersionNext_WriteErrorsAreReported` text/json write+flush and env flush failed (exit 0). GREEN. Manual: `> /dev/full` -> "no space left on device", exit 2. |
+| R2-fetch-timeout-implicit-default | `--fetch-timeout` defaults to `semrel.DefaultFetchTimeout`; `<= 0` is a usage error ("must be positive ... use --offline"). | RED: `zero fetch timeout` cases (exit 0) and `TestVersionNext_DefaultsReadOriginOnTheCurrentBranch` (timeout 0 sent). GREEN; `TestVersionNext_UsageShowsTheDefaultFetchTimeout` pins "default 60s". |
+| R3-shape-depends-on-result-count, R3-empty-results-json-null | `requestShape`: several (array, prefixed env) only for a `release:` section with more than one project and no `--project`; otherwise one object / unprefixed keys for the requested, only, or repository-named project, dependency results dropped. No result for it -> exit 2 "the engine returned no result ...", nothing on stdout. | RED: `TestVersionNext_ProjectFlagPrintsOnlyThatProject`, `..._MonorepoIsAnArrayEvenWithOneResult`, `..._MissingRequestedResultIsAnError` (15 cases). GREEN; `..._SingleProjectSectionIsAnObject`. |
+| Notes links with no remote (T2) | Worse than reported: the mirror's `remote.origin.url` is the user's repository path, so every repository without `repositoryUrl` / package.json `repository` got `https:/<local path>/...` links, GitHub origin included. Go: the mirror's origin is set to `publicURL(origin)` (scheme URLs without user info, query, fragment; scp-like kept; local paths and `file:` -> none), read offline too, or removed. Runner: no public URL (or a local one) -> notes generated against the reserved `https://nerv-no-remote.invalid/...` placeholder, whose Markdown links are then replaced by their text. | RED: `TestPublicURL`, `TestCompute_MirrorOriginIsThePublicURL` (stub); node: missing exports; integration in a temp worktree of the old HEAD: `MonorepoPathOrScope` and the new `NotesLinkThePublicOrigin` showed `https:/tmp/.../compare/...` for a local and a GitHub origin. GREEN: all; node 11/11; integration no-origin notes `## 1.0.1 (2026-10-13)` / `* repair widgets (d3783ab)`, GitHub origin links `https://github.com/example/widgets/compare/v1.0.0...v1.0.1` without the credentials. |
+
+- Docs: `docs/release-commands.md` (output shape by request, positive
+  `--fetch-timeout`, exit codes incl. `128 + signal`, second Ctrl-C, notes
+  links), `plugin/commands/version.md` (shape, interrupted codes).
+- Local run (no remote, offline): `nerv version next --offline --cwd
+  <fixture> --branch develop --project web-app --format env` -> notes
+  `# 1.1.0-alpha.1 (2026-10-13)` ... `* **web:** add dark mode (ba07a36)`,
+  no links; `--json` one object for web-app; `--fetch-timeout 0` usage
+  error.
+- Checks: `go test ./...` ok (24 packages), `go test -tags
+  semrel_integration -run Integration -count=1 ./internal/semrel/` ok (5
+  tests), `go vet ./...`, `GOOS=windows go vet ./cmd/nerv/
+  ./internal/semrel/` clean, `gofmt -l .` empty.
+- Commits: `e9d2c84` `fix(cli): release signals early and shape version
+  output by request` (7 files changed, 498 insertions(+), 69 deletions(-));
+  `d2d10f1` `fix(semrel): link release notes to the public origin, or not
+  at all` (8 files changed, 256 insertions(+), 16 deletions(-)).
+
 ## Next step
 
-T3 review (native, on the T3 commit), then the acceptance comparison against
+Review of the T3 follow-ups, then the acceptance comparison against
 dim.comprobantes.api on GitHub (needs the user's authorization: it reads
 origin with their credentials), then T4.
