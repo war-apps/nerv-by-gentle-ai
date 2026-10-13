@@ -399,6 +399,32 @@ delegated (one writer). Test-first where a test expresses the defect.
   hold the pipes open), R3-diff-merges-git-version-unchecked (git < 2.31
   fails with a raw unknown-option error).
 
+### T2 second follow-ups
+
+Both advisory findings of the T2 follow-up review fixed (user authorized).
+Route: delegated (one writer). Test-first.
+
+| Finding | Fix | Evidence |
+|---|---|---|
+| R3-fetch-timeout-unproved-on-real-process | `ExecRunner` (the only real runner, so git fetch/clone, npm install and node all get it) starts each command in its own process group (`Setpgid` on Unix; `CREATE_NEW_PROCESS_GROUP` on Windows) and its `cmd.Cancel` kills the whole group (`kill(-pgid, SIGKILL)`; Windows `taskkill /T /F /PID`, falling back to killing the child). `cmd.WaitDelay = processWaitDelay` (5s) bounds Wait after a cancel or exit even if a pipe stays open. Build-tagged `process_unix.go` / `process_windows.go`. | Real-process test `TestExecRunner_CancelKillsTheWholeProcessGroup` (Unix only): `sh -c 'sleep 60 & ...; sleep 60'` under a 200ms context. RED (old runner): "Run still blocked 8.0s after the context deadline: a grandchild holds the output pipe". GREEN: returns in 0.21s and the grandchild pid is gone (ESRCH). Its cleanup kills the grandchild even on failure. |
+| R3-diff-merges-git-version-unchecked | `gitversion.go`: when any project has a path filter (a `path` other than `.`), Compute runs `git --version` once before node, the cache or the mirror, and stops with "git X.Y.Z is too old: selecting a project's commits by path needs git 2.31.0 or newer". `parseGitVersion` reads `2.43.0`, `2.39.3 (Apple Git-146)`, `2.45.1.windows.1`, `2.30` (patch 0). | RED (stubbed parser): `TestParseGitVersion` 6 cases failed, `TestCompute_PathFilterNeedsGit231` "want an error for git 2.30.2", `TestCompute_GitVersionCheckedOnlyForPathFilters` "called 0 times, want once". GREEN. |
+
+- Public API: unchanged (new identifiers are unexported).
+- Behaviour change: a monorepo with path filters on git < 2.31 now fails
+  early with that error (documented in `docs/release-commands.md`);
+  cancelled commands no longer leave helper processes behind. Commands now
+  run outside the terminal's foreground process group, so a terminal
+  Ctrl-C reaches them only through the context.
+- Checks: `go test ./...` ok (24 packages), `go test -tags
+  semrel_integration -run Integration -count=1 ./internal/semrel/` ok
+  (26.1s), `go vet ./...`, `GOOS=windows go vet ./internal/semrel/` and
+  `go vet -tags semrel_integration ./internal/semrel/` clean, `gofmt -l .`
+  empty.
+- Commits: `477aa8a` `fix(semrel): kill the whole process tree of a
+  cancelled command` (4 files changed, 138 insertions(+), 1 deletion(-));
+  `120d447` `fix(semrel): require git 2.31 before filtering project commits
+  by path` (6 files changed, 188 insertions(+), 2 deletions(-)).
+
 ## Next step
 
 T3 (`nerv version` CLI) on top of T2.
