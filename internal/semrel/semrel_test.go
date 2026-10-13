@@ -78,6 +78,8 @@ func fakeRepo(t *testing.T, root string, run func(req runnerRequest) (Result, er
 			return Result{Stdout: []byte("main\n")}, nil
 		case isGit(c, "remote", "get-url", "origin"):
 			return Result{Stdout: []byte("https://github.com/example/repo.git\n")}, nil
+		case isGit(c, "--version"):
+			return Result{Stdout: []byte("git version 2.43.0\n")}, nil
 		case c.Name == "git":
 			return Result{}, nil
 		case c.Name == "node" && slices.Equal(c.Args, []string{"--version"}):

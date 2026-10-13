@@ -123,7 +123,8 @@ export function pathMatcher(paths, isMatch) {
 // never the other side's history; the merged commits themselves are separate
 // commits with their own files. (`-m --first-parent` is not that: diff-tree
 // ignores --first-parent and lists the union of the diffs against every
-// parent.) --diff-merges needs git 2.31 or newer.
+// parent.) --diff-merges needs git 2.31 or newer
+// (checked in Go before any run that has a path filter, gitversion.go).
 export const DIFF_TREE_ARGS = [
   "diff-tree",
   "--stdin",

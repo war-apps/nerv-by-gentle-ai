@@ -129,7 +129,9 @@ its version.
   carry one of its `scopes` (`type(scope): ...`, several scopes separated by
   commas). A merge commit touches what it brings into the branch (its
   changes against its first parent); the merged commits count on their own.
-  This needs git 2.31 or newer. A project whose `path` is `.` sees every
+  This needs git 2.31 or newer: with an older git, a release with a
+  project `path` other than `.` stops before computing anything, with an
+  error naming the git found and the minimum. A project whose `path` is `.` sees every
   commit. When a dependency gets a new release, the dependent is released
   with at least the dependency's `bump`, even without commits of its own. A single project with the default `tag_format` keeps
   the repository's own `tagFormat`, and a repository without a `release:`

@@ -105,6 +105,11 @@ func (e *Engine) Compute(ctx context.Context, opts Options) ([]ProjectResult, er
 	if err != nil {
 		return nil, err
 	}
+	if needsPathFilter(projects) {
+		if err := e.checkGitForPathFilter(ctx, env); err != nil {
+			return nil, err
+		}
+	}
 	if err := e.checkNode(ctx, env); err != nil {
 		return nil, err
 	}
