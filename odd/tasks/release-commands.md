@@ -89,7 +89,7 @@ tagged with version, channel and `latest`).
   `shared_paths`, scope, `depends_on` (+ bump), tag format, semantic-release
   pin and extra plugins, stages, presets, providers, hooks; parsing with
   yaml.v3, validation with clear errors, docs.
-- [ ] T2 — node engine: embedded runner using semantic-release's API, pinned
+- [x] T2 — node engine: embedded runner using semantic-release's API, pinned
   dependency cache, branch worktree, NERV commit-filter plugin (path OR
   scope), dependency bumps; output normalised to the 12 action outputs.
 - [ ] T3 — `nerv version` CLI (single repo and monorepo, `--json` and
@@ -237,6 +237,109 @@ and observed failing.
   release keys, copy docker tag defaults` (5 files changed, 199
   insertions(+), 19 deletions(-)).
 
+### T2
+
+- Route: delegated (writer trigger: new package, runner, tests, docs).
+- Package `internal/semrel`: `Compute(ctx, Options{RepoRoot, Branch,
+  Project, Env, CacheDir, Offline}) ([]ProjectResult, error)` (also
+  `Engine{Runner}.Compute`); `ProjectResult` carries project, branch and the
+  12 semantic-release-action outputs (JSON names = action names,
+  `Outputs()` in action order). Process seam: `Runner` interface
+  (`Run(ctx, Command) (Result, error)`), `ExecRunner` for real use.
+- Node runner `internal/semrel/runner/nerv-semrel.mjs` (`go:embed`), two
+  modes: `plan` loads the repo config with semantic-release's own
+  cosmiconfig + `extends` merge and lists every package it needs; `run` is
+  one `semanticRelease({dryRun: true, ci: false, ...})` call. Sources relied
+  on are cited in its header (semantic-release 24.2.3 `index.js`,
+  `lib/get-config.js`, `lib/plugins/{index,normalize,utils}.js`,
+  `lib/definitions/plugins.js`, `lib/git.js`, `lib/branches/index.js`).
+- verifyConditions/credentials decision: semantic-release supports per-step
+  overrides (API options are merged over the config, `options =
+  {...plugins, ...options}` in `lib/plugins/index.js`; an empty list is a
+  valid non-required step). In a dry run verifyConditions and verifyRelease
+  still run (`lib/definitions/plugins.js` `dryRun: true`), so the runner
+  sets `verifyConditions`, `verifyRelease`, `prepare`, `publish`,
+  `addChannel`, `success`, `fail` to `[]`, and wraps `analyzeCommits` /
+  `generateNotes` around the repo's own composed steps (built by
+  semantic-release's `getConfig`), so analysis and notes are exactly the
+  repo's. The push-permission check (`git push --dry-run <repositoryUrl>`)
+  and the branch/tag/notes fetches target a disposable mirror passed as
+  `repositoryUrl`: no GH_TOKEN/NPM_TOKEN needed (integration test runs with
+  them removed). Notes links use the repo's public URL (config,
+  package.json `repository` or origin; a local path becomes `file://`).
+- Deviation from the planned `git worktree add` on the user's repo:
+  semantic-release's dry run fetches `+refs/heads/<b>:refs/heads/<b>` for
+  every release branch and fetches notes, which in a worktree of the user's
+  repo writes shared refs. And the channel of each release lives in git
+  notes (`refs/notes/semantic-release-<tag>`) that a plain fetch never
+  brings (dim.comprobantes.api locally: 0 notes refs); without them a local
+  run on a disposable clone of it computed develop as `2.9.0-alpha.1` (last
+  `v2.8.0`) although `v2.9.0-alpha.8` exists. So the engine uses
+  `git clone --mirror --shared` into a temp dir, fetches origin's
+  `+refs/tags/*` and `+refs/notes/*` into the mirror only
+  (`GIT_TERMINAL_PROMPT=0`; failure is an error that points to offline
+  mode), adds the worktree from the mirror, and deletes the temp dir. The
+  user's repo is only read. `Options.Offline` skips the origin read.
+- CI detection: env-ci vendor variables are stripped from the runner's
+  environment (list from env-ci 11 `services/*.js`), and the runner refuses
+  to run if env-ci still detects a CI service.
+- Pinning: default pins (verified on npm 2026-10-13) changelog `6.0.3`, git
+  `10.0.1`, exec `7.1.0`, conventional-changelog-conventionalcommits
+  `8.0.0` (10.x fails with semantic-release 24's bundled writer 8, observed:
+  "requires conventional-changelog-writer@9"; changelog 7 / git 11 need Node
+  ^22.22.2 || >=24.15). Bundled allowed without pin: commit-analyzer,
+  release-notes-generator, npm, github, conventional-changelog-angular.
+  `extra_plugins` overrides a default pin of the same name. Cache:
+  `UserCacheDir/nerv/semantic-release/<16-hex sha256 of sorted specs>`,
+  installed with `npm install --no-audit --no-fund --ignore-scripts` into a
+  temp dir then renamed (concurrent runs: first rename wins). `plan`
+  packages not bundled/pinned/extra -> error naming them and
+  `release.semantic_release.extra_plugins`; an `extends` that cannot load is
+  also an error.
+- Projects: `TopoOrder()`; `--project` keeps the project plus its
+  transitive dependencies (only the requested one is returned). Single
+  project with the default tag format keeps the repo's tagFormat; a project
+  with `path: .` gets no commit filter; no `release:` section = one project
+  named after the repo directory, plain semantic-release. Commit filter
+  (JS): `git diff-tree --name-only -r --root -m --first-parent` per commit
+  matched against path / shared_paths (prefix or micromatch glob) OR
+  header scope in `scopes` (comma-separated scopes split). depends_on (Go,
+  `minReleaseType`): highest bump of dependencies released in this run,
+  `none` ignored; passed to the runner, which raises the analyzer's type
+  to at least it.
+- RED: `go test ./internal/semrel/` -> `undefined: Command` ... [build
+  failed]. GREEN: `ok`. The mirror redesign came from the integration
+  run (RED there: dim clone develop `2.9.0-alpha.1`; then the new
+  prerelease scenario failed against a fake origin before the local bare
+  origin). Its unit tests (`TestCompute_DisposableCheckoutRemovedOnError`,
+  `TestCompute_OfflineOrNoOriginSkipsTheFetch`,
+  `TestCompute_OriginFetchFailureIsAnError`) were written together with
+  the change, so no unit RED was observed for them.
+- Integration (real node 24.21.0, npm 11.19.0, registry):
+  `go test -tags semrel_integration -run Integration -v -count=1
+  ./internal/semrel/` -> PASS (13.6s with a warm per-run cache; first
+  install ~7s): dim-style config on develop with the first alpha's note
+  only on origin -> `1.2.0-alpha.2`, channel `alpha`, last
+  `v1.2.0-alpha.1` (offline: last `v1.1.0`, `1.2.0-alpha.1`, the dim
+  symptom); main -> no release, last 1.1.0; user's refs, worktrees and
+  checkout unchanged. Monorepo: one `feat(api)` commit touching `web/` ->
+  api 1.1.0 (scope) and web 1.1.0 (path), cli untouched. depends_on: `fix`
+  in core -> core 1.0.1, app 1.0.1 (patch), sdk 1.1.0 (minor), tool not
+  released (none), order core,app,tool,sdk. Unpinned
+  `semantic-release-slack-bot` -> error naming it.
+- Not run: `nerv version` vs `npx semantic-release --dry-run` on a real
+  copy of dim.comprobantes.api with origin on GitHub (reading origin is a
+  remote operation with the user's credentials; it belongs to T3's
+  acceptance run).
+- Checks: `go test ./...` ok, `go vet ./...` (and with
+  `-tags semrel_integration`) clean, `gofmt -l .` empty.
+- Size: `d543f72` 9 files changed, 2175 insertions(+). Above the ~400-line
+  heuristic: about half is tests (634 unit, 339 integration); the runner
+  (316, mostly the cited-source header and the plan mode) and engine are one
+  behaviour that cannot ship without each other.
+- Commit: `d543f72` `feat(semrel): compute next versions with
+  semantic-release`.
+
 ## Next step
 
-T2 (node engine) on top of T1.
+T3 (`nerv version` CLI) on top of T2.
