@@ -123,6 +123,9 @@ authored-line budget (roughly 3000+ lines across seven tasks). Strategy:
 (each task's PR branches from the previous one and merges into develop in
 order). Slice boundaries: one PR per task, recorded below as they open.
 
+- PR #91 (T1): `feat/release-commands` → develop, commits f2f7801..294f7b3. Merged 7a23170.
+- T2 branch `feat/release-version-engine` from 7a23170.
+
 ## Progress
 
 Branch created from da18e6f. Engram mirror `odd/release-commands/tasks`:
