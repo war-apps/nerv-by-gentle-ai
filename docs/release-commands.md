@@ -87,7 +87,7 @@ npm are required. Always available:
 | `@semantic-release/changelog` | `6.0.3` |
 | `@semantic-release/git` | `10.0.1` |
 | `@semantic-release/exec` | `7.1.0` |
-| `conventional-changelog-conventionalcommits` | `8.0.0` (9 and later need a newer changelog writer than semantic-release 24 bundles) |
+| `conventional-changelog-conventionalcommits` | `8.0.0` (9.x also works; 10 and later fail with the `conventional-changelog-writer` 8 that semantic-release 24 bundles, see `ConventionalCommitsVersion` in `internal/semrel/cache.go`) |
 
 Any other package the repository's semantic-release configuration names (a
 plugin, a shareable config in `extends`, a `preset`'s

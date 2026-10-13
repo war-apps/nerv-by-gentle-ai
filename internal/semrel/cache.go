@@ -17,9 +17,18 @@ import (
 // The plugins installed next to semantic-release in the NERV cache, at exact
 // versions verified on npm (2026-10-13). They are the majors that work with
 // semantic-release 24 and its bundled commit-analyzer 13 and
-// release-notes-generator 14 (conventional-changelog-writer 8):
-// conventional-changelog-conventionalcommits 9+ needs writer 9 and fails in
-// generateNotes ("requires conventional-changelog-writer@9 or newer").
+// release-notes-generator 14.
+//
+// conventional-changelog-conventionalcommits and the changelog writer, the
+// one statement of record (docs/release-commands.md and the feature log refer
+// here): semantic-release 24.2.3 installs release-notes-generator 14.1.1 with
+// conventional-changelog-writer 8.4.0. With it, conventionalcommits 8.0.0,
+// 9.0.0 and 9.3.1 render notes; 10.0.0 and later fail in generateNotes with
+// `Missing helper: "conventional-changelog-conventionalcommits requires
+// conventional-changelog-writer@9 or newer ..."` (observed 2026-10-13; 10.x
+// also needs Node >= 22). The pin stays on 8.0.0; a 9.x pin through
+// release.semantic_release.extra_plugins works too.
+//
 // @semantic-release/changelog 7 and git 11 also exist but need Node
 // ^22.22.2 || >=24.15; the pinned majors run on any Node semantic-release 24
 // supports. A release.semantic_release.extra_plugins entry of the same
