@@ -48,8 +48,8 @@ release:                            # project scope only, never merged with the 
     - { name: api, path: . }
 ```
 
-`release:` configures the release commands (`nerv version`, `nerv ship`;
-coming in later tasks): projects, dependencies, tag formats, presets,
+`release:` configures the release commands (`nerv version next`;
+`nerv ship`, coming in a later task): projects, dependencies, tag formats, presets,
 stages and hooks. Its full reference is
 [release-commands.md](release-commands.md).
 

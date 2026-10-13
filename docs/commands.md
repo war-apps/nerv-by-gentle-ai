@@ -11,6 +11,7 @@ Nerv by Gentle-AI has two command surfaces: Claude Code slash commands
 | `/nerv:configure` | Configure NERV through guided questions (git, tasks, skills, models, repo, commands) |
 | `/nerv:init` | Bootstrap NERV for the current repository (writes `.nerv/nerv.yaml`) |
 | `/nerv:status` | Show NERV activation, config resolution, and change status (read-only) |
+| `/nerv:version` | Show the next release version of the repository (or of each project) |
 
 ### /nerv:configure
 
@@ -45,6 +46,18 @@ the skill registry with `gentle-ai skill-registry refresh`. An existing
 /nerv:init
 ```
 
+### /nerv:version
+
+Runs `nerv version next --json` with the arguments you give (`--branch`,
+`--project`, `--offline`, ...) and shows, per project, whether there is a
+new release, the next version, its channel and tag, and the last release.
+By default it reads origin's release tags and notes with your git
+credentials; add `--offline` to use the local ones only.
+
+```
+/nerv:version --branch develop
+```
+
 ### /nerv:status
 
 Read-only report of NERV's state for the current repo: activation,
@@ -63,6 +76,7 @@ isn't taking effect.
 | Command | What it does |
 |---|---|
 | `nerv version` | Print the binary and plugin versions |
+| `nerv version next` | Compute the next release version with semantic-release |
 | `nerv configure` | Configure NERV non-interactively (or run the wizard) |
 | `nerv install` | Install NERV (plugin, cache, skills, Engram KB) |
 | `nerv uninstall` | Uninstall NERV |
@@ -124,6 +138,23 @@ nerv configure --set git.base_branch=develop --set tasks.provider=teamwork
 
 ```
 nerv configure --set-model aoba=opus/high
+```
+
+### nerv version next
+
+Computes the next semantic version of the repository, or of each project of
+its `release:` section, with the repository's own semantic-release
+configuration in dry-run mode, and prints the 12 outputs of
+`cycjimmy/semantic-release-action` as text, JSON or GitHub Actions output
+lines. Flags, formats, monorepo key naming and exit codes:
+[release-commands.md](release-commands.md#nerv-version-next).
+
+```
+nerv version next --branch develop --json
+```
+
+```
+nerv version next --offline --format env >> "$GITHUB_OUTPUT"
 ```
 
 ### nerv install

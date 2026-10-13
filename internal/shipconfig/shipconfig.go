@@ -1,6 +1,6 @@
 // Package shipconfig reads the release: section of a repository's
 // project-scope .nerv/nerv.yaml: the typed, validated configuration behind
-// `nerv version` and `nerv ship`.
+// `nerv version next` and `nerv ship`.
 //
 // The rest of nerv.yaml is owned by internal/config, a line-based editor
 // that cannot hold lists of maps. This package cuts the top-level release:

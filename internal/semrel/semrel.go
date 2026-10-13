@@ -263,6 +263,11 @@ func (e *Engine) withCheckout(ctx context.Context, repo, branch string, remote o
 	return fn(wt, mirror)
 }
 
+// ErrOriginFetch is wrapped by the error Compute returns when origin's release
+// tags and notes cannot be read (unreachable, refused or timed out); callers
+// can offer offline mode (Options.Offline) as the way out.
+var ErrOriginFetch = errors.New("origin's release tags and notes could not be read")
+
 // fetchOrigin fetches origin's release tags and notes into the mirror.
 func (e *Engine) fetchOrigin(ctx context.Context, mirror string, remote origin, env []string) error {
 	fctx, cancel := context.WithTimeout(ctx, remote.Timeout)
@@ -273,9 +278,9 @@ func (e *Engine) fetchOrigin(ctx context.Context, mirror string, remote origin, 
 	case err == nil:
 		return nil
 	case errors.Is(fctx.Err(), context.DeadlineExceeded) && ctx.Err() == nil:
-		return fmt.Errorf("reading release tags and notes from origin (%s) timed out after %s; use offline mode to rely on the local tags only", redact(remote.URL), remote.Timeout)
+		return fmt.Errorf("reading release tags and notes from origin (%s) timed out after %s; use offline mode to rely on the local tags only: %w", redact(remote.URL), remote.Timeout, ErrOriginFetch)
 	}
-	return fmt.Errorf("reading release tags and notes from origin (%s; needed for release channels; use offline mode to rely on the local tags only): %w", redact(remote.URL), err)
+	return fmt.Errorf("reading release tags and notes from origin (%s; needed for release channels; use offline mode to rely on the local tags only): %w: %w", redact(remote.URL), ErrOriginFetch, err)
 }
 
 // node runs the embedded runner with one request.

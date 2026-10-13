@@ -3,6 +3,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -12,6 +13,7 @@ import (
 
 	nerv "github.com/war-apps/nerv-by-gentle-ai"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/env"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/semrel"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/version"
 )
 
@@ -19,6 +21,8 @@ const usage = `Usage: nerv <command> [flags]
 
 Commands:
   version [--json]     Print the binary and plugin versions
+  version next [flags] Compute the next release version with semantic-release
+                       (see "nerv version next --help")
   configure [flags]    Configure NERV (non-interactive; see "nerv configure --help")
   install [flags]      Install NERV (see "nerv install --help")
   uninstall [flags]    Uninstall NERV (see "nerv uninstall --help")
@@ -70,17 +74,26 @@ type options struct {
 	// real golang.org/x/term check, which a unit test cannot exercise
 	// directly (it depends on a real OS file descriptor/console).
 	IsTerminal func() bool
+	// ComputeVersions is the `nerv version next` engine (semrel.Compute);
+	// tests inject a recorded fake. Nil means semrel.Compute.
+	ComputeVersions func(context.Context, semrel.Options) ([]semrel.ProjectResult, error)
+	// SignalContext derives the context a long-running command runs under,
+	// cancelled on SIGINT, SIGTERM and (on Unix) SIGHUP. Tests inject a
+	// controllable one. Nil means signalContext.
+	SignalContext func(context.Context) (context.Context, context.CancelFunc)
 }
 
 func defaultOptions() options {
 	return options{
-		PluginFS:   pluginFS(),
-		Runner:     env.ExecRunner{},
-		Now:        time.Now,
-		LookPath:   env.LookPath,
-		Getenv:     os.Getenv,
-		Stdin:      os.Stdin,
-		IsTerminal: stdinIsTerminal,
+		PluginFS:        pluginFS(),
+		Runner:          env.ExecRunner{},
+		Now:             time.Now,
+		LookPath:        env.LookPath,
+		Getenv:          os.Getenv,
+		Stdin:           os.Stdin,
+		IsTerminal:      stdinIsTerminal,
+		ComputeVersions: semrel.Compute,
+		SignalContext:   signalContext,
 	}
 }
 
@@ -121,7 +134,13 @@ func run(args []string, stdout, stderr io.Writer, opts options) int {
 	}
 }
 
+// runVersion prints the binary and plugin versions, or, as `nerv version
+// next`, computes the next release version (runVersionNext). Any other
+// argument is a usage error.
 func runVersion(args []string, stdout, stderr io.Writer, opts options) int {
+	if len(args) > 0 && args[0] == "next" {
+		return runVersionNext(args[1:], stdout, stderr, opts)
+	}
 	jsonOutput := false
 	for _, arg := range args {
 		if arg == "--json" {

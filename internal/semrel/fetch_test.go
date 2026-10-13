@@ -97,6 +97,9 @@ func TestCompute_OriginFetchFailureHidesCredentials(t *testing.T) {
 	if err == nil {
 		t.Fatal("want an error")
 	}
+	if !errors.Is(err, ErrOriginFetch) {
+		t.Errorf("errors.Is(err, ErrOriginFetch) = false: %v", err)
+	}
 	for _, secret := range []string{"s3cr3t-pass", "tok-123", "nerv:"} {
 		if strings.Contains(err.Error(), secret) {
 			t.Errorf("error leaks %q: %v", secret, err)
@@ -238,6 +241,9 @@ func TestCompute_FetchTimeoutIsAnError(t *testing.T) {
 	_, err := (&Engine{Runner: r}).Compute(context.Background(), Options{RepoRoot: root, Branch: "main", CacheDir: t.TempDir(), FetchTimeout: 50 * time.Millisecond})
 	if err == nil || !strings.Contains(err.Error(), "timed out after 50ms") || !strings.Contains(err.Error(), "offline") {
 		t.Fatalf("err = %v", err)
+	}
+	if !errors.Is(err, ErrOriginFetch) {
+		t.Errorf("errors.Is(err, ErrOriginFetch) = false: %v", err)
 	}
 	if took := time.Since(start); took > 5*time.Second {
 		t.Errorf("Compute took %s with a 50ms fetch timeout", took)
