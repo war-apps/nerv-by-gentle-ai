@@ -224,9 +224,17 @@ its version.
   (`verifyConditions`, `verifyRelease`, `prepare`, `publish`, `success`,
   `fail`) are skipped, so no `GH_TOKEN`, `NPM_TOKEN` or exec script is
   needed.
-- It runs on a disposable mirror of the repository (all local branches and
-  tags), checked out on the requested local branch: the working tree,
-  branches and tags of the repository are never changed.
+- It runs on a disposable mirror of the repository, checked out on the
+  requested local branch: the working tree, branches and tags of the
+  repository are never changed.
+- semantic-release sees origin's branches, as in CI, not your local ones: a
+  local-only branch (say `hotfix/x` under a `hotfix/*` prerelease entry)
+  does not count, and a branch that exists only on origin does. The branch
+  you compute is taken at your local commit, so its unpushed commits count.
+  Online, origin's branches are read with its tags and notes; with
+  `--offline`, your `refs/remotes/origin/*` (as of your last fetch) are
+  used. With no `origin` remote, or offline with no remote-tracking branch,
+  the local branches are used as they are.
 - The release notes link to the repository's public address, as in CI:
   the `repositoryUrl` of its semantic-release configuration, the
   `package.json` `repository`, or the `origin` remote's URL (offline too;

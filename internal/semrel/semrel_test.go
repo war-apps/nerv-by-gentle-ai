@@ -74,6 +74,8 @@ func fakeRepo(t *testing.T, root string, run func(req runnerRequest) (Result, er
 		switch {
 		case isGit(c, "rev-parse", "--show-toplevel"):
 			return Result{Stdout: []byte(root + "\n")}, nil
+		case isGit(c, "rev-parse", "--verify"):
+			return Result{Stdout: []byte("1111111111111111111111111111111111111111\n")}, nil
 		case isGit(c, "symbolic-ref", "--short", "HEAD"):
 			return Result{Stdout: []byte("main\n")}, nil
 		case isGit(c, "remote", "get-url", "origin"):

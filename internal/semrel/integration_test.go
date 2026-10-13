@@ -376,3 +376,56 @@ func TestIntegration_NotesLinkThePublicOrigin(t *testing.T) {
 	}
 	t.Logf("no-origin notes:\n%s", plain)
 }
+
+// hotfixRelease has dim.comprobantes.api's branch shape: a hotfix/* wildcard
+// whose prerelease id is the branch name, which is invalid for any name with
+// a slash (EPRERELEASEBRANCH) once such a branch exists.
+const hotfixRelease = `{
+  "branches": [
+    "main",
+    { "name": "develop", "channel": "alpha", "prerelease": "alpha" },
+    { "name": "hotfix/*", "channel": "beta", "prerelease": true }
+  ],
+  "plugins": ["@semantic-release/commit-analyzer", "@semantic-release/release-notes-generator"]
+}`
+
+// TestIntegration_BranchesAreOrigins: semantic-release sees origin's
+// branches, as in CI, not the developer's local ones; the requested branch is
+// the local one (its unpushed commits count).
+func TestIntegration_BranchesAreOrigins(t *testing.T) {
+	requireToolchain(t)
+	r := newRepo(t)
+	r.write(".releaserc.json", hotfixRelease)
+	r.commit("chore: init", "a.txt")
+	r.git("tag", "v1.0.0")
+	r.git("checkout", "-q", "-b", "develop")
+	r.commit("fix: pushed fix", "b.txt")
+	r.git("push", "-q", "origin", "main", "develop", "--tags")
+	// Unpushed work: a feature on develop and a local-only hotfix branch
+	// (which CI never sees).
+	r.commit("feat: local feature", "c.txt")
+	r.git("branch", "hotfix/tw-1-error-config")
+	name := filepath.Base(r.dir)
+
+	for _, offline := range []bool{false, true} {
+		dev := sole(t, compute(t, Options{RepoRoot: r.dir, Branch: "develop", Offline: offline}), name)
+		// feat from the local, unpushed commit: a minor alpha.
+		if dev.NewReleaseVersion != "1.1.0-alpha.1" || dev.NewReleaseChannel != "alpha" || dev.NewReleaseGitHead != r.git("rev-parse", "develop") {
+			t.Errorf("develop (offline %v): %+v", offline, dev)
+		}
+		main := sole(t, compute(t, Options{RepoRoot: r.dir, Branch: "main", Offline: offline}), name)
+		if main.NewReleasePublished || main.LastReleaseVersion != "1.0.0" {
+			t.Errorf("main (offline %v): %+v", offline, main)
+		}
+	}
+
+	// A branch only on origin is visible: without a local main there is
+	// still a release branch for develop to follow.
+	r.git("branch", "-D", "main")
+	for _, offline := range []bool{false, true} {
+		dev := sole(t, compute(t, Options{RepoRoot: r.dir, Branch: "develop", Offline: offline}), name)
+		if dev.NewReleaseVersion != "1.1.0-alpha.1" || dev.LastReleaseVersion != "1.0.0" {
+			t.Errorf("develop without a local main (offline %v): %+v", offline, dev)
+		}
+	}
+}

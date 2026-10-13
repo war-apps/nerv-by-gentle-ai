@@ -25,6 +25,8 @@ type origin struct {
 	// URL is origin's URL, a local path already made absolute; empty skips
 	// the fetch.
 	URL string
+	// Exists reports that the repository has an origin remote at all.
+	Exists bool
 	// Public is publicURL of origin's URL: the repository address the
 	// release notes link to; empty when there is none.
 	Public string
