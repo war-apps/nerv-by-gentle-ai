@@ -1,10 +1,10 @@
-# Release commands: `nerv version` and `nerv ship`
+# Release commands: `nerv version next` and `nerv ship`
 
 ## Objective
 
 Two repo-agnostic commands for any repository NERV works on:
 
-- `nerv version` (`/nerv:version`): the next semantic version of a repo (or of
+- `nerv version next` (`/nerv:version`): the next semantic version of a repo (or of
   each project of a monorepo) from a branch's commits, using the repo's own
   semantic-release configuration, with the outputs of
   `cycjimmy/semantic-release-action`.
@@ -12,7 +12,7 @@ Two repo-agnostic commands for any repository NERV works on:
   workflow where it cannot or should not run: pipeline (restore, lint, build,
   test, coverage, package), version files, publish (docker, nuget, npm), tag,
   CHANGELOG and GitHub release, configurable through `.nerv/nerv.yaml` and
-  hooks running node, pwsh or bash scripts. It reuses `nerv version`.
+  hooks running node, pwsh or bash scripts. It reuses `nerv version next`.
 
 ## Why
 
@@ -25,7 +25,7 @@ tagged with version, channel and `latest`).
 ## Decisions (user, 2026-10-13)
 
 - Engine: semantic-release itself, run through its programmatic API (dry run
-  for `nerv version`), so every semantic-release config form is accepted
+  for `nerv version next`), so every semantic-release config form is accepted
   (`.releaserc*`, `release.config.*`, `package.json` `release`, presets,
   `releaseRules`, `branches`, `extends`). Requires Node; semantic-release and
   the plugins the config names are installed at pinned versions in a NERV
@@ -50,9 +50,10 @@ tagged with version, channel and `latest`).
 
 ## Technical design (parent's proposal)
 
-- Names `version` / `ship` avoid the existing `nerv release`, NERV's own
-  maintainer tool.
-- `nerv version [--branch <b>] [--project <p>] [--json|--format env]`:
+- Names `version next` / `ship` avoid the existing `nerv release`, NERV's own
+  maintainer tool, and the existing `nerv version` (binary version; user
+  decision 2026-10-13: the computation is the `next` subcommand).
+- `nerv version next [--branch <b>] [--project <p>] [--json|--format env]`:
   semantic-release dry run in a temporary `git worktree` of the branch; a
   NERV-owned node plugin filters commits per project (path OR scope) and
   applies `depends_on` bumps. Output: the 12 action outputs
@@ -61,7 +62,7 @@ tagged with version, channel and `latest`).
   `new_release_patch_version`, `new_release_channel`, `new_release_notes`,
   `new_release_git_head`, `new_release_git_tag`, `last_release_version`,
   `last_release_git_head`, `last_release_git_tag`), per project.
-- `nerv ship [--project <p>] [--dry-run] [--yes]`: shows `nerv version`'s
+- `nerv ship [--project <p>] [--dry-run] [--yes]`: shows `nerv version next`'s
   result and asks for confirmation; runs the pipeline stages; then runs
   semantic-release for real with an injected NERV lifecycle plugin, so
   version-file writes, providers and hooks run at semantic-release's
@@ -92,7 +93,7 @@ tagged with version, channel and `latest`).
 - [x] T2 — node engine: embedded runner using semantic-release's API, pinned
   dependency cache, branch worktree, NERV commit-filter plugin (path OR
   scope), dependency bumps; output normalised to the 12 action outputs.
-- [ ] T3 — `nerv version` CLI (single repo and monorepo, `--json` and
+- [x] T3 — `nerv version next` CLI (single repo and monorepo, `--json` and
   `--format env`) plus `/nerv:version`.
 - [ ] T4 — streaming script runner with env and working directory; hooks
   for node, pwsh and bash on Linux and Windows.
@@ -106,7 +107,7 @@ tagged with version, channel and `latest`).
 
 ## Acceptance criteria
 
-- On a copy of `dim.comprobantes.api`, `nerv version --branch develop` returns
+- On a copy of `dim.comprobantes.api`, `nerv version next --branch develop` returns
   the same next version and channel as `npx semantic-release --dry-run` on
   that branch.
 - A monorepo fixture releases two projects from one commit (path + scope),
@@ -127,7 +128,8 @@ order). Slice boundaries: one PR per task, recorded below as they open.
 - T2 branch `feat/release-version-engine` from 7a23170.
 - PR #92 (T2): `feat/release-version-engine` → develop, commits d543f72..543a8df.
   Merged.
-- T3 branch `feat/release-version-cli`.
+- T3 branch `feat/release-version-cli` from 2dca250 (commits 95d90a7 and
+  this document's update).
 
 ## Progress
 
@@ -331,7 +333,7 @@ and observed failing.
   in core -> core 1.0.1, app 1.0.1 (patch), sdk 1.1.0 (minor), tool not
   released (none), order core,app,tool,sdk. Unpinned
   `semantic-release-slack-bot` -> error naming it.
-- Not run: `nerv version` vs `npx semantic-release --dry-run` on a real
+- Not run: `nerv version next` vs `npx semantic-release --dry-run` on a real
   copy of dim.comprobantes.api with origin on GitHub (reading origin is a
   remote operation with the user's credentials; it belongs to T3's
   acceptance run).
@@ -483,9 +485,78 @@ delegated (one writer). Test-first where a test can express the defect.
 - Carried to T3: R3-setsid-drops-sighup-propagation — the CLI must cancel
   the context on SIGINT, SIGTERM and SIGHUP.
 
+### T3
+
+- Route: delegated (writer trigger: CLI, signals, docs, slash command).
+- Name conflict found before writing: `nerv version [--json]` already printed
+  the binary and plugin versions. User decision (option 3): the computation
+  is `nerv version next [flags]`; bare `nerv version` / `--json` unchanged
+  (their tests untouched and green); any other argument after `version` is a
+  usage error. `/nerv:version` runs `nerv version next --json [args]`.
+- CLI (`cmd/nerv/version_next.go`): flags `--cwd` (git top level through the
+  `env.Runner` seam), `--branch`, `--project`, `--offline`, `--fetch-timeout`,
+  `--format text|json|env`, `--json` (conflicts with another explicit
+  `--format`). Before the engine runs, the `release:` section is loaded:
+  `*shipconfig.ValidationError` -> exit 1 with its path-qualified lines;
+  unknown `--project` -> exit 1 listing the projects; `--project` with no
+  section or a directory outside git -> exit 1. Engine errors -> exit 2
+  (validation from the engine also 1); `semrel.ErrOriginFetch` adds an
+  "--offline" hint; a cancelled run says "interrupted" (exit 2). No new
+  release -> exit 0. Progress and errors on stderr; stdout only the format.
+  json: object for one result, array for several. env: `key=value`,
+  multi-line values `key<<ghadelimiter_<32 hex>` ... value, newline,
+  delimiter (as @actions/core), the delimiter regenerated if it occurs in
+  the value; several results -> keys prefixed `<project>_`, `-` as `_`.
+- Signals: `signal.NotifyContext` on `cancelSignals` (build-tagged:
+  `signal_unix.go` SIGINT, SIGTERM, SIGHUP; `signal_other.go` SIGINT,
+  SIGTERM). Seams in `options`: `ComputeVersions` (default
+  `semrel.Compute`), `SignalContext` (default `signalContext`).
+- `internal/semrel` (small additive change): exported `ErrOriginFetch`,
+  wrapped by both origin-fetch errors (failure and timeout), so the CLI
+  can suggest `--offline` without matching message text.
+- RED: `go test ./cmd/nerv/ ./internal/semrel/` -> build failed
+  (`undefined: signalContext`, `opts.ComputeVersions undefined`,
+  `undefined: ErrOriginFetch`). GREEN: both `ok`; 39 targeted cmd/nerv
+  tests pass. `TestRun_VersionUnknownSubcommandIsAUsageError` had no
+  behavioural RED (bare `version` already rejected unknown arguments);
+  it pins that the usage now names `version next`.
+- Real-signal proof: `TestSignalContext_CancelsOnInterruptTerminateAndHangup`
+  (Unix) sends SIGINT, SIGTERM and SIGHUP to the test process and sees the
+  context cancelled each time.
+- Local end-to-end run (no remote; npm cache warm), fixture repo with
+  `package.json` `release.branches: [main, {develop, prerelease alpha}]`,
+  tag `v1.0.0`, `fix(api)` on main, `feat(web)` on develop:
+  `go run ./cmd/nerv version next --offline --cwd <fixture>` -> `widgets
+  (main)` next `1.0.1` (default channel, tag `v1.0.1`), last `1.0.0`;
+  `--branch develop` -> `1.1.0-alpha.1` (channel alpha). With a `release:`
+  section (api: `api`, web-app: `web`) on develop: api no new release (last
+  `api-v1.0.0`), web-app `1.1.0-alpha.1` (`web-app-v1.1.0-alpha.1`); env
+  keys `api_*` / `web_app_*`; `--project mobile` -> exit 1 "unknown project
+  "mobile"; the release: section declares: api, web-app". All exit 0
+  otherwise.
+- Observed (T2 behaviour, not changed): with no origin remote and no
+  `repository` in package.json, the notes links read
+  `https:/<absolute repo path>/compare/...`.
+- Docs: `docs/release-commands.md` `nerv version next` section (flags,
+  requirements node >= 20.8.1, npm, git >= 2.31 for path filters; outputs
+  table; formats with examples; exit codes; signals), `docs/commands.md`
+  (both forms and `/nerv:version`), `docs/configuration.md`, README docs
+  index, CHANGELOG `[Unreleased]` `### Added`, `plugin/commands/version.md`.
+  No prose test pins the command list (checked: `assets_test.go` requires
+  only `commands/configure.md`).
+- Checks: `go test ./...` ok (24 packages), `go test -tags
+  semrel_integration -run Integration -count=1 ./internal/semrel/` ok
+  (13.8s), `go vet ./...`, `go vet -tags semrel_integration
+  ./internal/semrel/`, `GOOS=windows go vet ./cmd/nerv/ ./internal/semrel/`
+  clean, `gofmt -l .` empty.
+- Size: `95d90a7` 15 files changed, 1200 insertions(+), 17 deletions(-).
+  Above the ~400-line heuristic: about 560 lines are tests and 290 docs;
+  the CLI, its formats and the slash command are one user-facing unit.
+- Commit: `95d90a7` `feat(cli): add nerv version next and /nerv:version`.
+
 ## Decisions after T2 (user, 2026-10-13)
 
-- `nerv version` reads origin's tags and semantic-release notes by default
+- `nerv version next` reads origin's tags and semantic-release notes by default
   (on the throwaway mirror, with the user's git credentials); `--offline`
   uses local refs only.
 - Kept: `last_release_*` filled even without a new release; no `release:`
@@ -493,4 +564,6 @@ delegated (one writer). Test-first where a test can express the defect.
 
 ## Next step
 
-T3 (`nerv version` CLI) on top of T2.
+T3 review (native, on the T3 commit), then the acceptance comparison against
+dim.comprobantes.api on GitHub (needs the user's authorization: it reads
+origin with their credentials), then T4.
