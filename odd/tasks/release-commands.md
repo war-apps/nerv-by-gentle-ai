@@ -200,6 +200,15 @@ the fix and observed failing.
   deletions(-)); `6234e1d` `refactor(ship): name the release config
   defaults` (4 files changed, 225 insertions(+), 140 deletions(-)).
 
+### T1 follow-up review
+
+- Native review of a65fbbc..c1f89a9 (medium, user granted): approved and
+  acknowledged. Advisory: R3-unknown-anchor-misattributed (WARNING: an alias
+  to an anchor defined nowhere is reported as "outside the release section"),
+  R3-cut-fallback-untested, R3-missed-key-silent-not-configured (a release
+  key written with a node property may be missed and read as not configured),
+  R3-mutable-default-docker-tags (exported mutable slice).
+
 ## Next step
 
 T2 (node engine) on top of T1.
