@@ -124,7 +124,7 @@ func parseResponse(stdout, stderr []byte) (runnerResponse, error) {
 		if msg == "" {
 			msg = "unknown error"
 		}
-		return resp, errors.New("semantic-release: " + msg)
+		return resp, errors.New("semantic-release: " + redact(msg))
 	}
 	return resp, nil
 }

@@ -23,9 +23,9 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
-	"slices"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/war-apps/nerv-by-gentle-ai/internal/shipconfig"
 )
@@ -51,6 +51,9 @@ type Options struct {
 	// the local ones are used as they are (release channels may be missed:
 	// a plain git fetch never brings semantic-release's notes).
 	Offline bool
+	// FetchTimeout bounds the read of release tags and notes from origin;
+	// zero means DefaultFetchTimeout.
+	FetchTimeout time.Duration
 }
 
 // Engine computes versions through a Runner.
@@ -125,10 +128,17 @@ func (e *Engine) Compute(ctx context.Context, opts Options) ([]ProjectResult, er
 	if _, err := e.git(ctx, top, env, "rev-parse", "--verify", "--quiet", "refs/heads/"+branch); err != nil {
 		return nil, fmt.Errorf("branch %q: not a local branch: %w", branch, err)
 	}
-	remote := ""
+	remote := origin{Timeout: opts.FetchTimeout}
+	if remote.Timeout <= 0 {
+		remote.Timeout = DefaultFetchTimeout
+	}
 	if !opts.Offline {
 		// No origin remote means there is nothing to sync from.
-		remote, _ = e.git(ctx, top, env, "remote", "get-url", "origin")
+		url, _ := e.git(ctx, top, env, "remote", "get-url", "origin")
+		remote.URL = resolveRemoteURL(url, top)
+		if remote.URL != "" {
+			remote.SSHCommand, _ = e.git(ctx, top, env, "config", "--get", "core.sshCommand")
+		}
 	}
 
 	scriptDir, err := os.MkdirTemp("", "nerv-semrel-runner-")
@@ -190,15 +200,17 @@ func (e *Engine) git(ctx context.Context, dir string, env []string, args ...stri
 //   - mirror: `git clone --mirror --shared` of the repository, a bare
 //     repository holding every local branch, tag and note, sharing the
 //     objects (no copy). It is semantic-release's "remote" (see the runner).
-//   - When remote is set (the origin URL), the release tags and
+//   - When remote.URL is set (origin's URL), the release tags and
 //     semantic-release's git notes (refs/notes/semantic-release-<tag>, which
 //     record the channel of each release) are fetched from it into the
 //     mirror, origin winning, as semantic-release does in CI: a plain git
 //     fetch never brings notes, and without them every prerelease tag looks
 //     like a default-channel release, so the last prerelease is missed.
+//     The fetch never prompts (see fetchEnv), never gets the URL on its
+//     command line, and is bounded by remote.Timeout.
 //   - worktree: a worktree of the mirror on branch (semantic-release needs a
 //     named branch).
-func (e *Engine) withCheckout(ctx context.Context, repo, branch, remote string, env []string, fn func(worktree, mirror string) error) error {
+func (e *Engine) withCheckout(ctx context.Context, repo, branch string, remote origin, env []string, fn func(worktree, mirror string) error) error {
 	tmp, err := os.MkdirTemp("", "nerv-semrel-")
 	if err != nil {
 		return err
@@ -210,17 +222,30 @@ func (e *Engine) withCheckout(ctx context.Context, repo, branch, remote string, 
 	if _, err := e.git(ctx, repo, env, "clone", "--quiet", "--mirror", "--shared", repo, mirror); err != nil {
 		return fmt.Errorf("copying the repository: %w", err)
 	}
-	if remote != "" {
-		fetchEnv := append(slices.Clone(env), "GIT_TERMINAL_PROMPT=0")
-		if _, err := e.git(ctx, mirror, fetchEnv, "fetch", "--quiet", "--no-write-fetch-head", remote,
-			"+refs/tags/*:refs/tags/*", "+refs/notes/*:refs/notes/*"); err != nil {
-			return fmt.Errorf("reading release tags and notes from origin (needed for release channels; use offline mode to rely on the local tags only): %w", err)
+	if remote.URL != "" {
+		if err := e.fetchOrigin(ctx, mirror, remote, env); err != nil {
+			return err
 		}
 	}
 	if _, err := e.git(ctx, mirror, env, "worktree", "add", "--quiet", wt, branch); err != nil {
 		return err
 	}
 	return fn(wt, mirror)
+}
+
+// fetchOrigin fetches origin's release tags and notes into the mirror.
+func (e *Engine) fetchOrigin(ctx context.Context, mirror string, remote origin, env []string) error {
+	fctx, cancel := context.WithTimeout(ctx, remote.Timeout)
+	defer cancel()
+	_, err := e.git(fctx, mirror, fetchEnv(env, remote), "fetch", "--quiet", "--no-write-fetch-head", originRemote,
+		"+refs/tags/*:refs/tags/*", "+refs/notes/*:refs/notes/*")
+	switch {
+	case err == nil:
+		return nil
+	case errors.Is(fctx.Err(), context.DeadlineExceeded) && ctx.Err() == nil:
+		return fmt.Errorf("reading release tags and notes from origin (%s) timed out after %s; use offline mode to rely on the local tags only", redact(remote.URL), remote.Timeout)
+	}
+	return fmt.Errorf("reading release tags and notes from origin (%s; needed for release channels; use offline mode to rely on the local tags only): %w", redact(remote.URL), err)
 }
 
 // node runs the embedded runner with one request.

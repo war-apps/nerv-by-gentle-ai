@@ -417,7 +417,7 @@ func TestCompute_DisposableCheckoutRemovedOnError(t *testing.T) {
 	}
 	fetches := f.find(func(c Command) bool { return isGit(c, "fetch") && slices.Contains(c.Args, mirror) })
 	if len(fetches) != 1 || !slices.Contains(fetches[0].Args, "+refs/notes/*:refs/notes/*") || !slices.Contains(fetches[0].Args, "+refs/tags/*:refs/tags/*") ||
-		!slices.Contains(fetches[0].Args, "https://github.com/example/repo.git") || !slices.Contains(fetches[0].Env, "GIT_TERMINAL_PROMPT=0") {
+		fetchURL(fetches[0]) != "https://github.com/example/repo.git" || !slices.Contains(fetches[0].Env, "GIT_TERMINAL_PROMPT=0") {
 		t.Errorf("origin tags and notes not fetched into the mirror: %v", fetches)
 	}
 	adds := f.find(func(c Command) bool { return isGit(c, "worktree", "add") })
@@ -425,7 +425,7 @@ func TestCompute_DisposableCheckoutRemovedOnError(t *testing.T) {
 		t.Fatalf("worktree add %v: want one, from the mirror, on develop", adds)
 	}
 	for _, c := range f.calls {
-		if c.Name == "git" && c.Args[1] == root && !isGit(c, "rev-parse") && !isGit(c, "symbolic-ref") && !isGit(c, "remote", "get-url") && !isGit(c, "clone") {
+		if c.Name == "git" && c.Args[1] == root && !isGit(c, "rev-parse") && !isGit(c, "symbolic-ref") && !isGit(c, "remote", "get-url") && !isGit(c, "config", "--get") && !isGit(c, "clone") {
 			t.Errorf("command writes to the user's repository: %v", c)
 		}
 	}

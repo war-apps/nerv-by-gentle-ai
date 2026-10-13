@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"os/exec"
+	"regexp"
 	"strings"
 )
 
@@ -59,14 +60,15 @@ func (ExecRunner) Run(ctx context.Context, c Command) (Result, error) {
 func (e *Engine) run(ctx context.Context, c Command) (Result, error) {
 	res, err := e.runner().Run(ctx, c)
 	if err != nil {
-		return res, fmt.Errorf("%s: %w%s", c, err, stderrTail(res.Stderr))
+		return res, fmt.Errorf("%s: %w%s", redact(c.String()), err, stderrTail(res.Stderr))
 	}
 	return res, nil
 }
 
-// stderrTail returns the last lines of a process's stderr, for errors.
+// stderrTail returns the last lines of a process's stderr, for errors, with
+// URL credentials redacted (git echoes the URL it failed to read).
 func stderrTail(stderr []byte) string {
-	text := strings.TrimSpace(string(stderr))
+	text := strings.TrimSpace(redact(string(stderr)))
 	if text == "" {
 		return ""
 	}
@@ -75,4 +77,21 @@ func stderrTail(stderr []byte) string {
 		lines = lines[len(lines)-15:]
 	}
 	return "\n" + strings.Join(lines, "\n")
+}
+
+var (
+	// urlUserinfoRe matches the userinfo of a URL ("scheme://user:pass@").
+	urlUserinfoRe = regexp.MustCompile(`(?i)\b([a-z][a-z0-9+.-]*://)[^/\s@'"]+@`)
+	// secretQueryRe matches a URL query parameter whose name says it holds a
+	// secret (token, access_token, private_token, password, secret, key, sig).
+	secretQueryRe = regexp.MustCompile(`(?i)([?&][a-z0-9_.-]*(?:token|password|passwd|secret|key|sig)[a-z0-9_.-]*=)[^&\s'"#]+`)
+)
+
+// redact hides the credentials of every URL in s: the userinfo
+// (https://user:token@host -> https://***@host) and secret-looking query
+// values (?access_token=x -> ?access_token=***). Every command string and
+// process output the engine puts in an error goes through it.
+func redact(s string) string {
+	s = urlUserinfoRe.ReplaceAllString(s, "${1}***@")
+	return secretQueryRe.ReplaceAllString(s, "${1}***")
 }

@@ -113,6 +113,17 @@ its version.
   it a prerelease tag such as `v2.9.0-alpha.8` is not recognised as the last
   `alpha` release. Offline, only the local tags are used and the result may
   differ from CI on prerelease branches.
+- That read never prompts and is bounded: it runs with
+  `GIT_TERMINAL_PROMPT=0`, `GCM_INTERACTIVE=never`, no standard input and
+  ssh in batch mode (`-o BatchMode=yes` is appended to `GIT_SSH_COMMAND`,
+  or to `core.sshCommand`, when that command is `ssh`; a non-ssh command
+  such as `plink`, or a `GIT_SSH` program, is used as it is and must not
+  prompt by itself), and it fails after 60 seconds. Credentials must
+  therefore come from a credential helper, an ssh agent or an unencrypted
+  key. The origin URL never appears on a command line, and credentials
+  embedded in it (`https://user:token@host/...`, `?access_token=...`) are
+  hidden in every error. A relative local origin path is resolved against
+  the repository.
 - In a monorepo, each project is computed in dependency order with its own
   `tag_format`, from the commits that touch its `path` or `shared_paths` or
   carry one of its `scopes` (`type(scope): ...`, several scopes separated by

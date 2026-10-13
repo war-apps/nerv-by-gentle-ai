@@ -76,14 +76,20 @@ type repo struct {
 }
 
 // newRepo creates a repository whose origin is a local bare repository
-// (origin's tags and semantic-release notes are read from it).
+// (origin's tags and semantic-release notes are read from it), configured as
+// a relative path, which must resolve against the repository and not against
+// NERV's temporary mirror.
 func newRepo(t *testing.T) *repo {
 	t.Helper()
 	origin := &repo{t: t, dir: t.TempDir()}
 	origin.git("init", "-q", "--bare")
 	r := &repo{t: t, dir: t.TempDir()}
 	r.git("init", "-q", "-b", "main")
-	r.git("remote", "add", "origin", origin.dir)
+	rel, err := filepath.Rel(r.dir, origin.dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r.git("remote", "add", "origin", rel)
 	return r
 }
 
