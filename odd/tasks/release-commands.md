@@ -340,6 +340,21 @@ and observed failing.
 - Commit: `d543f72` `feat(semrel): compute next versions with
   semantic-release`.
 
+### T2 review
+
+- Native review of a97b002..306b5dc (high risk, 4 lenses, user granted):
+  approved and acknowledged. Advisory findings: R1-001 (WARNING: a failed
+  origin fetch puts the remote URL, with any embedded credentials, in the
+  error), R4-ssh-fetch-can-block (WARNING: ssh can prompt on /dev/tty),
+  R4-per-commit-git-spawn (WARNING: one `git diff-tree` per commit, per
+  pass, per project, unmemoised), R3-relative-origin-url (WARNING: a
+  relative local origin resolves against the temp mirror),
+  R3-runner-exit-truncation (WARNING: `process.exit` right after a large
+  stdout write can cut the result on async pipes), R2-001 (WARNING: the task
+  log and the code disagree on which conventionalcommits versions fail),
+  R4-install-temp-leak, R2-002 (implicit `indexOf(null)` raise),
+  R3-runner-logic-untested-by-default.
+
 ## Next step
 
 T3 (`nerv version` CLI) on top of T2.
