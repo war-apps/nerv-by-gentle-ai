@@ -675,6 +675,15 @@ delegated (one writer). Test-first.
   branches) the local branches are kept, so prerelease branches still find
   their release branches.
 
+### T3 acceptance fix review
+
+- Native review of 0f1df74..8dd5ebf (medium, user granted): approved and
+  acknowledged. One SUGGESTION, R3-001: an empty `rev-parse` result with no
+  error rendered `%!w(<nil>)`. Fixed inline by the parent in `fe01cbb`
+  (RED: `TestCompute_EmptyBranchCommitIsNotALocalBranch` showed the
+  artifact; GREEN after the fix; `go test ./...`, `go vet`, `gofmt -l .`
+  clean).
+
 ## Next step
 
 Review of the T3 follow-ups, then the acceptance comparison against
