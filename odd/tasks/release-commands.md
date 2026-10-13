@@ -167,6 +167,39 @@ pending (save failed: host session registration not confirmed).
   R1-alias-walk-amplification, R2-unpinned-plugin-hint,
   R2-inline-placeholder-set, R2-scattered-defaults.
 
+### T1 follow-ups
+
+All ten advisory findings fixed (user authorized). Route: delegated (one
+writer; 2+ non-trivial files). Test-first: the new tests were added before
+the fix and observed failing.
+
+| Finding | Fix | Evidence |
+|---|---|---|
+| R3-early-return-unknown-fields | `parse` collects unknown keys and semantic problems into one `*ValidationError`; only a decode (type) error stops early, still listing the unknown keys. | RED: `TestLoad_UnknownFieldsReportedWithOtherProblems` failed (only the unknown key). GREEN. |
+| R3-unrelated-yaml-error | New `locate.go`: the top-level `release:` block is cut out by indentation (key line + blank, comment, indented or column-0 `- ` lines) and parsed alone, on its original line numbers. Undecidable layouts (`---`/`...`/`%` markers, `?` keys, indented/flow/sequence top level, `release:` twice) and a failed block parse fall back to the whole document. No `release:` + broken file -> `ErrNotConfigured`. An alias to an anchor outside the block is a `*ValidationError` naming the alias and line. | RED: `TestLoad_NotConfigured/tab_indentation_elsewhere` (`found character that cannot start any token`), `TestLoad_ToleratesUnrelatedYAMLErrors`, `TestLoad_AliasToOutsideAnchor` (loaded, want error). GREEN. |
+| R4-root-not-mapping-silent | `releaseNode` returns a `*ValidationError` ("the top level of nerv.yaml must be a mapping") for a non-mapping root; empty, null or comment-only stays `ErrNotConfigured`. | RED: `TestLoad_RootNotMapping` (got `ErrNotConfigured`). GREEN. |
+| R3-null-release-untested | Test case `bare release key` (`release:` with no value -> "at least one project is required"). | No RED possible: behaviour was already correct, the test was missing. GREEN. |
+| R3-coverage-nan | `math.IsNaN` added to the 0-100 check (±Inf already failed the range). | RED: `coverage not a number` loaded. GREEN (also `-.inf` case). |
+| R3-merge-key-rejected | `strict.go` follows `<<: *a` and `<<: [*a, *b]` into the merged mappings (struct and map targets), reporting their unknown keys at the merging path. | RED: `TestLoad_MergeKeys` (`<<: unknown field`). GREEN, including `release.projects[1].dockr: unknown field` reached only through a merge. |
+| R1-alias-walk-amplification | The walk counts every visited node, alias and merge expansions included, and fails above `maxWalkNodes` (10000) with "expands to more than 10000 nodes through aliases and merge keys". | RED: `TestLoad_AliasExpansionBudget` (10^9-node merge chain; failed on the merge key before the fix). GREEN, returns in milliseconds. |
+| R2-unpinned-plugin-hint | Hint is `"<name>@<version>"`. | RED: updated table case failed on `@6.0.3`. GREEN. |
+| R2-inline-placeholder-set | `BuildArgPlaceholders` package variable, rendered with `list(placeholders(...))`. | Refactor; existing `docker unknown placeholder` case stays GREEN. |
+| R2-scattered-defaults | New `defaults.go`: exported `DefaultTagFormat`, `DefaultChangelog`, `DefaultBump`, `DefaultDotnetConfiguration`, `DefaultPackageManager`, `DefaultDockerfile`, `DefaultDockerContext`, `DefaultNuGetAPIKeyEnv`, `DefaultNpmAccess`, `DefaultShell` (plus the moved `DefaultSemanticReleaseVersion`, `DefaultNuGetSource`) and the `DefaultDockerTags` variable; `applyDefaults` moved there and uses them. `TestDefaults_MatchDocs` ties each value to the docs. | RED: tests referencing the constants failed to compile (`undefined: shipconfig.DefaultTagFormat`). GREEN. |
+
+- Public API: additive only (the new `Default*` constants,
+  `DefaultDockerTags`, `BuildArgPlaceholders`); `Load`, `ErrNotConfigured`,
+  `ValidationError`, `TopoOrder`, `Project` unchanged. Behaviour change: an
+  alias to an anchor outside `release:` no longer loads (documented).
+- Docs: `docs/release-commands.md` Validation section (every problem at
+  once) and new "YAML notes" (block cut, merge keys, outside anchors,
+  non-mapping top level).
+- Checks: `go test ./...` ok (all packages), `go vet ./...` clean,
+  `gofmt -l .` empty.
+- Commits: `276569f` `fix(ship): report every release config problem and
+  tolerate unrelated yaml` (6 files changed, 488 insertions(+), 50
+  deletions(-)); `6234e1d` `refactor(ship): name the release config
+  defaults` (4 files changed, 225 insertions(+), 140 deletions(-)).
+
 ## Next step
 
 T2 (node engine) on top of T1.
