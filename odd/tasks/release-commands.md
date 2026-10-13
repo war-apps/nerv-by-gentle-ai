@@ -658,6 +658,23 @@ delegated (one writer). Test-first.
 - Commit: `70bf856` `fix(semrel): compute against origin's branches, not
   local ones` (7 files changed, 346 insertions(+), 13 deletions(-)).
 
+### T3 acceptance (user authorized GitHub read, 2026-10-13)
+
+- Reference: semantic-release 24.2.9 with dim.comprobantes.api's CI plugin
+  pins, `--dry-run --no-ci`, on a throwaway clone whose branches equal
+  origin's (the user's local `develop` is behind origin), GH_TOKEN from
+  `gh auth token`. Result: develop no release; main 2.9.0; release/rc no
+  release (last v2.9.0-rc.1).
+- `nerv version next` (after `70bf856`) on the same clone: develop no release
+  (last 2.9.0-alpha.9); main 2.9.0 (last 2.8.1); release/rc no release (last
+  2.9.0-rc.1). Match on all three branches.
+- On the user's own repo, `develop` (local commit, behind origin) gives no
+  release with last 2.9.0-alpha.8, as designed (the requested branch is
+  taken at the local commit). The user's repo was only read.
+- Accepted deviation: with no origin (or offline with no remote-tracking
+  branches) the local branches are kept, so prerelease branches still find
+  their release branches.
+
 ## Next step
 
 Review of the T3 follow-ups, then the acceptance comparison against
