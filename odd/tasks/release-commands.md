@@ -439,6 +439,34 @@ Route: delegated (one writer). Test-first.
 - T3 must cancel the context on SIGINT/SIGTERM (signal.NotifyContext) so a
   terminal Ctrl-C still stops git, npm and node.
 
+### T2 final pass
+
+Final bounded pass on the `internal/semrel` process runner for the T2
+second follow-up review's advisory findings (user authorized). Route:
+delegated (one writer). Test-first where a test can express the defect.
+
+| Finding | Fix | Evidence |
+|---|---|---|
+| R4-setpgid-background-tty, R3-setpgid-tty-prompt-stops-child | `process_unix.go`: `Setsid: true` instead of `Setpgid`, so the command has no controlling terminal and a helper that opens /dev/tty fails at once (ENXIO) instead of being stopped by SIGTTIN/SIGTTOU. The session leader's pid is its process-group id, so `kill(-pid, SIGKILL)` still kills the tree. | `TestExecRunner_ChildHasNoControllingTerminal` (`sh -c 'read line < /dev/tty'`, 4s timeout) skips when the test process has no controlling terminal, which is the case in this agent shell; RED/GREEN observed by running it under a pty with `script -qec "go test ..." /dev/null`. RED (Setpgid): "Run hit the timeout after 4.0s: the child was stopped waiting for the terminal (err signal: killed)". GREEN: fails at once (0.00s) with the shell's exit error. `TestExecRunner_CancelKillsTheWholeProcessGroup` stays green (0.21s). |
+| R4-windows-new-group-ctrlc | `process_windows.go`: `taskkill /T /F /PID` runs under a 10s `exec.CommandContext` timeout, falling back to `Process.Kill`. The code documents that `CREATE_NEW_PROCESS_GROUP` stops console Ctrl-C from reaching children, so the CLI (T3) must cancel the context on SIGINT/SIGTERM. | No Windows runner: `GOOS=windows go vet ./internal/semrel/` clean (compile check only). |
+| R3-waitdelay-turns-success-into-error | `process.go`: when `Wait` returns `exec.ErrWaitDelay`, the leftovers of the process group are killed (`killLeftovers`: group SIGKILL on Unix, no-op on Windows) and, if the context was not cancelled and the process exited 0, Run returns success with the output collected so far. `processWaitDelay` became an unexported variable so tests can shorten it. | `TestExecRunner_LingeringDescendantKeepsASuccessfulExit` (`sh -c 'sleep 30 & ...; echo ok'`, wait delay 300ms). RED: "Run(exit 0 with a lingering grandchild) = exec: WaitDelay expired before I/O complete, want success". GREEN: success with "ok" in 0.31s and the grandchild pid is gone (ESRCH). Cleanup kills the grandchild even on failure. |
+| R2-unasserted-ran-counter | `gitversion_test.go`: `TestCompute_GitVersionCheckedOnlyForPathFilters` asserts that semantic-release ran in both phases. | Test change only; passes. |
+| R2-ctrlc-consequence-undocumented-in-code | `ExecRunner` doc: commands run in their own session and process group without a controlling terminal, so a terminal Ctrl-C reaches them only through context cancellation (signal.NotifyContext). | Doc only. |
+
+- Documented limitation, R3-windows-tree-kill-unproved: the Windows tree
+  kill (taskkill /T) and the Windows behaviour on a lingering descendant
+  (left running; taskkill cannot find it once the child exited) are not
+  proved on a real Windows process; there is no Windows runner here.
+- Public API: unchanged.
+- Checks: `go test ./...` ok (24 packages), `go test -tags
+  semrel_integration -run Integration -count=1 ./internal/semrel/` ok
+  (13.6s), `go vet ./...`, `GOOS=windows go vet ./internal/semrel/` and
+  `go vet -tags semrel_integration ./internal/semrel/` clean, `gofmt -l .`
+  empty.
+- Commit: `12e81f5` `fix(semrel): detach commands from the terminal and
+  keep successful exits` (5 files changed, 169 insertions(+), 20
+  deletions(-)).
+
 ## Next step
 
 T3 (`nerv version` CLI) on top of T2.
