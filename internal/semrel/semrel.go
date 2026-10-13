@@ -137,8 +137,11 @@ func (e *Engine) Compute(ctx context.Context, opts Options) ([]ProjectResult, er
 		}
 	}
 	localSHA, err := e.git(ctx, top, env, "rev-parse", "--verify", "--quiet", "refs/heads/"+branch)
-	if err != nil || localSHA == "" {
+	if err != nil {
 		return nil, fmt.Errorf("branch %q: not a local branch: %w", branch, err)
+	}
+	if localSHA == "" {
+		return nil, fmt.Errorf("branch %q: not a local branch", branch)
 	}
 	remote := origin{Timeout: opts.FetchTimeout}
 	if remote.Timeout <= 0 {
