@@ -250,11 +250,11 @@ tasks:
 	if p.Path != "." {
 		t.Errorf("path = %q, want .", p.Path)
 	}
-	if p.TagFormat != "v${version}" {
-		t.Errorf("tag_format = %q, want v${version}", p.TagFormat)
+	if p.TagFormat != shipconfig.DefaultTagFormat {
+		t.Errorf("tag_format = %q, want %s", p.TagFormat, shipconfig.DefaultTagFormat)
 	}
-	if p.Changelog != "CHANGELOG.md" {
-		t.Errorf("changelog = %q, want CHANGELOG.md", p.Changelog)
+	if p.Changelog != shipconfig.DefaultChangelog {
+		t.Errorf("changelog = %q, want %s", p.Changelog, shipconfig.DefaultChangelog)
 	}
 	if !reflect.DeepEqual(p.Scopes, []string{"app"}) {
 		t.Errorf("scopes = %v, want [app]", p.Scopes)
@@ -288,7 +288,7 @@ func TestLoad_MonorepoDefaults(t *testing.T) {
 		{"api.path", api.Path, "src/Api"},
 		{"api.tag_format", api.TagFormat, "api-v${version}"},
 		{"api.changelog", api.Changelog, "src/Api/CHANGELOG.md"},
-		{"api.depends_on[0].bump", api.DependsOn[0].Bump, "patch"},
+		{"api.depends_on[0].bump", api.DependsOn[0].Bump, shipconfig.DefaultBump},
 		{"lib.path", lib.Path, "src/Lib"},
 		{"lib.tag_format", lib.TagFormat, "lib@${version}"},
 		{"lib.changelog", lib.Changelog, "docs/LIB_CHANGELOG.md"},
@@ -338,21 +338,21 @@ func TestLoad_PresetDefaults(t *testing.T) {
             shell: pwsh
 `)
 	p := rel.Projects[0]
-	if p.Dotnet.Configuration != "Release" || p.Dotnet.ProjectFile != "src/Api/Api.csproj" || p.Dotnet.CoverageThreshold != 80 {
+	if p.Dotnet.Configuration != shipconfig.DefaultDotnetConfiguration || p.Dotnet.ProjectFile != "src/Api/Api.csproj" || p.Dotnet.CoverageThreshold != 80 {
 		t.Errorf("dotnet = %+v", *p.Dotnet)
 	}
-	if p.Node.PackageManager != "npm" {
-		t.Errorf("node.package_manager = %q, want npm", p.Node.PackageManager)
+	if p.Node.PackageManager != shipconfig.DefaultPackageManager {
+		t.Errorf("node.package_manager = %q, want %s", p.Node.PackageManager, shipconfig.DefaultPackageManager)
 	}
-	if p.NuGet.Source != shipconfig.DefaultNuGetSource || p.NuGet.APIKeyEnv != "NUGET_API_KEY" {
+	if p.NuGet.Source != shipconfig.DefaultNuGetSource || p.NuGet.APIKeyEnv != shipconfig.DefaultNuGetAPIKeyEnv {
 		t.Errorf("nuget = %+v", *p.NuGet)
 	}
-	if p.Npm.Access != "public" {
-		t.Errorf("npm.access = %q, want public", p.Npm.Access)
+	if p.Npm.Access != shipconfig.DefaultNpmAccess {
+		t.Errorf("npm.access = %q, want %s", p.Npm.Access, shipconfig.DefaultNpmAccess)
 	}
 	img := p.Docker.Images[0]
-	if img.Dockerfile != "Dockerfile" || img.Context != "." || !img.ShouldPush() ||
-		!reflect.DeepEqual(img.Tags, []string{"version", "channel", "latest"}) ||
+	if img.Dockerfile != shipconfig.DefaultDockerfile || img.Context != shipconfig.DefaultDockerContext || !img.ShouldPush() ||
+		!reflect.DeepEqual(img.Tags, shipconfig.DefaultDockerTags) ||
 		img.BuildArgs["APP_VERSION"] != "${version}" {
 		t.Errorf("image[0] = %+v", img)
 	}
@@ -361,11 +361,11 @@ func TestLoad_PresetDefaults(t *testing.T) {
 		!reflect.DeepEqual(worker.Tags, []string{"version"}) {
 		t.Errorf("image[1] = %+v", worker)
 	}
-	if got := p.Stages["test"]; got.Run != "dotnet test --no-build" || got.Shell != "bash" {
+	if got := p.Stages["test"]; got.Run != "dotnet test --no-build" || got.Shell != shipconfig.DefaultShell {
 		t.Errorf("stages.test = %+v", got)
 	}
 	hooks := p.Hooks["prepare"]
-	if len(hooks) != 2 || hooks[0].Shell != "bash" || hooks[0].Env["KEY"] != "value" || hooks[1].Shell != "pwsh" {
+	if len(hooks) != 2 || hooks[0].Shell != shipconfig.DefaultShell || hooks[0].Env["KEY"] != "value" || hooks[1].Shell != "pwsh" {
 		t.Errorf("hooks.prepare = %+v", hooks)
 	}
 }
@@ -385,6 +385,40 @@ func TestLoad_DocumentedExample(t *testing.T) {
 	p := rel.Projects[0]
 	if p.Name != "api" || p.TagFormat != "v${version}" || p.Dotnet == nil || p.Docker == nil {
 		t.Errorf("documented example loaded as %+v", p)
+	}
+}
+
+// The documented defaults are the documented values: a change to a default
+// constant must be a deliberate change to docs/release-commands.md too.
+func TestDefaults_MatchDocs(t *testing.T) {
+	want := map[string]string{
+		shipconfig.DefaultSemanticReleaseVersion: "24.2.3",
+		shipconfig.DefaultTagFormat:              "v${version}",
+		shipconfig.DefaultChangelog:              "CHANGELOG.md",
+		shipconfig.DefaultBump:                   "patch",
+		shipconfig.DefaultDotnetConfiguration:    "Release",
+		shipconfig.DefaultPackageManager:         "npm",
+		shipconfig.DefaultDockerfile:             "Dockerfile",
+		shipconfig.DefaultDockerContext:          ".",
+		shipconfig.DefaultNuGetSource:            "https://api.nuget.org/v3/index.json",
+		shipconfig.DefaultNuGetAPIKeyEnv:         "NUGET_API_KEY",
+		shipconfig.DefaultNpmAccess:              "public",
+		shipconfig.DefaultShell:                  "bash",
+	}
+	doc, err := os.ReadFile(filepath.Join("..", "..", "docs", "release-commands.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for got, documented := range want {
+		if got != documented {
+			t.Errorf("default %q, documented as %q", got, documented)
+		}
+		if !strings.Contains(string(doc), "`"+documented+"`") {
+			t.Errorf("docs/release-commands.md does not mention the default `%s`", documented)
+		}
+	}
+	if !reflect.DeepEqual(shipconfig.DefaultDockerTags, []string{"version", "channel", "latest"}) {
+		t.Errorf("DefaultDockerTags = %v", shipconfig.DefaultDockerTags)
 	}
 }
 

@@ -34,6 +34,10 @@ var PackageManagers = []string{"npm", "pnpm", "yarn"}
 // NpmAccess are the npm publish access levels.
 var NpmAccess = []string{"public", "restricted"}
 
+// BuildArgPlaceholders are the placeholders a docker build_args value may
+// use: ${version}, ${channel} and ${tag}.
+var BuildArgPlaceholders = []string{"version", "channel", "tag"}
+
 // reservedEnvPrefix is the prefix of the variables NERV passes to hooks.
 const reservedEnvPrefix = "NERV_RELEASE_"
 
@@ -46,107 +50,6 @@ var (
 	driveRe       = regexp.MustCompile(`^[A-Za-z]:`)
 )
 
-// applyDefaults fills every unset field with its documented default.
-func (r *Release) applyDefaults() {
-	if r.SemanticRelease.Version == "" {
-		r.SemanticRelease.Version = DefaultSemanticReleaseVersion
-	}
-	single := len(r.Projects) == 1
-	for i := range r.Projects {
-		p := &r.Projects[i]
-		if len(p.Scopes) == 0 && p.Name != "" {
-			p.Scopes = []string{p.Name}
-		}
-		if p.TagFormat == "" {
-			if single {
-				p.TagFormat = "v${version}"
-			} else {
-				p.TagFormat = p.Name + "-v${version}"
-			}
-		}
-		for j := range p.DependsOn {
-			if p.DependsOn[j].Bump == "" {
-				p.DependsOn[j].Bump = "patch"
-			}
-		}
-		p.applyPresetDefaults()
-		for stage, c := range p.Stages {
-			p.Stages[stage] = c.withDefaults()
-		}
-		for key, cmds := range p.Hooks {
-			for j := range cmds {
-				cmds[j] = cmds[j].withDefaults()
-			}
-			p.Hooks[key] = cmds
-		}
-	}
-}
-
-// applyPresetDefaults creates the settings of every enabled preset and
-// fills their defaults.
-func (p *Project) applyPresetDefaults() {
-	enabled := func(name string) bool { return slices.Contains(p.Presets, name) }
-	if enabled("dotnet") && p.Dotnet == nil {
-		p.Dotnet = &Dotnet{}
-	}
-	if p.Dotnet != nil {
-		if p.Dotnet.Configuration == "" {
-			p.Dotnet.Configuration = "Release"
-		}
-	}
-	if enabled("node") && p.Node == nil {
-		p.Node = &Node{}
-	}
-	if p.Node != nil && p.Node.PackageManager == "" {
-		p.Node.PackageManager = "npm"
-	}
-	if enabled("docker") && p.Docker == nil {
-		p.Docker = &Docker{}
-	}
-	if p.Docker != nil {
-		for i := range p.Docker.Images {
-			img := &p.Docker.Images[i]
-			if img.Dockerfile == "" {
-				img.Dockerfile = "Dockerfile"
-			}
-			if img.Context == "" {
-				img.Context = "."
-			}
-			if len(img.Tags) == 0 {
-				img.Tags = slices.Clone(DockerTags)
-			}
-			if img.Push == nil {
-				push := true
-				img.Push = &push
-			}
-		}
-	}
-	if enabled("nuget") && p.NuGet == nil {
-		p.NuGet = &NuGet{}
-	}
-	if p.NuGet != nil {
-		if p.NuGet.Source == "" {
-			p.NuGet.Source = DefaultNuGetSource
-		}
-		if p.NuGet.APIKeyEnv == "" {
-			p.NuGet.APIKeyEnv = "NUGET_API_KEY"
-		}
-	}
-	if enabled("npm") && p.Npm == nil {
-		p.Npm = &Npm{}
-	}
-	if p.Npm != nil && p.Npm.Access == "" {
-		p.Npm.Access = "public"
-	}
-}
-
-func (c Command) withDefaults() Command {
-	if c.Shell == "" {
-		c.Shell = "bash"
-	}
-	return c
-}
-
 // finalizePaths runs after validation: it rewrites every path as a clean
 // forward-slash path and derives the default changelog from the (now known
 // to be safe) project path.
@@ -158,7 +61,7 @@ func (r *Release) finalizePaths() {
 			p.SharedPaths[j] = normalize(p.SharedPaths[j])
 		}
 		if p.Changelog == "" {
-			p.Changelog = path.Join(p.Path, "CHANGELOG.md")
+			p.Changelog = defaultChangelog(p.Path)
 		} else {
 			p.Changelog = normalize(p.Changelog)
 		}
@@ -369,8 +272,8 @@ func (v *validator) checkPresets(at string, p Project) {
 			}
 			for _, key := range sortedKeys(img.BuildArgs) {
 				for _, m := range placeholderRe.FindAllStringSubmatch(img.BuildArgs[key], -1) {
-					if !slices.Contains([]string{"version", "channel", "tag"}, m[1]) {
-						v.addf("%s.build_args.%s: unknown placeholder ${%s} (want ${version}, ${channel} or ${tag})", iat, key, m[1])
+					if !slices.Contains(BuildArgPlaceholders, m[1]) {
+						v.addf("%s.build_args.%s: unknown placeholder ${%s} (want %s)", iat, key, m[1], list(placeholders(BuildArgPlaceholders)))
 					}
 				}
 			}
@@ -440,6 +343,15 @@ func list(items []string) string {
 		return items[0]
 	}
 	return strings.Join(items[:len(items)-1], ", ") + " or " + items[len(items)-1]
+}
+
+// placeholders renders names as ${name}.
+func placeholders(names []string) []string {
+	out := make([]string, len(names))
+	for i, n := range names {
+		out[i] = "${" + n + "}"
+	}
+	return out
 }
 
 func sortedKeys[V any](m map[string]V) []string {

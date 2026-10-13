@@ -24,14 +24,6 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// DefaultSemanticReleaseVersion is the semantic-release version installed in
-// the NERV cache when release.semantic_release.version is not set.
-const DefaultSemanticReleaseVersion = "24.2.3"
-
-// DefaultNuGetSource is the push target when release.projects[].nuget.source
-// is not set.
-const DefaultNuGetSource = "https://api.nuget.org/v3/index.json"
-
 // ErrNotConfigured is returned by Load when the repository has no
 // .nerv/nerv.yaml or the file has no release: key.
 var ErrNotConfigured = errors.New("release: not configured in .nerv/nerv.yaml")
@@ -72,9 +64,10 @@ type Project struct {
 	Scopes []string `yaml:"scopes"`
 	// TagFormat is the semantic-release tagFormat; it must contain
 	// ${version} and no other placeholder, and be unique across projects.
-	// Default: "v${version}" with one project, "<name>-v${version}" otherwise.
+	// Default: DefaultTagFormat with one project, "<name>-"+DefaultTagFormat
+	// otherwise.
 	TagFormat string `yaml:"tag_format"`
-	// Changelog is the CHANGELOG file. Default: <path>/CHANGELOG.md.
+	// Changelog is the CHANGELOG file. Default: <path>/DefaultChangelog.
 	Changelog string `yaml:"changelog"`
 	// DependsOn lists the projects whose new release bumps this one.
 	DependsOn []Dependency `yaml:"depends_on"`
@@ -105,7 +98,7 @@ type Dependency struct {
 	// Project names another project of the section. Required.
 	Project string `yaml:"project"`
 	// Bump is applied to the dependent when the dependency releases:
-	// patch, minor or none. Default: patch.
+	// patch, minor or none. Default: DefaultBump.
 	Bump string `yaml:"bump"`
 }
 
@@ -121,13 +114,14 @@ type Dotnet struct {
 	// CoverageThreshold is the minimum line coverage percentage (0-100);
 	// 0 disables the check.
 	CoverageThreshold float64 `yaml:"coverage_threshold"`
-	// Configuration is the build configuration. Default: Release.
+	// Configuration is the build configuration.
+	// Default: DefaultDotnetConfiguration.
 	Configuration string `yaml:"configuration"`
 }
 
 // Node configures the node preset.
 type Node struct {
-	// PackageManager is npm, pnpm or yarn. Default: npm.
+	// PackageManager is npm, pnpm or yarn. Default: DefaultPackageManager.
 	PackageManager string `yaml:"package_manager"`
 }
 
@@ -142,16 +136,16 @@ type Docker struct {
 type DockerImage struct {
 	// Name is the image repository, e.g. ghcr.io/org/api. Required.
 	Name string `yaml:"name"`
-	// Dockerfile is the Dockerfile path. Default: Dockerfile.
+	// Dockerfile is the Dockerfile path. Default: DefaultDockerfile.
 	Dockerfile string `yaml:"dockerfile"`
-	// Context is the build context directory. Default: ".".
+	// Context is the build context directory. Default: DefaultDockerContext.
 	Context string `yaml:"context"`
-	// BuildArgs are passed as --build-arg; values may use the ${version},
-	// ${channel} and ${tag} placeholders.
+	// BuildArgs are passed as --build-arg; values may use the
+	// BuildArgPlaceholders (${version}, ${channel} and ${tag}).
 	BuildArgs map[string]string `yaml:"build_args"`
 	// Tags selects the image tags: version (the release version), channel
 	// (the release channel, e.g. alpha or rc) and latest (only applied on a
-	// release of the default channel). Default: [version, channel, latest].
+	// release of the default channel). Default: DefaultDockerTags.
 	Tags []string `yaml:"tags"`
 	// Push pushes the tags after the build. Default: true; Load always sets
 	// it, read it through ShouldPush.
@@ -166,7 +160,7 @@ type NuGet struct {
 	// Source is the push source. Default: DefaultNuGetSource.
 	Source string `yaml:"source"`
 	// APIKeyEnv is the environment variable holding the API key.
-	// Default: NUGET_API_KEY.
+	// Default: DefaultNuGetAPIKeyEnv.
 	APIKeyEnv string `yaml:"api_key_env"`
 }
 
@@ -175,7 +169,7 @@ type Npm struct {
 	// Registry is the publish registry. Default: empty, meaning npm's own
 	// configuration.
 	Registry string `yaml:"registry"`
-	// Access is public or restricted. Default: public.
+	// Access is public or restricted. Default: DefaultNpmAccess.
 	Access string `yaml:"access"`
 	// DistTag is the dist-tag. Default: empty, meaning the release channel
 	// (latest on the default channel).
@@ -186,7 +180,7 @@ type Npm struct {
 type Command struct {
 	// Run is the command line or script. Required.
 	Run string `yaml:"run"`
-	// Shell runs Run: node, pwsh or bash. Default: bash.
+	// Shell runs Run: node, pwsh or bash. Default: DefaultShell.
 	Shell string `yaml:"shell"`
 	// Env adds environment variables. The NERV_RELEASE_ prefix is reserved
 	// for the variables NERV itself passes (version, channel, tag, ...).
