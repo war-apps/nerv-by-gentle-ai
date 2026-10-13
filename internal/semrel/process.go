@@ -7,7 +7,14 @@ import (
 	"os/exec"
 	"regexp"
 	"strings"
+	"time"
 )
+
+// processWaitDelay bounds how long Run waits for a process's output pipes
+// to close after the process exited or its context was cancelled: a
+// grandchild that inherited them (an ssh or https helper under git fetch,
+// an install script under npm) must not keep Run blocked.
+const processWaitDelay = 5 * time.Second
 
 // Command is one external process: git, node or npm.
 type Command struct {
@@ -38,7 +45,12 @@ type Runner interface {
 	Run(ctx context.Context, c Command) (Result, error)
 }
 
-// ExecRunner runs commands with os/exec.
+// ExecRunner runs commands with os/exec. Each command runs in its own
+// process group (a new process group on Windows); cancelling the context
+// kills the whole group, so the helpers a command started (ssh,
+// git-remote-https, credential helpers, npm's children) die with it, and
+// Run returns at most processWaitDelay after the cancellation or the
+// command's exit even if one of them still holds the output pipes.
 type ExecRunner struct{}
 
 // Run implements Runner.
@@ -52,6 +64,8 @@ func (ExecRunner) Run(ctx context.Context, c Command) (Result, error) {
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
+	cmd.WaitDelay = processWaitDelay
+	killGroupOnCancel(cmd)
 	err := cmd.Run()
 	return Result{Stdout: stdout.Bytes(), Stderr: stderr.Bytes()}, err
 }
