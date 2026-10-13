@@ -617,6 +617,47 @@ delegated (one writer). Test-first.
   failed; GREEN after the fix; `go test ./...`, `go vet ./...`,
   `GOOS=windows go vet ./cmd/nerv/`, `gofmt -l .` clean.
 
+### T3 acceptance fix
+
+- Bug (parent's acceptance run on dim.comprobantes.api): `nerv version next
+  --branch develop` (and `main`) exited 2 with `semantic-release:
+  EPRERELEASEBRANCH A pre-release branch configuration is invalid in the
+  branches configuration`.
+- Cause: the mirror (`git clone --mirror --shared` of the user's repo)
+  carried every local head, including a local-only
+  `hotfix/tw-49276610-error-config-destino`; dim's `{"name": "hotfix/*",
+  "prerelease": true}` made it a release branch whose name is an invalid
+  prerelease id. CI only has origin's branches. Same root: a branch only on
+  origin was invisible (no local `main` -> `ERELEASEBRANCHES`).
+- Fix (route: delegated, one writer; `internal/semrel/heads.go`): the
+  origin fetch also brings `+refs/heads/*:refs/nerv-origin-heads/*` (same
+  safe path: no prompts, redacted, bounded, `ErrOriginFetch`); `planHeads`
+  builds one `git update-ref --stdin` transaction on the mirror: heads =
+  origin's (online), or the user's `refs/remotes/origin/*` minus `HEAD`
+  (offline), plus the requested branch at the user's local commit (unpushed
+  commits count); scratch refs deleted. The user's repo is only read.
+- Deviation from the request (for the parent to confirm): with no origin
+  remote, or offline with no remote-tracking branch, the local branches are
+  kept instead of only the requested branch. Single-branch semantics would
+  make every prerelease branch of an origin-less repository fail with
+  `ERELEASEBRANCHES` (no `main` to follow), a regression of the earlier
+  local runs; it is one condition in `planHeads` if the parent prefers it.
+- RED: new `TestIntegration_BranchesAreOrigins` (dim-shaped `hotfix/*`
+  config, local-only `hotfix/tw-1-error-config`) -> `EPRERELEASEBRANCH`;
+  with the hotfix line removed, the origin-only-main half against the old
+  engine (temp worktree of 0f1df74) -> `ERELEASEBRANCHES`. Unit:
+  `heads_test.go` failed to build (`undefined: planHeads`,
+  `originHeadsRef`). GREEN: all; online and offline develop ->
+  `1.1.0-alpha.1` from the unpushed `feat`, head = local develop; main no
+  release, last `1.0.0`; without a local main develop still computes.
+- Docs: `docs/release-commands.md` (origin's branch set, local commit of
+  the requested branch, offline and no-origin rules).
+- Checks: `go test ./...` ok (24 packages), integration suite ok (6 tests,
+  20.7s), `go vet ./...`, `GOOS=windows go vet ./cmd/nerv/
+  ./internal/semrel/` clean, `gofmt -l .` empty.
+- Commit: `70bf856` `fix(semrel): compute against origin's branches, not
+  local ones` (7 files changed, 346 insertions(+), 13 deletions(-)).
+
 ## Next step
 
 Review of the T3 follow-ups, then the acceptance comparison against
