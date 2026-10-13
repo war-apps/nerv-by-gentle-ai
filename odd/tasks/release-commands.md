@@ -209,6 +209,31 @@ the fix and observed failing.
   key written with a node property may be missed and read as not configured),
   R3-mutable-default-docker-tags (exported mutable slice).
 
+### T1 second follow-ups
+
+Three of the four advisory findings fixed (user authorized). Route:
+delegated (one writer). Test-first: the new tests were added before the fix
+and observed failing.
+
+| Finding | Fix | Evidence |
+|---|---|---|
+| R3-unknown-anchor-misattributed | `unknownAnchorProblem` (was `outsideAnchorProblem`) says "outside the release: section" only when a line of the file outside the cut block defines `&name` (whole-name match); otherwise "refers to an undefined anchor &name (a typo, or an alias used before its anchor is defined)", with the alias line. | RED: `TestLoad_AliasToUndefinedAnchor` (typo, used before definition, only `&cmdx` outside) got the outside message. GREEN; `TestLoad_AliasToOutsideAnchor` stays GREEN. |
+| R3-missed-key-silent-not-configured | `releaseKeyRe` accepts leading node properties (`&r`, `!!str`, `!<verbatim>`, combined); the first-line check no longer treats a property-prefixed key as undecided. When the whole file fails to parse and no key was cut, `possibleReleaseKey` (a top-level key containing the word `release`, or an escaped double-quoted key) turns `ErrNotConfigured` into an error naming the line. | RED: `TestLoad_ReleaseKeyForms` anchored/tagged/verbatim cases (`not configured` after another key, a parse error as first key); `TestLoad_UnrecognisedReleaseKeyInBrokenFile` (`"rel\x65ase":` + tab error -> `ErrNotConfigured`). Quoted cases were already GREEN. GREEN. |
+| R3-mutable-default-docker-tags | `DefaultDockerTags` is now `func DefaultDockerTags() []string` returning a fresh slice; `applyDefaults` calls it. Tests compare against the literal. | RED: tests failed to compile (`cannot call shipconfig.DefaultDockerTags (variable of type []string)`). GREEN: `TestDefaultDockerTags_ReturnsACopy`, `TestDefaults_MatchDocs`. |
+
+- R3-cut-fallback-untested: accepted and deferred (no work; the
+  block-parse fallback to the whole document stays without a dedicated
+  test).
+- Public API: `DefaultDockerTags` changed from a `[]string` variable to a
+  function returning a copy; everything else unchanged.
+- Docs: `docs/release-commands.md` YAML notes (quoted/anchored/tagged
+  release key, unrecognised key in a broken file, undefined anchor wording).
+- Checks: `go test ./...` ok (all packages), `go vet ./...` clean,
+  `gofmt -l .` empty.
+- Commit: `e431252` `fix(ship): name undefined anchors, find property
+  release keys, copy docker tag defaults` (5 files changed, 199
+  insertions(+), 19 deletions(-)).
+
 ## Next step
 
 T2 (node engine) on top of T1.
