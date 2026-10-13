@@ -390,6 +390,15 @@ delegated (one writer). Test-first where a test expresses the defect.
   `e6bad1a` `fix(semrel): state which conventionalcommits majors fail with
   writer 8` (2 files changed, 13 insertions(+), 4 deletions(-)).
 
+### T2 follow-up review
+
+- Native review of 06f6590..a82f973 (medium, user granted): approved and
+  acknowledged. Advisory: R3-fetch-timeout-unproved-on-real-process
+  (WARNING: the 60s bound is a context deadline proven only with a fake
+  runner; a real fetch's ssh/https helper children may outlive the kill and
+  hold the pipes open), R3-diff-merges-git-version-unchecked (git < 2.31
+  fails with a raw unknown-option error).
+
 ## Next step
 
 T3 (`nerv version` CLI) on top of T2.
