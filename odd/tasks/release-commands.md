@@ -286,7 +286,8 @@ and observed failing.
 - Pinning: default pins (verified on npm 2026-10-13) changelog `6.0.3`, git
   `10.0.1`, exec `7.1.0`, conventional-changelog-conventionalcommits
   `8.0.0` (10.x fails with semantic-release 24's bundled writer 8, observed:
-  "requires conventional-changelog-writer@9"; changelog 7 / git 11 need Node
+  "requires conventional-changelog-writer@9"; 9.x works; statement of
+  record in `internal/semrel/cache.go`; changelog 7 / git 11 need Node
   ^22.22.2 || >=24.15). Bundled allowed without pin: commit-analyzer,
   release-notes-generator, npm, github, conventional-changelog-angular.
   `extra_plugins` overrides a default pin of the same name. Cache:
@@ -354,6 +355,40 @@ and observed failing.
   log and the code disagree on which conventionalcommits versions fail),
   R4-install-temp-leak, R2-002 (implicit `indexOf(null)` raise),
   R3-runner-logic-untested-by-default.
+
+### T2 follow-ups
+
+All nine advisory findings of the T2 review fixed (user authorized). Route:
+delegated (one writer). Test-first where a test expresses the defect.
+
+| Finding | Fix | Evidence |
+|---|---|---|
+| R1-001 | The origin URL is no longer on argv: the mirror fetches the `nerv-origin` remote whose URL comes from `GIT_CONFIG_COUNT`/`GIT_CONFIG_KEY_n`/`GIT_CONFIG_VALUE_n` (extending an existing count). `redact` hides URL userinfo and secret-named query values (`*token*`, `*password*`, `*secret*`, `*key*`, `*sig*`) in every command string (`Engine.run`), stderr tail and runner error. | RED: `TestCompute_OriginFetchFailureHidesCredentials` (error leaked `s3cr3t-pass`, `tok-123`; URL on the fetch argv). GREEN. `TestRedact` written with the fix (no RED). |
+| R4-ssh-fetch-can-block | Fetch env: `GIT_TERMINAL_PROMPT=0`, `GCM_INTERACTIVE=never`, `GIT_SSH_COMMAND` with `-o BatchMode=yes` appended following git's precedence (env `GIT_SSH_COMMAND`, then the repo's `core.sshCommand`, then `GIT_SSH`, then `ssh`); a non-ssh command (plink, wrapper) or a `GIT_SSH` program is left alone (documented). No stdin. Bounded by `Options.FetchTimeout` (default `DefaultFetchTimeout` 60s), with a "timed out after" error. | RED: `TestCompute_FetchNeverPrompts` (no BatchMode in 4 cases), `TestCompute_FetchIsBounded` (no deadline). GREEN. `TestCompute_FetchTimeoutIsAnError` written with the fix. |
+| R4-per-commit-git-spawn | `commitFileLister`: one `git diff-tree --stdin -z -r --root --name-only --no-renames --diff-merges=first-parent` per pass for the commits not listed yet, cached in a per-run `commit-files.json` (next to the mirror) shared by every project. Merge rule: a merge's files are its diff against its first parent; the old `-m --first-parent` actually listed the union of the diffs against every parent (diff-tree ignores `--first-parent`; observed). Needs git >= 2.31 (documented). | node tests: one git call per pass, cache reuse, real-repo merge case; `TestCompute_ProjectsShareOneCommitFilesCache`. |
+| R3-relative-origin-url | `resolveRemoteURL`: a local-path origin is joined to the repo top level; scheme URLs, scp-like and absolute paths unchanged. The integration repos now use a relative origin. | RED: `TestCompute_RelativeOriginResolvedAgainstTheRepository` (`../origin.git` passed as is). GREEN; integration prerelease scenario passes with a relative origin. |
+| R3-runner-exit-truncation | `finish(stream, result, code)` exits in the write callback. | Observed: `process.exit` right after an 8 MiB write delivered 65536 bytes; in the callback, all 8388613. node test "finish writes a large result completely" fails against the old write-then-exit and passes now. |
+| R2-001 | Verified 2026-10-13 with semantic-release 24.2.3 (release-notes-generator 14.1.1, writer 8.4.0): conventionalcommits 8.0.0, 9.0.0, 9.3.1 render notes; 10.0.0+ fails ("Missing helper: ... requires conventional-changelog-writer@9 or newer"). The review's premise (9.x needs writer 9) is false: the old code comment and docs were wrong, this log was right. Statement of record: `internal/semrel/cache.go`; docs and this log refer to it. | Direct `generateNotes` runs per version. |
+| R4-install-temp-leak | `sweepStaleInstalls`: `.install-*` staging dirs in the cache base older than 1h are removed before installing. | RED: `TestEnsureCache_SweepsStaleInstalls`. GREEN. |
+| R2-002 | `raiseReleaseType(analyzed, minimum, order)` with the null-analyzer rule explicit and commented. | node test. |
+| R3-runner-logic-untested-by-default | Pure logic in `runner/nerv-semrel-lib.mjs` (embedded with the runner; `writeRunner` writes both) tested by `runner/nerv-semrel-lib.test.mjs`, run by `TestRunnerLib_NodeUnitTests` (also `node --check` on the runner); skips without node. | RED: the module did not exist (`ERR_MODULE_NOT_FOUND`). GREEN: 9 node tests (scopes incl. commas and `!`, path/glob matching, diff-tree parsing, batching, merges, filter, raise, plan packages, flush). Skip observed with node off PATH. |
+
+- Public API: added `Options.FetchTimeout` and `DefaultFetchTimeout`;
+  nothing removed or changed.
+- Behaviour change: merge commits match a project by their first-parent
+  changes only (before: the union of every parent's diff).
+- Checks: `go test ./...` ok (24 packages), `go test -tags
+  semrel_integration -run Integration -v -count=1 ./internal/semrel/` PASS
+  (4 tests, 13.6s), `node --test` 9/9, `go vet ./...` (and with the tag)
+  clean, `gofmt -l .` empty.
+- Commits: `6a21c3f` `fix(semrel): read origin without prompts, argv
+  credentials or relative paths` (8 files changed, 480 insertions(+), 18
+  deletions(-)); `d4db9b3` `fix(semrel): sweep stale cache install staging
+  directories` (2 files changed, 68 insertions(+), 1 deletion(-));
+  `ecb142c` `fix(semrel): list commit files once per run and flush the
+  runner result` (7 files changed, 604 insertions(+), 127 deletions(-));
+  `e6bad1a` `fix(semrel): state which conventionalcommits majors fail with
+  writer 8` (2 files changed, 13 insertions(+), 4 deletions(-)).
 
 ## Next step
 
