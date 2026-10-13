@@ -127,9 +127,11 @@ its version.
 - In a monorepo, each project is computed in dependency order with its own
   `tag_format`, from the commits that touch its `path` or `shared_paths` or
   carry one of its `scopes` (`type(scope): ...`, several scopes separated by
-  commas). A project whose `path` is `.` sees every commit. When a
-  dependency gets a new release, the dependent is released with at least the
-  dependency's `bump`. A single project with the default `tag_format` keeps
+  commas). A merge commit touches what it brings into the branch (its
+  changes against its first parent); the merged commits count on their own.
+  This needs git 2.31 or newer. A project whose `path` is `.` sees every
+  commit. When a dependency gets a new release, the dependent is released
+  with at least the dependency's `bump`, even without commits of its own. A single project with the default `tag_format` keeps
   the repository's own `tagFormat`, and a repository without a `release:`
   section is computed exactly like plain semantic-release.
 - The result per project is the outputs of

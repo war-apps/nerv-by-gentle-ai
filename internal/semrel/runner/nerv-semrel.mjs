@@ -10,8 +10,14 @@
 //     semantic-release does and lists the npm packages it needs (plugins,
 //     shareable configs, conventional-changelog presets), without loading them.
 //   {"mode":"run", "cacheDir", "cwd", "repositoryUrl", "tagFormat",
-//    "filter": {"paths": [...], "scopes": [...]} | null, "minReleaseType"}
+//    "filter": {"paths": [...], "scopes": [...]} | null, "minReleaseType",
+//    "commitFilesCache"}
 //     One semantic-release dry run in cwd (a worktree on the requested branch).
+//     commitFilesCache is a JSON file (commit hash -> files) shared by the
+//     projects of one NERV run.
+//
+// The pure logic (package listing, commit filter, depends_on raise, result
+// writing) lives in nerv-semrel-lib.mjs, embedded next to this file.
 //
 // What this relies on (semantic-release 24.2.x source, lib/ and index.js):
 // - index.js default export `(cliOptions, {cwd, env, stdout, stderr})` is the
@@ -55,14 +61,11 @@
 
 import { createRequire } from "node:module";
 import { execFileSync } from "node:child_process";
+import { readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 
-const RESULT_MARKER = "NERV_SEMREL_RESULT ";
-
-function emit(result) {
-  process.stdout.write(`\n${RESULT_MARKER}${JSON.stringify(result)}\n`);
-}
+import { commitFileLister, finish, isPackage, makeFilter, neededPackages, packageName, raiseReleaseType } from "./nerv-semrel-lib.mjs";
 
 async function readStdin() {
   const chunks = [];
@@ -79,70 +82,6 @@ function cacheModules(cacheDir) {
   const load = (name) => import(pathToFileURL(req.resolve(name)).href);
   const lib = (file) => import(pathToFileURL(path.join(srDir, "lib", file)).href);
   return { srDir, req, load, lib, index: () => import(pathToFileURL(path.join(srDir, "index.js")).href) };
-}
-
-const STEPS = [
-  "verifyConditions",
-  "analyzeCommits",
-  "verifyRelease",
-  "generateNotes",
-  "prepare",
-  "publish",
-  "addChannel",
-  "success",
-  "fail",
-];
-
-// isPackage tells a bare npm specifier from a file path.
-function isPackage(name) {
-  return typeof name === "string" && name !== "" && !/^(\.|\/|[A-Za-z]:[\\/]|\\\\|file:)/.test(name);
-}
-
-// packageName drops a subpath: "@scope/pkg/x" -> "@scope/pkg", "pkg/x" -> "pkg".
-function packageName(spec) {
-  const parts = spec.split("/");
-  return spec.startsWith("@") ? parts.slice(0, 2).join("/") : parts[0];
-}
-
-// pluginRefs lists [name, config] for every plugin reference in a plugins
-// list or a step value (string, [name, config], {path, ...config}).
-function pluginRefs(value) {
-  const out = [];
-  const one = (p) => {
-    if (typeof p === "string") out.push([p, {}]);
-    else if (Array.isArray(p)) out.push([p[0], p[1] || {}]);
-    else if (p && typeof p === "object" && typeof p.path === "string") {
-      const { path: name, ...config } = p;
-      out.push([name, config]);
-    }
-  };
-  // A step value is either one reference or a list of them; a two-element
-  // [string, plain config] array is one reference with its configuration.
-  const single =
-    Array.isArray(value) &&
-    value.length === 2 &&
-    typeof value[0] === "string" &&
-    value[1] !== null &&
-    typeof value[1] === "object" &&
-    !Array.isArray(value[1]) &&
-    typeof value[1].path !== "string";
-  if (Array.isArray(value) && !single) {
-    value.forEach(one);
-  } else if (value !== undefined && value !== null) {
-    one(value);
-  }
-  return out;
-}
-
-// presetPackages lists the packages a plugin configuration loads: the
-// conventional-changelog preset, a `config` package and a releaseRules module
-// (commit-analyzer lib/load-parser-config.js and lib/load-release-rules.js).
-function presetPackages(config) {
-  const out = [];
-  if (typeof config.preset === "string" && config.preset) out.push(`conventional-changelog-${config.preset.toLowerCase()}`);
-  if (isPackage(config.config)) out.push(packageName(config.config));
-  if (isPackage(config.releaseRules)) out.push(packageName(config.releaseRules));
-  return out;
 }
 
 async function plan({ cacheDir, cwd }) {
@@ -171,50 +110,28 @@ async function plan({ cacheDir, cwd }) {
     options = { ...merged, ...options };
   }
 
-  const plugins = options.plugins ?? [
-    "@semantic-release/commit-analyzer",
-    "@semantic-release/release-notes-generator",
-    "@semantic-release/npm",
-    "@semantic-release/github",
-  ];
-  const refs = [...pluginRefs(plugins), ...STEPS.flatMap((step) => pluginRefs(options[step]))];
-  for (const [name, cfg] of refs) {
-    if (isPackage(name)) packages.add(packageName(name));
-    // A plugin's config is merged over the global options (normalize.js).
-    presetPackages({ ...options, ...cfg }).forEach((p) => packages.add(p));
-  }
-  presetPackages(options).forEach((p) => packages.add(p));
+  neededPackages(options).forEach((p) => packages.add(p));
   return { ok: true, packages: [...packages].sort(), unresolved };
 }
 
-// commitScopes reads the scopes of a conventional commit header
-// ("type(scope)!: subject"; several scopes may be comma separated).
-function commitScopes(message) {
-  const header = (message || "").split("\n", 1)[0];
-  const match = /^[\w-]+\(([^)]*)\)!?:/.exec(header);
-  if (!match) return [];
-  return match[1].split(",").map((s) => s.trim()).filter(Boolean);
+// loadKnownFiles reads the per-run cache of commit files (hash -> files)
+// shared by the projects of one NERV run; a missing or unreadable file starts
+// empty.
+function loadKnownFiles(file) {
+  if (!file) return new Map();
+  try {
+    return new Map(Object.entries(JSON.parse(readFileSync(file, "utf8"))));
+  } catch {
+    return new Map();
+  }
 }
 
-function makeFilter(filter, cwd, micromatch) {
-  if (!filter) return (commits) => commits;
-  const paths = filter.paths || [];
-  const scopes = new Set(filter.scopes || []);
-  const touches = (file) =>
-    paths.some((p) => p === "." || file === p || file.startsWith(`${p}/`) || micromatch.isMatch(file, p, { dot: true }));
-  const files = (hash) =>
-    execFileSync("git", ["diff-tree", "--no-commit-id", "--name-only", "-r", "--root", "-m", "--first-parent", hash], {
-      cwd,
-      encoding: "utf8",
-    })
-      .split("\n")
-      .filter(Boolean);
-  return (commits) =>
-    commits.filter((c) => commitScopes(c.message).some((s) => scopes.has(s)) || files(c.hash).some(touches));
+function saveKnownFiles(file, known) {
+  if (file) writeFileSync(file, JSON.stringify(Object.fromEntries(known)));
 }
 
 async function run(req) {
-  const { cacheDir, cwd, repositoryUrl, tagFormat, filter, minReleaseType } = req;
+  const { cacheDir, cwd, repositoryUrl, tagFormat, filter, minReleaseType, commitFilesCache } = req;
   const m = cacheModules(cacheDir);
   const semanticRelease = (await m.index()).default;
   const getConfig = (await m.lib("get-config.js")).default;
@@ -243,16 +160,17 @@ async function run(req) {
     : path.isAbsolute(ownUrl)
       ? pathToFileURL(ownUrl).href
       : ownUrl;
-  const select = makeFilter(filter, cwd, micromatch);
+  // The files of the commits, listed with one git call per pass for the
+  // commits not listed yet in this NERV run (see commitFileLister).
+  const knownFiles = loadKnownFiles(commitFilesCache);
+  const git = (args, input) => execFileSync("git", args, { cwd, input, encoding: "utf8", maxBuffer: 1 << 30 });
+  const select = makeFilter(filter, { isMatch: (file, glob, options) => micromatch.isMatch(file, glob, options), listFiles: commitFileLister(git, knownFiles) });
 
   let lastRelease = null;
-  const raise = (type) => {
-    if (!minReleaseType) return type;
-    return RELEASE_TYPE.indexOf(minReleaseType) > RELEASE_TYPE.indexOf(type) ? minReleaseType : type;
-  };
   async function nervAnalyzeCommits(_pluginConfig, input) {
     lastRelease = input.lastRelease;
-    return raise(await own.analyzeCommits({ ...input, commits: select(input.commits) }));
+    const analyzed = await own.analyzeCommits({ ...input, commits: select(input.commits) });
+    return raiseReleaseType(analyzed, minReleaseType, RELEASE_TYPE);
   }
   async function nervGenerateNotes(_pluginConfig, input) {
     return own.generateNotes({
@@ -280,6 +198,7 @@ async function run(req) {
     },
     { cwd, env, stdout: process.stderr, stderr: process.stderr },
   );
+  saveKnownFiles(commitFilesCache, knownFiles);
 
   const last = (r) => (r && r.version ? { version: r.version, gitHead: r.gitHead || "", gitTag: r.gitTag || "" } : null);
   if (!result || !result.nextRelease) {
@@ -304,13 +223,15 @@ async function run(req) {
 try {
   const req = await readStdin();
   const result = req.mode === "plan" ? await plan(req) : await run(req);
-  emit(result);
-  process.exit(0);
+  finish(process.stdout, result, 0);
 } catch (error) {
   const errors = error && Array.isArray(error.errors) ? error.errors : [error];
-  emit({
-    ok: false,
-    error: errors.map((e) => (e && e.code ? `${e.code} ${e.message}` : String(e && e.message ? e.message : e))).join("; "),
-  });
-  process.exit(1);
+  finish(
+    process.stdout,
+    {
+      ok: false,
+      error: errors.map((e) => (e && e.code ? `${e.code} ${e.message}` : String(e && e.message ? e.message : e))).join("; "),
+    },
+    1,
+  );
 }

@@ -15,7 +15,7 @@ package semrel
 
 import (
 	"context"
-	_ "embed"
+	"embed"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -30,8 +30,14 @@ import (
 	"github.com/war-apps/nerv-by-gentle-ai/internal/shipconfig"
 )
 
-//go:embed runner/nerv-semrel.mjs
-var runnerScript []byte
+// runnerFiles are the node runner and the module it imports; both are
+// written next to each other for every run.
+//
+//go:embed runner/nerv-semrel.mjs runner/nerv-semrel-lib.mjs
+var runnerFiles embed.FS
+
+// runnerMain is the runner's entry point in runnerFiles.
+const runnerMain = "nerv-semrel.mjs"
 
 // Options select what Compute computes.
 type Options struct {
@@ -146,15 +152,16 @@ func (e *Engine) Compute(ctx context.Context, opts Options) ([]ProjectResult, er
 		return nil, err
 	}
 	defer os.RemoveAll(scriptDir)
-	script := filepath.Join(scriptDir, "nerv-semrel.mjs")
-	if err := os.WriteFile(script, runnerScript, 0o644); err != nil {
+	if err := writeRunner(scriptDir); err != nil {
 		return nil, err
 	}
+	script := filepath.Join(scriptDir, runnerMain)
 
 	var results []ProjectResult
 	err = e.withCheckout(ctx, top, branch, remote, env, func(wt, mirror string) error {
 		node := func(req runnerRequest) (runnerResponse, error) {
 			req.CacheDir, req.Cwd = cacheDir, wt
+			req.CommitFilesCache = filepath.Join(filepath.Dir(mirror), "commit-files.json")
 			return e.node(ctx, script, wt, nodeEnv(env), req)
 		}
 		plan, err := node(runnerRequest{Mode: "plan"})
@@ -185,6 +192,24 @@ func (e *Engine) Compute(ctx context.Context, opts Options) ([]ProjectResult, er
 		return nil
 	})
 	return results, err
+}
+
+// writeRunner writes the embedded runner files into dir.
+func writeRunner(dir string) error {
+	entries, err := runnerFiles.ReadDir("runner")
+	if err != nil {
+		return err
+	}
+	for _, entry := range entries {
+		data, err := runnerFiles.ReadFile("runner/" + entry.Name())
+		if err != nil {
+			return err
+		}
+		if err := os.WriteFile(filepath.Join(dir, entry.Name()), data, 0o644); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // git runs git in dir and returns its trimmed stdout.

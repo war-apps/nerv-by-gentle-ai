@@ -74,6 +74,9 @@ type runnerRequest struct {
 	// MinReleaseType is the lowest release type (patch, minor) the run
 	// returns, from released dependencies; empty means none.
 	MinReleaseType string `json:"minReleaseType,omitempty"`
+	// CommitFilesCache is a file the runner keeps the files of each commit
+	// in, shared by the projects of one run (one git listing per commit).
+	CommitFilesCache string `json:"commitFilesCache,omitempty"`
 }
 
 // commitFilter keeps the commits that touch Paths or carry one of Scopes.
