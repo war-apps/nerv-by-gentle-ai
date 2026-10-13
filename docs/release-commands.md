@@ -72,6 +72,64 @@ its `path`.
 | `version` | `24.2.3` | Exact semantic-release version installed in the NERV cache (never in the repo). Ranges such as `^24` are rejected. |
 | `extra_plugins` | `[]` | npm packages the repo's semantic-release configuration needs beyond the bundled plugins, each pinned as `name@version` (e.g. `@semantic-release/exec@6.0.3`). |
 
+#### Installed plugins
+
+NERV installs semantic-release with its plugins in
+`<user cache dir>/nerv/semantic-release/<hash>` (on Linux
+`~/.cache/nerv/...`, on Windows `%LocalAppData%\nerv\...`), once per set of
+versions, with `npm install --ignore-scripts`. Node.js 20.8.1 or newer and
+npm are required. Always available:
+
+| Package | Version |
+|---|---|
+| `semantic-release` | `version` above |
+| `@semantic-release/commit-analyzer`, `@semantic-release/release-notes-generator`, `@semantic-release/npm`, `@semantic-release/github`, `conventional-changelog-angular` | bundled with semantic-release |
+| `@semantic-release/changelog` | `6.0.3` |
+| `@semantic-release/git` | `10.0.1` |
+| `@semantic-release/exec` | `7.1.0` |
+| `conventional-changelog-conventionalcommits` | `8.0.0` (9 and later need a newer changelog writer than semantic-release 24 bundles) |
+
+Any other package the repository's semantic-release configuration names (a
+plugin, a shareable config in `extends`, a `preset`'s
+`conventional-changelog-<preset>` package, a `config` or `releaseRules`
+module) must be pinned in `extra_plugins`; otherwise the command fails and
+names it. An `extra_plugins` entry for one of the packages above replaces
+its version.
+
+#### How the next version is computed
+
+- semantic-release runs in dry-run mode with the repository's own
+  configuration; only the commit analysis and the release notes run, exactly
+  as configured. The steps that check credentials or have side effects
+  (`verifyConditions`, `verifyRelease`, `prepare`, `publish`, `success`,
+  `fail`) are skipped, so no `GH_TOKEN`, `NPM_TOKEN` or exec script is
+  needed.
+- It runs on a disposable mirror of the repository (all local branches and
+  tags), checked out on the requested local branch: the working tree,
+  branches and tags of the repository are never changed.
+- Release tags and semantic-release's git notes are read from the `origin`
+  remote first (read access is enough). semantic-release records each
+  release's channel in a note that a plain `git fetch` never brings; without
+  it a prerelease tag such as `v2.9.0-alpha.8` is not recognised as the last
+  `alpha` release. Offline, only the local tags are used and the result may
+  differ from CI on prerelease branches.
+- In a monorepo, each project is computed in dependency order with its own
+  `tag_format`, from the commits that touch its `path` or `shared_paths` or
+  carry one of its `scopes` (`type(scope): ...`, several scopes separated by
+  commas). A project whose `path` is `.` sees every commit. When a
+  dependency gets a new release, the dependent is released with at least the
+  dependency's `bump`. A single project with the default `tag_format` keeps
+  the repository's own `tagFormat`, and a repository without a `release:`
+  section is computed exactly like plain semantic-release.
+- The result per project is the outputs of
+  `cycjimmy/semantic-release-action` (`new_release_published`,
+  `new_release_version`, `new_release_major_version`,
+  `new_release_minor_version`, `new_release_patch_version`,
+  `new_release_channel`, `new_release_notes`, `new_release_git_head`,
+  `new_release_git_tag`, `last_release_version`, `last_release_git_head`,
+  `last_release_git_tag`); the `last_release_*` values are also given when
+  there is no new release.
+
 ### `release.projects[]`
 
 At least one project is required. A single-repo setup is one project with
