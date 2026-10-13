@@ -17,7 +17,7 @@ import (
 func TestSignalContext_CancelsOnInterruptTerminateAndHangup(t *testing.T) {
 	for _, sig := range []syscall.Signal{syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP} {
 		t.Run(sig.String(), func(t *testing.T) {
-			ctx, stop := signalContext(context.Background())
+			ctx, stop, received := signalContext(context.Background())
 			defer stop()
 
 			if err := syscall.Kill(syscall.Getpid(), sig); err != nil {
@@ -27,6 +27,9 @@ func TestSignalContext_CancelsOnInterruptTerminateAndHangup(t *testing.T) {
 			case <-ctx.Done():
 			case <-time.After(5 * time.Second):
 				t.Fatalf("context not cancelled 5s after %s", sig)
+			}
+			if got := received(); got != sig {
+				t.Errorf("received() = %v, want %s", got, sig)
 			}
 		})
 	}

@@ -6,11 +6,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"reflect"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -39,11 +41,20 @@ type nextFixture struct {
 	stopped int
 	// signalCtx, when set, replaces the context the signal seam returns.
 	signalCtx context.Context
+	// signal is what the signal seam reports as received.
+	signal os.Signal
+	// stdout, when set, replaces the buffer the command writes its result to.
+	stdout io.Writer
 }
 
 func newNextFixture(t *testing.T, nervYAML string) *nextFixture {
 	t.Helper()
-	top := t.TempDir()
+	// The repository directory is named "repo": without a release: section
+	// the engine names the only project after it.
+	top := filepath.Join(t.TempDir(), "repo")
+	if err := os.Mkdir(top, 0o755); err != nil {
+		t.Fatal(err)
+	}
 	if nervYAML != "" {
 		if err := os.MkdirAll(filepath.Join(top, ".nerv"), 0o755); err != nil {
 			t.Fatal(err)
@@ -71,13 +82,13 @@ func (f *nextFixture) options(t *testing.T) options {
 		}
 		return f.results, f.err
 	}
-	opts.SignalContext = func(parent context.Context) (context.Context, context.CancelFunc) {
+	opts.SignalContext = func(parent context.Context) (context.Context, context.CancelFunc, func() os.Signal) {
 		ctx := parent
 		if f.signalCtx != nil {
 			ctx = f.signalCtx
 		}
 		ctx, cancel := context.WithCancel(ctx)
-		return ctx, func() { f.stopped++; cancel() }
+		return ctx, func() { f.stopped++; cancel() }, func() os.Signal { return f.signal }
 	}
 	return opts
 }
@@ -85,7 +96,11 @@ func (f *nextFixture) options(t *testing.T) options {
 func (f *nextFixture) run(t *testing.T, args ...string) (code int, stdout, stderr string) {
 	t.Helper()
 	var out, errOut bytes.Buffer
-	code = run(append([]string{"version", "next"}, args...), &out, &errOut, f.options(t))
+	var w io.Writer = &out
+	if f.stdout != nil {
+		w = f.stdout
+	}
+	code = run(append([]string{"version", "next"}, args...), w, &errOut, f.options(t))
 	return code, out.String(), errOut.String()
 }
 
@@ -159,6 +174,8 @@ func TestVersionNext_UsageErrors(t *testing.T) {
 		{"unknown format", []string{"--format", "yaml"}},
 		{"json conflicts with env", []string{"--json", "--format", "env"}},
 		{"negative fetch timeout", []string{"--fetch-timeout", "-1s"}},
+		{"zero fetch timeout", []string{"--fetch-timeout", "0"}},
+		{"zero fetch timeout with a unit", []string{"--fetch-timeout", "0s"}},
 		{"malformed fetch timeout", []string{"--fetch-timeout", "soon"}},
 	}
 	for _, tt := range tests {
@@ -207,7 +224,7 @@ func TestVersionNext_DefaultsReadOriginOnTheCurrentBranch(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("exit code = %d, stderr = %q", code, stderr)
 	}
-	want := semrel.Options{RepoRoot: f.top}
+	want := semrel.Options{RepoRoot: f.top, FetchTimeout: semrel.DefaultFetchTimeout}
 	if len(f.calls) != 1 || !reflect.DeepEqual(f.calls[0], want) {
 		t.Fatalf("engine options = %+v, want %+v (current branch, origin read, default timeout)", f.calls, want)
 	}
@@ -561,16 +578,17 @@ func TestVersionNext_EngineErrors(t *testing.T) {
 func TestVersionNext_RunsUnderTheSignalContext(t *testing.T) {
 	f := newNextFixture(t, "")
 	cancelled, cancel := context.WithCancel(context.Background())
-	cancel() // as if SIGINT/SIGTERM/SIGHUP arrived
+	cancel() // as if SIGINT arrived
 	f.signalCtx = cancelled
+	f.signal = syscall.SIGINT
 
 	code, stdout, stderr := f.run(t)
 
 	if len(f.ctxErrs) != 1 || f.ctxErrs[0] == nil {
 		t.Fatalf("the engine did not run under the signal context: %v", f.ctxErrs)
 	}
-	if code != 2 || stdout != "" || !strings.Contains(stderr, "interrupted") {
-		t.Errorf("code=%d stdout=%q stderr=%q", code, stdout, stderr)
+	if code != 130 || stdout != "" || !strings.Contains(stderr, "interrupted") {
+		t.Errorf("code=%d stdout=%q stderr=%q, want 130 (128+SIGINT)", code, stdout, stderr)
 	}
 	if f.stopped != 1 {
 		t.Errorf("signal context released %d times, want 1", f.stopped)
@@ -586,5 +604,171 @@ func TestVersionNext_ReleasesTheSignalContextOnSuccess(t *testing.T) {
 	}
 	if f.stopped != 1 {
 		t.Errorf("signal context released %d times, want 1", f.stopped)
+	}
+}
+
+func TestVersionNext_InterruptedExitsWith128PlusTheSignal(t *testing.T) {
+	tests := []struct {
+		sig  os.Signal
+		code int
+	}{
+		{syscall.SIGINT, 130},
+		{syscall.SIGTERM, 143},
+		{syscall.Signal(1), 129}, // SIGHUP; syscall.SIGHUP does not exist on Windows
+		{nil, 2},                 // cancelled without a signal
+	}
+	for _, tt := range tests {
+		t.Run(fmt.Sprint(tt.sig), func(t *testing.T) {
+			f := newNextFixture(t, "")
+			cancelled, cancel := context.WithCancel(context.Background())
+			cancel()
+			f.signalCtx, f.signal = cancelled, tt.sig
+
+			code, stdout, stderr := f.run(t)
+
+			if code != tt.code || stdout != "" || !strings.Contains(stderr, "interrupted") {
+				t.Errorf("code=%d stdout=%q stderr=%q, want %d", code, stdout, stderr, tt.code)
+			}
+		})
+	}
+}
+
+// failingWriter fails every write.
+type failingWriter struct{}
+
+func (failingWriter) Write([]byte) (int, error) { return 0, errors.New("broken pipe") }
+
+// flushFailingWriter accepts writes and fails its Flush.
+type flushFailingWriter struct{ bytes.Buffer }
+
+func (*flushFailingWriter) Flush() error { return errors.New("disk full") }
+
+func TestVersionNext_WriteErrorsAreReported(t *testing.T) {
+	for _, format := range versionFormats {
+		for _, w := range []struct {
+			name   string
+			writer io.Writer
+			want   string
+		}{{"write", failingWriter{}, "broken pipe"}, {"flush", &flushFailingWriter{}, "disk full"}} {
+			t.Run(format+"/"+w.name, func(t *testing.T) {
+				f := newNextFixture(t, "")
+				f.results = []semrel.ProjectResult{released("repo", "1.2.0", "")}
+				f.stdout = w.writer
+
+				code, _, stderr := f.run(t, "--format", format)
+
+				if code != 2 || !strings.Contains(stderr, w.want) {
+					t.Errorf("code=%d stderr=%q, want 2 naming %q", code, stderr, w.want)
+				}
+			})
+		}
+	}
+}
+
+func TestVersionNext_UsageShowsTheDefaultFetchTimeout(t *testing.T) {
+	want := fmt.Sprintf("default %ds", int(semrel.DefaultFetchTimeout.Seconds()))
+	if !strings.Contains(versionNextUsage, want) {
+		t.Errorf("usage lacks %q", want)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// The output shape follows the request, not the number of results.
+// ---------------------------------------------------------------------------
+
+const threeProjectsYAML = `release:
+  projects:
+    - name: core
+      path: core
+    - name: api
+      path: api
+      depends_on: [{ project: core }]
+    - name: web
+      path: web
+`
+
+const oneProjectYAML = `release:
+  projects:
+    - name: api
+      path: .
+`
+
+func TestVersionNext_ProjectFlagPrintsOnlyThatProject(t *testing.T) {
+	f := newNextFixture(t, threeProjectsYAML)
+	// The engine also returns the dependency it computed for depends_on.
+	f.results = []semrel.ProjectResult{released("core", "1.0.1", ""), released("api", "1.0.1", "")}
+
+	_, stdout, _ := f.run(t, "--project", "api", "--json")
+	var got map[string]any
+	if err := json.Unmarshal([]byte(stdout), &got); err != nil || got["project"] != "api" {
+		t.Fatalf("stdout = %q (%v), want one object for api", stdout, err)
+	}
+
+	_, stdout, _ = f.run(t, "--project", "api", "--format", "env")
+	values, _ := parseEnv(t, stdout)
+	if len(values) != 12 || values["new_release_version"] != "1.0.1" {
+		t.Errorf("env = %v, want the 12 unprefixed outputs of api", values)
+	}
+
+	_, stdout, _ = f.run(t, "--project", "api")
+	if strings.Contains(stdout, "core") || !strings.Contains(stdout, "api (develop)") {
+		t.Errorf("text = %q, want api only", stdout)
+	}
+}
+
+func TestVersionNext_MonorepoIsAnArrayEvenWithOneResult(t *testing.T) {
+	f := newNextFixture(t, twoProjectsYAML)
+	f.results = []semrel.ProjectResult{released("api", "1.2.0", "")}
+
+	_, stdout, _ := f.run(t, "--json")
+	var got []semrel.ProjectResult
+	if err := json.Unmarshal([]byte(stdout), &got); err != nil || len(got) != 1 {
+		t.Fatalf("stdout = %q (%v), want an array", stdout, err)
+	}
+
+	_, stdout, _ = f.run(t, "--format", "env")
+	values, _ := parseEnv(t, stdout)
+	if values["api_new_release_version"] != "1.2.0" {
+		t.Errorf("env = %v, want prefixed keys", values)
+	}
+}
+
+func TestVersionNext_SingleProjectSectionIsAnObject(t *testing.T) {
+	f := newNextFixture(t, oneProjectYAML)
+	f.results = []semrel.ProjectResult{released("api", "1.2.0", "")}
+
+	_, stdout, _ := f.run(t, "--json")
+	var got map[string]any
+	if err := json.Unmarshal([]byte(stdout), &got); err != nil || got["project"] != "api" {
+		t.Fatalf("stdout = %q (%v), want one object", stdout, err)
+	}
+}
+
+func TestVersionNext_MissingRequestedResultIsAnError(t *testing.T) {
+	tests := []struct {
+		name    string
+		yaml    string
+		args    []string
+		results []semrel.ProjectResult
+	}{
+		{"no section, no result", "", nil, nil},
+		{"no section, another name", "", nil, []semrel.ProjectResult{released("other", "1.0.0", "")}},
+		{"project flag, only its dependency", threeProjectsYAML, []string{"--project", "api"}, []semrel.ProjectResult{released("core", "1.0.1", "")}},
+		{"single project, no result", oneProjectYAML, nil, nil},
+		{"monorepo, no result", twoProjectsYAML, nil, nil},
+	}
+	for _, tt := range tests {
+		for _, format := range versionFormats {
+			t.Run(tt.name+"/"+format, func(t *testing.T) {
+				f := newNextFixture(t, tt.yaml)
+				f.results = tt.results
+
+				code, stdout, stderr := f.run(t, append(tt.args, "--format", format)...)
+
+				if code != 2 || stdout != "" || !strings.Contains(stderr, "no result") {
+					t.Errorf("code=%d stdout=%q stderr=%q, want exit 2, nothing on stdout", code, stdout, stderr)
+				}
+			})
+		}
 	}
 }

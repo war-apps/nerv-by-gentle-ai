@@ -1,17 +1,23 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
 	"io"
+	"os"
 	"os/exec"
 	"os/signal"
+	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
+	"syscall"
 
 	"github.com/war-apps/nerv-by-gentle-ai/internal/env"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/refusal"
@@ -35,27 +41,84 @@ Flags:
                             origin's release tags and notes are read first
                             (with your git credentials, into a throwaway
                             copy)
-  --fetch-timeout <dur>    Bound for reading origin (default 60s)
+  --fetch-timeout <dur>    Bound for reading origin, positive (default 60s)
   --format text|json|env   Output format (default text)
   --json                   Same as --format json
 
-json: one object for one result (a single project, or --project), an array
-when several projects are computed. env: GitHub Actions output lines
-(key=value; key<<DELIMITER for multi-line values); with several projects
-each key is prefixed with the project name, "-" written as "_"
-(api_new_release_version). Progress goes to stderr; stdout carries only the
+The output shape follows the request: when the release: section declares
+several projects and --project is not given, json is an array and env keys
+are prefixed with the project name, "-" written as "_"
+(api_new_release_version); otherwise (no section, one project, or
+--project) json is one object and env keys are the output names, for that
+project only. env: GitHub Actions output lines (key=value; key<<DELIMITER
+for multi-line values). Progress goes to stderr; stdout carries only the
 result. Exit codes: 0 ok (also when there is no new release), 1 refused
 (invalid configuration, unknown project, not a git repository), 2 usage or
-environment error.
+environment error, 128 + the signal when interrupted (130 Ctrl-C, 143
+SIGTERM, 129 SIGHUP).
 `
 
 // versionFormats are the --format values.
 var versionFormats = []string{"text", "json", "env"}
 
-// signalContext cancels ctx on the signals that should stop a running
-// command (see cancelSignals).
-func signalContext(parent context.Context) (context.Context, context.CancelFunc) {
-	return signal.NotifyContext(parent, cancelSignals...)
+// signalNotify and signalStop are signal.Notify and signal.Stop; tests
+// replace them to observe the handler's lifetime without real signals.
+var (
+	signalNotify = signal.Notify
+	signalStop   = signal.Stop
+)
+
+// signalContext returns a context cancelled by the first of cancelSignals,
+// a stop function (call it when the command returns), and received, which
+// reports that signal (nil when none arrived).
+//
+// The signals stop being caught as soon as the context is done (by a signal,
+// the parent or stop), before the cancellation is visible: a second Ctrl-C
+// then gets the default behaviour and ends the process at once instead of
+// being swallowed while the command winds down.
+func signalContext(parent context.Context) (ctx context.Context, stop context.CancelFunc, received func() os.Signal) {
+	ctx, cancel := context.WithCancel(parent)
+	ch := make(chan os.Signal, 1)
+	signalNotify(ch, cancelSignals...)
+	var (
+		mu     sync.Mutex
+		got    os.Signal
+		once   sync.Once
+		closed = make(chan struct{})
+	)
+	release := func() { once.Do(func() { signalStop(ch); close(closed) }) }
+	go func() {
+		select {
+		case sig := <-ch:
+			mu.Lock()
+			got = sig
+			mu.Unlock()
+			release()
+			cancel()
+		case <-ctx.Done():
+			release()
+		}
+	}()
+	stop = func() {
+		cancel()
+		<-closed
+	}
+	received = func() os.Signal {
+		mu.Lock()
+		defer mu.Unlock()
+		return got
+	}
+	return ctx, stop, received
+}
+
+// interruptedExitCode is the shell convention for a process ended by sig:
+// 128 + the signal number (SIGINT 130, SIGTERM 143, SIGHUP 129); 2 when the
+// run was cancelled without a known signal.
+func interruptedExitCode(sig os.Signal) int {
+	if s, ok := sig.(syscall.Signal); ok {
+		return 128 + int(s)
+	}
+	return 2
 }
 
 func runVersionNext(args []string, stdout, stderr io.Writer, opts options) int {
@@ -65,7 +128,7 @@ func runVersionNext(args []string, stdout, stderr io.Writer, opts options) int {
 	branch := fs.String("branch", "", "")
 	project := fs.String("project", "", "")
 	offline := fs.Bool("offline", false, "")
-	fetchTimeout := fs.Duration("fetch-timeout", 0, "")
+	fetchTimeout := fs.Duration("fetch-timeout", semrel.DefaultFetchTimeout, "")
 	format := fs.String("format", "text", "")
 	jsonOut := fs.Bool("json", false, "")
 
@@ -90,23 +153,25 @@ func runVersionNext(args []string, stdout, stderr io.Writer, opts options) int {
 		}
 		*format = "json"
 	}
-	if *fetchTimeout < 0 {
-		return versionNextUsageError(stderr, "--fetch-timeout must not be negative")
+	if *fetchTimeout <= 0 {
+		return versionNextUsageError(stderr, fmt.Sprintf("--fetch-timeout %s: must be positive (reading origin is always bounded; use --offline to skip it)", *fetchTimeout))
 	}
 
 	signalCtx := opts.SignalContext
 	if signalCtx == nil {
 		signalCtx = signalContext
 	}
-	ctx, stop := signalCtx(context.Background())
+	ctx, stop, received := signalCtx(context.Background())
 	defer stop()
+	report := func(err error) int { return reportVersionError(ctx, received(), stderr, err) }
 
 	top, err := gitTopLevel(ctx, opts.Runner, *cwd)
+	var shape outputShape
 	if err == nil {
-		err = checkProject(top, *project)
+		shape, err = requestShape(top, *project)
 	}
 	if err != nil {
-		return reportVersionError(ctx, stderr, err)
+		return report(err)
 	}
 
 	source := "reading origin's release tags and notes"
@@ -131,24 +196,77 @@ func runVersionNext(args []string, stdout, stderr io.Writer, opts options) int {
 		FetchTimeout: *fetchTimeout,
 	})
 	if err != nil {
-		return reportVersionError(ctx, stderr, err)
+		return report(err)
 	}
 
-	switch *format {
-	case "json":
-		if len(results) == 1 {
-			writeJSON(stdout, results[0])
-		} else {
-			writeJSON(stdout, results)
-		}
-	case "env":
-		if err := writeVersionEnv(stdout, results); err != nil {
-			return reportVersionError(ctx, stderr, err)
-		}
-	default:
-		writeVersionText(stdout, results)
+	results, err = shape.selectResults(results)
+	if err != nil {
+		return report(err)
+	}
+	if err := writeVersionResult(stdout, *format, shape.Several, results); err != nil {
+		return report(fmt.Errorf("writing the result: %w", err))
 	}
 	return 0
+}
+
+// outputShape is decided by the request, never by how many results the
+// engine returned: Several (a JSON array, project-prefixed env keys) when
+// the release: section declares more than one project and no --project is
+// given; otherwise exactly one result, the project named Only.
+type outputShape struct {
+	Several bool
+	Only    string
+}
+
+// selectResults keeps what the request asked for: every result for Several,
+// otherwise only Only's (the engine also returns the dependencies it
+// computed for depends_on). No result to print is an error.
+func (s outputShape) selectResults(results []semrel.ProjectResult) ([]semrel.ProjectResult, error) {
+	if s.Several {
+		if len(results) == 0 {
+			return nil, errors.New("the engine returned no result")
+		}
+		return results, nil
+	}
+	for _, r := range results {
+		if r.Project == s.Only {
+			return []semrel.ProjectResult{r}, nil
+		}
+	}
+	return nil, fmt.Errorf("the engine returned no result for project %q", s.Only)
+}
+
+// writeVersionResult renders the results in format into memory, writes them
+// in one call and flushes w when it buffers, so a failed or partial write is
+// reported instead of lost.
+func writeVersionResult(w io.Writer, format string, several bool, results []semrel.ProjectResult) error {
+	var b bytes.Buffer
+	switch format {
+	case "json":
+		var v any = results
+		if !several {
+			v = results[0]
+		}
+		encoded, err := json.Marshal(v)
+		if err != nil {
+			return err
+		}
+		b.Write(encoded)
+		b.WriteByte('\n')
+	case "env":
+		if err := writeVersionEnv(&b, several, results); err != nil {
+			return err
+		}
+	default:
+		writeVersionText(&b, results)
+	}
+	if _, err := w.Write(b.Bytes()); err != nil {
+		return err
+	}
+	if f, ok := w.(interface{ Flush() error }); ok {
+		return f.Flush()
+	}
+	return nil
 }
 
 func versionNextUsageError(stderr io.Writer, problem string) int {
@@ -157,11 +275,16 @@ func versionNextUsageError(stderr io.Writer, problem string) int {
 }
 
 // reportVersionError prints err on stderr and returns its exit code: 1 for a
-// refusal or an invalid release configuration, 2 otherwise.
-func reportVersionError(ctx context.Context, stderr io.Writer, err error) int {
+// refusal or an invalid release configuration, 128 + the signal for an
+// interrupted run, 2 otherwise.
+func reportVersionError(ctx context.Context, sig os.Signal, stderr io.Writer, err error) int {
 	if ctx.Err() != nil {
-		fmt.Fprintln(stderr, "nerv version next: interrupted")
-		return 2
+		if sig != nil {
+			fmt.Fprintf(stderr, "nerv version next: interrupted (%v)\n", sig)
+		} else {
+			fmt.Fprintln(stderr, "nerv version next: interrupted")
+		}
+		return interruptedExitCode(sig)
 	}
 	fmt.Fprintf(stderr, "nerv version next: %v\n", err)
 	if errors.Is(err, semrel.ErrOriginFetch) {
@@ -195,35 +318,41 @@ func gitTopLevel(ctx context.Context, runner env.Runner, dir string) (string, er
 	return strings.TrimSpace(out), nil
 }
 
-// checkProject loads the release: section once before the (slow) engine
+// requestShape loads the release: section once before the (slow) engine
 // runs, so an invalid configuration or an unknown --project is refused at
-// once, naming the projects that exist.
-func checkProject(top, name string) error {
+// once, naming the projects that exist, and decides the output shape.
+// Without a release: section the only project is named after the
+// repository directory, as the engine names it.
+func requestShape(top, name string) (outputShape, error) {
 	rel, err := shipconfig.Load(top)
 	if errors.Is(err, shipconfig.ErrNotConfigured) {
 		if name != "" {
-			return &refusal.Error{Err: fmt.Errorf("--project %q: the repository has no release: section in .nerv/nerv.yaml, so it is a single project; drop --project", name)}
+			return outputShape{}, &refusal.Error{Err: fmt.Errorf("--project %q: the repository has no release: section in .nerv/nerv.yaml, so it is a single project; drop --project", name)}
 		}
-		return nil
+		return outputShape{Only: filepath.Base(filepath.Clean(top))}, nil
 	}
 	if err != nil {
-		return err
+		return outputShape{}, err
 	}
 	if name == "" {
-		return nil
+		if len(rel.Projects) == 1 {
+			return outputShape{Only: rel.Projects[0].Name}, nil
+		}
+		return outputShape{Several: true}, nil
 	}
 	if _, ok := rel.Project(name); ok {
-		return nil
+		return outputShape{Only: name}, nil
 	}
 	names := make([]string, 0, len(rel.Projects))
 	for _, p := range rel.Projects {
 		names = append(names, p.Name)
 	}
-	return &refusal.Error{Err: fmt.Errorf("unknown project %q; the release: section declares: %s", name, strings.Join(names, ", "))}
+	return outputShape{}, &refusal.Error{Err: fmt.Errorf("unknown project %q; the release: section declares: %s", name, strings.Join(names, ", "))}
 }
 
 // envKey is the env-format key of an output: the output name, prefixed with
-// the project name ("-" written as "_") when several projects are printed.
+// the project name ("-" written as "_") when the output holds several
+// projects (see outputShape).
 func envKey(project, output string, prefixed bool) string {
 	if !prefixed {
 		return output
@@ -235,8 +364,7 @@ func envKey(project, output string, prefixed bool) string {
 // Multi-line values use the heredoc form with a random delimiter that does
 // not occur in the value, written as @actions/core does: the value, a
 // newline, then the delimiter.
-func writeVersionEnv(w io.Writer, results []semrel.ProjectResult) error {
-	prefixed := len(results) > 1
+func writeVersionEnv(w io.Writer, prefixed bool, results []semrel.ProjectResult) error {
 	var b strings.Builder
 	for _, r := range results {
 		for _, o := range r.Outputs() {

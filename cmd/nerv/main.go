@@ -78,9 +78,10 @@ type options struct {
 	// tests inject a recorded fake. Nil means semrel.Compute.
 	ComputeVersions func(context.Context, semrel.Options) ([]semrel.ProjectResult, error)
 	// SignalContext derives the context a long-running command runs under,
-	// cancelled on SIGINT, SIGTERM and (on Unix) SIGHUP. Tests inject a
-	// controllable one. Nil means signalContext.
-	SignalContext func(context.Context) (context.Context, context.CancelFunc)
+	// cancelled on SIGINT, SIGTERM and (on Unix) SIGHUP, with a stop function
+	// and the signal received (nil if none). Tests inject a controllable one.
+	// Nil means signalContext.
+	SignalContext func(context.Context) (context.Context, context.CancelFunc, func() os.Signal)
 }
 
 func defaultOptions() options {

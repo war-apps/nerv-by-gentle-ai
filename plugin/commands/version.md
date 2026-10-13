@@ -25,14 +25,16 @@ of its `release:` section, without changing anything. Read-only.
    repository). `--offline` uses the local tags and notes only; mention it
    when the user wants no network access or origin is unreachable.
 
-2. **On failure** (exit code 1 or 2), show stderr as it is, in a short
+2. **On failure** (any exit code other than 0), show stderr as it is, in a short
    message. Exit 1 is a refusal (an invalid `release:` section, an unknown
    project — the message lists the declared ones — or not a git repository);
    exit 2 is a usage or environment problem (git, node or npm missing or too
-   old, an unpinned plugin, origin unreachable: suggest `--offline`). Stop.
+   old, an unpinned plugin, origin unreachable: suggest `--offline`); 130,
+   143 or 129 means the run was interrupted. Stop.
 
-3. **Present the result.** stdout is one JSON object (one result) or an
-   array (several projects, in dependency order), each with `project`,
+3. **Present the result.** stdout is an array (one entry per project, in
+   dependency order) when the repository declares several projects and no
+   `--project` was given; otherwise one JSON object. Each has `project`,
    `branch` and the outputs of `cycjimmy/semantic-release-action`. Show one
    short table, one row per project, in the user's language:
 

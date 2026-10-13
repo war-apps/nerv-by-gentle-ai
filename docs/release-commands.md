@@ -41,7 +41,7 @@ plugin versions.
 | `--branch <name>` | current branch | Local branch to compute. |
 | `--project <name>` | all projects | Only this project of the `release:` section (its dependencies are still computed, for `depends_on`). An unknown name is refused, listing the declared projects. |
 | `--offline` | off | Use the local tags and notes only. By default origin's release tags and semantic-release notes are read first, with your git credentials, into a throwaway copy. Offline, a prerelease branch may compute a different version than CI when a release's channel note exists only on origin. |
-| `--fetch-timeout <dur>` | `60s` | Bound for reading origin (Go duration: `30s`, `2m`). |
+| `--fetch-timeout <dur>` | `60s` | Bound for reading origin (Go duration: `30s`, `2m`); must be positive, there is no unbounded mode (use `--offline` to skip origin). |
 | `--format text\|json\|env` | `text` | Output format. |
 | `--json` | | Same as `--format json`. |
 
@@ -85,10 +85,17 @@ web-app (develop)
   last release: 1.0.0 (tag web-app-v1.0.0)
 ```
 
-`json`: one object with `project`, `branch` and the 12 outputs when there
-is one result (a repository without `release:`, a single project, or
-`--project`); an array of those objects, in dependency order, when several
-projects are computed.
+The output shape follows the request, not the number of results: when the
+`release:` section declares more than one project and `--project` is not
+given, the output covers every project (a JSON array, prefixed env keys);
+otherwise (no `release:` section, a single project, or `--project`) it is
+exactly that one project, even though the engine also computes the
+dependencies of `--project` for `depends_on` (they are not printed). If the
+engine returns no result for the requested project, the command fails
+(exit 2) and prints nothing on stdout.
+
+`json`: one object with `project`, `branch` and the 12 outputs for one
+project; an array of those objects, in dependency order, for several.
 
 ```json
 {"project":"widgets","branch":"main","new_release_published":true,"new_release_version":"1.0.1","new_release_major_version":"1","new_release_minor_version":"0","new_release_patch_version":"1","new_release_channel":"","new_release_notes":"## 1.0.1 ...","new_release_git_head":"c1918a5...","new_release_git_tag":"v1.0.1","last_release_version":"1.0.0","last_release_git_head":"ac22764...","last_release_git_tag":"v1.0.0"}
@@ -97,9 +104,9 @@ projects are computed.
 `env`: GitHub Actions output syntax, ready to append to `$GITHUB_OUTPUT`.
 Single-line values are `key=value`; a multi-line value (the notes) uses the
 heredoc form with a random `ghadelimiter_<hex>` delimiter that does not
-occur in the value. With one result the keys are the output names; with
-several projects each key is prefixed with the project name, `-` written as
-`_` (`web-app` gives `web_app_new_release_version`).
+occur in the value. For one project the keys are the output names; for
+several, each key is prefixed with the project name, `-` written as `_`
+(`web-app` gives `web_app_new_release_version`).
 
 ```
 new_release_published=true
@@ -124,10 +131,12 @@ new_release_git_head=c1918a53581d83a5f8ba787da39446550e1bb166
 |---|---|
 | `0` | Computed, including when there is no new release (`new_release_published=false`). |
 | `1` | Refused: an invalid `release:` section (every problem, path-qualified), an unknown `--project`, `--project` without a `release:` section, a directory outside any git repository. |
-| `2` | Usage error, or an environment error: git, node or npm missing or too old, a plugin not pinned, origin unreachable or timed out (the message suggests `--offline`), interrupted. |
+| `2` | Usage error, or an environment error: git, node or npm missing or too old, a plugin not pinned, origin unreachable or timed out (the message suggests `--offline`), no result for the requested project, the result could not be written to stdout. |
+| `128 + signal` | Interrupted: `130` for Ctrl-C (SIGINT), `143` for SIGTERM, `129` for SIGHUP. |
 
 Ctrl-C, `SIGTERM` and (on Unix) `SIGHUP` cancel the run and stop git, npm
-and node, which run in their own session or process group.
+and node, which run in their own session or process group. After the first
+signal NERV stops catching them, so a second Ctrl-C ends `nerv` at once.
 
 ## Paths
 
