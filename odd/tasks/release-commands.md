@@ -562,6 +562,16 @@ delegated (one writer). Test-first where a test can express the defect.
 - Kept: `last_release_*` filled even without a new release; no `release:`
   section means one project named after the repo directory.
 
+### T3 review
+
+- Native review of 668472b..6b20c5c (high risk, 4 lenses, user granted):
+  approved and acknowledged. Advisory: R4-second-signal-swallowed (WARNING:
+  later Ctrl-C presses are swallowed until return), R3-env-key-prefix-
+  collision (WARNING; refuted by the parent: project names are validated as
+  `[a-z0-9-]`, so `web-app` and `web_app` cannot coexist),
+  R4-json-text-write-errors-ignored, R2-fetch-timeout-implicit-default,
+  R3-shape-depends-on-result-count, R3-empty-results-json-null.
+
 ## Next step
 
 T3 review (native, on the T3 commit), then the acceptance comparison against
