@@ -125,6 +125,9 @@ order). Slice boundaries: one PR per task, recorded below as they open.
 
 - PR #91 (T1): `feat/release-commands` → develop, commits f2f7801..294f7b3. Merged 7a23170.
 - T2 branch `feat/release-version-engine` from 7a23170.
+- PR #92 (T2): `feat/release-version-engine` → develop, commits d543f72..543a8df.
+  Merged.
+- T3 branch `feat/release-version-cli`.
 
 ## Progress
 
@@ -479,6 +482,14 @@ delegated (one writer). Test-first where a test can express the defect.
   R2-mutable-waitdelay-global (tests that change it must not be parallel).
 - Carried to T3: R3-setsid-drops-sighup-propagation — the CLI must cancel
   the context on SIGINT, SIGTERM and SIGHUP.
+
+## Decisions after T2 (user, 2026-10-13)
+
+- `nerv version` reads origin's tags and semantic-release notes by default
+  (on the throwaway mirror, with the user's git credentials); `--offline`
+  uses local refs only.
+- Kept: `last_release_*` filled even without a new release; no `release:`
+  section means one project named after the repo directory.
 
 ## Next step
 
