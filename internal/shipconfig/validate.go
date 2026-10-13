@@ -2,6 +2,7 @@ package shipconfig
 
 import (
 	"fmt"
+	"math"
 	"path"
 	"regexp"
 	"slices"
@@ -197,7 +198,7 @@ func (r *Release) validate() []string {
 			if at > 0 {
 				name = spec[:at]
 			}
-			v.addf("release.semantic_release.extra_plugins[%d]: %q must pin an exact version, e.g. %q", i, spec, name+"@6.0.3")
+			v.addf("release.semantic_release.extra_plugins[%d]: %q must pin an exact version, e.g. %q", i, spec, name+"@<version>")
 		}
 	}
 	if len(r.Projects) == 0 {
@@ -343,7 +344,7 @@ func (v *validator) checkPresets(at string, p Project) {
 		if d.Solution != "" {
 			v.checkPath(at+".dotnet.solution", d.Solution)
 		}
-		if d.CoverageThreshold < 0 || d.CoverageThreshold > 100 {
+		if c := d.CoverageThreshold; math.IsNaN(c) || c < 0 || c > 100 {
 			v.addf("%s.dotnet.coverage_threshold: %v must be between 0 and 100", at, d.CoverageThreshold)
 		}
 	}

@@ -152,11 +152,44 @@ commands run in order.
 
 ## Validation
 
-Unknown keys are errors, and every problem is reported at once with its
-path in the section, for example:
+Unknown keys are errors, and every problem (unknown keys included) is
+reported at once with its path in the section, for example:
 
 ```text
 invalid release configuration:
+  release.projects[0].pth: unknown field (line 5)
+  release.projects[0].path: required
   release.projects[1].depends_on[0].project: unknown project "lib2"
-  release.projects[0].dotnet.project_file: required by the dotnet preset
 ```
+
+Only a section that cannot be decoded at all (a value of the wrong kind,
+such as `presets: docker`) stops at the decoding problems.
+
+## YAML notes
+
+- Only the `release:` block is parsed: it is cut out of `nerv.yaml` by
+  indentation, so a YAML error elsewhere in the file never affects the
+  release commands. When the file's layout does not allow the cut
+  (`---` between documents, an indented or flow top level), the whole file
+  is parsed instead.
+- Anchors and merge keys work inside the section, e.g. to share settings
+  between projects:
+
+  ```text
+  projects:
+    - &base
+      name: api
+      path: api
+      presets: [dotnet]
+      dotnet: { project_file: api/Api.csproj }
+    - <<: *base
+      name: worker
+      path: worker
+  ```
+
+  Keys reached through a merge are checked like any other.
+- An alias inside the section cannot refer to an anchor defined outside
+  it; that is reported as an error.
+- A file whose top level is not a mapping is an error; an empty file, or
+  one without `release:`, means the repository has no release
+  configuration.

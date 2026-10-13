@@ -3,9 +3,11 @@
 // `nerv version` and `nerv ship`.
 //
 // The rest of nerv.yaml is owned by internal/config, a line-based editor
-// that cannot hold lists of maps. This package parses the file with
-// gopkg.in/yaml.v3 but only looks at the release: key and never writes the
-// file. The section is project scope only: there is no user-scope merge.
+// that cannot hold lists of maps. This package cuts the top-level release:
+// block out of the file and parses only that block with gopkg.in/yaml.v3,
+// so a YAML error elsewhere in the file does not matter (and anchors defined
+// outside the block cannot be used inside it). It never writes the file.
+// The section is project scope only: there is no user-scope merge.
 //
 // Every path in the section is relative to the repository root and written
 // with forward slashes; Load normalises backslashes and rejects absolute
@@ -225,59 +227,45 @@ func Load(repoRoot string) (*Release, error) {
 	return rel, nil
 }
 
-// parse decodes the release: key of a nerv.yaml text.
+// parse decodes the release: key of a nerv.yaml text. Unknown keys and
+// semantic problems are reported together; only a section that cannot be
+// decoded at all (or that expands past the alias budget) stops early.
 func parse(data []byte) (*Release, error) {
-	var doc yaml.Node
-	if err := yaml.Unmarshal(data, &doc); err != nil {
-		return nil, fmt.Errorf("release: %w", err)
-	}
-	node := releaseNode(&doc)
-	if node == nil {
-		return nil, ErrNotConfigured
+	node, err := locateRelease(data)
+	if err != nil {
+		return nil, err
 	}
 	var rel Release
+	var problems []string
 	switch {
-	case node.Tag == "!!null":
+	case node.ShortTag() == "!!null":
 		// "release:" with no value: present but empty; validation says
 		// what is missing.
 	case node.Kind != yaml.MappingNode:
 		return nil, &ValidationError{Problems: []string{"release: must be a mapping"}}
 	default:
-		if problems := unknownFields(node, typeOfRelease, "release"); len(problems) > 0 {
-			return nil, &ValidationError{Problems: problems}
+		unknown, err := unknownFields(node)
+		if err != nil {
+			return nil, &ValidationError{Problems: []string{err.Error()}}
 		}
+		problems = unknown
 		if err := node.Decode(&rel); err != nil {
 			msg := strings.TrimPrefix(err.Error(), "yaml: unmarshal errors:\n")
-			var lines []string
 			for _, l := range strings.Split(msg, "\n") {
-				lines = append(lines, "release: "+strings.TrimSpace(l))
+				problems = append(problems, "release: "+strings.TrimSpace(l))
 			}
-			return nil, &ValidationError{Problems: lines}
+			// A partially decoded section would produce misleading
+			// semantic errors; stop at the decoding problems.
+			return nil, &ValidationError{Problems: problems}
 		}
 	}
 	rel.applyDefaults()
-	if problems := rel.validate(); len(problems) > 0 {
+	problems = append(problems, rel.validate()...)
+	if len(problems) > 0 {
 		return nil, &ValidationError{Problems: problems}
 	}
 	rel.finalizePaths()
 	return &rel, nil
-}
-
-// releaseNode returns the value of the top-level release: key, or nil.
-func releaseNode(doc *yaml.Node) *yaml.Node {
-	if doc.Kind != yaml.DocumentNode || len(doc.Content) == 0 {
-		return nil
-	}
-	root := doc.Content[0]
-	if root.Kind != yaml.MappingNode {
-		return nil
-	}
-	for i := 0; i+1 < len(root.Content); i += 2 {
-		if root.Content[i].Value == "release" {
-			return root.Content[i+1]
-		}
-	}
-	return nil
 }
 
 // ValidationError lists every problem found in the release: section, one

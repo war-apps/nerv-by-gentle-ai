@@ -2,11 +2,13 @@ package shipconfig_test
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/war-apps/nerv-by-gentle-ai/internal/shipconfig"
 )
@@ -45,6 +47,15 @@ func TestLoad_NotConfigured(t *testing.T) {
 			return writeConfig(t, "enabled: true\nmodels:\n  misato: { model: fable }\n")
 		}},
 		{"empty nerv.yaml", func(t *testing.T) string { return writeConfig(t, "") }},
+		{"comment-only nerv.yaml", func(t *testing.T) string { return writeConfig(t, "# nothing yet\n") }},
+		// nerv.yaml is otherwise maintained by a line-based editor: a strict
+		// YAML error outside release: must not matter to a repo without one.
+		{"duplicate key elsewhere", func(t *testing.T) string {
+			return writeConfig(t, "enabled: true\nenabled: false\n")
+		}},
+		{"tab indentation elsewhere", func(t *testing.T) string {
+			return writeConfig(t, "enabled: true\nmodels:\n\tmisato: fable\n")
+		}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -56,6 +67,166 @@ func TestLoad_NotConfigured(t *testing.T) {
 				t.Fatalf("release = %+v, want nil", rel)
 			}
 		})
+	}
+}
+
+// A strict-YAML error outside release: does not stop a valid section from
+// loading, whether it comes before or after the section.
+func TestLoad_ToleratesUnrelatedYAMLErrors(t *testing.T) {
+	const section = "release:\n  projects:\n    - name: app\n      path: .\n"
+	tests := []struct{ name, yaml string }{
+		{"duplicate key before", "enabled: true\nenabled: false\n" + section},
+		{"tab indentation after", section + "models:\n\tmisato: fable\n"},
+		{"broken flow sequence before", "critical_paths: [auth/\n" + section},
+		{"document start marker", "---\nenabled: true\n" + section},
+		{"crlf line endings", strings.ReplaceAll("enabled: true\n"+section+"tasks:\n  provider: none\n", "\n", "\r\n")},
+		{"section followed by a comment and a key", section + "# tasks\ntasks:\n  provider: none\n"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rel := mustLoad(t, tt.yaml)
+			if len(rel.Projects) != 1 || rel.Projects[0].Name != "app" {
+				t.Fatalf("projects = %+v, want [app]", rel.Projects)
+			}
+		})
+	}
+}
+
+// A document whose top level is not a mapping is a broken nerv.yaml, not a
+// repository without release configuration.
+func TestLoad_RootNotMapping(t *testing.T) {
+	for _, text := range []string{"- a\n- b\n", "just a scalar\n"} {
+		t.Run(strings.TrimSpace(text), func(t *testing.T) {
+			_, err := shipconfig.Load(writeConfig(t, text))
+			var verr *shipconfig.ValidationError
+			if !errors.As(err, &verr) {
+				t.Fatalf("err = %v, want a *ValidationError", err)
+			}
+			if !strings.Contains(err.Error(), "top level of nerv.yaml must be a mapping") {
+				t.Fatalf("err = %v", err)
+			}
+		})
+	}
+}
+
+// Anchors and merge keys inside the section share settings between
+// projects; an unknown key reached only through a merge is still reported.
+func TestLoad_MergeKeys(t *testing.T) {
+	rel := mustLoad(t, `release:
+  projects:
+    - &base
+      name: api
+      path: api
+      presets: [dotnet]
+      dotnet: { project_file: api/Api.csproj }
+      hooks:
+        prepare:
+          - &bump { run: scripts/bump.sh, shell: pwsh }
+    - <<: *base
+      name: worker
+      path: worker
+      stages:
+        test:
+          <<: *bump
+          run: scripts/test.sh
+    - <<: [*base]
+      name: cli
+      path: cli
+`)
+	worker, cli := rel.Projects[1], rel.Projects[2]
+	if worker.Dotnet == nil || worker.Dotnet.ProjectFile != "api/Api.csproj" || worker.Path != "worker" {
+		t.Errorf("worker = %+v", worker)
+	}
+	if got := worker.Stages["test"]; got.Run != "scripts/test.sh" || got.Shell != "pwsh" {
+		t.Errorf("worker.stages.test = %+v", got)
+	}
+	if cli.Dotnet == nil || cli.TagFormat != "cli-v${version}" {
+		t.Errorf("cli = %+v", cli)
+	}
+
+	_, err := shipconfig.Load(writeConfig(t, `release:
+  projects:
+    - name: api
+      path: api
+      x-shared: &shared { presets: [], dockr: {} }
+    - <<: *shared
+      name: worker
+      path: worker
+`))
+	if err == nil || !strings.Contains(err.Error(), "release.projects[1].dockr: unknown field") {
+		t.Fatalf("err = %v, want the merged unknown key reported", err)
+	}
+}
+
+// Anchors defined outside release: cannot be used inside it, because only
+// the section is parsed.
+func TestLoad_AliasToOutsideAnchor(t *testing.T) {
+	_, err := shipconfig.Load(writeConfig(t, `defaults: &cmd { run: scripts/test.sh }
+release:
+  projects:
+    - name: app
+      path: .
+      stages:
+        test: *cmd
+`))
+	var verr *shipconfig.ValidationError
+	if !errors.As(err, &verr) {
+		t.Fatalf("err = %v, want a *ValidationError", err)
+	}
+	for _, want := range []string{"*cmd", "line 7", "outside the release: section"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("err = %v, want it to contain %q", err, want)
+		}
+	}
+}
+
+// Billion laughs through merge keys: the unknown-field walk has a budget and
+// fails fast instead of expanding 10^9 nodes.
+func TestLoad_AliasExpansionBudget(t *testing.T) {
+	var b strings.Builder
+	b.WriteString("release:\n  l0: &l0 { run: x }\n")
+	for i := 1; i <= 9; i++ {
+		fmt.Fprintf(&b, "  l%d: &l%d { <<: [", i, i)
+		for j := range 10 {
+			if j > 0 {
+				b.WriteString(", ")
+			}
+			fmt.Fprintf(&b, "*l%d", i-1)
+		}
+		b.WriteString("] }\n")
+	}
+	b.WriteString("  projects:\n    - name: a\n      path: .\n      stages:\n        test: *l9\n")
+	repo := writeConfig(t, b.String())
+
+	done := make(chan error, 1)
+	go func() {
+		_, err := shipconfig.Load(repo)
+		done <- err
+	}()
+	select {
+	case err := <-done:
+		if err == nil || !strings.Contains(err.Error(), "aliases and merge keys") {
+			t.Fatalf("err = %v, want an alias expansion error", err)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("Load did not return within 10s")
+	}
+}
+
+// An unknown key does not hide the other problems of the section.
+func TestLoad_UnknownFieldsReportedWithOtherProblems(t *testing.T) {
+	_, err := shipconfig.Load(writeConfig(t, "release:\n  projects:\n    - name: api\n      pth: src\n      presets: [maven]\n"))
+	if err == nil {
+		t.Fatal("want error")
+	}
+	for _, want := range []string{
+		"release.projects[0].pth: unknown field",
+		"release.projects[0].path: required",
+		`release.projects[0].presets[0]: unknown preset "maven"`,
+	} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error %q lacks %q", err, want)
+		}
 	}
 }
 
@@ -226,6 +397,7 @@ func TestLoad_ValidationErrors(t *testing.T) {
 		want string
 	}{
 		{"release not a mapping", "release: [a]\n", "release: must be a mapping"},
+		{"bare release key", "enabled: true\nrelease:\n", "release.projects: at least one project is required"},
 		{"no projects", "release:\n  semantic_release: { version: 24.2.3 }\n", "release.projects: at least one project is required"},
 		{"unknown top-level release key", "release:\n  projets: []\n", `release.projets: unknown field`},
 		{"unknown project key", one + "      dockr: {}\n", `release.projects[0].dockr: unknown field`},
@@ -255,6 +427,8 @@ func TestLoad_ValidationErrors(t *testing.T) {
 		{"duplicate preset", one + "      presets: [npm, npm]\n", `release.projects[0].presets[1]: duplicate preset "npm"`},
 		{"dotnet without project file", one + "      presets: [dotnet]\n", `release.projects[0].dotnet.project_file: required by the dotnet preset`},
 		{"dotnet escaping project file", one + "      presets: [dotnet]\n      dotnet: { project_file: ../x.csproj }\n", `release.projects[0].dotnet.project_file: "../x.csproj" escapes the repository root`},
+		{"coverage not a number", one + "      presets: [dotnet]\n      dotnet: { project_file: a.csproj, coverage_threshold: .nan }\n", `release.projects[0].dotnet.coverage_threshold: NaN must be between 0 and 100`},
+		{"coverage infinite", one + "      presets: [dotnet]\n      dotnet: { project_file: a.csproj, coverage_threshold: -.inf }\n", `release.projects[0].dotnet.coverage_threshold: -Inf must be between 0 and 100`},
 		{"coverage out of range", one + "      presets: [dotnet]\n      dotnet: { project_file: a.csproj, coverage_threshold: 120 }\n", `release.projects[0].dotnet.coverage_threshold: 120 must be between 0 and 100`},
 		{"settings without preset", one + "      dotnet: { project_file: a.csproj }\n", `release.projects[0].dotnet: settings given but the dotnet preset is not enabled`},
 		{"unknown package manager", one + "      presets: [node]\n      node: { package_manager: bun }\n", `release.projects[0].node.package_manager: unknown package manager "bun" (want npm, pnpm or yarn)`},
@@ -272,7 +446,7 @@ func TestLoad_ValidationErrors(t *testing.T) {
 		{"hook without run", one + "      hooks:\n        after_test: [{ shell: bash }]\n", `release.projects[0].hooks.after_test[0].run: required`},
 		{"reserved hook env", one + "      hooks:\n        success: [{ run: x, env: { NERV_RELEASE_VERSION: \"1\" } }]\n", `release.projects[0].hooks.success[0].env.NERV_RELEASE_VERSION: the NERV_RELEASE_ prefix is reserved`},
 		{"unpinned semantic-release", "release:\n  semantic_release: { version: ^24 }\n  projects:\n    - name: a\n      path: .\n", `release.semantic_release.version: "^24" must be an exact version such as 24.2.3`},
-		{"unpinned extra plugin", "release:\n  semantic_release: { extra_plugins: [\"@semantic-release/exec\"] }\n  projects:\n    - name: a\n      path: .\n", `release.semantic_release.extra_plugins[0]: "@semantic-release/exec" must pin an exact version, e.g. "@semantic-release/exec@6.0.3"`},
+		{"unpinned extra plugin", "release:\n  semantic_release: { extra_plugins: [\"@semantic-release/exec\"] }\n  projects:\n    - name: a\n      path: .\n", `release.semantic_release.extra_plugins[0]: "@semantic-release/exec" must pin an exact version, e.g. "@semantic-release/exec@<version>"`},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
