@@ -89,6 +89,9 @@ func TestCompute_GitVersionCheckedOnlyForPathFilters(t *testing.T) {
 	if calls := f.find(func(c Command) bool { return isGit(c, "--version") }); len(calls) != 0 {
 		t.Errorf("git --version called %d times without a path filter", len(calls))
 	}
+	if ran == 0 {
+		t.Error("semantic-release never ran for a project without a path filter")
+	}
 
 	ran = 0
 	writeConfig(t, root, `release:
@@ -101,5 +104,8 @@ func TestCompute_GitVersionCheckedOnlyForPathFilters(t *testing.T) {
 	}
 	if calls := f.find(func(c Command) bool { return isGit(c, "--version") }); len(calls) != 1 {
 		t.Errorf("git --version called %d times, want once", len(calls))
+	}
+	if ran == 0 {
+		t.Error("semantic-release never ran after git 2.39.3 passed the version check")
 	}
 }

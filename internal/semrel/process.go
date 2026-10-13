@@ -3,6 +3,7 @@ package semrel
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"os/exec"
 	"regexp"
@@ -13,8 +14,9 @@ import (
 // processWaitDelay bounds how long Run waits for a process's output pipes
 // to close after the process exited or its context was cancelled: a
 // grandchild that inherited them (an ssh or https helper under git fetch,
-// an install script under npm) must not keep Run blocked.
-const processWaitDelay = 5 * time.Second
+// an install script under npm) must not keep Run blocked. A variable only so
+// tests can shorten it.
+var processWaitDelay = 5 * time.Second
 
 // Command is one external process: git, node or npm.
 type Command struct {
@@ -46,11 +48,19 @@ type Runner interface {
 }
 
 // ExecRunner runs commands with os/exec. Each command runs in its own
-// process group (a new process group on Windows); cancelling the context
-// kills the whole group, so the helpers a command started (ssh,
-// git-remote-https, credential helpers, npm's children) die with it, and
-// Run returns at most processWaitDelay after the cancellation or the
-// command's exit even if one of them still holds the output pipes.
+// session and process group on Unix (a new process group on Windows);
+// cancelling the context kills the whole group, so the helpers a command
+// started (ssh, git-remote-https, credential helpers, npm's children) die
+// with it, and Run returns at most processWaitDelay after the cancellation
+// or the command's exit even if one of them still holds the output pipes.
+// A command that exited 0 while a descendant held the pipes is a success:
+// its result is the output written until then, and the leftovers are killed
+// (on Unix).
+//
+// Because commands run outside the terminal's foreground process group and
+// without a controlling terminal, a terminal Ctrl-C does not reach them, and
+// a helper that prompts on the terminal fails instead of waiting: the caller
+// stops them on Ctrl-C only by cancelling the context (signal.NotifyContext).
 type ExecRunner struct{}
 
 // Run implements Runner.
@@ -67,6 +77,16 @@ func (ExecRunner) Run(ctx context.Context, c Command) (Result, error) {
 	cmd.WaitDelay = processWaitDelay
 	killGroupOnCancel(cmd)
 	err := cmd.Run()
+	if errors.Is(err, exec.ErrWaitDelay) {
+		// The command exited, but a descendant kept the output pipes open
+		// past the wait delay: kill what is left of the tree. Wait reports
+		// ErrWaitDelay only when the command itself succeeded, so a run
+		// that was not cancelled is a success.
+		killLeftovers(cmd)
+		if ctx.Err() == nil && cmd.ProcessState != nil && cmd.ProcessState.Success() {
+			err = nil
+		}
+	}
 	return Result{Stdout: stdout.Bytes(), Stderr: stderr.Bytes()}, err
 }
 
