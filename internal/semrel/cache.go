@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"time"
 )
 
 // The plugins installed next to semantic-release in the NERV cache, at exact
@@ -50,6 +51,14 @@ var bundledPackages = []string{
 
 // readyMarker is written into a cache directory once its install finished.
 const readyMarker = ".nerv-ready"
+
+// installPrefix names the private staging directories of cache installs.
+const installPrefix = ".install-"
+
+// staleInstallAge is the age after which a staging directory is taken as
+// left behind by a killed run (its deferred removal never ran) and swept. An
+// install takes seconds to minutes, so a younger one may still be running.
+const staleInstallAge = time.Hour
 
 // splitSpec splits "name@version" (the name may be scoped: "@a/b@1.0.0").
 func splitSpec(spec string) (name, version string) {
@@ -110,7 +119,8 @@ func (e *Engine) ensureCache(ctx context.Context, base string, specs []string) (
 	if err := os.MkdirAll(base, 0o755); err != nil {
 		return "", fmt.Errorf("semantic-release cache: %w", err)
 	}
-	tmp, err := os.MkdirTemp(base, ".install-")
+	sweepStaleInstalls(base, time.Now().Add(-staleInstallAge))
+	tmp, err := os.MkdirTemp(base, installPrefix+"*")
 	if err != nil {
 		return "", fmt.Errorf("semantic-release cache: %w", err)
 	}
@@ -134,6 +144,23 @@ func (e *Engine) ensureCache(ctx context.Context, base string, specs []string) (
 		return "", fmt.Errorf("semantic-release cache: %w", err)
 	}
 	return dir, nil
+}
+
+// sweepStaleInstalls removes the staging directories in base last modified
+// before cutoff. Failures are ignored: the sweep is housekeeping only.
+func sweepStaleInstalls(base string, cutoff time.Time) {
+	entries, err := os.ReadDir(base)
+	if err != nil {
+		return
+	}
+	for _, entry := range entries {
+		if !entry.IsDir() || !strings.HasPrefix(entry.Name(), installPrefix) {
+			continue
+		}
+		if info, err := entry.Info(); err == nil && info.ModTime().Before(cutoff) {
+			_ = os.RemoveAll(filepath.Join(base, entry.Name()))
+		}
+	}
 }
 
 func ready(dir string) bool {
