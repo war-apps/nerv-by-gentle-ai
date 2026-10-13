@@ -467,6 +467,19 @@ delegated (one writer). Test-first where a test can express the defect.
   keep successful exits` (5 files changed, 169 insertions(+), 20
   deletions(-)).
 
+### T2 final pass review
+
+- Native review of 1c72fee..49ed4fb (high risk, 4 lenses, user granted):
+  approved and acknowledged. Accepted as known limitations (no further
+  rounds, by plan): R3-killleftovers-pid-reuse-window (WARNING: a descendant
+  that left the group could, in a narrow window, let the group id be
+  reused), R3-setsid-proof-skips-without-tty (WARNING: the Setsid guard test
+  only runs under a terminal; RED/GREEN was shown under `script`),
+  R4-001 (Windows leftovers keep running), R2-tty-test-silently-skipped,
+  R2-mutable-waitdelay-global (tests that change it must not be parallel).
+- Carried to T3: R3-setsid-drops-sighup-propagation — the CLI must cancel
+  the context on SIGINT, SIGTERM and SIGHUP.
+
 ## Next step
 
 T3 (`nerv version` CLI) on top of T2.
