@@ -89,7 +89,7 @@ tagged with version, channel and `latest`).
   `shared_paths`, scope, `depends_on` (+ bump), tag format, semantic-release
   pin and extra plugins, stages, presets, providers, hooks; parsing with
   yaml.v3, validation with clear errors, docs.
-- [ ] T2 — node engine: embedded runner using semantic-release's API, pinned
+- [x] T2 — node engine: embedded runner using semantic-release's API, pinned
   dependency cache, branch worktree, NERV commit-filter plugin (path OR
   scope), dependency bumps; output normalised to the 12 action outputs.
 - [ ] T3 — `nerv version` CLI (single repo and monorepo, `--json` and
@@ -122,6 +122,9 @@ authored-line budget (roughly 3000+ lines across seven tasks). Strategy:
 `ask-on-risk`; chain strategy (user, 2026-10-13): `stacked-to-main`
 (each task's PR branches from the previous one and merges into develop in
 order). Slice boundaries: one PR per task, recorded below as they open.
+
+- PR #91 (T1): `feat/release-commands` → develop, commits f2f7801..294f7b3. Merged 7a23170.
+- T2 branch `feat/release-version-engine` from 7a23170.
 
 ## Progress
 
@@ -234,6 +237,249 @@ and observed failing.
   release keys, copy docker tag defaults` (5 files changed, 199
   insertions(+), 19 deletions(-)).
 
+### T2
+
+- Route: delegated (writer trigger: new package, runner, tests, docs).
+- Package `internal/semrel`: `Compute(ctx, Options{RepoRoot, Branch,
+  Project, Env, CacheDir, Offline}) ([]ProjectResult, error)` (also
+  `Engine{Runner}.Compute`); `ProjectResult` carries project, branch and the
+  12 semantic-release-action outputs (JSON names = action names,
+  `Outputs()` in action order). Process seam: `Runner` interface
+  (`Run(ctx, Command) (Result, error)`), `ExecRunner` for real use.
+- Node runner `internal/semrel/runner/nerv-semrel.mjs` (`go:embed`), two
+  modes: `plan` loads the repo config with semantic-release's own
+  cosmiconfig + `extends` merge and lists every package it needs; `run` is
+  one `semanticRelease({dryRun: true, ci: false, ...})` call. Sources relied
+  on are cited in its header (semantic-release 24.2.3 `index.js`,
+  `lib/get-config.js`, `lib/plugins/{index,normalize,utils}.js`,
+  `lib/definitions/plugins.js`, `lib/git.js`, `lib/branches/index.js`).
+- verifyConditions/credentials decision: semantic-release supports per-step
+  overrides (API options are merged over the config, `options =
+  {...plugins, ...options}` in `lib/plugins/index.js`; an empty list is a
+  valid non-required step). In a dry run verifyConditions and verifyRelease
+  still run (`lib/definitions/plugins.js` `dryRun: true`), so the runner
+  sets `verifyConditions`, `verifyRelease`, `prepare`, `publish`,
+  `addChannel`, `success`, `fail` to `[]`, and wraps `analyzeCommits` /
+  `generateNotes` around the repo's own composed steps (built by
+  semantic-release's `getConfig`), so analysis and notes are exactly the
+  repo's. The push-permission check (`git push --dry-run <repositoryUrl>`)
+  and the branch/tag/notes fetches target a disposable mirror passed as
+  `repositoryUrl`: no GH_TOKEN/NPM_TOKEN needed (integration test runs with
+  them removed). Notes links use the repo's public URL (config,
+  package.json `repository` or origin; a local path becomes `file://`).
+- Deviation from the planned `git worktree add` on the user's repo:
+  semantic-release's dry run fetches `+refs/heads/<b>:refs/heads/<b>` for
+  every release branch and fetches notes, which in a worktree of the user's
+  repo writes shared refs. And the channel of each release lives in git
+  notes (`refs/notes/semantic-release-<tag>`) that a plain fetch never
+  brings (dim.comprobantes.api locally: 0 notes refs); without them a local
+  run on a disposable clone of it computed develop as `2.9.0-alpha.1` (last
+  `v2.8.0`) although `v2.9.0-alpha.8` exists. So the engine uses
+  `git clone --mirror --shared` into a temp dir, fetches origin's
+  `+refs/tags/*` and `+refs/notes/*` into the mirror only
+  (`GIT_TERMINAL_PROMPT=0`; failure is an error that points to offline
+  mode), adds the worktree from the mirror, and deletes the temp dir. The
+  user's repo is only read. `Options.Offline` skips the origin read.
+- CI detection: env-ci vendor variables are stripped from the runner's
+  environment (list from env-ci 11 `services/*.js`), and the runner refuses
+  to run if env-ci still detects a CI service.
+- Pinning: default pins (verified on npm 2026-10-13) changelog `6.0.3`, git
+  `10.0.1`, exec `7.1.0`, conventional-changelog-conventionalcommits
+  `8.0.0` (10.x fails with semantic-release 24's bundled writer 8, observed:
+  "requires conventional-changelog-writer@9"; 9.x works; statement of
+  record in `internal/semrel/cache.go`; changelog 7 / git 11 need Node
+  ^22.22.2 || >=24.15). Bundled allowed without pin: commit-analyzer,
+  release-notes-generator, npm, github, conventional-changelog-angular.
+  `extra_plugins` overrides a default pin of the same name. Cache:
+  `UserCacheDir/nerv/semantic-release/<16-hex sha256 of sorted specs>`,
+  installed with `npm install --no-audit --no-fund --ignore-scripts` into a
+  temp dir then renamed (concurrent runs: first rename wins). `plan`
+  packages not bundled/pinned/extra -> error naming them and
+  `release.semantic_release.extra_plugins`; an `extends` that cannot load is
+  also an error.
+- Projects: `TopoOrder()`; `--project` keeps the project plus its
+  transitive dependencies (only the requested one is returned). Single
+  project with the default tag format keeps the repo's tagFormat; a project
+  with `path: .` gets no commit filter; no `release:` section = one project
+  named after the repo directory, plain semantic-release. Commit filter
+  (JS): `git diff-tree --name-only -r --root -m --first-parent` per commit
+  matched against path / shared_paths (prefix or micromatch glob) OR
+  header scope in `scopes` (comma-separated scopes split). depends_on (Go,
+  `minReleaseType`): highest bump of dependencies released in this run,
+  `none` ignored; passed to the runner, which raises the analyzer's type
+  to at least it.
+- RED: `go test ./internal/semrel/` -> `undefined: Command` ... [build
+  failed]. GREEN: `ok`. The mirror redesign came from the integration
+  run (RED there: dim clone develop `2.9.0-alpha.1`; then the new
+  prerelease scenario failed against a fake origin before the local bare
+  origin). Its unit tests (`TestCompute_DisposableCheckoutRemovedOnError`,
+  `TestCompute_OfflineOrNoOriginSkipsTheFetch`,
+  `TestCompute_OriginFetchFailureIsAnError`) were written together with
+  the change, so no unit RED was observed for them.
+- Integration (real node 24.21.0, npm 11.19.0, registry):
+  `go test -tags semrel_integration -run Integration -v -count=1
+  ./internal/semrel/` -> PASS (13.6s with a warm per-run cache; first
+  install ~7s): dim-style config on develop with the first alpha's note
+  only on origin -> `1.2.0-alpha.2`, channel `alpha`, last
+  `v1.2.0-alpha.1` (offline: last `v1.1.0`, `1.2.0-alpha.1`, the dim
+  symptom); main -> no release, last 1.1.0; user's refs, worktrees and
+  checkout unchanged. Monorepo: one `feat(api)` commit touching `web/` ->
+  api 1.1.0 (scope) and web 1.1.0 (path), cli untouched. depends_on: `fix`
+  in core -> core 1.0.1, app 1.0.1 (patch), sdk 1.1.0 (minor), tool not
+  released (none), order core,app,tool,sdk. Unpinned
+  `semantic-release-slack-bot` -> error naming it.
+- Not run: `nerv version` vs `npx semantic-release --dry-run` on a real
+  copy of dim.comprobantes.api with origin on GitHub (reading origin is a
+  remote operation with the user's credentials; it belongs to T3's
+  acceptance run).
+- Checks: `go test ./...` ok, `go vet ./...` (and with
+  `-tags semrel_integration`) clean, `gofmt -l .` empty.
+- Size: `d543f72` 9 files changed, 2175 insertions(+). Above the ~400-line
+  heuristic: about half is tests (634 unit, 339 integration); the runner
+  (316, mostly the cited-source header and the plan mode) and engine are one
+  behaviour that cannot ship without each other.
+- Commit: `d543f72` `feat(semrel): compute next versions with
+  semantic-release`.
+
+### T2 review
+
+- Native review of a97b002..306b5dc (high risk, 4 lenses, user granted):
+  approved and acknowledged. Advisory findings: R1-001 (WARNING: a failed
+  origin fetch puts the remote URL, with any embedded credentials, in the
+  error), R4-ssh-fetch-can-block (WARNING: ssh can prompt on /dev/tty),
+  R4-per-commit-git-spawn (WARNING: one `git diff-tree` per commit, per
+  pass, per project, unmemoised), R3-relative-origin-url (WARNING: a
+  relative local origin resolves against the temp mirror),
+  R3-runner-exit-truncation (WARNING: `process.exit` right after a large
+  stdout write can cut the result on async pipes), R2-001 (WARNING: the task
+  log and the code disagree on which conventionalcommits versions fail),
+  R4-install-temp-leak, R2-002 (implicit `indexOf(null)` raise),
+  R3-runner-logic-untested-by-default.
+
+### T2 follow-ups
+
+All nine advisory findings of the T2 review fixed (user authorized). Route:
+delegated (one writer). Test-first where a test expresses the defect.
+
+| Finding | Fix | Evidence |
+|---|---|---|
+| R1-001 | The origin URL is no longer on argv: the mirror fetches the `nerv-origin` remote whose URL comes from `GIT_CONFIG_COUNT`/`GIT_CONFIG_KEY_n`/`GIT_CONFIG_VALUE_n` (extending an existing count). `redact` hides URL userinfo and secret-named query values (`*token*`, `*password*`, `*secret*`, `*key*`, `*sig*`) in every command string (`Engine.run`), stderr tail and runner error. | RED: `TestCompute_OriginFetchFailureHidesCredentials` (error leaked `s3cr3t-pass`, `tok-123`; URL on the fetch argv). GREEN. `TestRedact` written with the fix (no RED). |
+| R4-ssh-fetch-can-block | Fetch env: `GIT_TERMINAL_PROMPT=0`, `GCM_INTERACTIVE=never`, `GIT_SSH_COMMAND` with `-o BatchMode=yes` appended following git's precedence (env `GIT_SSH_COMMAND`, then the repo's `core.sshCommand`, then `GIT_SSH`, then `ssh`); a non-ssh command (plink, wrapper) or a `GIT_SSH` program is left alone (documented). No stdin. Bounded by `Options.FetchTimeout` (default `DefaultFetchTimeout` 60s), with a "timed out after" error. | RED: `TestCompute_FetchNeverPrompts` (no BatchMode in 4 cases), `TestCompute_FetchIsBounded` (no deadline). GREEN. `TestCompute_FetchTimeoutIsAnError` written with the fix. |
+| R4-per-commit-git-spawn | `commitFileLister`: one `git diff-tree --stdin -z -r --root --name-only --no-renames --diff-merges=first-parent` per pass for the commits not listed yet, cached in a per-run `commit-files.json` (next to the mirror) shared by every project. Merge rule: a merge's files are its diff against its first parent; the old `-m --first-parent` actually listed the union of the diffs against every parent (diff-tree ignores `--first-parent`; observed). Needs git >= 2.31 (documented). | node tests: one git call per pass, cache reuse, real-repo merge case; `TestCompute_ProjectsShareOneCommitFilesCache`. |
+| R3-relative-origin-url | `resolveRemoteURL`: a local-path origin is joined to the repo top level; scheme URLs, scp-like and absolute paths unchanged. The integration repos now use a relative origin. | RED: `TestCompute_RelativeOriginResolvedAgainstTheRepository` (`../origin.git` passed as is). GREEN; integration prerelease scenario passes with a relative origin. |
+| R3-runner-exit-truncation | `finish(stream, result, code)` exits in the write callback. | Observed: `process.exit` right after an 8 MiB write delivered 65536 bytes; in the callback, all 8388613. node test "finish writes a large result completely" fails against the old write-then-exit and passes now. |
+| R2-001 | Verified 2026-10-13 with semantic-release 24.2.3 (release-notes-generator 14.1.1, writer 8.4.0): conventionalcommits 8.0.0, 9.0.0, 9.3.1 render notes; 10.0.0+ fails ("Missing helper: ... requires conventional-changelog-writer@9 or newer"). The review's premise (9.x needs writer 9) is false: the old code comment and docs were wrong, this log was right. Statement of record: `internal/semrel/cache.go`; docs and this log refer to it. | Direct `generateNotes` runs per version. |
+| R4-install-temp-leak | `sweepStaleInstalls`: `.install-*` staging dirs in the cache base older than 1h are removed before installing. | RED: `TestEnsureCache_SweepsStaleInstalls`. GREEN. |
+| R2-002 | `raiseReleaseType(analyzed, minimum, order)` with the null-analyzer rule explicit and commented. | node test. |
+| R3-runner-logic-untested-by-default | Pure logic in `runner/nerv-semrel-lib.mjs` (embedded with the runner; `writeRunner` writes both) tested by `runner/nerv-semrel-lib.test.mjs`, run by `TestRunnerLib_NodeUnitTests` (also `node --check` on the runner); skips without node. | RED: the module did not exist (`ERR_MODULE_NOT_FOUND`). GREEN: 9 node tests (scopes incl. commas and `!`, path/glob matching, diff-tree parsing, batching, merges, filter, raise, plan packages, flush). Skip observed with node off PATH. |
+
+- Public API: added `Options.FetchTimeout` and `DefaultFetchTimeout`;
+  nothing removed or changed.
+- Behaviour change: merge commits match a project by their first-parent
+  changes only (before: the union of every parent's diff).
+- Checks: `go test ./...` ok (24 packages), `go test -tags
+  semrel_integration -run Integration -v -count=1 ./internal/semrel/` PASS
+  (4 tests, 13.6s), `node --test` 9/9, `go vet ./...` (and with the tag)
+  clean, `gofmt -l .` empty.
+- Commits: `6a21c3f` `fix(semrel): read origin without prompts, argv
+  credentials or relative paths` (8 files changed, 480 insertions(+), 18
+  deletions(-)); `d4db9b3` `fix(semrel): sweep stale cache install staging
+  directories` (2 files changed, 68 insertions(+), 1 deletion(-));
+  `ecb142c` `fix(semrel): list commit files once per run and flush the
+  runner result` (7 files changed, 604 insertions(+), 127 deletions(-));
+  `e6bad1a` `fix(semrel): state which conventionalcommits majors fail with
+  writer 8` (2 files changed, 13 insertions(+), 4 deletions(-)).
+
+### T2 follow-up review
+
+- Native review of 06f6590..a82f973 (medium, user granted): approved and
+  acknowledged. Advisory: R3-fetch-timeout-unproved-on-real-process
+  (WARNING: the 60s bound is a context deadline proven only with a fake
+  runner; a real fetch's ssh/https helper children may outlive the kill and
+  hold the pipes open), R3-diff-merges-git-version-unchecked (git < 2.31
+  fails with a raw unknown-option error).
+
+### T2 second follow-ups
+
+Both advisory findings of the T2 follow-up review fixed (user authorized).
+Route: delegated (one writer). Test-first.
+
+| Finding | Fix | Evidence |
+|---|---|---|
+| R3-fetch-timeout-unproved-on-real-process | `ExecRunner` (the only real runner, so git fetch/clone, npm install and node all get it) starts each command in its own process group (`Setpgid` on Unix; `CREATE_NEW_PROCESS_GROUP` on Windows) and its `cmd.Cancel` kills the whole group (`kill(-pgid, SIGKILL)`; Windows `taskkill /T /F /PID`, falling back to killing the child). `cmd.WaitDelay = processWaitDelay` (5s) bounds Wait after a cancel or exit even if a pipe stays open. Build-tagged `process_unix.go` / `process_windows.go`. | Real-process test `TestExecRunner_CancelKillsTheWholeProcessGroup` (Unix only): `sh -c 'sleep 60 & ...; sleep 60'` under a 200ms context. RED (old runner): "Run still blocked 8.0s after the context deadline: a grandchild holds the output pipe". GREEN: returns in 0.21s and the grandchild pid is gone (ESRCH). Its cleanup kills the grandchild even on failure. |
+| R3-diff-merges-git-version-unchecked | `gitversion.go`: when any project has a path filter (a `path` other than `.`), Compute runs `git --version` once before node, the cache or the mirror, and stops with "git X.Y.Z is too old: selecting a project's commits by path needs git 2.31.0 or newer". `parseGitVersion` reads `2.43.0`, `2.39.3 (Apple Git-146)`, `2.45.1.windows.1`, `2.30` (patch 0). | RED (stubbed parser): `TestParseGitVersion` 6 cases failed, `TestCompute_PathFilterNeedsGit231` "want an error for git 2.30.2", `TestCompute_GitVersionCheckedOnlyForPathFilters` "called 0 times, want once". GREEN. |
+
+- Public API: unchanged (new identifiers are unexported).
+- Behaviour change: a monorepo with path filters on git < 2.31 now fails
+  early with that error (documented in `docs/release-commands.md`);
+  cancelled commands no longer leave helper processes behind. Commands now
+  run outside the terminal's foreground process group, so a terminal
+  Ctrl-C reaches them only through the context.
+- Checks: `go test ./...` ok (24 packages), `go test -tags
+  semrel_integration -run Integration -count=1 ./internal/semrel/` ok
+  (26.1s), `go vet ./...`, `GOOS=windows go vet ./internal/semrel/` and
+  `go vet -tags semrel_integration ./internal/semrel/` clean, `gofmt -l .`
+  empty.
+- Commits: `477aa8a` `fix(semrel): kill the whole process tree of a
+  cancelled command` (4 files changed, 138 insertions(+), 1 deletion(-));
+  `120d447` `fix(semrel): require git 2.31 before filtering project commits
+  by path` (6 files changed, 188 insertions(+), 2 deletions(-)).
+
+### T2 second follow-up review
+
+- Native review of 3a7e2ab..80d7e40 (high risk, 4 lenses, user granted):
+  approved and acknowledged. Advisory: R4-setpgid-background-tty and
+  R3-setpgid-tty-prompt-stops-child (WARNING: a background process group
+  gets SIGTTIN/SIGTTOU when a helper opens the terminal, so it stops until
+  the timeout), R4-windows-new-group-ctrlc (WARNING: CREATE_NEW_PROCESS_GROUP
+  drops console Ctrl-C for children; taskkill is unbounded),
+  R3-waitdelay-turns-success-into-error (a lingering descendant turns a
+  successful exit into ErrWaitDelay), R3-windows-tree-kill-unproved,
+  R2-unasserted-ran-counter, R2-ctrlc-consequence-undocumented-in-code.
+- T3 must cancel the context on SIGINT/SIGTERM (signal.NotifyContext) so a
+  terminal Ctrl-C still stops git, npm and node.
+
+### T2 final pass
+
+Final bounded pass on the `internal/semrel` process runner for the T2
+second follow-up review's advisory findings (user authorized). Route:
+delegated (one writer). Test-first where a test can express the defect.
+
+| Finding | Fix | Evidence |
+|---|---|---|
+| R4-setpgid-background-tty, R3-setpgid-tty-prompt-stops-child | `process_unix.go`: `Setsid: true` instead of `Setpgid`, so the command has no controlling terminal and a helper that opens /dev/tty fails at once (ENXIO) instead of being stopped by SIGTTIN/SIGTTOU. The session leader's pid is its process-group id, so `kill(-pid, SIGKILL)` still kills the tree. | `TestExecRunner_ChildHasNoControllingTerminal` (`sh -c 'read line < /dev/tty'`, 4s timeout) skips when the test process has no controlling terminal, which is the case in this agent shell; RED/GREEN observed by running it under a pty with `script -qec "go test ..." /dev/null`. RED (Setpgid): "Run hit the timeout after 4.0s: the child was stopped waiting for the terminal (err signal: killed)". GREEN: fails at once (0.00s) with the shell's exit error. `TestExecRunner_CancelKillsTheWholeProcessGroup` stays green (0.21s). |
+| R4-windows-new-group-ctrlc | `process_windows.go`: `taskkill /T /F /PID` runs under a 10s `exec.CommandContext` timeout, falling back to `Process.Kill`. The code documents that `CREATE_NEW_PROCESS_GROUP` stops console Ctrl-C from reaching children, so the CLI (T3) must cancel the context on SIGINT/SIGTERM. | No Windows runner: `GOOS=windows go vet ./internal/semrel/` clean (compile check only). |
+| R3-waitdelay-turns-success-into-error | `process.go`: when `Wait` returns `exec.ErrWaitDelay`, the leftovers of the process group are killed (`killLeftovers`: group SIGKILL on Unix, no-op on Windows) and, if the context was not cancelled and the process exited 0, Run returns success with the output collected so far. `processWaitDelay` became an unexported variable so tests can shorten it. | `TestExecRunner_LingeringDescendantKeepsASuccessfulExit` (`sh -c 'sleep 30 & ...; echo ok'`, wait delay 300ms). RED: "Run(exit 0 with a lingering grandchild) = exec: WaitDelay expired before I/O complete, want success". GREEN: success with "ok" in 0.31s and the grandchild pid is gone (ESRCH). Cleanup kills the grandchild even on failure. |
+| R2-unasserted-ran-counter | `gitversion_test.go`: `TestCompute_GitVersionCheckedOnlyForPathFilters` asserts that semantic-release ran in both phases. | Test change only; passes. |
+| R2-ctrlc-consequence-undocumented-in-code | `ExecRunner` doc: commands run in their own session and process group without a controlling terminal, so a terminal Ctrl-C reaches them only through context cancellation (signal.NotifyContext). | Doc only. |
+
+- Documented limitation, R3-windows-tree-kill-unproved: the Windows tree
+  kill (taskkill /T) and the Windows behaviour on a lingering descendant
+  (left running; taskkill cannot find it once the child exited) are not
+  proved on a real Windows process; there is no Windows runner here.
+- Public API: unchanged.
+- Checks: `go test ./...` ok (24 packages), `go test -tags
+  semrel_integration -run Integration -count=1 ./internal/semrel/` ok
+  (13.6s), `go vet ./...`, `GOOS=windows go vet ./internal/semrel/` and
+  `go vet -tags semrel_integration ./internal/semrel/` clean, `gofmt -l .`
+  empty.
+- Commit: `12e81f5` `fix(semrel): detach commands from the terminal and
+  keep successful exits` (5 files changed, 169 insertions(+), 20
+  deletions(-)).
+
+### T2 final pass review
+
+- Native review of 1c72fee..49ed4fb (high risk, 4 lenses, user granted):
+  approved and acknowledged. Accepted as known limitations (no further
+  rounds, by plan): R3-killleftovers-pid-reuse-window (WARNING: a descendant
+  that left the group could, in a narrow window, let the group id be
+  reused), R3-setsid-proof-skips-without-tty (WARNING: the Setsid guard test
+  only runs under a terminal; RED/GREEN was shown under `script`),
+  R4-001 (Windows leftovers keep running), R2-tty-test-silently-skipped,
+  R2-mutable-waitdelay-global (tests that change it must not be parallel).
+- Carried to T3: R3-setsid-drops-sighup-propagation — the CLI must cancel
+  the context on SIGINT, SIGTERM and SIGHUP.
+
 ## Next step
 
-T2 (node engine) on top of T1.
+T3 (`nerv version` CLI) on top of T2.
