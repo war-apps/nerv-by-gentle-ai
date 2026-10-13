@@ -156,6 +156,17 @@ pending (save failed: host session registration not confirmed).
   field reference; splitting it would ship a schema without its validation.
 - Commit: this commit (`feat(ship): add the release configuration schema`).
 
+### T1 review
+
+- Commit `f2f7801` (recorded by the parent). Native review (high risk, 4
+  lenses, user granted): approved and acknowledged. Advisory findings:
+  R3-early-return-unknown-fields (WARNING: an unknown key hides the other
+  errors), R3-unrelated-yaml-error (a strict-YAML error elsewhere in
+  nerv.yaml fails a repo with no release section), R4-root-not-mapping-silent,
+  R3-null-release-untested, R3-coverage-nan, R3-merge-key-rejected,
+  R1-alias-walk-amplification, R2-unpinned-plugin-hint,
+  R2-inline-placeholder-set, R2-scattered-defaults.
+
 ## Next step
 
 T2 (node engine) on top of T1.
