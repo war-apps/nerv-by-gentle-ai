@@ -65,6 +65,8 @@ type Workspace struct {
 	head    string
 	cache   string
 	timeout time.Duration
+	// warnedChangelog: the ignored-changelog warning was printed.
+	warnedChangelog bool
 }
 
 // NewWorkspace creates a release clone with the default engine. See
@@ -320,6 +322,7 @@ func (w *Workspace) Release(ctx context.Context, req ReleaseRequest) (ProjectRes
 		Filter:           p.Filter,
 		MinReleaseType:   minReleaseType(p.DependsOn, byName),
 		ExpectedVersion:  expected,
+		Changelog:        p.Changelog,
 		CommitFilesCache: filepath.Join(w.root, "commit-files.json"),
 	}, req.Output)
 	if m := resp.VersionMismatch; m != nil {
@@ -328,6 +331,10 @@ func (w *Workspace) Release(ctx context.Context, req ReleaseRequest) (ProjectRes
 	}
 	if err != nil {
 		return ProjectResult{}, fmt.Errorf("project %s: %w", p.Name, err)
+	}
+	if resp.ChangelogIgnored && !w.warnedChangelog && req.Output != nil {
+		w.warnedChangelog = true
+		fmt.Fprintf(req.Output, "nerv ship: warning: the release: section sets each project's changelog, but the semantic-release configuration has no @semantic-release/changelog plugin: no changelog is written (add the plugin, and @semantic-release/git to commit it)\n")
 	}
 	r := normalize(p.Name, w.branch, resp)
 	if !r.NewReleasePublished {

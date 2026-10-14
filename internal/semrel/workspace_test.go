@@ -351,6 +351,9 @@ func TestWorkspace_ReleaseIsARealRunGuardedByTheComputedVersion(t *testing.T) {
 	if rel.ExpectedVersion != "1.1.0" || rel.RepositoryURL != "https://github.com/acme/w.git" || rel.TagFormat != "web-v${version}" || rel.MinReleaseType != "minor" || rel.Cwd != ws.Dir() {
 		t.Errorf("release request %+v", rel)
 	}
+	if rel.Changelog != "web/CHANGELOG.md" {
+		t.Errorf("changelog %q, want web/CHANGELOG.md (a monorepo project's own)", rel.Changelog)
+	}
 	if rel.Filter == nil || !slices.Equal(rel.Filter.Paths, []string{"web"}) || !slices.Equal(rel.Filter.Scopes, []string{"ui"}) {
 		t.Errorf("filter %+v", rel.Filter)
 	}
@@ -456,5 +459,27 @@ func TestWorkspace_CheckPushAndTagOnOrigin(t *testing.T) {
 	}
 	if head, err := ws.BranchOnOrigin(context.Background()); head != "def" || err != nil {
 		t.Errorf("BranchOnOrigin = %q, %v", head, err)
+	}
+}
+
+func TestWorkspace_ReleaseWarnsOnceWhenTheChangelogCannotApply(t *testing.T) {
+	root := t.TempDir()
+	f := workspaceRunner(t, root, "https://github.com/acme/w.git", "abc", func(req runnerRequest) (Result, error) {
+		if req.Mode == "plan" {
+			return okPlan()
+		}
+		return respond(map[string]any{"ok": true, "released": true, "changelogIgnored": true,
+			"nextRelease": map[string]any{"version": "1.1.0", "gitTag": "x"}})
+	})
+	ws := openWorkspace(t, f, root)
+	writeConfig(t, ws.Dir(), "release:\n  projects:\n    - name: api\n      path: api\n    - name: web\n      path: web\n")
+	var out strings.Builder
+	for _, p := range []string{"api", "web"} {
+		if _, err := ws.Release(context.Background(), ReleaseRequest{Expected: ProjectResult{Project: p, NewReleasePublished: true, NewReleaseVersion: "1.1.0"}, Output: &out}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if n := strings.Count(out.String(), "@semantic-release/changelog"); n != 1 {
+		t.Errorf("warning printed %d times, want once:\n%s", n, out.String())
 	}
 }

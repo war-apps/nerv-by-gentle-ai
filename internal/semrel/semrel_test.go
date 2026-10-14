@@ -535,6 +535,9 @@ func TestCompute_MonorepoOrderFiltersAndDependsOn(t *testing.T) {
 	if runs[0].TagFormat != "api-v${version}" || runs[1].TagFormat != "web-v${version}" {
 		t.Errorf("order: %s then %s", runs[0].TagFormat, runs[1].TagFormat)
 	}
+	if runs[0].Changelog != "api/CHANGELOG.md" || runs[1].Changelog != "web/CHANGELOG.md" {
+		t.Errorf("changelogs %q, %q: want each project's own", runs[0].Changelog, runs[1].Changelog)
+	}
 	if runs[0].MinReleaseType != "" || runs[1].MinReleaseType != "patch" {
 		t.Errorf("min release types %q, %q", runs[0].MinReleaseType, runs[1].MinReleaseType)
 	}

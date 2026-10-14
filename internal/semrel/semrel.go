@@ -168,6 +168,7 @@ func (e *Engine) Compute(ctx context.Context, opts Options) ([]ProjectResult, er
 				TagFormat:      p.TagFormat,
 				Filter:         p.Filter,
 				MinReleaseType: minReleaseType(p.DependsOn, byName),
+				Changelog:      p.Changelog,
 			})
 			if err != nil {
 				return fmt.Errorf("project %s: %w", p.Name, err)

@@ -213,11 +213,36 @@ At least one project is required. A single-repo setup is one project with
 | `shared_paths` | `[]` | Extra paths or globs whose changes also count for the project (shared code, build files). |
 | `scopes` | `[<name>]` | Conventional-commit scopes whose commits count for the project wherever they touch. A commit counts when it touches `path`/`shared_paths` **or** its scope matches; one commit can release several projects. |
 | `tag_format` | `v${version}` (one project) / `<name>-v${version}` | semantic-release `tagFormat`. Must contain `${version}`, no other placeholder, and be unique across projects. |
-| `changelog` | `<path>/CHANGELOG.md` | The project's CHANGELOG file. |
+| `changelog` | `<path>/CHANGELOG.md` | The project's CHANGELOG file (repository-relative); see [The project's changelog](#the-projects-changelog). |
 | `depends_on` | `[]` | Projects whose new release bumps this one; see below. |
 | `presets` | `[]` | Built-in stages and publishers: any of `dotnet`, `node`, `docker`, `nuget`, `npm`. A settings block (`dotnet:`, `docker:`, ...) without its preset enabled is an error. |
 | `stages` | preset commands | Override or add a pipeline stage command; see [Stages, hooks and commands](#stages-hooks-and-commands). |
 | `hooks` | `{}` | Extra scripts around stages and release steps; same section. |
+
+### The project's changelog
+
+`changelog` applies when the section has **more than one project** (each
+project writes its own CHANGELOG, `<path>/CHANGELOG.md` by default) or when
+it is **set explicitly** for the project. A single project without it keeps
+the repository's own semantic-release configuration unchanged (for example
+a `changelogFile: src/Api/CHANGELOG.md` stays as it is).
+
+When it applies, each release (and dry run) of the project uses the
+repository's plugin list with:
+
+- every `@semantic-release/changelog` entry writing `changelogFile: <changelog>`;
+- every `@semantic-release/git` entry committing `<changelog>` instead of
+  the file the changelog entries pointed at (only that exact path is
+  dropped; every other asset is kept; when `assets` is not set, the git
+  plugin's defaults `CHANGELOG.md`, `package.json`, `package-lock.json`,
+  `npm-shrinkwrap.json` are the starting list; `assets: false` is left
+  alone);
+- every other plugin untouched.
+
+So each project's release commit holds only its own CHANGELOG (plus the
+other assets the repository lists). If the configuration has no
+`@semantic-release/changelog`, `changelog` has no effect and `nerv ship`
+prints one warning.
 
 ### `depends_on[]`
 

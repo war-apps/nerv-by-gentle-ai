@@ -22,6 +22,7 @@ import {
   parseDiffTree,
   pathMatcher,
   raiseReleaseType,
+  rewriteChangelogPlugins,
   stripNoRemoteLinks,
   versionGuard,
 } from "./nerv-semrel-lib.mjs";
@@ -308,4 +309,51 @@ test("failureResult carries the version mismatch as a structured field", () => {
   const plain = failureResult(Object.assign(new Error("boom"), { code: "EGITHUB" }));
   assert.equal(plain.versionMismatch, undefined);
   assert.equal(plain.error, "EGITHUB boom");
+});
+
+test("rewriteChangelogPlugins points the changelog and git plugins at the project's file", () => {
+  const plugins = [
+    "@semantic-release/commit-analyzer",
+    ["@semantic-release/changelog", { changelogFile: "docs/CHANGES.md", changelogTitle: "# Changes" }],
+    ["@semantic-release/git", { assets: ["docs/CHANGES.md", "package.json", { path: "dist/*.js" }], message: "m" }],
+    "@semantic-release/github",
+  ];
+  const r = rewriteChangelogPlugins(plugins, "api/CHANGELOG.md");
+  assert.equal(r.applied, true);
+  assert.deepEqual(r.plugins, [
+    "@semantic-release/commit-analyzer",
+    ["@semantic-release/changelog", { changelogFile: "api/CHANGELOG.md", changelogTitle: "# Changes" }],
+    ["@semantic-release/git", { assets: ["package.json", { path: "dist/*.js" }, "api/CHANGELOG.md"], message: "m" }],
+    "@semantic-release/github",
+  ]);
+  // The input is not modified.
+  assert.equal(plugins[1][1].changelogFile, "docs/CHANGES.md");
+});
+
+test("rewriteChangelogPlugins handles the string forms and the plugins' defaults", () => {
+  const r = rewriteChangelogPlugins(["@semantic-release/changelog", "@semantic-release/git"], "web/CHANGELOG.md");
+  assert.equal(r.applied, true);
+  assert.deepEqual(r.plugins, [
+    ["@semantic-release/changelog", { changelogFile: "web/CHANGELOG.md" }],
+    ["@semantic-release/git", { assets: ["package.json", "package-lock.json", "npm-shrinkwrap.json", "web/CHANGELOG.md"] }],
+  ]);
+  // git assets without the repo's changelog keep every asset and gain the project's.
+  const g = rewriteChangelogPlugins(
+    ["@semantic-release/changelog", ["@semantic-release/git", { assets: ["src/Api/Api.csproj"] }]],
+    "api/CHANGELOG.md",
+  );
+  assert.deepEqual(g.plugins[1], ["@semantic-release/git", { assets: ["src/Api/Api.csproj", "api/CHANGELOG.md"] }]);
+  // Already listed: not added twice.
+  const d = rewriteChangelogPlugins(
+    ["@semantic-release/changelog", ["@semantic-release/git", { assets: ["api/CHANGELOG.md", "CHANGELOG.md"] }]],
+    "api/CHANGELOG.md",
+  );
+  assert.deepEqual(d.plugins[1], ["@semantic-release/git", { assets: ["api/CHANGELOG.md"] }]);
+});
+
+test("rewriteChangelogPlugins without a changelog plugin changes nothing", () => {
+  const plugins = ["@semantic-release/commit-analyzer", ["@semantic-release/git", { assets: ["x"] }]];
+  const r = rewriteChangelogPlugins(plugins, "api/CHANGELOG.md");
+  assert.equal(r.applied, false);
+  assert.deepEqual(r.plugins, plugins);
 });

@@ -80,6 +80,9 @@ type runnerRequest struct {
 	// ExpectedVersion, in release mode, is the only version semantic-release
 	// may release: any other stops it before the tag.
 	ExpectedVersion string `json:"expectedVersion,omitempty"`
+	// Changelog, when set, is the project's changelog file: the runner points
+	// the repository's @semantic-release/changelog and git entries at it.
+	Changelog string `json:"changelog,omitempty"`
 }
 
 // commitFilter keeps the commits that touch Paths or carry one of Scopes.
@@ -101,6 +104,9 @@ type runnerResponse struct {
 	LastRelease *release `json:"lastRelease"`
 	// release mode: set when the version guard stopped semantic-release.
 	VersionMismatch *versionMismatch `json:"versionMismatch"`
+	// ChangelogIgnored: a changelog was requested but the repository's
+	// configuration has no @semantic-release/changelog to apply it to.
+	ChangelogIgnored bool `json:"changelogIgnored"`
 }
 
 // versionMismatch is the runner's structured report of its version guard.
