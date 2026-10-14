@@ -1040,6 +1040,24 @@ directly.
   the client's headers` (4 files, +61 -9). Total `git diff --shortstat
   19473b5 d461038`: 6 files changed, 348 insertions(+), 63 deletions(-).
 
+### T5 final pass review
+
+- Native review of 19473b5..bf7de86 (medium, user granted): approved and
+  acknowledged. R3-nupkgs-skips-symlinked-packages (WARNING: `os.ReadDir`
+  entries report a symlink's own type, so a linked `.nupkg` was silently
+  skipped) and R3-partial-push-error-drops-cause-chain (the part-way error
+  lost the cause, so a cancellation could not be told from a refusal) were
+  fixed inline by the parent in `433d0cb`: packages are checked with
+  `os.Stat` (links followed); the part-way error wraps the cause with `%w`,
+  and the key-redacted error answers `errors.Is` for `context.Canceled` /
+  `DeadlineExceeded` without unwrapping to text that holds the key. RED: the
+  symlinked package was not pushed, and `errors.Is(err,
+  context.DeadlineExceeded)` was false; GREEN after the fix (`go test
+  ./...`, `GOOS=windows go vet ./...`, `gofmt -l .` clean). The first draft
+  of the cancellation test hung because its fake server never saw the
+  client disconnect; it now uses the release-channel pattern of the
+  neighbouring test.
+
 ## Next step
 
 Review of the T5 final pass (19473b5..d461038), then the T5 pull request,
