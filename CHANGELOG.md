@@ -23,6 +23,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - The `release:` section of `.nerv/nerv.yaml` declares the projects (paths, shared paths, scopes, tag formats,
     `depends_on` bumps), presets, stage overrides and hooks (bash, pwsh or node), validated with every problem
     reported at once.
+  - `/nerv:release-setup` writes the `release:` section interactively: it detects the repository's semantic-release
+    configuration, projects, Dockerfiles, scripts and monorepo layout, asks only what it cannot detect, writes the
+    section without touching the rest of `.nerv/nerv.yaml`, and validates it with `nerv version next --offline`.
 
 ## [4.0.0] - 2026-10-09
 

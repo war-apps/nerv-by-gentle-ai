@@ -44,6 +44,28 @@ Read access to origin is needed for both commands (`nerv version next
 
 ## Quick start
 
+### Interactive setup
+
+In Claude Code, `/nerv:release-setup` writes the `release:` section for
+you:
+
+1. It detects what the repository already has: its semantic-release
+   configuration (branches, plugins that need pinning), `.csproj` /
+   `.sln` / `.slnx` files, Dockerfiles and CI docker steps, `package.json`
+   scripts, release scripts, and a monorepo layout with its commit scopes.
+2. It proposes a complete section, explains each non-obvious choice, and
+   asks only what it cannot detect, one question at a time (an image
+   registry, the variable holding a NuGet key, a coverage threshold,
+   `depends_on`).
+3. It writes the section into `.nerv/nerv.yaml` (the rest of the file is
+   kept as it is) and validates it with `nerv version next --offline`,
+   showing each project's next version.
+
+It never commits, pushes or releases: commit and push `.nerv/nerv.yaml`
+yourself, then run `/nerv:ship`. `/nerv:release-setup --project <name>`
+adds or edits one project of an existing section. The examples below show
+the shapes it produces.
+
 ### Single repository: dotnet API with a docker image
 
 A repository shaped like `dim.comprobantes.api`: semantic-release
