@@ -14,7 +14,6 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 	"time"
 )
@@ -62,11 +61,10 @@ func pushNuGet(ctx context.Context, client *http.Client, dir, source, key string
 	c.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
 	p := &nugetPush{client: &c, key: key}
 
-	pkgs, err := filepath.Glob(filepath.Join(dir, "*.nupkg"))
-	if err != nil || len(pkgs) == 0 {
-		return "", fmt.Errorf("no *.nupkg in %s to push", dir)
+	pkgs, err := nupkgs(dir)
+	if err != nil {
+		return "", err
 	}
-	slices.Sort(pkgs)
 	publish, symbols, err := p.endpoints(ctx, source)
 	if err != nil {
 		return "", p.redact(err)
@@ -315,4 +313,24 @@ func uploadRequest(ctx context.Context, target, path, key string) (*http.Request
 	req.Header.Set("X-NuGet-ApiKey", key)
 	req.Header.Set("X-NuGet-Protocol-Version", "4.1.0")
 	return req, nil
+}
+
+// nupkgs lists the *.nupkg regular files of dir in name order. It reads
+// the directory instead of globbing, so a directory name holding glob
+// characters ([, *, ?) is taken as it is.
+func nupkgs(dir string) ([]string, error) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil, fmt.Errorf("listing the packages to push: %w", err)
+	}
+	var pkgs []string
+	for _, e := range entries {
+		if e.Type().IsRegular() && strings.HasSuffix(e.Name(), ".nupkg") {
+			pkgs = append(pkgs, filepath.Join(dir, e.Name()))
+		}
+	}
+	if len(pkgs) == 0 {
+		return nil, fmt.Errorf("no *.nupkg in %s to push", dir)
+	}
+	return pkgs, nil // os.ReadDir sorts by name
 }

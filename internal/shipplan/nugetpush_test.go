@@ -283,3 +283,20 @@ func TestUploadRequest_BodyParsesAndRewinds(t *testing.T) {
 		t.Error("method or key header missing")
 	}
 }
+
+func TestPushNuGet_DirectoryNameWithGlobCharacters(t *testing.T) {
+	feed := &fakeFeed{}
+	srv := httptest.NewServer(feed)
+	defer srv.Close()
+	dir := filepath.Join(t.TempDir(), "art[1]", "nuget")
+	if err := os.MkdirAll(filepath.Join(dir, "Dir.1.0.0.nupkg"), 0o755); err != nil { // a directory, not a package
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "Sdk.1.0.0.nupkg"), []byte("zip"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	summary, err := pushNuGet(context.Background(), nil, dir, srv.URL+"/api/v2/package", testKey)
+	if err != nil || summary != "pushed: Sdk.1.0.0.nupkg" {
+		t.Errorf("pushNuGet = %q, %v; want the one package pushed", summary, err)
+	}
+}
