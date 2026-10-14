@@ -22,13 +22,11 @@ func TestTailBuffer_KeepsTheLastBytes(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			b := newTailBuffer(tt.limit)
-			total := 0
 			for _, w := range tt.writes {
 				n, err := b.Write([]byte(w))
 				if err != nil || n != len(w) {
 					t.Fatalf("Write(%q) = %d, %v", w, n, err)
 				}
-				total += n
 				if len(b.buf) > 2*tt.limit {
 					t.Fatalf("buffer grew to %d bytes, want at most %d", len(b.buf), 2*tt.limit)
 				}
