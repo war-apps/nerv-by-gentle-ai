@@ -45,6 +45,12 @@ func (f *fakeFeed) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		io.WriteString(w, `{"version":"3.0.0","resources":[{"@type":"SearchQueryService","@id":"`+base+`/q"},`+res+`]}`)
 		return
 	}
+	if r.Method == http.MethodGet {
+		// Not part of the protocol: another local process probing the new
+		// loopback port (observed on a shared host). Not recorded.
+		w.WriteHeader(http.StatusNotFound)
+		return
+	}
 	if mt, params, err := mime.ParseMediaType(r.Header.Get("Content-Type")); err == nil && strings.HasPrefix(mt, "multipart/") {
 		mr := multipart.NewReader(r.Body, params["boundary"])
 		if p, err := mr.NextPart(); err == nil {

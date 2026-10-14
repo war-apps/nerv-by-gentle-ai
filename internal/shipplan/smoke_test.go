@@ -118,8 +118,19 @@ func TestSmoke_DotnetPipeline(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(feed.got) != 2 || feed.got[1].key != testKey || !bytes.Equal(feed.got[1].body, want) {
-		t.Errorf("the feed did not receive the package with the key header: %d requests", len(feed.got))
+	// Only the PUTs count: another local process may probe a new loopback
+	// port (observed: stray "GET /" requests on this shared host).
+	var puts []received
+	for _, g := range feed.got {
+		if g.method == "PUT" {
+			puts = append(puts, g)
+		}
+	}
+	if len(puts) != 1 || puts[0].key != testKey || !bytes.Equal(puts[0].body, want) {
+		for _, g := range feed.got {
+			t.Logf("request %s %s (%d bytes, key sent: %t)", g.method, g.path, len(g.body), g.key == testKey)
+		}
+		t.Errorf("the feed did not receive the package once with the key header: %d PUTs", len(puts))
 	}
 	if !strings.Contains(out.String(), "[calc:nuget:push] pushed Calc.1.2.3-smoke.1.nupkg") || strings.Contains(out.String(), testKey) {
 		t.Errorf("push output:\n%s", out.String())
