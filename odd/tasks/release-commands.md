@@ -1178,6 +1178,29 @@ directly.
   as dim.comprobantes.api's `bump-csproj.sh` does; without an origin the
   element is left unchanged with a warning.
 
+### T6 review
+
+- Native review of 910004e..6acd661 (high risk, 4 lenses, user granted).
+  One corroborated CRITICAL, R3-project-filter-drops-depends-on: with
+  `--project` the dependency results that drive `depends_on` were dropped
+  before the real release, so a dependent raised by a dependency failed the
+  version guard (safely, before any tag). Native correction (plan 60 lines,
+  budget 200): fixed in `ef9be0b` (71 lines) by the T6 writer — ship computes
+  every project and filters only what it releases; RED/GREEN with a unit
+  test and a real integration test (`app-v1.1.0` released from a `core`
+  minor bump, `core` not released). The first targeted-validator run was
+  killed (`signal: killed`, nothing mutated); the exact-lineage STATUS
+  re-offered the same slot and the rerun validated the correction: approved
+  and acknowledged.
+- Advisory findings left: R1-001 (WARNING: a credentialed origin URL sits
+  in the workspace environment as an insteadOf key), R4-version-mismatch-
+  recovery-advice (WARNING: recovery advice can be wrong when another
+  version was released), R2-001 (WARNING: every `git remote get-url`
+  failure becomes ErrNoOrigin), R2-002 (WARNING: the version guard is
+  matched by error-text substring), R4-json-summary-missing-on-early-failure,
+  R4-rerun-advice-refused-after-pushed-release-commit, R2-003 (duplicated
+  csproj writer body).
+
 ## Next step
 
 Review of T6 (910004e..6347f25), then the T6 pull request
