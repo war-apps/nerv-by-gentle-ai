@@ -135,6 +135,8 @@ order). Slice boundaries: one PR per task, recorded below as they open.
 - T4 branch `feat/release-script-runner` from 2e2cea2.
 - PR #94 (T4): `feat/release-script-runner` → develop. Merged f540bdc.
 - PR #95 (T5): `feat/release-pipeline-presets` → develop. Merged aad9dff.
+- PR #96 (T6): `feat/release-ship` → develop. Merged e9753fe.
+- T7 branch `feat/release-ship-command` from e9753fe.
 - T6 branch `feat/release-ship` from aad9dff.
 - T5 branch `feat/release-pipeline-presets` from f540bdc.
 
