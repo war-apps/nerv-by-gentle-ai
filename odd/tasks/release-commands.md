@@ -95,7 +95,7 @@ tagged with version, channel and `latest`).
   scope), dependency bumps; output normalised to the 12 action outputs.
 - [x] T3 — `nerv version next` CLI (single repo and monorepo, `--json` and
   `--format env`) plus `/nerv:version`.
-- [ ] T4 — streaming script runner with env and working directory; hooks
+- [x] T4 — streaming script runner with env and working directory; hooks
   for node, pwsh and bash on Linux and Windows.
 - [ ] T5 — pipeline stages and built-in presets (dotnet: restore, format
   check, build, test, coverage, pack; node; docker build/tag/push; nuget
@@ -687,8 +687,96 @@ delegated (one writer). Test-first.
   artifact; GREEN after the fix; `go test ./...`, `go vet`, `gofmt -l .`
   clean).
 
+### T4
+
+- Route: delegated (writer trigger: new packages `internal/proc` and
+  `internal/shiprun`, shipconfig fields, docs).
+- `internal/proc` (new): the semrel process layer moved unchanged
+  (`Command`, `Result`, `Runner`, `ExecRunner`, Setsid / new process group,
+  whole-tree kill on cancel, bounded taskkill, `WaitDelay`, success kept
+  when a descendant lingers, stdin on the null device). `internal/semrel`
+  keeps its names as type aliases (`type Command = proc.Command`, ...), so
+  its code and tests are untouched; the three real-process tests moved
+  with the code. Added streaming: `Command.Stdout`/`Stderr` writers get the
+  output live; a streamed output keeps only its last `TailLimit` bytes
+  (`DefaultTailLimit` 64 KiB) in the `Result`; the same writer for both
+  streams gives the process one pipe (os/exec), so stdout/stderr order is
+  the process's own and the combined tail is `Result.Stdout`.
+- `internal/shipconfig`: `Command.Workdir` (repository-relative, checked and
+  normalised like every path) and `Command.Timeout` (Go duration, > 0,
+  read through `TimeoutDuration()`), with path-qualified errors.
+- `internal/shiprun` (new): `Runner{RepoRoot, Output, Proc, LookPath,
+  Environ}.Run(ctx, Step{Name, Command}, Vars) error`; failures are
+  `*StepError` (project, step, shell, script, exit code or -1, reason,
+  last 20 output lines with ANSI codes stripped; wraps `ErrTimeout`,
+  `ErrInterpreterNotFound` or the context error). Output lines are
+  prefixed `[<project>:<step>] ` (partial lines held until newline, flush
+  or 64 KiB; output write errors never block the script and are reported
+  after a successful exit).
+- Shell rules decided: `run` is a script file when, trimmed, it is one line
+  naming an existing regular file under the repository root with a
+  shell-appropriate extension (bash any, pwsh `.ps1`, node
+  `.js/.mjs/.cjs`), passed relative to the workdir (`./x`, `../x`, forward
+  slashes for bash). bash file `bash --noprofile --norc <file>`; bash
+  inline `bash --noprofile --norc -e -o pipefail -c <run>` (as GitHub
+  Actions); pwsh file `-NoLogo -NoProfile -NonInteractive -File`; pwsh
+  inline `-Command` with prelude `$ErrorActionPreference = 'Stop';
+  $PSNativeCommandUseErrorActionPreference = $true` and epilogue `if
+  ((Test-Path -LiteralPath variable:\LASTEXITCODE)) { exit $LASTEXITCODE
+  }` (verified on pwsh 7.6.6: a thrown error, a failing cmdlet and a
+  failing native command each exit 1 before the next statement; `exit 5`
+  keeps 5); node file `node <file>`, inline `node -e`. A script file runs
+  as written (no -e). Windows bash = Git Bash: PATH `bash` unless it is
+  WSL's launcher (System32 or WindowsApps), then `bin\bash.exe` above
+  `git.exe` (cmd, bin or mingw64\bin), then `%ProgramFiles%\Git\bin` and
+  `%LocalAppData%\Programs\Git\bin`. Missing interpreter: message naming
+  what to install (Git for Windows, PowerShell 7, Node.js).
+- Environment: inherited env minus any `NERV_RELEASE_*`, then the
+  command's `env` (sorted), then `NERV_RELEASE_PROJECT`, `_PROJECT_PATH`,
+  `_REPO_ROOT`, `_STAGE`, `_VERSION`, `_CHANNEL`, `_TAG`, `_GIT_HEAD`,
+  `_LAST_VERSION`, `_NOTES_FILE`, `_BRANCH`, `_DRY_RUN` (always set;
+  `shiprun.EnvVars`, typed `shiprun.Vars`).
+- RED: `go test ./internal/proc/` -> build failed (`unknown field Stdout /
+  Stderr / TailLimit in struct literal of type Command`);
+  `go test ./internal/shipconfig/` -> build failed (`Command has no field
+  or method TimeoutDuration / Workdir`); `go test ./internal/shiprun/` ->
+  build failed (`undefined: Vars`, `undefined: Runner`). GREEN: all `ok`.
+  One test correction after the first GREEN run: the pwsh failure test
+  looked for "after" anywhere, but pwsh's error view quotes the source
+  line; it now looks for the output line, and the error tail now strips
+  terminal colour codes (pwsh colours its error view even on a pipe).
+- Real-process tests (all ran here, none skipped: bash 5, pwsh 7.6.6, node
+  24.21.0): bash inline success and failures (`false | true`, `false;
+  echo`, `exit 4` -> code 4), bash file from a workdir and failing (code
+  7), pwsh inline failures (throw, cmdlet, native git, `exit 5`), pwsh
+  `.ps1` (code 3, env visible), node `-e` / `.mjs` / `.cjs` (code 9),
+  every NERV_RELEASE_* and hook env visible, workdir honoured, streaming
+  order of 200 interleaved stdout/stderr lines with prefixes, timeout
+  stops `sleep 60` within the bound, timeout kills the script's background
+  child (Unix pid check), missing interpreter with an empty PATH.
+- Checks: `go test ./...` ok (26 packages), `go test -tags
+  semrel_integration -run Integration -count=1 ./internal/semrel/` ok
+  (28.9s, after the extraction and at the end), `go vet ./...` and
+  `GOOS=windows go vet ./...` clean, `gofmt -l .` empty, `go test -race`
+  on proc and shiprun clean.
+- Known limitation: the Windows paths (taskkill tree kill, Git Bash
+  lookup, pwsh/node file runs) are compile-checked and unit-tested with a
+  fake GOOS only; there is no Windows runner here.
+- Commits: `26d0544` `refactor(proc): share the hardened process runner`
+  (5 files changed, 119 insertions(+), 84 deletions(-)); `55b86c0`
+  `feat(proc): stream command output with a bounded tail` (4 files
+  changed, 289 insertions(+), 4 deletions(-)); `e769735`
+  `feat(shipconfig): add workdir and timeout to commands` (4 files
+  changed, 77 insertions(+)); `c34f47b` `feat(shiprun): run stage and hook
+  scripts` (8 files changed, 1387 insertions(+): 739 tests, 584 code, 64
+  docs).
+- Size: `git diff --shortstat d3f0108 c34f47b` 19 files changed, 1868
+  insertions(+), 84 deletions(-). Above the ~400-line heuristic: about
+  half is tests (real-process tests per shell), and the extraction, the
+  streaming layer, the config fields and the runner are separate work-unit
+  commits that can be reviewed one by one.
+
 ## Next step
 
-Review of the T3 follow-ups, then the acceptance comparison against
-dim.comprobantes.api on GitHub (needs the user's authorization: it reads
-origin with their credentials), then T4.
+Review of the T4 commits (26d0544..c34f47b), then the T4 pull request,
+then T5 (pipeline stages and built-in presets on top of `internal/shiprun`).
