@@ -254,8 +254,14 @@ func (f failingTemp) Write(p []byte) (int, error) {
 	}
 	return f.tempFile.Write(p)
 }
-func (f failingTemp) Sync() error  { return f.step("sync", f.tempFile.Sync) }
-func (f failingTemp) Close() error { return f.step("close", f.tempFile.Close) }
+func (f failingTemp) Sync() error { return f.step("sync", f.tempFile.Sync) }
+
+// Close always closes the real file, then reports the injected failure:
+// a failed close still releases the descriptor, as os.File does.
+func (f failingTemp) Close() error {
+	realErr := f.tempFile.Close()
+	return f.step("close", func() error { return realErr })
+}
 
 const smallProject = "<Project>\n  <PropertyGroup>\n    <Version>1.0.0</Version>\n    <PackageReleaseNotes>a</PackageReleaseNotes>\n  </PropertyGroup>\n</Project>\n"
 
@@ -263,9 +269,11 @@ func TestWriteCsproj_AtomicReplace(t *testing.T) {
 	for _, fail := range []string{"write", "sync", "close", ""} {
 		t.Run("failure at "+fail, func(t *testing.T) {
 			var calls []string
+			var real *os.File
 			defer func(orig func(string, string) (tempFile, error)) { createTemp = orig }(createTemp)
 			createTemp = func(dir, pattern string) (tempFile, error) {
 				f, err := os.CreateTemp(dir, pattern)
+				real = f
 				return failingTemp{tempFile: f, fail: fail, calls: &calls}, err
 			}
 			p := writeTemp(t, smallProject)
@@ -284,6 +292,11 @@ func TestWriteCsproj_AtomicReplace(t *testing.T) {
 				}
 				if got != smallProject {
 					t.Errorf("the original changed on failure: %q", got)
+				}
+				// The descriptor is closed whatever failed (Windows cannot
+				// remove an open file).
+				if _, err := real.Write([]byte("x")); !errors.Is(err, os.ErrClosed) {
+					t.Errorf("the temp file is still open after a %s failure: %v", fail, err)
 				}
 				return
 			}
