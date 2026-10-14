@@ -133,6 +133,8 @@ order). Slice boundaries: one PR per task, recorded below as they open.
 - PR #93 (T3): `feat/release-version-cli` → develop, commits 668472b..af996f7.
   Merged 2e2cea2.
 - T4 branch `feat/release-script-runner` from 2e2cea2.
+- PR #94 (T4): `feat/release-script-runner` → develop. Merged f540bdc.
+- T5 branch `feat/release-pipeline-presets` from f540bdc.
 
 ## Progress
 
