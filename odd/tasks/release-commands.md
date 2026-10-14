@@ -822,6 +822,17 @@ delegated (one writer). Test-first where a test expresses the defect.
   `fix(shiprun): exit pwsh by how it ended and keep scripts inside the
   repo` (6 files changed, 339 insertions(+), 64 deletions(-)).
 
+### T4 follow-up review
+
+- Native review of 085ff1e..255f97c (medium, user granted): approved and
+  acknowledged. One WARNING, R3-pwsh-exit0-pre73: on PowerShell 7.0–7.2
+  `$PSNativeCommandUseErrorActionPreference` does not exist, so a failing
+  native command as the last statement would reach `exit 0`. Fixed inline
+  by the parent in `1023582`: the prelude refuses PowerShell older
+  than 7.3 with exit 3 and a message (RED: build failure on the new test;
+  GREEN: `TestReal_PwshInlineRefusesAnOlderPowerShell` with the minimum
+  raised to 99.0, plus every pwsh test on 7.6.6); docs updated.
+
 ## Next step
 
 Review of the T4 follow-ups (085ff1e..edc46c8), then the T4 pull request,
