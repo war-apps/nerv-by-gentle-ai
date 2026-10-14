@@ -12,7 +12,9 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"io"
 	"os/exec"
+	"reflect"
 	"strings"
 	"time"
 )
@@ -36,7 +38,22 @@ type Command struct {
 	// Stdin is written to the process's standard input; nil means none
 	// (the null device).
 	Stdin []byte
+	// Stdout and Stderr, when set, receive the process's output live, as it
+	// is written (in whatever chunks the process writes; the caller does
+	// any line buffering). A streamed output keeps only its last TailLimit
+	// bytes in the Result, for error reports. When both are the same
+	// writer, the process gets one pipe for both streams, so their relative
+	// order is the order it wrote them in, and the combined tail is
+	// Result.Stdout.
+	Stdout io.Writer
+	Stderr io.Writer
+	// TailLimit bounds the Result of a streamed output; 0 means
+	// DefaultTailLimit. An output without a writer is captured whole.
+	TailLimit int
 }
+
+// DefaultTailLimit is how much of a streamed output a Result keeps.
+const DefaultTailLimit = 64 << 10
 
 func (c Command) String() string { return strings.TrimSpace(c.Name + " " + strings.Join(c.Args, " ")) }
 
@@ -78,9 +95,9 @@ func (ExecRunner) Run(ctx context.Context, c Command) (Result, error) {
 	if c.Stdin != nil {
 		cmd.Stdin = bytes.NewReader(c.Stdin)
 	}
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
+	stdout, stderr := c.outputs()
+	cmd.Stdout = stdout.w
+	cmd.Stderr = stderr.w
 	cmd.WaitDelay = waitDelay
 	killGroupOnCancel(cmd)
 	err := cmd.Run()
@@ -94,5 +111,45 @@ func (ExecRunner) Run(ctx context.Context, c Command) (Result, error) {
 			err = nil
 		}
 	}
-	return Result{Stdout: stdout.Bytes(), Stderr: stderr.Bytes()}, err
+	return Result{Stdout: stdout.bytes(), Stderr: stderr.bytes()}, err
+}
+
+// output is where one stream of a process goes, and what the Result keeps.
+type output struct {
+	w     io.Writer
+	bytes func() []byte
+}
+
+// outputs builds the process's stdout and stderr destinations: a whole
+// capture without a writer, or the writer plus a bounded tail. The same
+// writer for both shares one destination value, which os/exec turns into
+// one pipe.
+func (c Command) outputs() (stdout, stderr output) {
+	limit := c.TailLimit
+	if limit <= 0 {
+		limit = DefaultTailLimit
+	}
+	build := func(w io.Writer) output {
+		if w == nil {
+			var b bytes.Buffer
+			return output{w: &b, bytes: b.Bytes}
+		}
+		tail := newTailBuffer(limit)
+		// The tail first: it never fails, so it holds the output up to
+		// a failing caller writer too.
+		return output{w: io.MultiWriter(tail, w), bytes: tail.Bytes}
+	}
+	stdout = build(c.Stdout)
+	if c.Stderr != nil && sameWriter(c.Stdout, c.Stderr) {
+		return stdout, output{w: stdout.w, bytes: func() []byte { return nil }}
+	}
+	return stdout, build(c.Stderr)
+}
+
+// sameWriter reports whether a and b are the same comparable writer.
+func sameWriter(a, b io.Writer) bool {
+	if a == nil || b == nil || !reflect.TypeOf(a).Comparable() || reflect.TypeOf(a) != reflect.TypeOf(b) {
+		return false
+	}
+	return a == b
 }
