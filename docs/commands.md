@@ -12,6 +12,7 @@ Nerv by Gentle-AI has two command surfaces: Claude Code slash commands
 | `/nerv:init` | Bootstrap NERV for the current repository (writes `.nerv/nerv.yaml`) |
 | `/nerv:status` | Show NERV activation, config resolution, and change status (read-only) |
 | `/nerv:version` | Show the next release version of the repository (or of each project) |
+| `/nerv:ship` | Release the repository from origin: dry run first, the real release only after your explicit yes |
 
 ### /nerv:configure
 
@@ -56,6 +57,20 @@ credentials; add `--offline` to use the local ones only.
 
 ```
 /nerv:version --branch develop
+```
+
+### /nerv:ship
+
+Always rehearses first with `nerv ship --dry-run --json` (the pipeline runs
+in a throwaway clone; nothing is tagged or published) and shows, per
+project, the version, channel, tag and last version, and the plan's
+stages. Then it asks you; only on your explicit yes does it run `nerv ship
+--yes --json` and report the result, with the recovery advice of a failed
+project. `--branch` and `--project` pass through. It releases what is on
+origin: push or pull first when your branch differs.
+
+```
+/nerv:ship --branch develop --project api
 ```
 
 ### /nerv:status
