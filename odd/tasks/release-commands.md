@@ -1391,6 +1391,21 @@ the CLI; the slash command is passive documentation (no runnable RED).
   deletions(-)). Total `git diff --shortstat dd63b21 6139613`: 6 files
   changed, 187 insertions(+), 15 deletions(-).
 
+### Follow-ups after the feature closed
+
+- PR #98 (merged 637911e): `/nerv:release-setup`, an interactive setup for
+  the `release:` section (detect, propose, ask one question at a time, write
+  only the `release:` block, validate with `nerv version next --offline`).
+- Gap found while writing it: the project `changelog` field was validated
+  but never used, so a monorepo could not give each project its own
+  CHANGELOG (a user decision). Fixed on `fix/release-project-changelog`
+  (`d64f5c9`, `7699590`): the field applies in a monorepo or when set
+  explicitly; the runner points `@semantic-release/changelog` at it and swaps
+  it into `@semantic-release/git` assets; a single project without an
+  explicit `changelog` keeps the repository's config. RED/GREEN in node, Go
+  and a real integration run (each release commit holds only its own
+  changelog). Native assess: medium, under budget (no review due).
+
 ## Next step
 
 The user's delivery decision for T7: push `feat/release-ship-command` and
