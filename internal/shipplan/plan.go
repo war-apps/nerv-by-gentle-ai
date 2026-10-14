@@ -68,7 +68,7 @@ type Stage struct {
 	Steps []Step
 }
 
-// Step is one thing to run. Exactly one of Check, Exec or Command.Run is
+// Step is one thing to run. Exactly one of Func, Exec or Command.Run is
 // what runs; Command also carries Env, Workdir and Timeout for Exec.
 type Step struct {
 	// Name is the output prefix: a preset step (dotnet:build, docker:push
@@ -78,21 +78,17 @@ type Step struct {
 	Stage   string
 	Command shipconfig.Command
 	// Exec is a preset command run without a shell.
-	Exec []Arg
-	// Check is an in-process step (the coverage check); it returns a
-	// one-line summary.
-	Check func(ctx context.Context) (string, error)
-	// Describe says what Check does, for Render.
+	Exec []string
+	// Func is an in-process step (the coverage check, the NuGet push). It
+	// gets the environment lookup, for Secrets, and returns a one-line
+	// summary.
+	Func func(ctx context.Context, lookupEnv func(string) (string, bool)) (string, error)
+	// Describe says what Func does, for Render.
 	Describe string
-}
-
-// Arg is one argument of an Exec step.
-type Arg struct {
-	Value string
-	// SecretEnv, when set, names the environment variable the argument's
-	// value is read from when the step runs. Render, step names and errors
-	// only ever show $<SecretEnv>.
-	SecretEnv string
+	// Secrets are the environment variables holding secrets the step needs
+	// (read by Func, never put on a command line). They must be set and
+	// non-empty before the run starts.
+	Secrets []string
 }
 
 // Pipeline returns every stage but publish, in order.
@@ -204,7 +200,7 @@ func (b *builder) hooks(key string) []Step {
 // its env map.
 func (b *builder) withArtifacts(steps []Step) []Step {
 	for i := range steps {
-		if steps[i].Check != nil {
+		if steps[i].Func != nil {
 			continue
 		}
 		env := maps.Clone(steps[i].Command.Env)
@@ -219,12 +215,3 @@ func (b *builder) withArtifacts(steps []Step) []Step {
 
 // enabled reports whether the project enables preset.
 func (b *builder) enabled(preset string) bool { return slices.Contains(b.project.Presets, preset) }
-
-// args turns plain strings into Exec arguments.
-func args(values ...string) []Arg {
-	out := make([]Arg, len(values))
-	for i, v := range values {
-		out[i] = Arg{Value: v}
-	}
-	return out
-}

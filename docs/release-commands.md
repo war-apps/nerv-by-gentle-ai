@@ -501,7 +501,7 @@ commands run in the project's `path`.
 | | lint, build, test | `node:<script>` | `<package_manager> run <script>`, only for the scripts `lint`, `build`, `test` that `package.json` defines |
 | `docker` | package | `docker:build <name>` | per image: `docker build -f <dockerfile> -t <name>:<tag>... --build-arg K=V... --label org.opencontainers.image.version=<version> [--label org.opencontainers.image.revision=<commit>] <context>` (build args sorted by name, placeholders replaced) |
 | | publish | `docker:push <name>:<tag>` | per tag, when `push` is true: `docker push <name>:<tag>` |
-| `nuget` | publish | `nuget:push` | `dotnet nuget push <artifacts>/nuget/*.nupkg --source <source> --api-key $<api_key_env> --skip-duplicate` |
+| `nuget` | publish | `nuget:push` | in NERV, no process: pushes `<artifacts>/nuget/*.nupkg` (and each matching `.snupkg`) to `<source>` over NuGet's push protocol, with the key from `$<api_key_env>`; see [Secrets](#secrets) |
 | `npm` | publish | `npm:publish` | `npm publish --access <access> [--tag <dist_tag, else the channel>] [--registry <registry>]` |
 
 Modelled on `dim.comprobantes.api`'s CI (restore, `dotnet format
@@ -572,13 +572,41 @@ At semantic-release's `prepare` step `nerv ship` writes the release into
 ### Secrets
 
 The NuGet API key is read from the variable named by `nuget.api_key_env`
-(default `NUGET_API_KEY`) only when the push runs. It never appears in step
-names, the `--dry-run` listing (shown as `$NUGET_API_KEY`) or errors (a
-failing step names its program, never its arguments). If the variable is
-not set or empty, the release stops before the first stage, naming the
-step and the variable; a dry run does not need it. The key is passed to
-`dotnet nuget push` as an argument, so other users of the same machine who
-can list its processes could see it while the push runs.
+(default `NUGET_API_KEY`) only when the push runs, and it never appears on
+any command line, in step names, in the `--dry-run` listing (shown as
+`$NUGET_API_KEY`), in the output or in errors (a feed that echoes it gets
+it replaced by `***`). If the variable is not set or empty, the release
+stops before the first stage, naming the step and the variable; a dry run
+does not need it.
+
+To keep the key off every command line, NERV pushes the packages itself
+instead of running `dotnet nuget push --api-key`, which puts the key on
+its argv (readable by other users of a shared machine through the process
+list). The alternatives fail: a clear-text `<apikeys>` entry in a
+temporary `NuGet.Config` is refused on Linux ("encryption is not supported
+on non-Windows platforms": NuGet always decrypts it with Windows DPAPI), a
+response file given to `dotnet nuget push` is expanded and forwarded on the
+argv of the child `dotnet exec NuGet.CommandLine.XPlat.dll` process,
+`NuGet.CommandLine.XPlat.dll` reads no response files, and NuGet reads no
+API key from the environment (observed with the .NET SDK 10.0.112, NuGet
+7.0.3).
+
+The push follows [NuGet's push protocol](https://learn.microsoft.com/nuget/api/package-publish-resource),
+as the NuGet client sends it:
+
+- `source` ending in `index.json` is a v3 service index: NERV reads it
+  (without the key) and pushes to its `PackagePublish` resource, and each
+  `<package>.snupkg` next to a package to its `SymbolPackagePublish`
+  resource when the index has one. Any other `source` is a push URL (a v2
+  feed); symbol packages are then not pushed.
+- Each package is a `PUT` to the push URL (with a trailing `/`) of a
+  `multipart/form-data` body whose one part is the package, with the key in
+  the `X-NuGet-ApiKey` header. A `409 Conflict` means that version is
+  already on the feed and is skipped, like `--skip-duplicate`.
+- Redirects are not followed (the key would go with them), and a plain
+  `http://` source is refused unless its host is loopback. A feed whose
+  service index needs credentials (GitHub Packages, Azure Artifacts) is
+  not supported by the preset: use a `publish` stage override for it.
 
 ## Validation
 

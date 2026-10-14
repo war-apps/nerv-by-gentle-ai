@@ -10,8 +10,8 @@ import (
 
 // Render lists every step of the plan per stage, for `nerv ship --dry-run`:
 // preset commands as their argument lists (quoted for reading only),
-// overrides and hooks as [shell] run, checks by what they check. Secrets
-// are shown as $<variable>, never their values. The publish stage is
+// overrides and hooks as [shell] run, in-process steps by what they do.
+// Secrets are named as $<variable>, never shown. The publish stage is
 // marked as run at semantic-release's publish step, or not run in a dry
 // run; the lifecycle hooks follow.
 func (p *Plan) Render() string {
@@ -55,16 +55,12 @@ func (p *Plan) Render() string {
 // renderStep is one step's command for Render.
 func renderStep(s Step) string {
 	switch {
-	case s.Check != nil:
-		return "check " + s.Describe
+	case s.Func != nil:
+		return s.Describe
 	case len(s.Exec) > 0:
 		parts := make([]string, len(s.Exec))
 		for i, a := range s.Exec {
-			if a.SecretEnv != "" {
-				parts[i] = "$" + a.SecretEnv
-			} else {
-				parts[i] = quoteArg(a.Value)
-			}
+			parts[i] = quoteArg(a)
 		}
 		cmd := strings.Join(parts, " ")
 		if s.Command.Workdir != "" {

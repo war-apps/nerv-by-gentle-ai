@@ -3,6 +3,8 @@ package shipplan
 import (
 	"context"
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"slices"
@@ -24,18 +26,10 @@ func ctxFor(version, channel string) Context {
 func line(s Step) string {
 	cmd := ""
 	switch {
-	case s.Check != nil:
-		cmd = "check " + s.Describe
+	case s.Func != nil:
+		cmd = s.Describe
 	case len(s.Exec) > 0:
-		var args []string
-		for _, a := range s.Exec {
-			if a.SecretEnv != "" {
-				args = append(args, "$"+a.SecretEnv)
-			} else {
-				args = append(args, a.Value)
-			}
-		}
-		cmd = strings.Join(args, " ")
+		cmd = strings.Join(s.Exec, " ")
 	default:
 		cmd = s.Command.Shell + ": " + s.Command.Run
 	}
@@ -97,7 +91,7 @@ func TestBuild_DotnetAndDockerLikeDim(t *testing.T) {
 		"publish|docker:push " + broker + ":2.9.0-alpha.3|docker push " + broker + ":2.9.0-alpha.3",
 		"publish|docker:push " + broker + ":alpha|docker push " + broker + ":alpha",
 	})
-	if got := plan.Stages[3].Steps[0].Exec[7].Value; got != "XPlat Code Coverage" {
+	if got := plan.Stages[3].Steps[0].Exec[7]; got != "XPlat Code Coverage" {
 		t.Errorf("the collector name is one argument, got %q", got)
 	}
 	var names []string
@@ -155,8 +149,8 @@ func TestBuild_DockerTagRules(t *testing.T) {
 			}
 			var built []string
 			for i, a := range plan.Stages[0].Steps[0].Exec {
-				if a.Value == "-t" {
-					built = append(built, strings.TrimPrefix(plan.Stages[0].Steps[0].Exec[i+1].Value, "reg/web:"))
+				if a == "-t" {
+					built = append(built, strings.TrimPrefix(plan.Stages[0].Steps[0].Exec[i+1], "reg/web:"))
 				}
 			}
 			if !slices.Equal(built, tt.want) {
@@ -165,7 +159,7 @@ func TestBuild_DockerTagRules(t *testing.T) {
 			var pushed []string
 			if pub := plan.Publish(); pub != nil {
 				for _, s := range pub.Steps {
-					pushed = append(pushed, strings.TrimPrefix(s.Exec[2].Value, "reg/web:"))
+					pushed = append(pushed, strings.TrimPrefix(s.Exec[2], "reg/web:"))
 				}
 			}
 			wantPushed := tt.want
@@ -192,7 +186,7 @@ func TestBuild_DockerTagMustBeValid(t *testing.T) {
 	}
 }
 
-func writeJSON(t *testing.T, root, rel, content string) {
+func writeFile(t *testing.T, root, rel, content string) {
 	t.Helper()
 	p := filepath.Join(root, filepath.FromSlash(rel))
 	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
@@ -256,7 +250,7 @@ func TestBuild_Node(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			root := t.TempDir()
 			for rel, c := range tt.files {
-				writeJSON(t, root, rel, c)
+				writeFile(t, root, rel, c)
 			}
 			p := project("web", "web", "node")
 			p.Node = &shipconfig.Node{PackageManager: tt.pm}
@@ -283,7 +277,7 @@ func TestBuild_NodeNeedsAReadablePackageJSON(t *testing.T) {
 	if _, err := Build(root, p, ctxFor("1.0.0", "")); err == nil || !strings.Contains(err.Error(), filepath.Join("web", "package.json")) {
 		t.Errorf("missing package.json: Build = %v", err)
 	}
-	writeJSON(t, root, "web/package.json", `{"scripts": [}`)
+	writeFile(t, root, "web/package.json", `{"scripts": [}`)
 	if _, err := Build(root, p, ctxFor("1.0.0", "")); err == nil || !strings.Contains(err.Error(), "package.json") {
 		t.Errorf("invalid package.json: Build = %v", err)
 	}
@@ -305,7 +299,7 @@ func TestBuild_NuGet(t *testing.T) {
 	got := lines(plan)
 	assertLines(t, got[len(got)-2:], []string{
 		"package|dotnet:pack|dotnet pack sdk/Sdk.csproj -c Release --no-build -p:Version=3.1.0 -o " + pkgs,
-		"publish|nuget:push|dotnet nuget push " + filepath.Join(pkgs, "*.nupkg") + " --source https://nuget.example/v3/index.json --api-key $MY_NUGET_KEY --skip-duplicate",
+		"publish|nuget:push|push " + filepath.Join(pkgs, "*.nupkg") + " (and *.snupkg) to https://nuget.example/v3/index.json with the API key from $MY_NUGET_KEY, skipping packages already there",
 	})
 }
 
@@ -321,34 +315,50 @@ func TestBuild_NuGetNeedsPackages(t *testing.T) {
 	}
 }
 
-func TestPlan_SecretNeverRendered(t *testing.T) {
-	const secret = "oy2-super-secret-key"
-	plan, err := Build(t.TempDir(), nugetProject(), ctxFor("3.1.0", ""))
+func TestPlan_NuGetKeyNeverOnACommandLineOrInTheListing(t *testing.T) {
+	feed := &fakeFeed{}
+	srv := httptest.NewServer(feed)
+	defer srv.Close()
+	p := nugetProject()
+	p.NuGet.Source = srv.URL + "/v3/index.json"
+	c := ctxFor("3.1.0", "")
+	c.ArtifactsDir = t.TempDir()
+	plan, err := Build(t.TempDir(), p, c)
 	if err != nil {
 		t.Fatal(err)
 	}
+	writeFile(t, c.ArtifactsDir, "sdk/nuget/Sdk.3.1.0.nupkg", "zip")
 	r := &fakeRunner{}
-	e := Executor{Steps: r, LookupEnv: envOf(map[string]string{"MY_NUGET_KEY": secret})}
+	var out strings.Builder
+	e := Executor{Steps: r, Output: &out, LookupEnv: envOf(map[string]string{"MY_NUGET_KEY": testKey})}
 	if err := e.RunPublish(context.Background(), plan, shiprun.Vars{Project: "sdk"}); err != nil {
 		t.Fatal(err)
 	}
-	if len(r.steps) != 1 || !slices.Contains(r.steps[0].Exec, secret) {
-		t.Fatalf("the push did not receive the key: %+v", r.steps)
+	if len(r.steps) != 0 {
+		t.Errorf("the push started processes: %v", r.names())
 	}
-	for _, s := range r.steps {
-		if strings.Contains(s.Name, secret) {
-			t.Errorf("step name holds the key: %q", s.Name)
+	if len(feed.got) != 2 || feed.got[1].key != testKey {
+		t.Errorf("the feed did not get the key in its header: %+v", feed.got)
+	}
+	for _, text := range []string{plan.Render(), out.String()} {
+		if strings.Contains(text, testKey) {
+			t.Errorf("the key leaked into %q", text)
 		}
 	}
-	text := plan.Render()
-	if strings.Contains(text, secret) || !strings.Contains(text, "--api-key $MY_NUGET_KEY") {
-		t.Errorf("Render =\n%s\nwant the variable name, never the key", text)
+	if !strings.Contains(plan.Render(), "$MY_NUGET_KEY") {
+		t.Errorf("Render does not name the variable:\n%s", plan.Render())
+	}
+	for _, st := range plan.Stages {
+		for _, s := range st.Steps {
+			if slices.Contains(s.Exec, testKey) || strings.Contains(s.Name, testKey) {
+				t.Errorf("step %s holds the key", s.Name)
+			}
+		}
 	}
 
-	failing := &fakeRunner{fail: map[string]error{"nuget:push": errors.New("exit code 1")}}
-	e.Steps = failing
+	feed.status, feed.body = http.StatusForbidden, "bad key "+testKey
 	err = e.RunPublish(context.Background(), plan, shiprun.Vars{Project: "sdk"})
-	if err == nil || strings.Contains(err.Error(), secret) {
+	if err == nil || strings.Contains(err.Error(), testKey) {
 		t.Errorf("RunPublish error = %v: want a failure without the key", err)
 	}
 }
@@ -409,7 +419,7 @@ func TestBuild_Npm(t *testing.T) {
 
 func TestBuild_StageOverrideReplacesEveryPresetCommand(t *testing.T) {
 	root := t.TempDir()
-	writeJSON(t, root, "package.json", `{"scripts":{"build":"vite build"}}`)
+	writeFile(t, root, "package.json", `{"scripts":{"build":"vite build"}}`)
 	p := project("app", ".", "dotnet", "node")
 	p.Dotnet = &shipconfig.Dotnet{ProjectFile: "App.csproj", Configuration: "Release"}
 	p.Node = &shipconfig.Node{PackageManager: "npm"}
@@ -496,7 +506,7 @@ func TestBuild_ArtifactsDirIsGivenToEveryStep(t *testing.T) {
 		all = append(all, st.Steps...)
 	}
 	for _, s := range all {
-		if s.Check != nil {
+		if s.Func != nil {
 			continue
 		}
 		if got := s.Command.Env[ArtifactsEnv]; got != want {
@@ -585,7 +595,7 @@ func TestExecutor_CoverageCheckRunsInProcess(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	writeJSON(t, dir, "api/coverage/0a/coverage.cobertura.xml", cobertura(85, 100))
+	writeFile(t, dir, "api/coverage/0a/coverage.cobertura.xml", cobertura(85, 100))
 	var out strings.Builder
 	r := &fakeRunner{}
 	err = (Executor{Steps: r, Output: &out}).Run(context.Background(), plan, shiprun.Vars{Project: "api"})
@@ -597,7 +607,7 @@ func TestExecutor_CoverageCheckRunsInProcess(t *testing.T) {
 		t.Error("the check was sent to the process runner")
 	}
 
-	writeJSON(t, dir, "api/coverage/0a/coverage.cobertura.xml", cobertura(95, 100))
+	writeFile(t, dir, "api/coverage/0a/coverage.cobertura.xml", cobertura(95, 100))
 	out.Reset()
 	if err := (Executor{Steps: &fakeRunner{}, Output: &out}).Run(context.Background(), plan, shiprun.Vars{Project: "api"}); err != nil {
 		t.Fatal(err)

@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -65,8 +66,8 @@ func TestSmoke_DotnetPipeline(t *testing.T) {
 		sln = "Smoke.sln"
 	}
 	runTool(t, root, "dotnet", "sln", sln, "add", "Calc/Calc.csproj", "Calc.Tests/Calc.Tests.csproj")
-	writeJSON(t, root, "Calc/Class1.cs", "namespace Calc;\n\npublic static class Adder\n{\n    public static int Add(int a, int b) => a + b;\n}\n")
-	writeJSON(t, root, "Calc.Tests/UnitTest1.cs", "namespace Calc.Tests;\n\npublic class AdderTests\n{\n    [Fact]\n    public void Adds() => Assert.Equal(3, Calc.Adder.Add(1, 2));\n}\n")
+	writeFile(t, root, "Calc/Class1.cs", "namespace Calc;\n\npublic static class Adder\n{\n    public static int Add(int a, int b) => a + b;\n}\n")
+	writeFile(t, root, "Calc.Tests/UnitTest1.cs", "namespace Calc.Tests;\n\npublic class AdderTests\n{\n    [Fact]\n    public void Adds() => Assert.Equal(3, Calc.Adder.Add(1, 2));\n}\n")
 	// The release-time csproj write, with notes MSBuild would otherwise
 	// expand ($(...)) or unescape (%).
 	notes := "* fix <b> & $(Foo) at 50%"
@@ -75,18 +76,25 @@ func TestSmoke_DotnetPipeline(t *testing.T) {
 	}
 	t.Logf("setup: %s", time.Since(start).Round(time.Millisecond))
 
+	// A loopback fake feed: the publish stage pushes there, never to a
+	// real feed.
+	feed := &fakeFeed{symbols: true}
+	srv := httptest.NewServer(feed)
+	defer srv.Close()
+	feedURL := srv.URL
 	p := shipconfig.Project{Name: "calc", Path: ".", Presets: []string{"dotnet", "nuget"},
 		Dotnet: &shipconfig.Dotnet{ProjectFile: "Calc/Calc.csproj", Solution: sln, Configuration: "Release", CoverageThreshold: 90},
-		NuGet:  &shipconfig.NuGet{Source: "https://nuget.invalid/v3/index.json", APIKeyEnv: "NERV_SMOKE_NO_KEY"}}
+		NuGet:  &shipconfig.NuGet{Source: feedURL + "/v3/index.json", APIKeyEnv: "NERV_SMOKE_KEY"}}
 	artifacts := t.TempDir()
-	plan, err := Build(root, p, Context{Version: "1.2.3-smoke.1", Tag: "v1.2.3-smoke.1", ArtifactsDir: artifacts, DryRun: true})
+	plan, err := Build(root, p, Context{Version: "1.2.3-smoke.1", Tag: "v1.2.3-smoke.1", ArtifactsDir: artifacts})
 	if err != nil {
 		t.Fatal(err)
 	}
 	var out bytes.Buffer
 	runner := &shiprun.Runner{RepoRoot: root, Output: &out}
 	start = time.Now()
-	err = Executor{Steps: runner, Output: &out}.Run(context.Background(), only(plan, "restore", "lint", "build", "test", "coverage", "package"), shiprun.Vars{Project: "calc", Version: "1.2.3-smoke.1", DryRun: true})
+	e := Executor{Steps: runner, Output: &out, LookupEnv: envOf(map[string]string{"NERV_SMOKE_KEY": testKey})}
+	err = e.Run(context.Background(), only(plan, "restore", "lint", "build", "test", "coverage", "package"), shiprun.Vars{Project: "calc", Version: "1.2.3-smoke.1"})
 	t.Logf("restore, lint, build, test, coverage, pack: %s", time.Since(start).Round(time.Millisecond))
 	if err != nil {
 		t.Fatalf("Run = %v\noutput:\n%s", err, out.String())
@@ -101,6 +109,20 @@ func TestSmoke_DotnetPipeline(t *testing.T) {
 		if !strings.Contains(nuspec, want) {
 			t.Errorf("Calc.nuspec lacks %s:\n%s", want, nuspec)
 		}
+	}
+
+	if err := e.RunPublish(context.Background(), plan, shiprun.Vars{Project: "calc"}); err != nil {
+		t.Fatalf("RunPublish = %v", err)
+	}
+	want, err := os.ReadFile(nupkg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(feed.got) != 2 || feed.got[1].key != testKey || !bytes.Equal(feed.got[1].body, want) {
+		t.Errorf("the feed did not receive the package with the key header: %d requests", len(feed.got))
+	}
+	if !strings.Contains(out.String(), "[calc:nuget:push] pushed Calc.1.2.3-smoke.1.nupkg") || strings.Contains(out.String(), testKey) {
+		t.Errorf("push output:\n%s", out.String())
 	}
 }
 
@@ -140,8 +162,8 @@ func TestSmoke_DockerBuild(t *testing.T) {
 		t.Skip("docker daemon not reachable")
 	}
 	root := t.TempDir()
-	writeJSON(t, root, "app/hello.txt", "hello\n")
-	writeJSON(t, root, "app/Dockerfile", "FROM scratch\nARG APP_VERSION\nLABEL app.version=$APP_VERSION\nCOPY hello.txt /hello.txt\n")
+	writeFile(t, root, "app/hello.txt", "hello\n")
+	writeFile(t, root, "app/Dockerfile", "FROM scratch\nARG APP_VERSION\nLABEL app.version=$APP_VERSION\nCOPY hello.txt /hello.txt\n")
 	name := fmt.Sprintf("nerv-shipplan-smoke/app-%d", time.Now().UnixNano())
 	t.Cleanup(func() {
 		_ = exec.Command("docker", "image", "rm", "-f", name+":1.0.0", name+":latest").Run()

@@ -21,7 +21,7 @@ type Executor struct {
 	// Output receives the summary line of in-process checks, prefixed
 	// "[<project>:<step>] " like shiprun's output; nil discards it.
 	Output io.Writer
-	// LookupEnv reads the secrets of Exec arguments; nil means os.LookupEnv.
+	// LookupEnv reads the steps' Secrets; nil means os.LookupEnv.
 	LookupEnv func(string) (string, bool)
 }
 
@@ -73,12 +73,9 @@ func (e Executor) checkSecrets(plan *Plan) error {
 	}
 	for _, st := range stages {
 		for _, s := range st.Steps {
-			for _, a := range s.Exec {
-				if a.SecretEnv == "" {
-					continue
-				}
-				if v, ok := e.lookupEnv(a.SecretEnv); !ok || v == "" {
-					return fmt.Errorf("step %s: environment variable %s is not set (it holds the secret the step needs)", s.Name, a.SecretEnv)
+			for _, name := range s.Secrets {
+				if v, ok := e.lookupEnv(name); !ok || v == "" {
+					return fmt.Errorf("step %s: environment variable %s is not set (it holds the secret the step needs)", s.Name, name)
 				}
 			}
 		}
@@ -101,24 +98,17 @@ func (e Executor) step(ctx context.Context, s Step, vars shiprun.Vars) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	if s.Check != nil {
-		summary, err := s.Check(ctx)
+	if s.Func != nil {
+		summary, err := s.Func(ctx, e.lookupEnv)
 		if err != nil {
 			return err
 		}
-		if e.Output != nil {
+		if e.Output != nil && summary != "" {
 			fmt.Fprintf(e.Output, "[%s:%s] %s\n", vars.Project, s.Name, summary)
 		}
 		return nil
 	}
-	rs := shiprun.Step{Name: s.Name, Stage: s.Stage, Command: s.Command}
-	for _, a := range s.Exec {
-		v := a.Value
-		if a.SecretEnv != "" {
-			v, _ = e.lookupEnv(a.SecretEnv)
-		}
-		rs.Exec = append(rs.Exec, v)
-	}
+	rs := shiprun.Step{Name: s.Name, Stage: s.Stage, Command: s.Command, Exec: s.Exec}
 	return e.Steps.Run(ctx, rs, vars)
 }
 

@@ -34,17 +34,17 @@ func (b *builder) dotnet() error {
 		target = d.ProjectFile
 	}
 	version := "-p:Version=" + b.ctx.Version
-	b.add("restore", Step{Name: "dotnet:restore", Exec: args("dotnet", "restore", target)})
-	b.add("lint", Step{Name: "dotnet:lint", Exec: args("dotnet", "format", target, "--verify-no-changes")})
-	b.add("build", Step{Name: "dotnet:build", Exec: args("dotnet", "build", target, "-c", cfg, "--no-restore", version)})
-	test := args("dotnet", "test", target, "-c", cfg, "--no-build")
+	b.add("restore", Step{Name: "dotnet:restore", Exec: []string{"dotnet", "restore", target}})
+	b.add("lint", Step{Name: "dotnet:lint", Exec: []string{"dotnet", "format", target, "--verify-no-changes"}})
+	b.add("build", Step{Name: "dotnet:build", Exec: []string{"dotnet", "build", target, "-c", cfg, "--no-restore", version}})
+	test := []string{"dotnet", "test", target, "-c", cfg, "--no-build"}
 	if threshold := d.CoverageThreshold; threshold > 0 {
 		dir := filepath.Join(b.artifacts, "coverage")
-		test = append(test, args("--collect", "XPlat Code Coverage", "--results-directory", dir)...)
+		test = append(test, "--collect", "XPlat Code Coverage", "--results-directory", dir)
 		b.add("coverage", Step{
 			Name:     "dotnet:coverage",
-			Describe: fmt.Sprintf("line coverage >= %s%% in %s", strconv.FormatFloat(threshold, 'f', -1, 64), dir),
-			Check: func(context.Context) (string, error) {
+			Describe: fmt.Sprintf("check line coverage >= %s%% in %s", strconv.FormatFloat(threshold, 'f', -1, 64), dir),
+			Func: func(context.Context, func(string) (string, bool)) (string, error) {
 				c, err := CheckCoverage(dir, threshold)
 				if err != nil {
 					return "", err
@@ -60,7 +60,7 @@ func (b *builder) dotnet() error {
 	}
 	b.add("test", Step{Name: "dotnet:test", Exec: test})
 	if b.enabled("nuget") {
-		b.add("package", Step{Name: "dotnet:pack", Exec: args("dotnet", "pack", d.ProjectFile, "-c", cfg, "--no-build", version, "-o", b.packagesDir())})
+		b.add("package", Step{Name: "dotnet:pack", Exec: []string{"dotnet", "pack", d.ProjectFile, "-c", cfg, "--no-build", version, "-o", b.packagesDir()}})
 	}
 	return nil
 }
@@ -114,10 +114,10 @@ func (b *builder) node() error {
 	default:
 		install = []string{"npm", "ci"}
 	}
-	b.add("restore", Step{Name: "node:restore", Command: cmd, Exec: args(install...)})
+	b.add("restore", Step{Name: "node:restore", Command: cmd, Exec: install})
 	for _, script := range []string{"lint", "build", "test"} {
 		if _, ok := pkg.Scripts[script]; ok {
-			b.add(script, Step{Name: "node:" + script, Command: cmd, Exec: args(pm, "run", script)})
+			b.add(script, Step{Name: "node:" + script, Command: cmd, Exec: []string{pm, "run", script}})
 		}
 	}
 	return nil
@@ -177,11 +177,11 @@ func (b *builder) docker() error {
 			build = append(build, "--label", "org.opencontainers.image.revision="+b.ctx.GitHead)
 		}
 		build = append(build, context)
-		b.add("package", Step{Name: "docker:build " + img.Name, Exec: args(build...)})
+		b.add("package", Step{Name: "docker:build " + img.Name, Exec: build})
 		if img.ShouldPush() {
 			for _, t := range tags {
 				ref := img.Name + ":" + t
-				b.add(PublishStage, Step{Name: "docker:push " + ref, Exec: args("docker", "push", ref)})
+				b.add(PublishStage, Step{Name: "docker:push " + ref, Exec: []string{"docker", "push", ref}})
 			}
 		}
 	}
@@ -244,8 +244,9 @@ func (b *builder) expand(s string) string {
 	})
 }
 
-// nuget plans the nuget preset: dotnet nuget push of the packages dotnet
-// pack wrote, with the API key read from api_key_env when the step runs.
+// nuget plans the nuget preset: an in-process push (pushNuGet) of the
+// packages dotnet pack wrote, with the API key read from api_key_env when
+// the step runs and sent only in the push requests' header.
 func (b *builder) nuget() error {
 	n := b.project.NuGet
 	if n == nil {
@@ -261,10 +262,19 @@ func (b *builder) nuget() error {
 	if _, overridden := b.project.Stages["package"]; !b.enabled("dotnet") && !overridden {
 		return errors.New("the nuget preset needs the dotnet preset (its pack writes the packages) or a package stage override writing *.nupkg to $" + ArtifactsEnv + "/nuget")
 	}
-	push := args("dotnet", "nuget", "push", filepath.Join(b.packagesDir(), "*.nupkg"), "--source", source, "--api-key")
-	push = append(push, Arg{SecretEnv: keyEnv})
-	push = append(push, args("--skip-duplicate")...)
-	b.add(PublishStage, Step{Name: "nuget:push", Exec: push})
+	if err := checkPushURL(source); err != nil {
+		return fmt.Errorf("nuget.source: %w", err)
+	}
+	dir := b.packagesDir()
+	b.add(PublishStage, Step{
+		Name:     "nuget:push",
+		Describe: fmt.Sprintf("push %s (and *.snupkg) to %s with the API key from $%s, skipping packages already there", filepath.Join(dir, "*.nupkg"), source, keyEnv),
+		Secrets:  []string{keyEnv},
+		Func: func(ctx context.Context, lookupEnv func(string) (string, bool)) (string, error) {
+			key, _ := lookupEnv(keyEnv)
+			return pushNuGet(ctx, nil, dir, source, key)
+		},
+	})
 	return nil
 }
 
@@ -291,5 +301,5 @@ func (b *builder) npm() {
 	if n.Registry != "" {
 		publish = append(publish, "--registry", n.Registry)
 	}
-	b.add(PublishStage, Step{Name: "npm:publish", Command: shipconfig.Command{Workdir: b.workdir()}, Exec: args(publish...)})
+	b.add(PublishStage, Step{Name: "npm:publish", Command: shipconfig.Command{Workdir: b.workdir()}, Exec: publish})
 }
