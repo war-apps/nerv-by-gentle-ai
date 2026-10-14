@@ -77,9 +77,14 @@ type fakeWorkspace struct {
 	requests   []semrel.ReleaseRequest
 	computed   []string
 	computeErr error
-	// originNow is origin's branch head at the end of the run ("" = head).
-	originNow string
-	closed    bool
+	// originNow is origin's branch head at the end of the run ("" = head);
+	// originGone: the branch was deleted on origin; originErr: it cannot be
+	// read. originCtxErrs are the context errors BranchOnOrigin saw.
+	originNow     string
+	originGone    bool
+	originErr     error
+	originCtxErrs []error
+	closed        bool
 }
 
 func (w *fakeWorkspace) Dir() string          { return w.dir }
@@ -117,8 +122,17 @@ func (w *fakeWorkspace) TagOnOrigin(_ context.Context, tag string) (bool, error)
 	return w.tags[tag], nil
 }
 
-func (w *fakeWorkspace) BranchOnOrigin(context.Context) (string, error) {
-	if w.originNow != "" {
+func (w *fakeWorkspace) BranchOnOrigin(ctx context.Context) (string, error) {
+	w.originCtxErrs = append(w.originCtxErrs, ctx.Err())
+	if ctx.Err() != nil {
+		return "", ctx.Err()
+	}
+	switch {
+	case w.originErr != nil:
+		return "", w.originErr
+	case w.originGone:
+		return "", nil
+	case w.originNow != "":
 		return w.originNow, nil
 	}
 	return w.head, nil
@@ -772,5 +786,67 @@ func TestShip_JSONDocumentOnEveryPath(t *testing.T) {
 				t.Errorf("error %q with exit %d", doc.Error, code)
 			}
 		})
+	}
+}
+
+func TestShip_RerunAdviceWhenOriginCannotBeReadOrTheBranchIsGone(t *testing.T) {
+	tests := []struct {
+		name    string
+		setup   func(w *fakeWorkspace)
+		want    []string
+		notWant []string
+	}{
+		{"unreadable", func(w *fakeWorkspace) { w.originErr = errors.New("ssh: connect timed out") }, []string{"git fetch", "run nerv ship again"}, nil},
+		{"deleted", func(w *fakeWorkspace) { w.originGone = true }, []string{"deleted on origin"}, []string{"git pull"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f := newShipFixture(t, shipMonorepoYAML)
+			f.monorepoResults()
+			tt.setup(f.ws)
+			f.failStep = map[string]error{"core: echo build core": errors.New("exit code 1")}
+			code, stdout, _ := f.run(t, "--yes", "--json")
+			var doc shipDocument
+			if err := json.Unmarshal([]byte(stdout), &doc); err != nil {
+				t.Fatal(err)
+			}
+			action := doc.Projects[0].Action
+			for _, w := range tt.want {
+				if !strings.Contains(action, w) {
+					t.Errorf("action lacks %q: %s", w, action)
+				}
+			}
+			for _, w := range tt.notWant {
+				if strings.Contains(action, w) {
+					t.Errorf("action has %q: %s", w, action)
+				}
+			}
+			if code != 2 {
+				t.Errorf("exit %d", code)
+			}
+		})
+	}
+}
+
+func TestShip_InterruptedRunStillReadsOriginForTheAdvice(t *testing.T) {
+	f := newShipFixture(t, shipMonorepoYAML)
+	f.monorepoResults()
+	f.signal = syscall.SIGINT
+	f.ws.originNow = strings.Repeat("9", 40)
+	f.onFirstStep = func() { f.cancel() }
+	f.failStep = map[string]error{"core: echo build core": context.Canceled}
+	code, stdout, _ := f.run(t, "--yes", "--json")
+	var doc shipDocument
+	if err := json.Unmarshal([]byte(stdout), &doc); err != nil {
+		t.Fatal(err)
+	}
+	if code != 130 || doc.Status != "interrupted" {
+		t.Fatalf("exit %d, %+v", code, doc)
+	}
+	if len(f.ws.originCtxErrs) == 0 || f.ws.originCtxErrs[0] != nil {
+		t.Errorf("origin read with context errors %v, want a live context", f.ws.originCtxErrs)
+	}
+	if action := doc.Projects[0].Action; !strings.Contains(action, "pull first (git pull)") || strings.Contains(action, "git fetch") {
+		t.Errorf("action %s", action)
 	}
 }

@@ -611,16 +611,26 @@ func (s *shipRun) releaseFailed(ctx context.Context, it shipItem, vars shiprun.V
 // branch moved during this run (an earlier project's release commit, or one
 // a prepare plugin pushed), since nerv ship refuses a local branch behind
 // origin.
+//
+// Origin is read under its own short deadline, detached from ctx, so an
+// interrupted run still gets accurate advice.
 func (s *shipRun) rerunAdvice(ctx context.Context) string {
-	head, err := s.ws.BranchOnOrigin(ctx)
+	rctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), rerunCheckTimeout)
+	defer cancel()
+	head, err := s.ws.BranchOnOrigin(rctx)
 	switch {
 	case err != nil:
 		return fmt.Sprintf("Check whether origin's %s moved during this run (git fetch); if it did, pull first (git pull), then run nerv ship again.", s.branch)
+	case head == "":
+		return fmt.Sprintf("Branch %s was deleted on origin during this run: check what happened before releasing it again.", s.branch)
 	case head != s.ws.OriginHead():
 		return fmt.Sprintf("Origin's %s moved during this run (a release commit was pushed): pull first (git pull), then run nerv ship again.", s.branch)
 	}
 	return "Then run nerv ship again."
 }
+
+// rerunCheckTimeout bounds the read of origin's branch for the rerun advice.
+const rerunCheckTimeout = 10 * time.Second
 
 // afterTagFailed records a failure once the tag is on origin: what was
 // published, what was not, and what to do; then runs the fail hooks.

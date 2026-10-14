@@ -273,7 +273,9 @@ On a failure the summary says what happened and what to do:
 The advice to run again checks origin's branch at the end of the run: when
 it moved (an earlier project's release commit, or a commit a prepare plugin
 pushed) your local branch is now behind origin, which `nerv ship` refuses,
-so the advice says to `git pull` first.
+so the advice says to `git pull` first. When the branch was deleted on
+origin, the advice says so instead; when origin cannot be read (within 10
+seconds, also after Ctrl-C), it says to check with `git fetch`.
 
 Once semantic-release has started, a failure runs the project's `fail`
 hooks (not after Ctrl-C). Do not run `nerv ship` again for a release whose
