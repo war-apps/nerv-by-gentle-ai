@@ -363,21 +363,28 @@ commands run in order.
 
 `run` is a **script file** when, trimmed, it is one line naming an existing
 file relative to the repository root (backslashes accepted, never outside
-the repository) with an extension the shell runs as a file: any for `bash`,
+the repository, symlinks included) with an extension the shell runs as a file: any for `bash`,
 `.ps1` for `pwsh`, `.js`, `.mjs` or `.cjs` for `node`. The file is passed
-relative to the working directory. Anything else, including a script path
-followed by arguments, is an **inline** command:
+relative to the working directory. A script path whose real location,
+once symlinks are resolved, is outside the repository fails the stage or
+hook (it is neither run as a file nor as an inline command). Anything
+else, including a script path followed by arguments, is an **inline**
+command:
 
 | Shell | Script file | Inline command |
 |---|---|---|
 | `bash` | `bash --noprofile --norc <file>` | `bash --noprofile --norc -e -o pipefail -c <run>` |
-| `pwsh` | `pwsh -NoLogo -NoProfile -NonInteractive -File <file>` | `pwsh -NoLogo -NoProfile -NonInteractive -Command <run>`, preceded by `$ErrorActionPreference = 'Stop'; $PSNativeCommandUseErrorActionPreference = $true` and followed by `exit $LASTEXITCODE` (when a native command ran) |
+| `pwsh` | `pwsh -NoLogo -NoProfile -NonInteractive -File <file>` | `pwsh -NoLogo -NoProfile -NonInteractive -Command <run>`, preceded by `$ErrorActionPreference = 'Stop'; $PSNativeCommandUseErrorActionPreference = $true` and followed by `exit 0` |
 | `node` | `node <file>` | `node -e <run>` |
 
 - Inline commands stop at the first failure, like a CI step: bash with
   `-e` and `pipefail` (`false | true` fails), pwsh with errors made
   terminating, including a native command's non-zero exit (PowerShell 7.3
-  or newer); a terminating error exits with code 1. A script file runs as
+  or newer). An inline pwsh command's exit code says how it ended: `0`
+  when it ran to its end (a native failure it handled with `try`/`catch`,
+  or checked through `$LASTEXITCODE` and moved on, does not count), `1` on
+  an uncaught error (an unhandled native failure included), `N` on an
+  explicit `exit N`. A script file runs as
   written: its own `set -e`, `$ErrorActionPreference` and `exit` codes
   decide.
 - Interpreters are looked up on `PATH`: `bash`, `pwsh` (PowerShell 7;
@@ -388,7 +395,9 @@ followed by arguments, is an **inline** command:
   then `bin\bash.exe` of the Git for Windows installation holding
   `git.exe`, then `%ProgramFiles%\Git\bin\bash.exe` and
   `%LocalAppData%\Programs\Git\bin\bash.exe`.
-- The working directory is the repository root, or `workdir`.
+- The working directory is the repository root, or `workdir`; a
+  `workdir` that resolves outside the repository through a symlink fails
+  the stage or hook.
 - Standard input is empty (the null device) and the command has no
   terminal: a tool that prompts fails instead of waiting.
 - stdout and stderr are streamed live, as one stream in the order they were

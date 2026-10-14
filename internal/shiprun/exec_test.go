@@ -237,3 +237,70 @@ func TestReal_MissingInterpreterOnPath(t *testing.T) {
 		t.Errorf("err = %v, want ErrInterpreterNotFound", err)
 	}
 }
+
+// An inline pwsh command's exit code says how the script ended: 0 when it
+// completed (a native failure it handled does not count), 1 for an
+// uncaught error, N for exit N.
+func TestReal_PwshExitCodeFollowsHowTheScriptEnded(t *testing.T) {
+	needShell(t, "pwsh")
+	root := realRepo(t, nil)
+	native := "git rev-parse --verify --quiet refs/heads/nerv-does-not-exist"
+	tests := []struct {
+		name string
+		run  string
+		want int
+	}{
+		{"handled with try/catch", "try { " + native + " } catch { Write-Output handled }", 0},
+		{"checked and continued", "$PSNativeCommandUseErrorActionPreference = $false; " + native + "; if ($LASTEXITCODE -ne 0) { Write-Output checked }", 0},
+		{"later native success", "try { " + native + " } catch { }; git --version", 0},
+		{"unhandled native failure", native, 1},
+		{"explicit exit", "exit 5", 5},
+		{"throw", "throw 'boom'", 1},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := runReal(t, root, "lint", shipconfig.Command{Run: tt.run, Shell: "pwsh"}, Vars{})
+			got := 0
+			if err != nil {
+				got = exitCode(t, err)
+			}
+			if got != tt.want {
+				t.Errorf("exit code %d (err %v), want %d", got, err, tt.want)
+			}
+		})
+	}
+}
+
+// failingWriter accepts n writes, then fails every later one.
+type failingWriter struct {
+	n      int
+	writes []string
+}
+
+func (w *failingWriter) Write(p []byte) (int, error) {
+	if len(w.writes) >= w.n {
+		return 0, errors.New("output closed")
+	}
+	w.writes = append(w.writes, string(p))
+	return len(p), nil
+}
+
+// A failing output writer neither blocks nor kills the script: it runs to
+// the end, later lines are dropped, and the write error is reported after.
+func TestReal_OutputWriteErrorIsReportedAfterTheScript(t *testing.T) {
+	needShell(t, "bash")
+	root := realRepo(t, nil)
+	w := &failingWriter{n: 1}
+	run := `for i in $(seq 1 2000); do echo line$i; done; echo done > finished`
+	err := (&Runner{RepoRoot: root, Output: w}).Run(context.Background(), Step{Name: "test", Command: shipconfig.Command{Run: run, Shell: "bash"}}, Vars{Project: "demo"})
+	var se *StepError
+	if !errors.As(err, &se) || !strings.Contains(err.Error(), "writing its output") || !strings.Contains(err.Error(), "output closed") {
+		t.Fatalf("err = %v, want a StepError about the output", err)
+	}
+	if _, statErr := os.Stat(filepath.Join(root, "finished")); statErr != nil {
+		t.Errorf("the script did not run to the end: %v", statErr)
+	}
+	if len(w.writes) != 1 || w.writes[0] != "[demo:test] line1\n" {
+		t.Errorf("writes = %q, want only the first line", w.writes)
+	}
+}

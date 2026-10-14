@@ -1,6 +1,7 @@
 package shiprun
 
 import (
+	"fmt"
 	"os"
 	"path"
 	"path/filepath"
@@ -24,54 +25,88 @@ import (
 //
 // A script file runs as written (its own `set -e`, $ErrorActionPreference
 // or exit codes decide); inline commands stop at the first failure, like a
-// CI step: bash with -e and pipefail, pwsh with the prelude below.
+// CI step: bash with -e and pipefail, pwsh with the prelude below. An
+// inline pwsh command's exit code follows how the script ended: 0 when it
+// ran to its end, 1 on an uncaught error (an unhandled native failure
+// included), N on an explicit `exit N`.
+//
+// A script file whose real location (symlinks resolved) is outside the
+// repository is refused (ErrOutsideRepository).
 const (
 	// pwshPrelude makes an inline pwsh command stop at the first error:
 	// cmdlet errors become terminating, and so does a native command's
 	// non-zero exit (PowerShell 7.3 or newer). A terminating error exits 1.
 	pwshPrelude = "$ErrorActionPreference = 'Stop'; $PSNativeCommandUseErrorActionPreference = $true\n"
-	// pwshEpilogue passes on the exit code of the last native command,
-	// which pwsh -Command would otherwise reduce to 0 or 1.
-	pwshEpilogue = "\nif ((Test-Path -LiteralPath variable:\\LASTEXITCODE)) { exit $LASTEXITCODE }"
+	// pwshEpilogue makes a command that ran to its end exit 0. Without it
+	// pwsh -Command exits with $LASTEXITCODE, which still holds a native
+	// failure the script handled (try/catch, or checked and continued).
+	// An unhandled native failure already stopped the script through the
+	// prelude (exit 1), and an explicit `exit N` never reaches this line.
+	pwshEpilogue = "\nexit 0"
 )
 
-// scriptFile returns run, trimmed, when it names a script file the shell
-// runs as a file (see the shell rules), or "" for an inline command.
-func scriptFile(repoRoot, shell, run string) string {
+// scriptFile returns the script file run names, as a clean
+// repository-relative path with forward slashes, or "" for an inline
+// command (see the shell rules). The returned path is the one checked and
+// the one executed. A name that is a script file for the shell but whose
+// real location (symlinks resolved) is outside the repository is an error
+// wrapping ErrOutsideRepository, never an inline command.
+func scriptFile(repoRoot, shell, run string) (string, error) {
 	name := strings.TrimSpace(run)
 	if name == "" || strings.ContainsAny(name, "\r\n") {
-		return ""
+		return "", nil
 	}
-	clean := filepath.FromSlash(path.Clean(strings.ReplaceAll(name, `\`, "/")))
-	if !filepath.IsLocal(clean) {
-		return ""
+	clean := path.Clean(strings.ReplaceAll(name, `\`, "/"))
+	if !filepath.IsLocal(filepath.FromSlash(clean)) {
+		return "", nil
 	}
-	ext := strings.ToLower(filepath.Ext(clean))
+	ext := strings.ToLower(path.Ext(clean))
 	switch shell {
 	case "pwsh":
 		if ext != ".ps1" {
-			return ""
+			return "", nil
 		}
 	case "node":
 		if ext != ".js" && ext != ".mjs" && ext != ".cjs" {
-			return ""
+			return "", nil
 		}
 	}
-	info, err := os.Stat(filepath.Join(repoRoot, clean))
+	file := filepath.Join(repoRoot, filepath.FromSlash(clean))
+	info, err := os.Stat(file)
 	if err != nil || !info.Mode().IsRegular() {
-		return ""
+		return "", nil
 	}
-	return name
+	if err := insideRepository(repoRoot, file); err != nil {
+		return "", fmt.Errorf("script file %q: %w", clean, err)
+	}
+	return clean, nil
 }
 
-// shellArgs returns the interpreter's arguments for run, given the script
-// file it names ("" for inline), the repository root and the working
-// directory.
+// insideRepository returns an error wrapping ErrOutsideRepository unless
+// target, with every symlink resolved, is the repository root or below it.
+func insideRepository(repoRoot, target string) error {
+	realRoot, err := filepath.EvalSymlinks(repoRoot)
+	if err != nil {
+		return err
+	}
+	real, err := filepath.EvalSymlinks(target)
+	if err != nil {
+		return err
+	}
+	rel, err := filepath.Rel(realRoot, real)
+	if err != nil || (rel != "." && !filepath.IsLocal(rel)) {
+		return fmt.Errorf("resolves to %s, %w", real, ErrOutsideRepository)
+	}
+	return nil
+}
+
+// shellArgs returns the interpreter's arguments for run, given the clean
+// script file it names ("" for inline, see scriptFile), the repository
+// root and the working directory.
 func shellArgs(shell, run, script, repoRoot, dir string) []string {
 	file := ""
 	if script != "" {
-		abs := filepath.Join(repoRoot, filepath.FromSlash(path.Clean(strings.ReplaceAll(script, `\`, "/"))))
-		file = relativeTo(dir, abs)
+		file = relativeTo(dir, filepath.Join(repoRoot, filepath.FromSlash(script)))
 	}
 	switch shell {
 	case "pwsh":
@@ -151,10 +186,14 @@ func (r *Runner) windowsBash() (string, error) {
 			dir = filepath.Dir(dir)
 		}
 	}
-	for _, base := range []string{r.getEnv("ProgramFiles"), filepath.Join(r.getEnv("LocalAppData"), "Programs")} {
-		if base == "" || base == "Programs" {
-			continue
-		}
+	var bases []string
+	if pf := r.getEnv("ProgramFiles"); pf != "" {
+		bases = append(bases, pf)
+	}
+	if local := r.getEnv("LocalAppData"); local != "" {
+		bases = append(bases, filepath.Join(local, "Programs"))
+	}
+	for _, base := range bases {
 		if c := filepath.Join(base, "Git", "bin", "bash.exe"); r.exists(c) {
 			return c, nil
 		}

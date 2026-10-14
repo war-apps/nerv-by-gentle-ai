@@ -2,8 +2,10 @@
 // hook command (run, shell, env, workdir, timeout) of the release: section,
 // for one project.
 //
-// A command runs under bash, pwsh or node (see command for the exact
-// command lines), in the repository root or its workdir, with the
+// A command runs under bash, pwsh or node (the shell rules above
+// scriptFile and shellArgs in shell.go give the exact command lines), in
+// the repository root or its workdir (both kept inside the repository once
+// symlinks are resolved), with the
 // inherited environment, the command's env and the NERV_RELEASE_*
 // variables (see EnvVars). Its stdout and stderr share one pipe and are
 // streamed live to the caller's writer, each line prefixed with
@@ -43,6 +45,10 @@ var (
 	ErrInterpreterNotFound = errors.New("interpreter not found")
 	// ErrTimeout is wrapped by the error of a command killed by its timeout.
 	ErrTimeout = errors.New("timed out")
+	// ErrOutsideRepository is wrapped by the error of a command whose
+	// working directory or script file is, once symlinks are resolved,
+	// outside the repository.
+	ErrOutsideRepository = errors.New("outside the repository")
 )
 
 // Step is one command to run: a stage override or one hook command.
@@ -92,11 +98,20 @@ func (r *Runner) Run(ctx context.Context, step Step, vars Vars) error {
 	if info, err := os.Stat(dir); err != nil || !info.IsDir() {
 		return fail("", fmt.Sprintf("working directory %q is not a directory of the repository", workdir), err)
 	}
+	// shipconfig rejects escaping workdirs as written; this also catches a
+	// hand-built Command and a symlinked directory pointing outside.
+	if err := insideRepository(r.RepoRoot, dir); err != nil {
+		err = fmt.Errorf("working directory %q %w", workdir, err)
+		return fail("", err.Error(), err)
+	}
 	interp, err := r.interpreter(shell)
 	if err != nil {
 		return fail("", err.Error(), err)
 	}
-	script := scriptFile(r.RepoRoot, shell, c.Run)
+	script, err := scriptFile(r.RepoRoot, shell, c.Run)
+	if err != nil {
+		return fail("", err.Error(), err)
+	}
 	args := shellArgs(shell, c.Run, script, r.RepoRoot, dir)
 
 	runCtx := ctx

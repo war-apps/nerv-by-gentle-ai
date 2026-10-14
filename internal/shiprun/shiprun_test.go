@@ -439,3 +439,127 @@ func TestWindowsBash(t *testing.T) {
 		})
 	}
 }
+
+// The variable table: unique names, every one documented, and each gets a
+// value from a fully filled Vars.
+func TestEnvTable_NamesUniqueValuedAndDocumented(t *testing.T) {
+	doc, err := os.ReadFile(filepath.Join("..", "..", "docs", "release-commands.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	vars := Vars{Project: "p", ProjectPath: "p", Version: "1", Channel: "c", Tag: "t", GitHead: "h",
+		LastVersion: "0", NotesFile: "n", Branch: "b", DryRun: true}
+	if len(EnvVars) != len(envTable) {
+		t.Fatalf("EnvVars has %d names, the table %d", len(EnvVars), len(envTable))
+	}
+	seen := map[string]bool{}
+	for i, v := range envTable {
+		if seen[v.name] {
+			t.Errorf("duplicate variable %s", v.name)
+		}
+		seen[v.name] = true
+		if EnvVars[i] != v.name || !strings.HasPrefix(v.name, EnvPrefix) {
+			t.Errorf("EnvVars[%d] = %s, table %s", i, EnvVars[i], v.name)
+		}
+		if got := v.value(vars, "/repo", "test"); got == "" {
+			t.Errorf("%s has no value from a filled Vars", v.name)
+		}
+		if !strings.Contains(string(doc), "`"+v.name+"`") {
+			t.Errorf("%s is not documented in docs/release-commands.md", v.name)
+		}
+	}
+}
+
+// The script path that is checked is the one that runs, and the one an
+// error names: cleaned once, with forward slashes.
+func TestRun_ScriptPathIsCheckedAndRunAsOne(t *testing.T) {
+	root := repo(t, "scripts/build.sh")
+	f := &fakeProc{handle: func(context.Context, proc.Command) (proc.Result, error) {
+		return proc.Result{}, exitErr{2, "exit status 2"}
+	}}
+	err := newRunner(root, f).Run(context.Background(), Step{Name: "build", Command: shipconfig.Command{Run: ` scripts\.\build.sh `, Shell: "bash"}}, Vars{Project: "api"})
+	var se *StepError
+	if !errors.As(err, &se) {
+		t.Fatalf("err = %v", err)
+	}
+	if se.Script != "scripts/build.sh" {
+		t.Errorf("StepError.Script = %q, want scripts/build.sh", se.Script)
+	}
+	if last := f.got.Args[len(f.got.Args)-1]; last != "./scripts/build.sh" {
+		t.Errorf("ran %q, want ./scripts/build.sh", last)
+	}
+}
+
+func symlinkOrSkip(t *testing.T, target, link string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(link), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(target, link); err != nil {
+		t.Skipf("cannot create symlinks here: %v", err)
+	}
+}
+
+// A script path whose real location is outside the repository is refused,
+// not run as a file and not run as an inline command either.
+func TestRun_SymlinkedScriptOutsideTheRepository(t *testing.T) {
+	outside := filepath.Join(t.TempDir(), "evil.sh")
+	if err := os.WriteFile(outside, []byte("x\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	outsideDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(outsideDir, "tool.sh"), []byte("x\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	root := repo(t, "scripts/ok.sh")
+	symlinkOrSkip(t, outside, filepath.Join(root, "scripts", "link.sh"))
+	symlinkOrSkip(t, outsideDir, filepath.Join(root, "vendor"))
+	symlinkOrSkip(t, filepath.Join(root, "scripts", "ok.sh"), filepath.Join(root, "inside.sh"))
+
+	for _, run := range []string{"scripts/link.sh", "vendor/tool.sh"} {
+		f := &fakeProc{}
+		err := newRunner(root, f).Run(context.Background(), Step{Name: "build", Command: shipconfig.Command{Run: run, Shell: "bash"}}, Vars{Project: "api"})
+		if !errors.Is(err, ErrOutsideRepository) || !strings.Contains(err.Error(), run) {
+			t.Errorf("%s: err = %v, want ErrOutsideRepository naming it", run, err)
+		}
+		if f.got.Name != "" {
+			t.Errorf("%s: ran %q %q", run, f.got.Name, f.got.Args)
+		}
+	}
+	// A symlink that stays inside the repository is an ordinary script.
+	f := &fakeProc{}
+	if err := newRunner(root, f).Run(context.Background(), Step{Name: "build", Command: shipconfig.Command{Run: "inside.sh", Shell: "bash"}}, Vars{Project: "api"}); err != nil {
+		t.Fatal(err)
+	}
+	if last := f.got.Args[len(f.got.Args)-1]; last != "./inside.sh" {
+		t.Errorf("ran %q, want ./inside.sh", last)
+	}
+}
+
+// Run itself keeps the working directory inside the repository, whatever
+// the Command it is given (shipconfig validation is not the only guard).
+func TestRun_WorkdirOutsideTheRepository(t *testing.T) {
+	parent := t.TempDir()
+	root := filepath.Join(parent, "repo")
+	if err := os.MkdirAll(filepath.Join(parent, "sibling"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(root, "src"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	symlinkOrSkip(t, filepath.Join(parent, "sibling"), filepath.Join(root, "out"))
+	for _, wd := range []string{"../sibling", "out", "src/../../sibling"} {
+		f := &fakeProc{}
+		err := newRunner(root, f).Run(context.Background(), Step{Name: "test", Command: shipconfig.Command{Run: "true", Shell: "bash", Workdir: wd}}, Vars{Project: "api"})
+		if !errors.Is(err, ErrOutsideRepository) || !strings.Contains(err.Error(), wd) {
+			t.Errorf("workdir %s: err = %v, want ErrOutsideRepository naming it", wd, err)
+		}
+		if f.got.Name != "" {
+			t.Errorf("workdir %s: the command ran", wd)
+		}
+	}
+	f := &fakeProc{}
+	if err := newRunner(root, f).Run(context.Background(), Step{Name: "test", Command: shipconfig.Command{Run: "true", Workdir: "src"}}, Vars{Project: "api"}); err != nil {
+		t.Errorf("workdir src: %v", err)
+	}
+}

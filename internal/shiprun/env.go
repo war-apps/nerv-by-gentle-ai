@@ -10,23 +10,6 @@ import (
 // shipconfig rejects it in a command's env.
 const EnvPrefix = "NERV_RELEASE_"
 
-// EnvVars are the variables every command receives, in the order they are
-// set. Each is always set, empty when the value is unknown at that step.
-var EnvVars = []string{
-	EnvPrefix + "PROJECT",      // project name
-	EnvPrefix + "PROJECT_PATH", // project path, repository-relative, forward slashes ("." for the root)
-	EnvPrefix + "REPO_ROOT",    // absolute repository root
-	EnvPrefix + "STAGE",        // stage or hook key: test, before_test, prepare, ...
-	EnvPrefix + "VERSION",      // next version, e.g. 1.2.0-alpha.2
-	EnvPrefix + "CHANNEL",      // release channel, empty for the default channel
-	EnvPrefix + "TAG",          // next tag, e.g. api-v1.2.0
-	EnvPrefix + "GIT_HEAD",     // commit the release is made from
-	EnvPrefix + "LAST_VERSION", // last release version on the channel, empty when none
-	EnvPrefix + "NOTES_FILE",   // file holding the release notes (Markdown)
-	EnvPrefix + "BRANCH",       // branch being released
-	EnvPrefix + "DRY_RUN",      // "true" for nerv ship --dry-run, else "false"
-}
-
 // Vars are the values of the NERV_RELEASE_* variables for one project's
 // release, supplied by the caller (nerv ship). The stage and the repository
 // root come from the Step and the Runner.
@@ -43,17 +26,55 @@ type Vars struct {
 	DryRun      bool
 }
 
-// values returns the variables' values in EnvVars order.
-func (v Vars) values(repoRoot, stage string) []string {
-	projectPath := v.ProjectPath
-	if projectPath == "" {
-		projectPath = "."
-	}
-	return []string{
-		v.Project, projectPath, repoRoot, stage, v.Version, v.Channel, v.Tag,
-		v.GitHead, v.LastVersion, v.NotesFile, v.Branch, strconv.FormatBool(v.DryRun),
-	}
+// envVar is one NERV_RELEASE_* variable and where its value comes from.
+type envVar struct {
+	name  string
+	value func(v Vars, repoRoot, stage string) string
 }
+
+// envTable lists the variables every command receives, in the order they
+// are set. Each is always set, empty when the value is unknown at that step.
+var envTable = []envVar{
+	// Project name.
+	{EnvPrefix + "PROJECT", func(v Vars, _, _ string) string { return v.Project }},
+	// Project path, repository-relative, forward slashes ("." for the root).
+	{EnvPrefix + "PROJECT_PATH", func(v Vars, _, _ string) string {
+		if v.ProjectPath == "" {
+			return "."
+		}
+		return v.ProjectPath
+	}},
+	// Absolute repository root.
+	{EnvPrefix + "REPO_ROOT", func(_ Vars, root, _ string) string { return root }},
+	// Stage or hook key: test, before_test, prepare, ...
+	{EnvPrefix + "STAGE", func(_ Vars, _, stage string) string { return stage }},
+	// Next version, e.g. 1.2.0-alpha.2.
+	{EnvPrefix + "VERSION", func(v Vars, _, _ string) string { return v.Version }},
+	// Release channel, empty for the default channel.
+	{EnvPrefix + "CHANNEL", func(v Vars, _, _ string) string { return v.Channel }},
+	// Next tag, e.g. api-v1.2.0.
+	{EnvPrefix + "TAG", func(v Vars, _, _ string) string { return v.Tag }},
+	// Commit the release is made from.
+	{EnvPrefix + "GIT_HEAD", func(v Vars, _, _ string) string { return v.GitHead }},
+	// Last release version on the channel, empty when none.
+	{EnvPrefix + "LAST_VERSION", func(v Vars, _, _ string) string { return v.LastVersion }},
+	// File holding the release notes (Markdown).
+	{EnvPrefix + "NOTES_FILE", func(v Vars, _, _ string) string { return v.NotesFile }},
+	// Branch being released.
+	{EnvPrefix + "BRANCH", func(v Vars, _, _ string) string { return v.Branch }},
+	// "true" for nerv ship --dry-run, else "false".
+	{EnvPrefix + "DRY_RUN", func(v Vars, _, _ string) string { return strconv.FormatBool(v.DryRun) }},
+}
+
+// EnvVars are the names of the variables every command receives, in the
+// order they are set (see envTable).
+var EnvVars = func() []string {
+	names := make([]string, len(envTable))
+	for i, v := range envTable {
+		names[i] = v.name
+	}
+	return names
+}()
 
 // environment is the command's full environment: the inherited one
 // without any NERV_RELEASE_* variable, then the command's env (sorted by
@@ -74,8 +95,8 @@ func (r *Runner) environment(extra map[string]string, vars Vars, stage string) [
 	for _, k := range keys {
 		env = append(env, k+"="+extra[k])
 	}
-	for i, value := range vars.values(r.RepoRoot, stage) {
-		env = append(env, EnvVars[i]+"="+value)
+	for _, v := range envTable {
+		env = append(env, v.name+"="+v.value(vars, r.RepoRoot, stage))
 	}
 	return env
 }
