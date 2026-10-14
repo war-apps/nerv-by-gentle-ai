@@ -615,6 +615,8 @@ as the NuGet client sends it:
   `multipart/form-data` body whose one part is the package, with the key in
   the `X-NuGet-ApiKey` header. A `409 Conflict` means that version is
   already on the feed and is skipped, like `--skip-duplicate`.
+- Each request (the service index read, each package's upload) is bounded
+  by 10 minutes; a feed that hangs fails the push.
 - A push stops at the first package the feed refuses, and a push cannot
   be undone, so the error names what the feed already holds, e.g.
   `pushed: Sdk.1.4.0.nupkg, Sdk.1.4.0.snupkg; already on the feed:

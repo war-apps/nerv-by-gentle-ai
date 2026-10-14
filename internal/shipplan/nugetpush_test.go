@@ -12,6 +12,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 )
 
 const testKey = "oy2-super-secret-key"
@@ -298,5 +299,39 @@ func TestPushNuGet_DirectoryNameWithGlobCharacters(t *testing.T) {
 	summary, err := pushNuGet(context.Background(), nil, dir, srv.URL+"/api/v2/package", testKey)
 	if err != nil || summary != "pushed: Sdk.1.0.0.nupkg" {
 		t.Errorf("pushNuGet = %q, %v; want the one package pushed", summary, err)
+	}
+}
+
+func TestPushNuGet_InjectedClientBoundsAHangingFeed(t *testing.T) {
+	release := make(chan struct{})
+	hang := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		select {
+		case <-release:
+		case <-r.Context().Done():
+		}
+	}))
+	defer hang.Close()
+	defer close(release)
+	start := time.Now()
+	_, err := pushNuGet(context.Background(), &http.Client{Timeout: 200 * time.Millisecond}, packages(t, "A.1.0.0.nupkg"), hang.URL+"/api/v2/package", testKey)
+	if err == nil || !strings.Contains(err.Error(), "failed on A.1.0.0.nupkg") {
+		t.Errorf("pushNuGet = %v, want the timeout as the failure", err)
+	}
+	if d := time.Since(start); d > 5*time.Second {
+		t.Errorf("took %s: the client's timeout was not used", d)
+	}
+	if defaultPushClient().Timeout != nugetPushTimeout || nugetPushTimeout <= 0 {
+		t.Errorf("the default client must bound each request")
+	}
+}
+
+func TestUploadRequest_SendsOnlyTheHeadersTheNuGetClientSends(t *testing.T) {
+	req, err := uploadRequest(context.Background(), "https://feed.example/x/", filepath.Join(packages(t, "A.1.0.0.nupkg"), "A.1.0.0.nupkg"), testKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Body.Close()
+	if req.Header.Get("X-NuGet-Protocol-Version") != "" {
+		t.Error("X-NuGet-Protocol-Version is sent; the NuGet 7.0.3 client does not send it on push (captured)")
 	}
 }

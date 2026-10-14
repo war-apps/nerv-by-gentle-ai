@@ -30,8 +30,17 @@ import (
 // ... --api-key <key>`, NuGet.CommandLine.XPlat.dll does not read response
 // files itself, and NuGet reads no API key from the environment.
 
-// nugetPushTimeout bounds one HTTP request of a push (an upload included).
+// nugetPushTimeout bounds each HTTP request of a push, the whole upload
+// of one package included: generous for a large package on a slow link,
+// but a hung feed cannot stall a release forever.
 const nugetPushTimeout = 10 * time.Minute
+
+// serviceIndexLimit bounds the service index read: nuget.org's is a few
+// KiB, so 8 MiB only stops a broken or hostile answer.
+const serviceIndexLimit = 8 << 20
+
+// defaultPushClient is the client of a push when none is given.
+func defaultPushClient() *http.Client { return &http.Client{Timeout: nugetPushTimeout} }
 
 const (
 	// errorBodyReadLimit bounds how much of a feed's error body is read:
@@ -51,11 +60,12 @@ const (
 // them), and plain http is refused except on a loopback host. The key never
 // appears in the summary or in errors. A failure part-way names what the
 // feed already accepted, what it already had, the package that failed and
-// those not attempted (a push cannot be undone). client nil means a
-// default client.
+// those not attempted (a push cannot be undone). client nil means
+// defaultPushClient (each request bounded by nugetPushTimeout); tests pass
+// one with a short timeout. Its redirect policy is always replaced.
 func pushNuGet(ctx context.Context, client *http.Client, dir, source, key string) (string, error) {
 	if client == nil {
-		client = &http.Client{Timeout: nugetPushTimeout}
+		client = defaultPushClient()
 	}
 	c := *client
 	c.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
@@ -155,7 +165,7 @@ func (p *nugetPush) endpoints(ctx context.Context, source string) (publish, symb
 			Type string `json:"@type"`
 		} `json:"resources"`
 	}
-	if err := json.NewDecoder(io.LimitReader(resp.Body, 8<<20)).Decode(&index); err != nil {
+	if err := json.NewDecoder(io.LimitReader(resp.Body, serviceIndexLimit)).Decode(&index); err != nil {
 		return "", "", fmt.Errorf("reading the service index %s: %w", source, err)
 	}
 	for _, r := range index.Resources {
@@ -310,8 +320,10 @@ func uploadRequest(ctx context.Context, target, path, key string) (*http.Request
 	req.GetBody = body
 	req.ContentLength = int64(head.Len()) + info.Size() + int64(len(tail))
 	req.Header.Set("Content-Type", mw.FormDataContentType())
+	// Only the key header: the NuGet 7.0.3 client's push (captured) sends
+	// X-NuGet-ApiKey plus its own client version and session id, and no
+	// X-NuGet-Protocol-Version.
 	req.Header.Set("X-NuGet-ApiKey", key)
-	req.Header.Set("X-NuGet-Protocol-Version", "4.1.0")
 	return req, nil
 }
 

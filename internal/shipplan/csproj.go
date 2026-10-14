@@ -74,10 +74,13 @@ func replaceFile(path string, data []byte) (err error) {
 	if err != nil {
 		return err
 	}
-	closed := false
+	// closeAttempted is set right before the one Close call: a failed
+	// Close has still released the file (os.File), so the cleanup below
+	// must not close it again, only remove it.
+	closeAttempted := false
 	defer func() {
 		if err != nil {
-			if !closed {
+			if !closeAttempted {
 				tmp.Close()
 			}
 			os.Remove(tmp.Name())
@@ -92,7 +95,7 @@ func replaceFile(path string, data []byte) (err error) {
 	if err = tmp.Sync(); err != nil {
 		return err
 	}
-	closed = true
+	closeAttempted = true
 	if err = tmp.Close(); err != nil {
 		return err
 	}
