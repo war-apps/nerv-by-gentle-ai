@@ -567,6 +567,10 @@ At semantic-release's `prepare` step `nerv ship` writes the release into
   or in a new group after `<Project>`.
 - The rest of the file is kept byte for byte: a UTF-8 BOM, CRLF or LF line
   endings (the notes are written with the file's), indentation.
+- The file is replaced atomically: the new content goes to a temp file in
+  the same directory with the original's permissions, is synced to disk
+  and renamed over it, so a failed write leaves the original unchanged
+  (a symlinked project file updates its target and keeps the link).
 - The notes are XML-escaped (`&`, `<`, `>`) and MSBuild-escaped (`%` as
   `%25`, `$` as `%24`, `@` as `%40`), so `$(Foo)` in a commit message is
   not expanded; `dotnet pack` restores them in the package's

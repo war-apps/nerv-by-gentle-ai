@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 )
@@ -30,8 +31,9 @@ var versionRe = regexp.MustCompile(`^[0-9A-Za-z][0-9A-Za-z.+-]*$`)
 // The notes are XML-escaped (&, <, >) and MSBuild-escaped (% as %25, $ as
 // %24, @ as %40), so a "$(Foo)" in a commit message is not expanded by
 // MSBuild; dotnet pack unescapes them. The version must be a semantic
-// version's characters ([0-9A-Za-z.+-]). On any error the file is left
-// unchanged.
+// version's characters ([0-9A-Za-z.+-]). The file is replaced atomically
+// (a synced temp file renamed over it, keeping its permission bits), so on
+// any error it is left byte for byte unchanged.
 func WriteCsproj(path, version, releaseNotes string) error {
 	if !versionRe.MatchString(version) {
 		return fmt.Errorf("%s: invalid version %q", path, version)
@@ -50,11 +52,51 @@ func WriteCsproj(path, version, releaseNotes string) error {
 	if out == string(data) {
 		return nil
 	}
+	if err := replaceFile(path, []byte(out)); err != nil {
+		return fmt.Errorf("%s: %w", path, err)
+	}
+	return nil
+}
+
+// replaceFile replaces the file at path (through a symlink, its target)
+// with data atomically: a temp file in the same directory with the
+// original's permission bits, written and synced, then renamed over it. On
+// any error the original is untouched and the temp file removed.
+func replaceFile(path string, data []byte) (err error) {
+	if resolved, rerr := filepath.EvalSymlinks(path); rerr == nil {
+		path = resolved
+	}
 	info, err := os.Stat(path)
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(path, []byte(out), info.Mode().Perm())
+	tmp, err := createTemp(filepath.Dir(path), "."+filepath.Base(path)+".nerv-*.tmp")
+	if err != nil {
+		return err
+	}
+	closed := false
+	defer func() {
+		if err != nil {
+			if !closed {
+				tmp.Close()
+			}
+			os.Remove(tmp.Name())
+		}
+	}()
+	if err = tmp.Chmod(info.Mode().Perm()); err != nil {
+		return err
+	}
+	if _, err = tmp.Write(data); err != nil {
+		return err
+	}
+	if err = tmp.Sync(); err != nil {
+		return err
+	}
+	closed = true
+	if err = tmp.Close(); err != nil {
+		return err
+	}
+	return os.Rename(tmp.Name(), path)
 }
 
 // property is one MSBuild property to set; value is already escaped.
@@ -246,3 +288,17 @@ func lineIndent(text string, pos int) string {
 	line := text[lineStart:pos]
 	return line[:len(line)-len(strings.TrimLeft(line, " \t"))]
 }
+
+// tempFile is the temp file WriteCsproj writes before renaming it over the
+// project file.
+type tempFile interface {
+	Write([]byte) (int, error)
+	Sync() error
+	Close() error
+	Name() string
+	Chmod(os.FileMode) error
+}
+
+// createTemp creates the temp file; a variable so tests can inject
+// failures.
+var createTemp = func(dir, pattern string) (tempFile, error) { return os.CreateTemp(dir, pattern) }

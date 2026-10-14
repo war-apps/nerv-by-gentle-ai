@@ -1,8 +1,11 @@
 package shipplan
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -225,5 +228,94 @@ func TestWriteCsproj_Errors(t *testing.T) {
 	}
 	if err := WriteCsproj(filepath.Join(t.TempDir(), "missing.csproj"), "1.0.0", ""); err == nil {
 		t.Error("missing file: want an error")
+	}
+}
+
+// failingTemp is a temp file whose step named fail returns an error; it
+// records the calls it got.
+type failingTemp struct {
+	tempFile
+	fail  string
+	calls *[]string
+}
+
+func (f failingTemp) step(name string, real func() error) error {
+	*f.calls = append(*f.calls, name)
+	if f.fail == name {
+		return errors.New("injected " + name + " failure")
+	}
+	return real()
+}
+
+func (f failingTemp) Write(p []byte) (int, error) {
+	if err := f.step("write", func() error { return nil }); err != nil {
+		f.tempFile.Write(p[:len(p)/2]) // a partial write
+		return len(p) / 2, err
+	}
+	return f.tempFile.Write(p)
+}
+func (f failingTemp) Sync() error  { return f.step("sync", f.tempFile.Sync) }
+func (f failingTemp) Close() error { return f.step("close", f.tempFile.Close) }
+
+const smallProject = "<Project>\n  <PropertyGroup>\n    <Version>1.0.0</Version>\n    <PackageReleaseNotes>a</PackageReleaseNotes>\n  </PropertyGroup>\n</Project>\n"
+
+func TestWriteCsproj_AtomicReplace(t *testing.T) {
+	for _, fail := range []string{"write", "sync", "close", ""} {
+		t.Run("failure at "+fail, func(t *testing.T) {
+			var calls []string
+			defer func(orig func(string, string) (tempFile, error)) { createTemp = orig }(createTemp)
+			createTemp = func(dir, pattern string) (tempFile, error) {
+				f, err := os.CreateTemp(dir, pattern)
+				return failingTemp{tempFile: f, fail: fail, calls: &calls}, err
+			}
+			p := writeTemp(t, smallProject)
+			if err := os.Chmod(p, 0o640); err != nil {
+				t.Fatal(err)
+			}
+			err := WriteCsproj(p, "2.0.0", "b")
+			entries, _ := os.ReadDir(filepath.Dir(p))
+			if len(entries) != 1 {
+				t.Errorf("leftover files next to the project: %v", entries)
+			}
+			got := readFile(t, p)
+			if fail != "" {
+				if err == nil || !strings.Contains(err.Error(), "injected "+fail) {
+					t.Fatalf("WriteCsproj = %v, want the injected failure", err)
+				}
+				if got != smallProject {
+					t.Errorf("the original changed on failure: %q", got)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !strings.Contains(got, "<Version>2.0.0</Version>") {
+				t.Errorf("file = %q", got)
+			}
+			if want := []string{"write", "sync", "close"}; !slices.Equal(calls, want) {
+				t.Errorf("calls = %v, want %v (synced before the rename)", calls, want)
+			}
+			if info, _ := os.Stat(p); runtime.GOOS != "windows" && info.Mode().Perm() != 0o640 {
+				t.Errorf("mode = %v, want the original 0640", info.Mode().Perm())
+			}
+		})
+	}
+}
+
+func TestWriteCsproj_ThroughASymlinkKeepsTheLink(t *testing.T) {
+	p := writeTemp(t, smallProject)
+	link := filepath.Join(t.TempDir(), "link.csproj")
+	if err := os.Symlink(p, link); err != nil {
+		t.Skip("no symlinks:", err)
+	}
+	if err := WriteCsproj(link, "2.0.0", "b"); err != nil {
+		t.Fatal(err)
+	}
+	if info, err := os.Lstat(link); err != nil || info.Mode()&os.ModeSymlink == 0 {
+		t.Errorf("the link was replaced by a file")
+	}
+	if !strings.Contains(readFile(t, p), "<Version>2.0.0</Version>") {
+		t.Error("the target was not updated")
 	}
 }
