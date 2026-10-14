@@ -33,8 +33,6 @@ type Context struct {
 	Tag string
 	// GitHead is the commit released; it labels docker images when set.
 	GitHead string
-	// NotesFile is the release notes file (informational for the plan).
-	NotesFile string
 	// DryRun marks a plan whose publish stage is listed but never run.
 	DryRun bool
 	// ArtifactsDir is an absolute directory, outside the repository, for

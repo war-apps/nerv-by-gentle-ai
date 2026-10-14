@@ -154,12 +154,12 @@ func (b *builder) docker() error {
 		if err != nil {
 			return fmt.Errorf("docker image %s: %w", img.Name, err)
 		}
-		dockerfile, context := img.Dockerfile, img.Context
+		dockerfile, buildContext := img.Dockerfile, img.Context
 		if dockerfile == "" {
 			dockerfile = shipconfig.DefaultDockerfile
 		}
-		if context == "" {
-			context = shipconfig.DefaultDockerContext
+		if buildContext == "" {
+			buildContext = shipconfig.DefaultDockerContext
 		}
 		build := []string{"docker", "build", "-f", dockerfile}
 		for _, t := range tags {
@@ -172,7 +172,7 @@ func (b *builder) docker() error {
 		if b.ctx.GitHead != "" {
 			build = append(build, "--label", "org.opencontainers.image.revision="+b.ctx.GitHead)
 		}
-		build = append(build, context)
+		build = append(build, buildContext)
 		b.add("package", Step{Name: "docker:build " + img.Name, Exec: build})
 		if img.ShouldPush() {
 			for _, t := range tags {
