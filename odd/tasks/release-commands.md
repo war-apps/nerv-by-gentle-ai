@@ -134,6 +134,8 @@ order). Slice boundaries: one PR per task, recorded below as they open.
   Merged 2e2cea2.
 - T4 branch `feat/release-script-runner` from 2e2cea2.
 - PR #94 (T4): `feat/release-script-runner` → develop. Merged f540bdc.
+- PR #95 (T5): `feat/release-pipeline-presets` → develop. Merged aad9dff.
+- T6 branch `feat/release-ship` from aad9dff.
 - T5 branch `feat/release-pipeline-presets` from f540bdc.
 
 ## Progress
@@ -1057,6 +1059,13 @@ directly.
   of the cancellation test hung because its fake server never saw the
   client disconnect; it now uses the release-channel pattern of the
   neighbouring test.
+
+## Decisions before T6 (user, 2026-10-14)
+
+- `<PackageReleaseNotes>` holds the release link
+  (`https://<host>/<org>/<repo>/releases/tag/<tag>`, from origin's public URL),
+  as dim.comprobantes.api's `bump-csproj.sh` does; without an origin the
+  element is left unchanged with a warning.
 
 ## Next step
 
