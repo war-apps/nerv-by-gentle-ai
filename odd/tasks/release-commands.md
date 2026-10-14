@@ -1360,6 +1360,15 @@ All seven tasks are done. What shipped:
   `/nerv:ship` guard that the real run's versions equal the dry run's (the
   CLI has no expected-version flag).
 
+### T7 review
+
+- Native review of 3adb85f..8746274 (medium, user granted): approved and
+  acknowledged. R3-ship-approval-not-bound (WARNING: the user's yes is not
+  bound to the dry-run plan; if origin moves before the real run, another
+  version is released without a second confirmation — the follow-up already
+  noted in T7), R3-arguments-flag-passthrough (`$ARGUMENTS` is passed
+  unchecked, so `--dry-run` or `--yes` typed by the user change the flow).
+
 ## Next step
 
 The user's delivery decision for T7: push `feat/release-ship-command` and
