@@ -137,3 +137,35 @@ func TestCheckCoverage(t *testing.T) {
 		})
 	}
 }
+
+func TestCoverage_TextNeverRoundsUpToTheThreshold(t *testing.T) {
+	tests := []struct {
+		name             string
+		covered, valid   int
+		threshold        float64
+		wantErr, wantStr string
+	}{
+		{"79.996 is below 80", 79996, 100000, 80, "line coverage 79.99% (79996 of 100000 lines, 1 report) is below the threshold 80%", ""},
+		{"just under a fractional threshold", 8549, 10000, 85.5, "line coverage 85.49% (8549 of 10000 lines, 1 report) is below the threshold 85.5%", ""},
+		{"a pass is truncated too", 99999, 100000, 99, "", "line coverage 99.99% (99999 of 100000 lines, 1 report), threshold 99%"},
+		{"exact", 95, 100, 90, "", "line coverage 95.00% (95 of 100 lines, 1 report), threshold 90%"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := reports(t, map[string]string{"r/coverage.cobertura.xml": cobertura(tt.covered, tt.valid)})
+			c, err := CheckCoverage(dir, tt.threshold)
+			if tt.wantErr != "" {
+				if err == nil || err.Error() != tt.wantErr {
+					t.Fatalf("CheckCoverage error = %v, want %q", err, tt.wantErr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if c.String() != tt.wantStr {
+				t.Errorf("String() = %q, want %q", c.String(), tt.wantStr)
+			}
+		})
+	}
+}

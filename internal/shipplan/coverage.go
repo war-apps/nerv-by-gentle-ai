@@ -13,12 +13,15 @@ import (
 	"strings"
 )
 
-// Coverage is the merged line coverage of a set of Cobertura reports.
+// Coverage is the merged line coverage of a set of Cobertura reports,
+// checked against a threshold.
 type Coverage struct {
 	// Covered and Valid are the summed lines-covered and lines-valid.
 	Covered, Valid int
 	// Reports are the report files read, relative to the searched directory.
 	Reports []string
+	// Threshold is the minimum line coverage percentage checked.
+	Threshold float64
 }
 
 // Percent is the line coverage, 0-100.
@@ -27,6 +30,42 @@ func (c Coverage) Percent() float64 {
 		return 0
 	}
 	return 100 * float64(c.Covered) / float64(c.Valid)
+}
+
+// below reports whether the coverage is under the threshold, compared
+// exactly (covered/valid against threshold/100, without a rounded rate).
+func (c Coverage) below() bool {
+	return float64(c.Covered)*100 < c.Threshold*float64(c.Valid)
+}
+
+// measure is the coverage as text, e.g. "line coverage 79.99% (79996 of
+// 100000 lines, 1 report)". The percentage is truncated, never rounded up,
+// to two decimals (computed in integers), so a rate under the threshold
+// never reads as the threshold.
+func (c Coverage) measure() string {
+	hundredths := 0
+	if c.Valid > 0 {
+		hundredths = int(int64(c.Covered) * 10000 / int64(c.Valid))
+	}
+	return fmt.Sprintf("line coverage %d.%02d%% (%d of %d lines, %s)", hundredths/100, hundredths%100, c.Covered, c.Valid, reportCount(len(c.Reports)))
+}
+
+// reportCount is "1 report" or "<n> reports".
+func reportCount(n int) string {
+	if n == 1 {
+		return "1 report"
+	}
+	return fmt.Sprintf("%d reports", n)
+}
+
+func (c Coverage) threshold() string { return strconv.FormatFloat(c.Threshold, 'f', -1, 64) + "%" }
+
+// String is the summary of a coverage that met its threshold.
+func (c Coverage) String() string { return c.measure() + ", threshold " + c.threshold() }
+
+// belowError is the failure of a coverage under its threshold.
+func (c Coverage) belowError() error {
+	return fmt.Errorf("%s is below the threshold %s", c.measure(), c.threshold())
 }
 
 // CheckCoverage reads every Cobertura report (a file named
@@ -40,7 +79,7 @@ func (c Coverage) Percent() float64 {
 // coverlet reports per test run, and the counts cannot be merged per line
 // from the summary alone.
 func CheckCoverage(dir string, threshold float64) (Coverage, error) {
-	var c Coverage
+	c := Coverage{Threshold: threshold}
 	err := filepath.WalkDir(dir, func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -66,16 +105,11 @@ func CheckCoverage(dir string, threshold float64) (Coverage, error) {
 		c.Covered += covered
 		c.Valid += valid
 	}
-	reports := fmt.Sprintf("%d report", len(c.Reports))
-	if len(c.Reports) > 1 {
-		reports += "s"
-	}
 	if c.Valid == 0 {
-		return c, fmt.Errorf("no coverable lines in %s under %s", reports, dir)
+		return c, fmt.Errorf("no coverable lines in %s under %s", reportCount(len(c.Reports)), dir)
 	}
-	if c.Percent() < threshold {
-		return c, fmt.Errorf("line coverage %.2f%% (%d of %d lines, %s) is below the threshold %s%%",
-			c.Percent(), c.Covered, c.Valid, reports, strconv.FormatFloat(threshold, 'f', -1, 64))
+	if c.below() {
+		return c, c.belowError()
 	}
 	return c, nil
 }

@@ -50,12 +50,7 @@ func (b *builder) dotnet() error {
 				if err != nil {
 					return "", err
 				}
-				reports := fmt.Sprintf("%d report", len(c.Reports))
-				if len(c.Reports) > 1 {
-					reports += "s"
-				}
-				return fmt.Sprintf("line coverage %.2f%% (%d of %d lines, %s), threshold %s%%",
-					c.Percent(), c.Covered, c.Valid, reports, strconv.FormatFloat(threshold, 'f', -1, 64)), nil
+				return c.String(), nil
 			},
 		})
 	}
