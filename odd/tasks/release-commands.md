@@ -1232,6 +1232,16 @@ directly.
   --shortstat 3b486a7 68eb48a`: 10 files changed, 466 insertions(+), 123
   deletions(-).
 
+### T6 follow-up review
+
+- Native review of 3b486a7..52aa916 (medium, user granted): approved and
+  acknowledged. Advisory: R3-rerun-advice-error-branch-untested (WARNING:
+  no test for the BranchOnOrigin failure branch, also taken on interrupted
+  runs), R3-rerun-advice-deleted-branch-says-moved (a branch deleted on
+  origin is reported as "moved, git pull"), R3-origin-rewrite-linebreak-
+  untested (the CR/LF/NUL refusal and the quoting of the insteadOf rule have
+  no test).
+
 ## Next step
 
 Review of T6 (910004e..6347f25), then the T6 pull request
