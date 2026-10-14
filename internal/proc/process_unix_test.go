@@ -1,6 +1,6 @@
 //go:build !windows
 
-package semrel
+package proc
 
 import (
 	"context"
@@ -49,14 +49,14 @@ func TestExecRunner_CancelKillsTheWholeProcessGroup(t *testing.T) {
 	var err error
 	select {
 	case err = <-done:
-	case <-time.After(processWaitDelay + 3*time.Second):
+	case <-time.After(waitDelay + 3*time.Second):
 		t.Fatalf("Run still blocked %s after the context deadline: a grandchild holds the output pipe", time.Since(start))
 	}
 	if err == nil {
 		t.Fatal("Run returned no error for a cancelled command")
 	}
-	if elapsed := time.Since(start); elapsed > processWaitDelay+2*time.Second {
-		t.Errorf("Run returned after %s, want within the wait delay %s", elapsed, processWaitDelay)
+	if elapsed := time.Since(start); elapsed > waitDelay+2*time.Second {
+		t.Errorf("Run returned after %s, want within the wait delay %s", elapsed, waitDelay)
 	}
 
 	pid := readPid()
@@ -96,9 +96,9 @@ func waitGone(t *testing.T, pid int) {
 // success with the output written so far, not as exec.ErrWaitDelay, and
 // must kill the grandchild it gave up waiting for.
 func TestExecRunner_LingeringDescendantKeepsASuccessfulExit(t *testing.T) {
-	saved := processWaitDelay
-	processWaitDelay = 300 * time.Millisecond
-	t.Cleanup(func() { processWaitDelay = saved })
+	saved := waitDelay
+	waitDelay = 300 * time.Millisecond
+	t.Cleanup(func() { waitDelay = saved })
 
 	pidFile := filepath.Join(t.TempDir(), "grandchild.pid")
 	readPid := func() int {
@@ -123,8 +123,8 @@ func TestExecRunner_LingeringDescendantKeepsASuccessfulExit(t *testing.T) {
 	if got := strings.TrimSpace(string(res.Stdout)); got != "ok" {
 		t.Errorf("stdout = %q, want %q", got, "ok")
 	}
-	if elapsed := time.Since(start); elapsed > processWaitDelay+2*time.Second {
-		t.Errorf("Run returned after %s, want about the wait delay %s", elapsed, processWaitDelay)
+	if elapsed := time.Since(start); elapsed > waitDelay+2*time.Second {
+		t.Errorf("Run returned after %s, want about the wait delay %s", elapsed, waitDelay)
 	}
 	pid := readPid()
 	if pid <= 0 {

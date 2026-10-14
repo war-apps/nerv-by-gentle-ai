@@ -1,6 +1,6 @@
 //go:build windows
 
-package semrel
+package proc
 
 import (
 	"context"
