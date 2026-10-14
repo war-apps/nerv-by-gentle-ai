@@ -32,6 +32,9 @@ import (
 	"github.com/war-apps/nerv-by-gentle-ai/internal/shipconfig"
 )
 
+// execShell is StepError.Shell for a Step run from its Exec argument list.
+const execShell = "exec"
+
 // maxTailLines is how many of the last output lines a StepError carries.
 const maxTailLines = 20
 
@@ -51,12 +54,33 @@ var (
 	ErrOutsideRepository = errors.New("outside the repository")
 )
 
-// Step is one command to run: a stage override or one hook command.
+// Step is one command to run: a stage override, one hook command, or a
+// built-in preset command.
 type Step struct {
-	// Name is the stage (test) or hook key (before_test, prepare) the
-	// command belongs to; it is the output prefix and NERV_RELEASE_STAGE.
-	Name    string
+	// Name is the stage (test), hook key (before_test, prepare) or preset
+	// step (dotnet:build) the command belongs to; it is the output prefix.
+	Name string
+	// Stage is NERV_RELEASE_STAGE; empty means Name.
+	Stage   string
 	Command shipconfig.Command
+	// Exec, when set, is run as an argument list without any shell:
+	// Exec[0] is looked up on PATH and the rest are passed as they are, so
+	// nothing is quoted or expanded on any OS. Command.Run and Command.Shell
+	// are then ignored; its Env, Workdir and Timeout still apply. Failures
+	// name the program only, never its arguments. On Windows a program
+	// found as a .cmd or .bat shim (npm, pnpm and yarn are) runs through
+	// cmd.exe, which interprets & | < > ^ % in its arguments: callers must
+	// keep such characters out of any configured value they pass (the
+	// shipplan presets refuse them).
+	Exec []string
+}
+
+// stage is the step's NERV_RELEASE_STAGE value.
+func (s Step) stage() string {
+	if s.Stage != "" {
+		return s.Stage
+	}
+	return s.Name
 }
 
 // Runner runs steps for the repository at RepoRoot.
@@ -86,6 +110,9 @@ func (r *Runner) Run(ctx context.Context, step Step, vars Vars) error {
 	if shell == "" {
 		shell = shipconfig.DefaultShell
 	}
+	if len(step.Exec) > 0 {
+		shell = execShell
+	}
 	fail := func(script, reason string, err error) error {
 		return &StepError{Project: vars.Project, Step: step.Name, Shell: shell, Script: script, ExitCode: -1, Reason: reason, Err: err}
 	}
@@ -104,15 +131,27 @@ func (r *Runner) Run(ctx context.Context, step Step, vars Vars) error {
 		err = fmt.Errorf("working directory %q %w", workdir, err)
 		return fail("", err.Error(), err)
 	}
-	interp, err := r.interpreter(shell)
-	if err != nil {
-		return fail("", err.Error(), err)
+	var interp, script string
+	var args []string
+	if len(step.Exec) > 0 {
+		// The program stands where a script file would in errors.
+		script = step.Exec[0]
+		p, err := r.lookPath(script)
+		if err != nil {
+			err = &interpreterError{script + " not found on PATH: install " + script}
+			return fail(script, err.Error(), err)
+		}
+		interp, args = p, step.Exec[1:]
+	} else {
+		var err error
+		if interp, err = r.interpreter(shell); err != nil {
+			return fail("", err.Error(), err)
+		}
+		if script, err = scriptFile(r.RepoRoot, shell, c.Run); err != nil {
+			return fail("", err.Error(), err)
+		}
+		args = shellArgs(shell, c.Run, script, r.RepoRoot, dir)
 	}
-	script, err := scriptFile(r.RepoRoot, shell, c.Run)
-	if err != nil {
-		return fail("", err.Error(), err)
-	}
-	args := shellArgs(shell, c.Run, script, r.RepoRoot, dir)
 
 	runCtx := ctx
 	timeout := c.TimeoutDuration()
@@ -131,7 +170,7 @@ func (r *Runner) Run(ctx context.Context, step Step, vars Vars) error {
 		Name:   interp,
 		Args:   args,
 		Dir:    dir,
-		Env:    r.environment(c.Env, vars, step.Name),
+		Env:    r.environment(c.Env, vars, step.stage()),
 		Stdout: pw,
 		Stderr: pw,
 	})
@@ -174,8 +213,9 @@ type StepError struct {
 	Project string
 	Step    string
 	Shell   string
-	// Script is the script file run (repository-relative, as written), or
-	// empty for an inline command.
+	// Script is the script file run (repository-relative, as written), the
+	// program of an Exec step (Shell is then "exec"), or empty for an
+	// inline command.
 	Script string
 	// ExitCode is the process's exit code, -1 when it has none (not started,
 	// killed by a signal, timed out, interrupted).

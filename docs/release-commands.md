@@ -333,9 +333,11 @@ order, otherwise in declaration order.
 ### `stages`
 
 Keys are pipeline stages, run in this order: `restore`, `lint`, `build`,
-`test`, `coverage`, `package`, `publish`. A key replaces the preset's
-command for that stage, or adds one when no preset provides it. Any
-failing stage aborts the release before a tag exists.
+`test`, `coverage`, `package`, `publish`. A key **is** the stage: it
+replaces the commands of every enabled preset for that stage (with `dotnet`
+and `node` both enabled, `stages.build` replaces both builds), or adds the
+stage when no preset provides it. Any failing stage aborts the release
+before a tag exists. See [Pipeline and presets](#pipeline-and-presets).
 
 ```yaml
 stages:
@@ -347,7 +349,9 @@ stages:
 Keys are `before_<stage>` / `after_<stage>` (for any stage above) and the
 semantic-release steps `prepare` (before the release commit; write version
 files here), `publish`, `success` and `fail`. Each key holds a list of
-commands run in order.
+commands run in order. `before_<stage>` / `after_<stage>` run only when
+the stage has commands: a stage without any (no preset command, no
+override) is skipped with its hooks.
 
 ### Commands (stage overrides and hooks)
 
@@ -434,6 +438,196 @@ are removed first.
 | `NERV_RELEASE_NOTES_FILE` | File holding the release notes (Markdown). |
 | `NERV_RELEASE_BRANCH` | Branch being released. |
 | `NERV_RELEASE_DRY_RUN` | `true` under `nerv ship --dry-run`, else `false`. |
+
+## Pipeline and presets
+
+`nerv ship` (coming in a later task) plans each project's pipeline from its
+presets, `stages` and `hooks` (`internal/shipplan`), for the release being
+made (version, channel, tag):
+
+1. For each stage in order (`restore`, `lint`, `build`, `test`,
+   `coverage`, `package`, `publish`), the commands are the stage's override
+   in `stages:` if there is one, otherwise the commands of each enabled
+   preset, in the order of `presets:`.
+2. The stage's `before_<stage>` hooks run first and its `after_<stage>`
+   hooks last. A stage with no command is skipped, hooks included.
+3. Every stage but `publish` runs before semantic-release; the first
+   failing step stops the release, naming the stage and step. The
+   `publish` stage runs inside semantic-release's `publish` step, after
+   the tag; under `--dry-run` it is listed but never run.
+4. `--dry-run` prints every step per stage, secrets shown as
+   `$<VARIABLE>`:
+
+   ```text
+   api 2.9.0-alpha.3 (channel alpha, tag v2.9.0-alpha.3)
+     restore
+       dotnet:restore  dotnet restore Dim.Comprobantes.slnx
+     ...
+     publish (not run: dry run)
+       docker:push ghcr.io/org/api:2.9.0-alpha.3  docker push ghcr.io/org/api:2.9.0-alpha.3
+   ```
+
+Preset commands run **without a shell**: each is an argument list given
+to the program found on `PATH` (`dotnet`, `docker`, `npm`, `pnpm`,
+`yarn`), so paths with spaces need no quoting on any OS. A missing program
+fails the step with `<program> not found on PATH`. On Windows `npm`,
+`pnpm` and `yarn` are `.cmd` shims that run through `cmd.exe`, which
+interprets `& | < > ^ %` even inside an argument: the node and npm presets
+pass only fixed arguments plus `npm.dist_tag`, `npm.registry` and the
+release channel, and refuse those values (on every OS) when they hold one
+of these characters, a `"` or a line break. Overrides and hooks run
+through their `shell` as described in
+[How a command runs](#how-a-command-runs).
+
+Every step (preset command, override or hook) also receives
+`NERV_RELEASE_ARTIFACTS_DIR`: a per-project directory outside the
+repository for build outputs. The dotnet preset writes its coverage
+reports to `$NERV_RELEASE_ARTIFACTS_DIR/coverage` and its packages to
+`$NERV_RELEASE_ARTIFACTS_DIR/nuget`; an override replacing those commands
+writes there too. Both directories are emptied before the first stage of
+every run, so a coverage report or package left by an earlier run is never
+counted or pushed (only those two, and only inside the artifacts
+directory).
+
+### Preset commands
+
+`<target>` is `dotnet.solution`, or `dotnet.project_file` when there is no
+solution; `<cfg>` is `dotnet.configuration`; `<artifacts>` is
+`$NERV_RELEASE_ARTIFACTS_DIR`. dotnet and docker commands run in the
+repository root (their paths are repository-relative); node and npm
+commands run in the project's `path`.
+
+| Preset | Stage | Step | Command |
+|---|---|---|---|
+| `dotnet` | restore | `dotnet:restore` | `dotnet restore <target>` |
+| | lint | `dotnet:lint` | `dotnet format <target> --verify-no-changes` |
+| | build | `dotnet:build` | `dotnet build <target> -c <cfg> --no-restore -p:Version=<version>` |
+| | test | `dotnet:test` | `dotnet test <target> -c <cfg> --no-build`, plus `--collect "XPlat Code Coverage" --results-directory <artifacts>/coverage` when `coverage_threshold` > 0 |
+| | coverage | `dotnet:coverage` | only when `coverage_threshold` > 0: the coverage check below (in NERV, no process) |
+| | package | `dotnet:pack` | only with the `nuget` preset: `dotnet pack <project_file> -c <cfg> --no-build -p:Version=<version> -o <artifacts>/nuget` |
+| `node` | restore | `node:restore` | `npm ci`; `pnpm install --frozen-lockfile`; `yarn install --frozen-lockfile` (Yarn 1) or `yarn install --immutable` (Yarn 2+, detected by `packageManager: "yarn@2…"` or later in `package.json`, or a `.yarnrc.yml` in the project or repository root) |
+| | lint, build, test | `node:<script>` | `<package_manager> run <script>`, only for the scripts `lint`, `build`, `test` that `package.json` defines |
+| `docker` | package | `docker:build <name>` | per image: `docker build -f <dockerfile> -t <name>:<tag>... --build-arg K=V... --label org.opencontainers.image.version=<version> [--label org.opencontainers.image.revision=<commit>] <context>` (build args sorted by name, placeholders replaced) |
+| | publish | `docker:push <name>:<tag>` | per tag, when `push` is true: `docker push <name>:<tag>` |
+| `nuget` | publish | `nuget:push` | in NERV, no process: pushes `<artifacts>/nuget/*.nupkg` (and each matching `.snupkg`) to `<source>` over NuGet's push protocol, with the key from `$<api_key_env>`; see [Secrets](#secrets) |
+| `npm` | publish | `npm:publish` | `npm publish --access <access> [--tag <dist_tag, else the channel>] [--registry <registry>]` |
+
+Modelled on `dim.comprobantes.api`'s CI (restore, `dotnet format
+--verify-no-changes`, one Release build, one test run collecting
+coverage). Its CI also builds with `-warnaserror` and tests with
+`--settings coverlet.runsettings --logger trx`; such repository-specific
+flags go in a stage override, e.g.
+`stages: { build: { run: "dotnet build X.slnx -c Release --no-restore -warnaserror -p:Version=$NERV_RELEASE_VERSION" } }`.
+
+- The node preset never writes the package version: semantic-release's
+  `@semantic-release/npm` plugin (or the repository's own configuration)
+  does. Enable the `npm` preset only when that plugin does not publish
+  already (`npmPublish: false`, or the plugin not in the configuration);
+  otherwise the package would be published twice.
+- The `nuget` preset needs the packages `dotnet pack` writes: it requires
+  the `dotnet` preset, or a `package` stage override writing `*.nupkg` to
+  `$NERV_RELEASE_ARTIFACTS_DIR/nuget`.
+
+### Docker tags
+
+As `dim.comprobantes.api`'s workflow tags its images, for each entry of
+`tags` (in order, duplicates dropped):
+
+| Tag kind | Tag | When |
+|---|---|---|
+| `version` | the release version, e.g. `1.4.0-alpha.3` | always |
+| `channel` | the channel, e.g. `alpha`, `rc` | only when the channel is not the default one (empty or `default`) |
+| `latest` | `latest` | only on the default channel |
+
+So main gives `1.4.0` and `latest`, develop `1.4.0-alpha.3` and `alpha`. A
+tag that is not a valid docker tag (a version with `+build` metadata, a
+channel with `/`) is an error when the plan is made, before anything runs.
+An image with no applicable tag is still built (as a check) but not pushed.
+
+### Coverage
+
+With `dotnet.coverage_threshold` above 0, the test stage collects coverage
+with coverlet's `XPlat Code Coverage` collector (the xunit template's
+`coverlet.collector` package must be referenced by the test projects), and
+the `coverage` stage reads every `*.cobertura.xml` under
+`$NERV_RELEASE_ARTIFACTS_DIR/coverage`, sums their `lines-covered` and
+`lines-valid` (several test projects give several reports; their rates are
+not averaged) and fails when the **line** coverage is below the threshold,
+e.g. `line coverage 79.90% (799 of 1000 lines, 1 report) is below the
+threshold 80%`. No report, a malformed report or no coverable line also
+fail. A line covered in two test projects' reports counts in both. When
+`test` is overridden, the override must write the reports there (or
+override `coverage` too).
+
+### The dotnet project file
+
+At semantic-release's `prepare` step `nerv ship` writes the release into
+`dotnet.project_file` so it enters the release commit (what
+`dim.comprobantes.api`'s `scripts/bump-csproj.sh` does with sed):
+
+- `<Version>` and `<PackageReleaseNotes>` get the new values in every
+  existing element outside XML comments (attributes kept; `<Version />` is
+  opened). A missing element is added at the top of the first
+  `<PropertyGroup>` without a `Condition`, indented like its first child,
+  or in a new group after `<Project>`.
+- The rest of the file is kept byte for byte: a UTF-8 BOM, CRLF or LF line
+  endings (the notes are written with the file's), indentation.
+- The file is replaced atomically: the new content goes to a temp file in
+  the same directory with the original's permissions, is synced to disk
+  and renamed over it, so a failed write leaves the original unchanged
+  (a symlinked project file updates its target and keeps the link).
+- The notes are XML-escaped (`&`, `<`, `>`) and MSBuild-escaped (`%` as
+  `%25`, `$` as `%24`, `@` as `%40`), so `$(Foo)` in a commit message is
+  not expanded; `dotnet pack` restores them in the package's
+  `releaseNotes`.
+
+### Secrets
+
+The NuGet API key is read from the variable named by `nuget.api_key_env`
+(default `NUGET_API_KEY`) only when the push runs, and it never appears on
+any command line, in step names, in the `--dry-run` listing (shown as
+`$NUGET_API_KEY`), in the output or in errors (a feed that echoes it gets
+it replaced by `***`). If the variable is not set or empty, the release
+stops before the first stage, naming the step and the variable; a dry run
+does not need it.
+
+To keep the key off every command line, NERV pushes the packages itself
+instead of running `dotnet nuget push --api-key`, which puts the key on
+its argv (readable by other users of a shared machine through the process
+list). The alternatives fail: a clear-text `<apikeys>` entry in a
+temporary `NuGet.Config` is refused on Linux ("encryption is not supported
+on non-Windows platforms": NuGet always decrypts it with Windows DPAPI), a
+response file given to `dotnet nuget push` is expanded and forwarded on the
+argv of the child `dotnet exec NuGet.CommandLine.XPlat.dll` process,
+`NuGet.CommandLine.XPlat.dll` reads no response files, and NuGet reads no
+API key from the environment (observed with the .NET SDK 10.0.112, NuGet
+7.0.3).
+
+The push follows [NuGet's push protocol](https://learn.microsoft.com/nuget/api/package-publish-resource),
+as the NuGet client sends it:
+
+- `source` ending in `index.json` is a v3 service index: NERV reads it
+  (without the key) and pushes to its `PackagePublish` resource, and each
+  `<package>.snupkg` next to a package to its `SymbolPackagePublish`
+  resource when the index has one. Any other `source` is a push URL (a v2
+  feed); symbol packages are then not pushed.
+- Each package is a `PUT` to the push URL (with a trailing `/`) of a
+  `multipart/form-data` body whose one part is the package, with the key in
+  the `X-NuGet-ApiKey` header. A `409 Conflict` means that version is
+  already on the feed and is skipped, like `--skip-duplicate`.
+- Each request (the service index read, each package's upload) is bounded
+  by 10 minutes; a feed that hangs fails the push.
+- A push stops at the first package the feed refuses, and a push cannot
+  be undone, so the error names what the feed already holds, e.g.
+  `pushed: Sdk.1.4.0.nupkg, Sdk.1.4.0.snupkg; already on the feed:
+  Cli.1.4.0.nupkg; failed on Web.1.4.0.nupkg: HTTP 500 ...; not attempted:
+  Zip.1.4.0.nupkg` (`nothing pushed; failed on ...` when the first one
+  fails). Run the release's push again after fixing the cause: packages
+  already there are skipped.
+- Redirects are not followed (the key would go with them), and a plain
+  `http://` source is refused unless its host is loopback. A feed whose
+  service index needs credentials (GitHub Packages, Azure Artifacts) is
+  not supported by the preset: use a `publish` stage override for it.
 
 ## Validation
 
