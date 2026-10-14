@@ -103,7 +103,7 @@ tagged with version, channel and `latest`).
 - [x] T6 — `nerv ship`: clean worktree, confirmation, pipeline, real
   semantic-release run with the injected lifecycle plugin, monorepo order by
   `depends_on`, `--dry-run`.
-- [ ] T7 — `/nerv:ship`, user docs (`docs/release-commands.md`), CHANGELOG.
+- [x] T7 — `/nerv:ship`, user docs (`docs/release-commands.md`), CHANGELOG.
 
 ## Acceptance criteria
 
@@ -1267,8 +1267,100 @@ directly.
   insertions(+)). Total `git diff --shortstat e290b8c 4e5b6fa`: 4 files
   changed, 150 insertions(+), 7 deletions(-).
 
+### T7
+
+- Route: delegated (writer trigger: a slash command, the guide rewrite,
+  CHANGELOG and this document; passive documentation, no runnable RED).
+- `plugin/commands/ship.md` (`/nerv:ship`): always runs `nerv ship
+  --dry-run --json [args]` first; on a refusal or failure shows `error`
+  and stops; otherwise a per-project table (version, channel, tag, last
+  version) and each plan's stages condensed from stderr (the plan listing
+  goes to stderr, the JSON document to stdout: `cmd/nerv/ship.go` `list`
+  and `writeShipSummary`). Then asks explicitly and waits; only an explicit
+  yes runs `nerv ship --yes --json [args]` (the CLI's `[y/N]` cannot be
+  answered from the agent's shell: `confirm` refuses without a terminal).
+  Reports the result document (status, per-project outcome, `error`,
+  `action` quoted), says so when the real run's versions differ from the
+  approved ones (origin moved), and never reruns after a failure.
+  `--branch`, `--project` and "releases what is on origin" are stated.
+  The dry run is described as real build work (minutes), never a tag.
+- `docs/release-commands.md` rewritten as one guide: what the commands do
+  and when, contents, requirements table (git 2.31+ for path filters,
+  Node.js 20.8.1+ and npm, bash / pwsh 7.3+ / node for commands, .NET SDK,
+  docker, npm/pnpm/yarn, optional `gh`), quick start (single dotnet+docker
+  repository modelled on dim.comprobantes.api, first yaml block; a
+  core/api/web monorepo with `depends_on`, `shared_paths`, `scopes`),
+  configuration reference (paths, semantic_release + installed plugins,
+  projects, depends_on, preset settings, validation, YAML notes), `nerv
+  version next`, `nerv ship`, pipeline and presets, stages/hooks/commands
+  (+ environment variables, now listing `NERV_RELEASE_ARTIFACTS_DIR`),
+  security notes (credentials, reading origin, NuGet API key),
+  troubleshooting and recovery (refusals table + failures table), known
+  limitations. Both yaml examples were loaded by the real config loader
+  (`nerv version next --offline --project zzz` on a temp repo: exit 1
+  "unknown project", listing `api` and `core, api, web`).
+- New fact documented (verified in code): `nerv ship` plans from the
+  `release:` section committed on origin (`shipconfig.Load(s.ws.Dir())`,
+  ship.go; error "is not in origin's release: section"); the local copy is
+  only validated first.
+- Removed as duplicates: the second outputs list in "How the next version
+  is computed" (the Outputs table holds it), the repeated Node/npm
+  requirement under Installed plugins and `nerv ship` (now the Requirements
+  table), the repeated no-prompt/redaction rules (now "Reading origin",
+  shared by both commands). Removed as stale: `docs/configuration.md` said
+  `nerv ship` was "coming in a later task". The render example now uses the
+  quick start's solution and image names.
+- `docs/commands.md` (`/nerv:ship` row and section), README docs index,
+  `docs/configuration.md` link to `#configuration-release`. No test pins
+  the plugin command list (`assets_test.go` requires only
+  `commands/configure.md`; the plugin is embedded with `all:plugin`); the
+  doc-pinning tests `TestLoad_DocumentedExample`, `TestDefaults_MatchDocs`
+  and `TestEnvTable_NamesUniqueValuedAndDocumented` stay green; every
+  `release-commands.md#...` anchor in the repository resolves.
+- CHANGELOG `[Unreleased]` `### Added`: the two per-task entries merged
+  into one `release:` entry (version next + `/nerv:version`, ship +
+  `/nerv:ship`, the `release:` section).
+- Checks: `go test -count=1 ./...` exit 0 (27 packages ok), `go vet ./...`
+  exit 0, `gofmt -l .` exit 0, no output.
+- Commits: `eeda3ff` `feat(plugin): add /nerv:ship` (2 files changed, 106
+  insertions(+)); `ff1e6da` `docs: consolidate the release commands guide`
+  (3 files changed, 598 insertions(+), 458 deletions(-)); `95b283c`
+  `docs(changelog): describe the release commands` (1 file changed, 14
+  insertions(+), 7 deletions(-)); this document's update.
+
+## Feature complete
+
+All seven tasks are done. What shipped:
+
+- `nerv version next` / `/nerv:version`: next version per project from a
+  semantic-release dry run on a disposable mirror with origin's branches,
+  tags and notes; text, JSON and GitHub Actions env outputs. Accepted on
+  dim.comprobantes.api (develop, main, release/rc match `semantic-release
+  --dry-run`).
+- `nerv ship` / `/nerv:ship`: a local release of what is on origin in a
+  throwaway clone: dotnet project file, pipeline with presets (dotnet,
+  node, docker, NuGet over the push protocol, npm), real semantic-release
+  guarded by the confirmed version, publish, lifecycle hooks, one JSON
+  document with recovery advice.
+- The `release:` section with strict validation; the hardened process
+  runner (`internal/proc`) and script runner (`internal/shiprun`).
+- PRs: #91 (T1), #92 (T2), #93 (T3), #94 (T4), #95 (T5), #96 (T6), and the
+  T7 pull request from `feat/release-ship-command` (not opened yet).
+- Known limitations (documented): Windows paths compile-checked only (and
+  Windows leftover descendants keep running); no submodules or Git LFS in
+  the release clone; NuGet feeds whose service index needs credentials
+  need a publish override; an origin HEAD naming a missing branch fails
+  semantic-release's fetch; `--project` applies bumps from dependencies it
+  does not release; `addChannel` runs before the version guard; line
+  coverage only.
+- Follow-ups (not planned): a real Windows run of the release path; a
+  dedicated test for the shipconfig block-parse fallback
+  (R3-cut-fallback-untested, deferred in T1); a `nerv ship` run against a
+  real repository's origin (only local bare origins were used); optional
+  `/nerv:ship` guard that the real run's versions equal the dry run's (the
+  CLI has no expected-version flag).
+
 ## Next step
 
-Review of T6 (910004e..6347f25), then the T6 pull request
-(`feat/release-ship` -> develop), then T7 (`/nerv:ship` and the final docs
-pass).
+The user's delivery decision for T7: push `feat/release-ship-command` and
+open its pull request into develop (or ask for changes first).
