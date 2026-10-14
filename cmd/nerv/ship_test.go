@@ -301,7 +301,7 @@ func TestShip_ReadsOriginOnTheRequestedBranch(t *testing.T) {
 	if len(f.opened) != 1 || f.opened[0].RepoRoot != f.top || f.opened[0].Branch != "develop" || f.opened[0].FetchTimeout.String() != "5s" {
 		t.Errorf("workspace options %+v", f.opened)
 	}
-	if !slices.Equal(f.ws.computed, []string{"web"}) {
+	if !slices.Equal(f.ws.computed, []string{""}) {
 		t.Errorf("computed %v", f.ws.computed)
 	}
 }
@@ -633,5 +633,26 @@ func TestShip_InterruptedExitsWith128PlusTheSignal(t *testing.T) {
 	}
 	if !f.ws.closed {
 		t.Error("release clone not removed")
+	}
+}
+
+func TestShip_ProjectKeepsDependencyResultsForDependsOn(t *testing.T) {
+	f := newShipFixture(t, shipMonorepoYAML)
+	f.monorepoResults()
+	f.ws.release = func(_ context.Context, req semrel.ReleaseRequest) (semrel.ProjectResult, error) {
+		hasCore := slices.ContainsFunc(req.Computed, func(r semrel.ProjectResult) bool {
+			return r.Project == "core" && r.NewReleasePublished
+		})
+		if !hasCore {
+			return semrel.ProjectResult{}, fmt.Errorf("%w: computed results lack core: %+v", semrel.ErrVersionMismatch, req.Computed)
+		}
+		return req.Expected, nil
+	}
+	code, _, stderr := f.run(t, "--yes", "--project", "web")
+	if code != 0 {
+		t.Fatalf("exit %d: %s", code, stderr)
+	}
+	if got := f.released(); !slices.Equal(got, []string{"web"}) {
+		t.Errorf("released %v, want only web", got)
 	}
 }

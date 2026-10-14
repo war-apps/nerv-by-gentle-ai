@@ -107,7 +107,11 @@ type shipRun struct {
 	dryRun, yes    bool
 	timeout        time.Duration
 
-	ws       shipWorkspace
+	ws shipWorkspace
+	// computed are every computed result, the dependencies of --project
+	// included: Release needs them for depends_on. results are the
+	// projects to ship (only --project's when given).
+	computed []semrel.ProjectResult
 	results  []semrel.ProjectResult
 	exec     shipplan.Executor
 	tokenEnv []string
@@ -226,12 +230,16 @@ func (s *shipRun) execute(ctx context.Context) ([]shipOutcome, error) {
 			s.branch, short(local), s.branch, short(head))
 	}
 
-	results, err := ws.Compute(ctx, s.project)
+	// Every project is computed, even with --project: Compute returns only
+	// the requested project, and Release needs the dependencies' results to
+	// apply depends_on.
+	results, err := ws.Compute(ctx, "")
 	if err != nil {
 		return nil, err
 	}
+	s.computed = results
 	if s.project != "" {
-		results = slices.DeleteFunc(results, func(r semrel.ProjectResult) bool { return r.Project != s.project })
+		results = slices.DeleteFunc(slices.Clone(results), func(r semrel.ProjectResult) bool { return r.Project != s.project })
 	}
 	s.results = results
 	return s.release(ctx)
@@ -460,7 +468,7 @@ func (s *shipRun) ship(ctx context.Context, it shipItem) error {
 		return nil
 	}
 
-	released, err := s.ws.Release(ctx, semrel.ReleaseRequest{Expected: r, Computed: s.results, Env: s.tokenEnv, Output: s.stderr})
+	released, err := s.ws.Release(ctx, semrel.ReleaseRequest{Expected: r, Computed: s.computed, Env: s.tokenEnv, Output: s.stderr})
 	if err != nil {
 		s.releaseFailed(ctx, it, vars, released, err)
 		return err

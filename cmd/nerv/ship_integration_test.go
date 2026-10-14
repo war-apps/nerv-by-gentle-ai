@@ -296,3 +296,35 @@ func TestIntegration_ShipMonorepoInOrder(t *testing.T) {
 		t.Errorf("marker:\n%s", strings.Join(got, "\n"))
 	}
 }
+
+// A dependent whose only change is a dependency's release is raised by
+// depends_on when shipped alone; the dependency is computed, not released.
+func TestIntegration_ShipProjectRaisedByDependsOn(t *testing.T) {
+	requireShipToolchain(t)
+	shipEnv(t)
+	cache := t.TempDir()
+	marker := filepath.Join(t.TempDir(), "marker.log")
+	origin, work := newShipRepos(t)
+	work.write("package.json", shipReleaseConfig)
+	work.write(".nerv/nerv.yaml", "release:\n  projects:\n"+
+		markerProject("core", "core", "core-v${version}", marker)+
+		markerProject("app", "app", "app-v${version}", marker)+
+		"      depends_on:\n        - project: core\n          bump: minor\n")
+	work.commit("chore: init", "core/a.txt", "app/a.txt")
+	work.git("tag", "core-v1.0.0")
+	work.git("tag", "app-v1.0.0")
+	work.commit("fix: core bug", "core/b.txt")
+	work.git("push", "-q", "origin", "main", "--tags")
+
+	code, stdout, stderr := runShipCommand(t, cache, "--cwd", work.dir, "--yes", "--project", "app")
+	if code != 0 {
+		t.Fatalf("ship --project app: exit %d\nstdout %s\nstderr %s", code, stdout, stderr)
+	}
+	tags := origin.git("tag", "--list")
+	if !strings.Contains(tags, "app-v1.1.0") || strings.Contains(tags, "core-v1.0.1") {
+		t.Errorf("origin tags %q: want app-v1.1.0 (raised by core's fix) and no core release", tags)
+	}
+	if got := readMarker(t, marker); len(got) == 0 || !strings.HasPrefix(got[0], "build app 1.1.0 app-v1.1.0") {
+		t.Errorf("marker:\n%s", strings.Join(got, "\n"))
+	}
+}
