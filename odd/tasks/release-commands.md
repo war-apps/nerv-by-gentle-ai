@@ -934,6 +934,21 @@ delegated (one writer). Test-first where a test expresses the defect.
   four commits are separate work units (argv runner, csproj writer,
   coverage check, plan and presets with their docs).
 
+### T5 review
+
+- Native review of 88562b0..c9095d8 (high risk, 4 lenses, user granted):
+  approved and acknowledged. Advisory: R1-nuget-key-argv (WARNING: the
+  NuGet API key is on `dotnet nuget push` argv, readable by other local
+  users through procfs on a shared host such as T2), R4-stale-coverage-
+  reports / R4-stale-nupkg-push / R3-stale-artifacts (WARNING: nothing
+  empties the artifacts directories, so old reports count toward coverage
+  and old packages get pushed), R3-csproj-nonatomic (WARNING: os.WriteFile
+  truncates first; the "unchanged on error" promise is false), R2-001
+  (WARNING: coverage message formatting duplicated), R2-002 (`context`
+  shadows the package), R2-003 (dead `NotesFile`), R2-004 (`writeJSON`
+  misnamed), R3-exec-windows-shims (npm/pnpm/yarn are .cmd shims on
+  Windows), R3-coverage-rounding-message.
+
 ## Next step
 
 Review of T5 (88562b0..6510255 plus this document), then the T5 pull
