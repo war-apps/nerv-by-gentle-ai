@@ -469,6 +469,36 @@ func TestLoad_PresetDefaults(t *testing.T) {
 	}
 }
 
+// workdir is normalised like every other path and timeout parses as a Go
+// duration; both are optional.
+func TestLoad_CommandWorkdirAndTimeout(t *testing.T) {
+	rel := mustLoad(t, `release:
+  projects:
+    - name: api
+      path: .
+      stages:
+        test: { run: "dotnet test", workdir: 'src\Api\', timeout: 10m }
+      hooks:
+        prepare:
+          - run: scripts/bump.sh
+          - run: build.ps1
+            shell: pwsh
+            workdir: ./tools/
+            timeout: 1h30m
+`)
+	p := rel.Projects[0]
+	if got := p.Stages["test"]; got.Workdir != "src/Api" || got.TimeoutDuration() != 10*time.Minute {
+		t.Errorf("stages.test = %+v (timeout %s), want workdir src/Api and 10m", got, got.TimeoutDuration())
+	}
+	hooks := p.Hooks["prepare"]
+	if hooks[0].Workdir != "" || hooks[0].TimeoutDuration() != 0 {
+		t.Errorf("hooks.prepare[0] = %+v, want no workdir and no timeout", hooks[0])
+	}
+	if hooks[1].Workdir != "tools" || hooks[1].TimeoutDuration() != 90*time.Minute {
+		t.Errorf("hooks.prepare[1] = %+v (timeout %s), want workdir tools and 1h30m", hooks[1], hooks[1].TimeoutDuration())
+	}
+}
+
 // The first yaml example of docs/release-commands.md must stay loadable.
 func TestLoad_DocumentedExample(t *testing.T) {
 	doc, err := os.ReadFile(filepath.Join("..", "..", "docs", "release-commands.md"))
@@ -597,6 +627,12 @@ func TestLoad_ValidationErrors(t *testing.T) {
 		{"unknown shell", one + "      hooks:\n        prepare: [{ run: x, shell: cmd }]\n", `release.projects[0].hooks.prepare[0].shell: unknown shell "cmd" (want node, pwsh or bash)`},
 		{"hook without run", one + "      hooks:\n        after_test: [{ shell: bash }]\n", `release.projects[0].hooks.after_test[0].run: required`},
 		{"reserved hook env", one + "      hooks:\n        success: [{ run: x, env: { NERV_RELEASE_VERSION: \"1\" } }]\n", `release.projects[0].hooks.success[0].env.NERV_RELEASE_VERSION: the NERV_RELEASE_ prefix is reserved`},
+		{"escaping stage workdir", one + "      stages:\n        test: { run: x, workdir: ../up }\n", `release.projects[0].stages.test.workdir: "../up" escapes the repository root`},
+		{"absolute hook workdir", one + "      hooks:\n        prepare: [{ run: x, workdir: /tmp }]\n", `release.projects[0].hooks.prepare[0].workdir: "/tmp" must be relative to the repository root`},
+		{"timeout not a duration", one + "      stages:\n        test: { run: x, timeout: soon }\n", `release.projects[0].stages.test.timeout: "soon" is not a duration such as 90s or 10m`},
+		{"timeout without unit", one + "      hooks:\n        success: [{ run: x, timeout: 90 }]\n", `release.projects[0].hooks.success[0].timeout: "90" is not a duration such as 90s or 10m`},
+		{"zero timeout", one + "      stages:\n        build: { run: x, timeout: 0s }\n", `release.projects[0].stages.build.timeout: "0s" must be positive`},
+		{"negative timeout", one + "      stages:\n        build: { run: x, timeout: -5m }\n", `release.projects[0].stages.build.timeout: "-5m" must be positive`},
 		{"unpinned semantic-release", "release:\n  semantic_release: { version: ^24 }\n  projects:\n    - name: a\n      path: .\n", `release.semantic_release.version: "^24" must be an exact version such as 24.2.3`},
 		{"unpinned extra plugin", "release:\n  semantic_release: { extra_plugins: [\"@semantic-release/exec\"] }\n  projects:\n    - name: a\n      path: .\n", `release.semantic_release.extra_plugins[0]: "@semantic-release/exec" must pin an exact version, e.g. "@semantic-release/exec@<version>"`},
 	}

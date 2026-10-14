@@ -20,6 +20,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"gopkg.in/yaml.v3"
 )
@@ -185,6 +186,23 @@ type Command struct {
 	// Env adds environment variables. The NERV_RELEASE_ prefix is reserved
 	// for the variables NERV itself passes (version, channel, tag, ...).
 	Env map[string]string `yaml:"env"`
+	// Workdir is the working directory, relative to the repository root.
+	// Default: empty, meaning the repository root.
+	Workdir string `yaml:"workdir"`
+	// Timeout bounds the command as a Go duration (90s, 10m, 1h30m); it
+	// must be positive. Default: empty, meaning no timeout. Read it through
+	// TimeoutDuration.
+	Timeout string `yaml:"timeout"`
+}
+
+// TimeoutDuration returns the command's timeout, 0 when it has none. Load
+// has validated it.
+func (c Command) TimeoutDuration() time.Duration {
+	d, err := time.ParseDuration(c.Timeout)
+	if err != nil || d <= 0 {
+		return 0
+	}
+	return d
 }
 
 // Project returns the project called name.

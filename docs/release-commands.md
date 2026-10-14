@@ -356,6 +356,8 @@ commands run in order.
 | `run` | required | Command line or script path. |
 | `shell` | `bash` | `node`, `pwsh` or `bash`. |
 | `env` | `{}` | Extra environment variables. Names starting with `NERV_RELEASE_` are reserved for the variables NERV passes (version, channel, tag, notes file, project). |
+| `workdir` | the repository root | Working directory, relative to the repository root (not to the project's `path`); absolute or escaping paths are rejected like any other path. |
+| `timeout` | none | Bound for the command, as a Go duration (`90s`, `10m`, `1h30m`); must be positive. When it expires the command and every process it started are killed and the stage or hook fails. |
 
 ## Validation
 
