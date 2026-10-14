@@ -1008,8 +1008,40 @@ behavioural failure once the new names existed, where a test can show it).
   R2-multipart-tail-handbuilt, R2-nuget-protocol-version-constant,
   R2-replacefile-closed-flag, R3-nupkg-glob-metachar.
 
+### T5 final pass
+
+Bounded final pass on the T5 follow-up review's findings (user authorized).
+Route: delegated (one writer). Test-first; `go test` exit codes captured
+directly.
+
+| Finding | Fix | Evidence |
+|---|---|---|
+| R4-nuget-partial-push-unreported, R3-partial-push-summary-lost | `pushNuGet` lists every upload (packages and `.snupkg`) up front; on a failure the error is `pushed: ...; already on the feed: ...; failed on <file>: <cause>; not attempted: ...` (`nothing pushed; ...` when the first one fails). The success summary uses the same `pushed:` wording. Docs: the partial-push message and how to retry. | RED: `TestPushNuGet_FailurePartWayNamesWhatTheFeedAccepted` got `pushing C.1.0.0.nupkg: HTTP 500 ...`. GREEN (statuses 201, 201, 409, 500 with a fifth package left unpushed; plus the first-package failure). |
+| R1-nuget-partial-key-echo | `errorText`: reads up to `errorBodyReadLimit` (64 KiB), redacts the whole key, cuts to `errorBodyShowLimit` (512), then replaces a trailing key prefix of 4 or more characters with `***`. | RED: `TestPushNuGet_KeyStraddlingTheErrorCutIsHidden` showed the key's first 4+ characters for a key at offsets 500 and 508. GREEN (offsets 500, 508, 511, 0). |
+| R4-nuget-put-body-not-rewindable, R2-multipart-tail-handbuilt | New `uploadRequest`: `GetBody` reopens the file and rebuilds the same head + file + tail. A comment says why the closing boundary is hand-built: the body is streamed with a known ContentLength, and `multipart.Writer` only closes a part it wrote whole. | RED: `undefined: uploadRequest`. GREEN: `TestUploadRequest_BodyParsesAndRewinds` (ContentLength equals the body, `GetBody` gives identical bytes, `mime/multipart` parses one `package` / `package.nupkg` part and then `io.EOF`). |
+| R3-nupkg-glob-metachar | `nupkgs`: `os.ReadDir` filtered to regular `*.nupkg` files (name order), no glob. | RED: `TestPushNuGet_DirectoryNameWithGlobCharacters` (`art[1]`) got "no *.nupkg". GREEN; a directory named `Dir.1.0.0.nupkg` is not pushed. |
+| R3-atomic-test-close-leak | Test fake: `Close` calls the real Close first, then returns the injected error. | RED: the new assertion (the real file is closed, `Write` gives `os.ErrClosed`) failed for the close case. GREEN; the original stays byte-identical and no temp file remains. |
+| R2-nugetpush-client-param-unused | Kept the parameter. `defaultPushClient()` (each request bounded by `nugetPushTimeout`, 10 min, documented in the code and the docs); a test injects a 200 ms client against a hanging feed. | RED: `undefined: defaultPushClient`. GREEN: fails as `failed on A.1.0.0.nupkg` well under 5s. |
+| R2-nuget-protocol-version-constant | `serviceIndexLimit` (8 MiB), `errorBodyReadLimit` and `errorBodyShowLimit` are named with a rationale. For `"4.1.0"` no rationale could be verified: the real NuGet 7.0.3 push (captured in the follow-ups) sends `X-NuGet-ApiKey`, `X-NuGet-Client-Version` and `X-NuGet-Session-Id`, and no `X-NuGet-Protocol-Version`. So the header was removed (deviation from the request, to match the real client). | `TestUploadRequest_SendsOnlyTheHeadersTheNuGetClientSends` written with the change. |
+| R2-replacefile-closed-flag | Renamed `closeAttempted`, with a comment (a failed Close has still released the file). | Refactor; tests green. |
+
+- Checks: `go test -count=1 ./...` exit 0 (27 packages ok); smoke tests
+  `go test -count=1 -run Smoke -v ./internal/shipplan/` exit 0 (dotnet
+  10.56s: setup 2.7s, pipeline 7.9s; docker 0.29s); `go vet ./...` exit 0;
+  `GOOS=windows go vet ./...` exit 0; `gofmt -l .` exit 0, no output.
+- Commits: `76ef2ce` `fix(shipplan): name the packages a failed nuget push
+  already delivered` (4 files, +79 -22); `2c06212` `fix(shipplan): redact
+  the nuget key before cutting a feed's error text` (2 files, +49 -2);
+  `6df7f4e` `fix(shipplan): let net/http resend a nuget upload body` (2
+  files, +107 -26); `76e69a0` `fix(shipplan): list nuget packages without
+  glob patterns` (2 files, +40 -5); `5523a53` `test(shipplan): close the
+  real temp file on an injected close failure` (1 file, +15 -2);
+  `d461038` `refactor(shipplan): name the nuget push limits and keep only
+  the client's headers` (4 files, +61 -9). Total `git diff --shortstat
+  19473b5 d461038`: 6 files changed, 348 insertions(+), 63 deletions(-).
+
 ## Next step
 
-Review of the T5 follow-ups (288701f..1d8edbf), then the T5 pull request,
+Review of the T5 final pass (19473b5..d461038), then the T5 pull request,
 then T6 (`nerv ship`; open: write the csproj before the pipeline so the
 nupkg carries the release notes).
