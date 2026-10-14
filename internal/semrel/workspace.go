@@ -1,0 +1,375 @@
+package semrel
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"io"
+	"net/url"
+	"os"
+	"path/filepath"
+	"strings"
+	"time"
+
+	"github.com/war-apps/nerv-by-gentle-ai/internal/shipconfig"
+)
+
+// ErrNoOrigin is returned by NewWorkspace for a repository without an origin
+// remote: nerv ship releases what is on origin.
+var ErrNoOrigin = errors.New("the repository has no origin remote")
+
+// ErrVersionMismatch is wrapped by Workspace.Release when semantic-release
+// would release (or released) another version than the one computed and
+// confirmed before; the runner stops semantic-release at its verifyRelease
+// step in that case, so nothing is tagged.
+var ErrVersionMismatch = errors.New("semantic-release did not release the computed version")
+
+// ErrPushDenied is wrapped by Workspace.CheckPush when git cannot push to
+// origin with the user's own credentials.
+var ErrPushDenied = errors.New("git cannot push to origin")
+
+// WorkspaceOptions select the release clone NewWorkspace creates.
+type WorkspaceOptions struct {
+	// RepoRoot is any directory inside the user's repository.
+	RepoRoot string
+	// Branch is the branch to release. Required.
+	Branch string
+	// Env is the environment of git and node; nil means os.Environ().
+	Env []string
+	// CacheDir is the base of the semantic-release cache; empty means the
+	// default (see Options.CacheDir).
+	CacheDir string
+	// FetchTimeout bounds each read of origin (the fetch, the push check, the
+	// tag check); zero means DefaultFetchTimeout.
+	FetchTimeout time.Duration
+}
+
+// Workspace is the release clone of nerv ship: a fresh clone of the user's
+// repository in a temporary directory (never a worktree of it, so the
+// user's repository is never modified), holding exactly origin's branches,
+// tags and semantic-release notes, checked out on origin's commit of the
+// branch. Its origin remote is origin's push address without credentials;
+// the real URL, when it differs (it carries credentials), is given to git
+// only through the environment (url.<real>.insteadOf), so no command line
+// ever shows it. Close removes everything.
+type Workspace struct {
+	e       *Engine
+	root    string
+	dir     string
+	branch  string
+	env     []string
+	pushURL string
+	public  string
+	head    string
+	cache   string
+	timeout time.Duration
+}
+
+// NewWorkspace creates a release clone with the default engine. See
+// Engine.NewWorkspace.
+func NewWorkspace(ctx context.Context, opts WorkspaceOptions) (*Workspace, error) {
+	return (&Engine{}).NewWorkspace(ctx, opts)
+}
+
+// NewWorkspace clones the user's repository (sharing its objects, without
+// tags or a checkout) into a new temporary directory, points the clone's
+// origin at the user's origin, fetches origin's branches (pruning the
+// user's local ones), tags and notes, and checks the branch out at
+// origin's commit when origin has it (OriginHead is empty otherwise). A
+// repository without origin gives ErrNoOrigin; an unreadable origin wraps
+// ErrOriginFetch. On error nothing is left behind.
+func (e *Engine) NewWorkspace(ctx context.Context, opts WorkspaceOptions) (*Workspace, error) {
+	if opts.Branch == "" {
+		return nil, errors.New("release clone: a branch is required")
+	}
+	env := opts.Env
+	if env == nil {
+		env = os.Environ()
+	}
+	timeout := opts.FetchTimeout
+	if timeout <= 0 {
+		timeout = DefaultFetchTimeout
+	}
+	top, err := e.git(ctx, opts.RepoRoot, env, "rev-parse", "--show-toplevel")
+	if err != nil {
+		return nil, fmt.Errorf("not a git repository: %w", err)
+	}
+	top = filepath.Clean(top)
+	raw, err := e.git(ctx, top, env, "remote", "get-url", "origin")
+	if err != nil || raw == "" {
+		return nil, ErrNoOrigin
+	}
+	resolved := resolveRemoteURL(raw, top)
+	pushURL, err := pushAddress(raw, resolved)
+	if err != nil {
+		return nil, err
+	}
+	sshCommand, _ := e.git(ctx, top, env, "config", "--get", "core.sshCommand")
+	wenv := env
+	if resolved != pushURL {
+		wenv = withGitConfig(wenv, "url."+resolved+".insteadOf", pushURL)
+	}
+	wenv = promptFreeEnv(wenv, sshCommand)
+
+	root, err := os.MkdirTemp("", "nerv-ship-")
+	if err != nil {
+		return nil, err
+	}
+	w := &Workspace{e: e, root: root, dir: filepath.Join(root, filepath.Base(top)), branch: opts.Branch, env: wenv,
+		pushURL: pushURL, public: publicURL(raw), cache: opts.CacheDir, timeout: timeout}
+	if err := w.init(ctx, top, env); err != nil {
+		os.RemoveAll(root)
+		return nil, err
+	}
+	return w, nil
+}
+
+func (w *Workspace) init(ctx context.Context, top string, env []string) error {
+	for _, d := range []string{w.ArtifactsDir(), w.NotesDir()} {
+		if err := os.MkdirAll(d, 0o700); err != nil {
+			return err
+		}
+	}
+	e := w.e
+	if _, err := e.git(ctx, top, env, "clone", "--quiet", "--shared", "--no-checkout", "--no-tags", top, w.dir); err != nil {
+		return fmt.Errorf("cloning the repository for the release: %w", err)
+	}
+	if _, err := e.git(ctx, w.dir, env, "remote", "set-url", "origin", w.pushURL); err != nil {
+		return fmt.Errorf("setting the release clone's origin: %w", err)
+	}
+	fctx, cancel := context.WithTimeout(ctx, w.timeout)
+	defer cancel()
+	_, err := e.git(fctx, w.dir, w.env, "fetch", "--quiet", "--prune", "--no-write-fetch-head", "origin",
+		"+refs/heads/*:refs/remotes/origin/*", "+refs/tags/*:refs/tags/*", "+refs/notes/*:refs/notes/*")
+	switch {
+	case err == nil:
+	case errors.Is(fctx.Err(), context.DeadlineExceeded) && ctx.Err() == nil:
+		return fmt.Errorf("reading origin (%s) timed out after %s: %w", redact(w.pushURL), w.timeout, ErrOriginFetch)
+	default:
+		return fmt.Errorf("reading origin (%s): %w: %w", redact(w.pushURL), ErrOriginFetch, err)
+	}
+	ref := "refs/remotes/origin/" + w.branch
+	// rev-parse --verify --quiet exits 1 when origin has no such branch.
+	if head, err := e.git(ctx, w.dir, env, "rev-parse", "--verify", "--quiet", ref); err == nil {
+		w.head = head
+	}
+	if w.head == "" {
+		return nil
+	}
+	if _, err := e.git(ctx, w.dir, env, "checkout", "--quiet", "--no-track", "-B", w.branch, ref); err != nil {
+		return fmt.Errorf("checking out origin's %s: %w", w.branch, err)
+	}
+	return nil
+}
+
+// Dir is the clone's top-level directory, named like the user's repository.
+func (w *Workspace) Dir() string { return w.dir }
+
+// ArtifactsDir is a directory outside the clone for build outputs.
+func (w *Workspace) ArtifactsDir() string { return filepath.Join(w.root, "artifacts") }
+
+// NotesDir is a directory outside the clone for release-notes files.
+func (w *Workspace) NotesDir() string { return filepath.Join(w.root, "notes") }
+
+// OriginHead is origin's commit of the branch; empty when origin has no such
+// branch (nothing is checked out then).
+func (w *Workspace) OriginHead() string { return w.head }
+
+// PublicURL is origin's address without credentials, for links; empty for a
+// local origin.
+func (w *Workspace) PublicURL() string { return w.public }
+
+// Close removes the clone and every file the workspace wrote.
+func (w *Workspace) Close() error { return os.RemoveAll(w.root) }
+
+// Compute computes the next release of each project (only project, with its
+// dependencies, when not empty) from the clone, as Compute does. The clone
+// already holds origin's branches, tags and notes, so origin is not read
+// again.
+func (w *Workspace) Compute(ctx context.Context, project string) ([]ProjectResult, error) {
+	return w.e.Compute(ctx, Options{RepoRoot: w.dir, Branch: w.branch, Project: project, Env: w.env, CacheDir: w.cache, Offline: true})
+}
+
+// CheckPush checks, as semantic-release does before releasing, that git can
+// push the branch to origin with the user's own credentials (ssh keys, a
+// credential helper such as `gh auth setup-git`). Checking first keeps
+// semantic-release from falling back to a token embedded in the push URL,
+// which would put it on git's command line.
+func (w *Workspace) CheckPush(ctx context.Context) error {
+	fctx, cancel := context.WithTimeout(ctx, w.timeout)
+	defer cancel()
+	if _, err := w.e.git(fctx, w.dir, w.env, "push", "--dry-run", "--no-verify", "--quiet", "origin", "HEAD:refs/heads/"+w.branch); err != nil {
+		return fmt.Errorf("%w (%s) with your credentials; set up ssh keys or a credential helper (for GitHub over https: gh auth setup-git): %w", ErrPushDenied, redact(w.pushURL), err)
+	}
+	return nil
+}
+
+// TagOnOrigin reports whether origin has the tag.
+func (w *Workspace) TagOnOrigin(ctx context.Context, tag string) (bool, error) {
+	fctx, cancel := context.WithTimeout(ctx, w.timeout)
+	defer cancel()
+	out, err := w.e.git(fctx, w.dir, w.env, "ls-remote", "--tags", "origin", "refs/tags/"+tag)
+	if err != nil {
+		return false, err
+	}
+	return out != "", nil
+}
+
+// ReleaseRequest is one real semantic-release run in a Workspace.
+type ReleaseRequest struct {
+	// Expected is the project's computed result: its project name selects
+	// the project and its version is the only one semantic-release may
+	// release.
+	Expected ProjectResult
+	// Computed are every project's computed results, for depends_on.
+	Computed []ProjectResult
+	// Env is added to the runner's environment (GH_TOKEN, ...); it is never
+	// put on a command line.
+	Env []string
+	// Output receives semantic-release's log; nil discards it.
+	Output io.Writer
+}
+
+// Release runs semantic-release for real in the clone for one project, with
+// the repository's own configuration and plugins (no dry run, ci false; the
+// project's tagFormat, commit filter and depends_on raise as in Compute),
+// pushing to origin. semantic-release is stopped at its verifyRelease step,
+// before any tag, when its next version is not req.Expected's
+// (ErrVersionMismatch); a release of another version, or none, is
+// ErrVersionMismatch too.
+func (w *Workspace) Release(ctx context.Context, req ReleaseRequest) (ProjectResult, error) {
+	e := w.e
+	rel, err := shipconfig.Load(w.dir)
+	if errors.Is(err, shipconfig.ErrNotConfigured) {
+		rel, err = nil, nil
+	}
+	if err != nil {
+		return ProjectResult{}, err
+	}
+	projects, err := planProjects(rel, filepath.Base(w.dir), "")
+	if err != nil {
+		return ProjectResult{}, err
+	}
+	var p *project
+	for i := range projects {
+		if projects[i].Name == req.Expected.Project {
+			p = &projects[i]
+		}
+	}
+	if p == nil {
+		return ProjectResult{}, fmt.Errorf("project %q is not in the release clone's configuration", req.Expected.Project)
+	}
+	if !req.Expected.NewReleasePublished || req.Expected.NewReleaseVersion == "" {
+		return ProjectResult{}, fmt.Errorf("project %s: no computed release to make", p.Name)
+	}
+	env := append(append([]string(nil), w.env...), req.Env...)
+	cacheDir, specs, err := e.prepareNode(ctx, env, rel, []project{*p}, w.cache)
+	if err != nil {
+		return ProjectResult{}, err
+	}
+	scriptDir, err := os.MkdirTemp(w.root, "runner-")
+	if err != nil {
+		return ProjectResult{}, err
+	}
+	defer os.RemoveAll(scriptDir)
+	if err := writeRunner(scriptDir); err != nil {
+		return ProjectResult{}, err
+	}
+	script := filepath.Join(scriptDir, runnerMain)
+	if err := e.checkPlan(ctx, script, w.dir, env, cacheDir, specs); err != nil {
+		return ProjectResult{}, err
+	}
+	byName := map[string]ProjectResult{}
+	for _, r := range req.Computed {
+		byName[r.Project] = r
+	}
+	expected := req.Expected.NewReleaseVersion
+	resp, err := e.node(ctx, script, w.dir, nodeEnv(env), runnerRequest{
+		Mode:             "release",
+		CacheDir:         cacheDir,
+		Cwd:              w.dir,
+		RepositoryURL:    w.pushURL,
+		TagFormat:        p.TagFormat,
+		Filter:           p.Filter,
+		MinReleaseType:   minReleaseType(p.DependsOn, byName),
+		ExpectedVersion:  expected,
+		CommitFilesCache: filepath.Join(w.root, "commit-files.json"),
+	}, req.Output)
+	if err != nil {
+		if strings.Contains(err.Error(), versionMismatchCode) {
+			return ProjectResult{}, fmt.Errorf("project %s: %w: %w", p.Name, ErrVersionMismatch, err)
+		}
+		return ProjectResult{}, fmt.Errorf("project %s: %w", p.Name, err)
+	}
+	r := normalize(p.Name, w.branch, resp)
+	if !r.NewReleasePublished {
+		return r, fmt.Errorf("project %s: %w: computed %s, semantic-release released nothing (see its log); nothing was tagged", p.Name, ErrVersionMismatch, expected)
+	}
+	if r.NewReleaseVersion != expected {
+		return r, fmt.Errorf("project %s: %w: computed %s, semantic-release released %s (tag %s)", p.Name, ErrVersionMismatch, expected, r.NewReleaseVersion, r.NewReleaseGitTag)
+	}
+	return r, nil
+}
+
+// versionMismatchCode is the error code the runner's verifyRelease guard
+// throws (runner/nerv-semrel.mjs).
+const versionMismatchCode = "ENERVVERSIONMISMATCH"
+
+// pushAddress is the address semantic-release pushes to and names: origin's
+// URL without credentials (publicURL), or, for a local origin, its resolved
+// path. Other addresses cannot be used.
+func pushAddress(raw, resolved string) (string, error) {
+	if public := publicURL(raw); public != "" {
+		return public, nil
+	}
+	if isLocalRemote(raw) {
+		return resolved, nil
+	}
+	return "", fmt.Errorf("origin's URL (%s) is neither a network address (https, ssh, git) nor a local path: nerv ship cannot release to it", redact(raw))
+}
+
+// isLocalRemote reports whether a remote URL is a local repository: a path
+// or a file: URL.
+func isLocalRemote(raw string) bool {
+	switch {
+	case strings.HasPrefix(strings.ToLower(raw), "file:"), driveRe.MatchString(raw), filepath.IsAbs(raw):
+		return true
+	case urlSchemeRe.MatchString(raw), scpLikeRe.MatchString(raw):
+		return false
+	}
+	return raw != ""
+}
+
+// ReleaseURL is the release page of tag in the repository at public (a
+// publicURL), https://<host>/<owner>/<repo>/releases/tag/<tag>, as
+// dim.comprobantes.api's bump-csproj.sh writes it: ssh and git addresses
+// become https (without the ssh port); http(s) keep their scheme and port.
+// Empty when there is no public address or no tag.
+func ReleaseURL(public, tag string) string {
+	if public == "" || tag == "" {
+		return ""
+	}
+	scheme, host, path := "https", "", ""
+	switch {
+	case urlSchemeRe.MatchString(public):
+		u, err := url.Parse(public)
+		if err != nil {
+			return ""
+		}
+		host, path = u.Hostname(), u.Path
+		if s := strings.ToLower(u.Scheme); s == "http" || s == "https" {
+			scheme, host = s, u.Host
+		}
+	case scpLikeRe.MatchString(public):
+		h, p, _ := strings.Cut(public, ":")
+		if i := strings.LastIndex(h, "@"); i >= 0 {
+			h = h[i+1:]
+		}
+		host, path = h, p
+	}
+	path = strings.TrimSuffix(strings.Trim(path, "/"), ".git")
+	if host == "" || path == "" {
+		return ""
+	}
+	return scheme + "://" + host + "/" + path + "/releases/tag/" + strings.ReplaceAll(url.PathEscape(tag), "%2F", "/")
+}

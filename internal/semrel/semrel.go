@@ -19,6 +19,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -105,27 +106,7 @@ func (e *Engine) Compute(ctx context.Context, opts Options) ([]ProjectResult, er
 	if err != nil {
 		return nil, err
 	}
-	if needsPathFilter(projects) {
-		if err := e.checkGitForPathFilter(ctx, env); err != nil {
-			return nil, err
-		}
-	}
-	if err := e.checkNode(ctx, env); err != nil {
-		return nil, err
-	}
-
-	srVersion, extras := shipconfig.DefaultSemanticReleaseVersion, []string(nil)
-	if rel != nil {
-		srVersion, extras = rel.SemanticRelease.Version, rel.SemanticRelease.ExtraPlugins
-	}
-	specs := pinnedSpecs(srVersion, extras)
-	base := opts.CacheDir
-	if base == "" {
-		if base, err = defaultCacheBase(); err != nil {
-			return nil, err
-		}
-	}
-	cacheDir, err := e.ensureCache(ctx, base, specs)
+	cacheDir, specs, err := e.prepareNode(ctx, env, rel, projects, opts.CacheDir)
 	if err != nil {
 		return nil, err
 	}
@@ -174,13 +155,9 @@ func (e *Engine) Compute(ctx context.Context, opts Options) ([]ProjectResult, er
 		node := func(req runnerRequest) (runnerResponse, error) {
 			req.CacheDir, req.Cwd = cacheDir, wt
 			req.CommitFilesCache = filepath.Join(filepath.Dir(mirror), "commit-files.json")
-			return e.node(ctx, script, wt, nodeEnv(env), req)
+			return e.node(ctx, script, wt, nodeEnv(env), req, nil)
 		}
-		plan, err := node(runnerRequest{Mode: "plan"})
-		if err != nil {
-			return err
-		}
-		if err := checkPins(plan.Packages, plan.Unresolved, specs); err != nil {
+		if err := e.checkPlan(ctx, script, wt, env, cacheDir, specs); err != nil {
 			return err
 		}
 		byName := map[string]ProjectResult{}
@@ -204,6 +181,48 @@ func (e *Engine) Compute(ctx context.Context, opts Options) ([]ProjectResult, er
 		return nil
 	})
 	return results, err
+}
+
+// prepareNode checks git (for path filters) and node, and installs the
+// pinned semantic-release packages the release section needs into the cache
+// under cacheBase (empty: the default base); it returns the cache directory
+// and the pinned specs.
+func (e *Engine) prepareNode(ctx context.Context, env []string, rel *shipconfig.Release, projects []project, cacheBase string) (string, []string, error) {
+	if needsPathFilter(projects) {
+		if err := e.checkGitForPathFilter(ctx, env); err != nil {
+			return "", nil, err
+		}
+	}
+	if err := e.checkNode(ctx, env); err != nil {
+		return "", nil, err
+	}
+	srVersion, extras := shipconfig.DefaultSemanticReleaseVersion, []string(nil)
+	if rel != nil {
+		srVersion, extras = rel.SemanticRelease.Version, rel.SemanticRelease.ExtraPlugins
+	}
+	specs := pinnedSpecs(srVersion, extras)
+	if cacheBase == "" {
+		var err error
+		if cacheBase, err = defaultCacheBase(); err != nil {
+			return "", nil, err
+		}
+	}
+	cacheDir, err := e.ensureCache(ctx, cacheBase, specs)
+	if err != nil {
+		return "", nil, err
+	}
+	return cacheDir, specs, nil
+}
+
+// checkPlan runs the runner's plan mode in dir and fails when the
+// repository's configuration needs a package that is neither bundled nor
+// pinned.
+func (e *Engine) checkPlan(ctx context.Context, script, dir string, env []string, cacheDir string, specs []string) error {
+	plan, err := e.node(ctx, script, dir, nodeEnv(env), runnerRequest{Mode: "plan", CacheDir: cacheDir, Cwd: dir}, nil)
+	if err != nil {
+		return err
+	}
+	return checkPins(plan.Packages, plan.Unresolved, specs)
 }
 
 // writeRunner writes the embedded runner files into dir.
@@ -312,13 +331,14 @@ func (e *Engine) fetchOrigin(ctx context.Context, mirror string, remote origin, 
 	return fmt.Errorf("reading branches, release tags and notes from origin (%s; needed for the branch set and release channels; use offline mode to rely on the local tags only): %w: %w", redact(remote.URL), ErrOriginFetch, err)
 }
 
-// node runs the embedded runner with one request.
-func (e *Engine) node(ctx context.Context, script, dir string, env []string, req runnerRequest) (runnerResponse, error) {
+// node runs the embedded runner with one request. semantic-release's log
+// (the runner's stderr) is streamed to logOutput when it is not nil.
+func (e *Engine) node(ctx context.Context, script, dir string, env []string, req runnerRequest, logOutput io.Writer) (runnerResponse, error) {
 	stdin, err := json.Marshal(req)
 	if err != nil {
 		return runnerResponse{}, err
 	}
-	res, runErr := e.runner().Run(ctx, Command{Name: "node", Args: []string{script}, Dir: dir, Env: env, Stdin: stdin})
+	res, runErr := e.runner().Run(ctx, Command{Name: "node", Args: []string{script}, Dir: dir, Env: env, Stdin: stdin, Stderr: logOutput})
 	resp, err := parseResponse(res.Stdout, res.Stderr)
 	if err != nil {
 		return resp, err

@@ -77,6 +77,9 @@ type runnerRequest struct {
 	// CommitFilesCache is a file the runner keeps the files of each commit
 	// in, shared by the projects of one run (one git listing per commit).
 	CommitFilesCache string `json:"commitFilesCache,omitempty"`
+	// ExpectedVersion, in release mode, is the only version semantic-release
+	// may release: any other stops it before the tag.
+	ExpectedVersion string `json:"expectedVersion,omitempty"`
 }
 
 // commitFilter keeps the commits that touch Paths or carry one of Scopes.

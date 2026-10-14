@@ -106,18 +106,32 @@ func isSSH(cmd string) bool {
 // remote (GIT_CONFIG_COUNT, extending any count already set), no credential
 // or ssh prompt, and no Git Credential Manager dialog.
 func fetchEnv(env []string, o origin) []string {
+	return promptFreeEnv(withGitConfig(env, "remote."+originRemote+".url", o.URL), o.SSHCommand)
+}
+
+// withGitConfig returns env with one more git configuration entry, key =
+// value, given through GIT_CONFIG_COUNT/GIT_CONFIG_KEY_n/GIT_CONFIG_VALUE_n
+// (extending any count already set): the value never reaches a command line.
+func withGitConfig(env []string, key, value string) []string {
 	out := slices.Clone(env)
 	n := 0
 	if v, ok := lookupEnv(env, "GIT_CONFIG_COUNT"); ok {
 		n, _ = strconv.Atoi(v)
 	}
 	idx := strconv.Itoa(n)
-	out = setEnv(out, "GIT_CONFIG_KEY_"+idx, "remote."+originRemote+".url")
-	out = setEnv(out, "GIT_CONFIG_VALUE_"+idx, o.URL)
-	out = setEnv(out, "GIT_CONFIG_COUNT", strconv.Itoa(n+1))
+	out = setEnv(out, "GIT_CONFIG_KEY_"+idx, key)
+	out = setEnv(out, "GIT_CONFIG_VALUE_"+idx, value)
+	return setEnv(out, "GIT_CONFIG_COUNT", strconv.Itoa(n+1))
+}
+
+// promptFreeEnv returns env for git commands that talk to origin: no
+// credential or ssh prompt (see fetchSSHCommand for the ssh command, given
+// the repository's core.sshCommand) and no Git Credential Manager dialog.
+func promptFreeEnv(env []string, sshCommand string) []string {
+	out := slices.Clone(env)
 	out = setEnv(out, "GIT_TERMINAL_PROMPT", "0")
 	out = setEnv(out, "GCM_INTERACTIVE", "never")
-	if ssh, ok := fetchSSHCommand(env, o.SSHCommand); ok {
+	if ssh, ok := fetchSSHCommand(env, sshCommand); ok {
 		out = setEnv(out, "GIT_SSH_COMMAND", ssh)
 	}
 	return out
