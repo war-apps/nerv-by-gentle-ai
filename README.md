@@ -313,7 +313,7 @@ example YAML, and how to configure per-role models and effort (wizard,
   for your own repositories: `nerv version next` / `/nerv:version` (the next
   semantic version of a repo or of each monorepo project), `nerv ship` /
   `/nerv:ship` (a local release of what is on origin) and the `release:`
-  section.
+  section, which `/nerv:release-setup` writes interactively.
 - [docs/troubleshooting.md](docs/troubleshooting.md) — known limitations
   and troubleshooting.
 

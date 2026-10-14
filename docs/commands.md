@@ -13,6 +13,7 @@ Nerv by Gentle-AI has two command surfaces: Claude Code slash commands
 | `/nerv:status` | Show NERV activation, config resolution, and change status (read-only) |
 | `/nerv:version` | Show the next release version of the repository (or of each project) |
 | `/nerv:ship` | Release the repository from origin: dry run first, the real release only after your explicit yes |
+| `/nerv:release-setup` | Write the `release:` section of `.nerv/nerv.yaml` from what the repository has, asking only what it cannot detect |
 
 ### /nerv:configure
 
@@ -71,6 +72,23 @@ origin: push or pull first when your branch differs.
 
 ```
 /nerv:ship --branch develop --project api
+```
+
+### /nerv:release-setup
+
+Sets up the `release:` section used by `/nerv:version` and `/nerv:ship`.
+It detects the repository's semantic-release configuration, .NET projects
+and solutions, Dockerfiles and CI docker steps, `package.json` scripts,
+release scripts and monorepo layout; proposes a complete section; asks
+only what it cannot detect, one question at a time; writes the section
+into `.nerv/nerv.yaml` without touching the rest of the file; and
+validates it with `nerv version next --offline`. An existing section is
+shown first and never overwritten without asking. `--project <name>` adds
+or edits one project. It never commits, pushes or releases. See
+[release-commands.md](release-commands.md#interactive-setup).
+
+```
+/nerv:release-setup
 ```
 
 ### /nerv:status
