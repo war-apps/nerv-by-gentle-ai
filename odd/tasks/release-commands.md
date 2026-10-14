@@ -792,7 +792,37 @@ delegated (one writer). Test-first.
   dropping inherited `NERV_RELEASE_*` variables, and skipping WSL's bash
   launcher on Windows.
 
+### T4 follow-ups
+
+All nine advisory findings of the T4 review fixed (user authorized). Route:
+delegated (one writer). Test-first where a test expresses the defect.
+
+| Finding | Fix | Evidence |
+|---|---|---|
+| R4-pwsh-stale-lastexitcode | The inline pwsh epilogue is `exit 0`: a command that ran to its end exits 0; an uncaught error (an unhandled native failure included, through the prelude) exits 1; `exit N` exits N. Verified first on pwsh 7.6.6: `try { git rev-parse --verify refs/heads/nope } catch {}` left `$LASTEXITCODE` 128. | RED: `TestReal_PwshExitCodeFollowsHowTheScriptEnded` "handled with try/catch" and "checked and continued" got 128 (want 0); "later native success", "unhandled native failure" (1), "explicit exit" (5), "throw" (1) already passed. GREEN. |
+| R2-env-parallel-arrays | One ordered `envTable` of `{name, value(Vars, repoRoot, stage)}`; `EnvVars` derived from it; `environment` iterates the table. | `TestEnvTable_NamesUniqueValuedAndDocumented` (unique names, a value from a filled `Vars`, each documented in `docs/release-commands.md`); refactor, no behavioural RED (failed to build until the table existed). |
+| R3-symlink-script-escape | `scriptFile` resolves the root and the file with `filepath.EvalSymlinks`; a script file whose real path is outside the real root is an error wrapping the new `ErrOutsideRepository` (never an inline fallback). A symlink staying inside runs normally. | RED: `TestRun_SymlinkedScriptOutsideTheRepository` (file symlink and symlinked directory) ran `./scripts/link.sh` / `./vendor/tool.sh`. GREEN. |
+| R1-001 | `Run` checks the resolved workdir with the same `insideRepository` (EvalSymlinks + `Rel` + `IsLocal`), for a hand-built Command and symlinked directories. | RED: `TestRun_WorkdirOutsideTheRepository` (`../sibling`, symlink `out`, `src/../../sibling`) ran the command. GREEN. |
+| R2-dangling-doc-ref | Package doc points at the shell rules above `scriptFile`/`shellArgs` in shell.go. | Doc only. |
+| R2-duplicated-path-normalisation | `scriptFile` returns the clean forward-slash path once; `shellArgs` joins it; `StepError.Script` is that path. | RED: `TestRun_ScriptPathIsCheckedAndRunAsOne` got `StepError.Script` `scripts\\.\\build.sh`. GREEN (runs `./scripts/build.sh`). |
+| R2-magic-programs-sentinel | `ProgramFiles` and `LocalAppData` are checked for emptiness before joining; the `"Programs"` sentinel is gone. | `TestWindowsBash` stays GREEN. |
+| R2-dead-total-counter | Removed from `TestTailBuffer_KeepsTheLastBytes`. | Test change only. |
+| R3-output-write-error-untested | Test only: `TestReal_OutputWriteErrorIsReportedAfterTheScript` (writer fails after one write; a 2000-line bash script still writes its end marker, only line1 reached the writer, Run returns a `StepError` "writing its output: output closed"). | Passed at once (behaviour already correct). |
+
+- Public API: added `shiprun.ErrOutsideRepository`; `EnvVars` unchanged.
+- Docs: `docs/release-commands.md` (pwsh exit-code rule, epilogue
+  `exit 0`, symlinked scripts and workdir refused).
+- Checks: `go test ./...` ok (26 packages), `go test -race -count=1
+  ./internal/proc/ ./internal/shiprun/` ok, `go test -tags
+  semrel_integration -run Integration -count=1 ./internal/semrel/` ok
+  (29.9s), `go vet ./...` and `GOOS=windows go vet ./...` clean, `gofmt
+  -l .` empty.
+- Commits: `c4df6cf` `test(proc): drop an unused byte counter from the
+  tail buffer test` (1 file changed, 2 deletions(-)); `edc46c8`
+  `fix(shiprun): exit pwsh by how it ended and keep scripts inside the
+  repo` (6 files changed, 339 insertions(+), 64 deletions(-)).
+
 ## Next step
 
-Review of the T4 commits (26d0544..c34f47b), then the T4 pull request,
+Review of the T4 follow-ups (085ff1e..edc46c8), then the T4 pull request,
 then T5 (pipeline stages and built-in presets on top of `internal/shiprun`).
