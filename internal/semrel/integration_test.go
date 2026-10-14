@@ -275,6 +275,11 @@ func TestIntegration_MonorepoPathOrScope(t *testing.T) {
 	if strings.Contains(got["api"].NewReleaseNotes, "typo") {
 		t.Errorf("api notes include another project's commit:\n%s", got["api"].NewReleaseNotes)
 	}
+	// The origin is a local repository: there is no page to link to, so the
+	// notes have no links (never https:/<local path>/...).
+	if notes := got["api"].NewReleaseNotes; !strings.Contains(notes, "share the client with web") || strings.Contains(notes, "](") || strings.Contains(notes, "https:/") {
+		t.Errorf("api notes with a local origin:\n%s", notes)
+	}
 	if cli := got["cli"]; cli.NewReleasePublished || cli.LastReleaseVersion != "1.0.0" {
 		t.Errorf("cli (untouched): %+v", cli)
 	}
@@ -341,5 +346,86 @@ func TestIntegration_UnpinnedPlugin(t *testing.T) {
 	_, err := Compute(context.Background(), Options{RepoRoot: r.dir, Branch: "main", Env: testEnv(), CacheDir: integrationCache})
 	if err == nil || !strings.Contains(err.Error(), "semantic-release-slack-bot") || !strings.Contains(err.Error(), "extra_plugins") {
 		t.Fatalf("err = %v", err)
+	}
+}
+
+// TestIntegration_NotesLinkThePublicOrigin: with no repository in the
+// configuration or package.json, the notes link to the user's origin (as in
+// CI), without its credentials, offline too; with no origin they have no
+// links.
+func TestIntegration_NotesLinkThePublicOrigin(t *testing.T) {
+	requireToolchain(t)
+	r := newRepo(t)
+	r.write(".releaserc.json", angularMain)
+	r.commit("chore: init", "a.txt")
+	r.git("tag", "v1.0.0")
+	r.commit("fix: repair widgets", "a.txt")
+
+	r.git("remote", "set-url", "origin", "https://nerv:s3cr3t@github.com/example/widgets.git")
+	name := filepath.Base(r.dir)
+	linked := sole(t, compute(t, Options{RepoRoot: r.dir, Branch: "main", Offline: true}), name).NewReleaseNotes
+	if !strings.Contains(linked, "https://github.com/example/widgets/compare/v1.0.0...v1.0.1") ||
+		!strings.Contains(linked, "https://github.com/example/widgets/commit/") || strings.Contains(linked, "s3cr3t") {
+		t.Errorf("notes with a GitHub origin:\n%s", linked)
+	}
+
+	r.git("remote", "remove", "origin")
+	plain := sole(t, compute(t, Options{RepoRoot: r.dir, Branch: "main"}), name).NewReleaseNotes
+	if !strings.Contains(plain, "## 1.0.1 (") || !strings.Contains(plain, "repair widgets") || strings.Contains(plain, "](") || strings.Contains(plain, "http") {
+		t.Errorf("notes without an origin:\n%s", plain)
+	}
+	t.Logf("no-origin notes:\n%s", plain)
+}
+
+// hotfixRelease has dim.comprobantes.api's branch shape: a hotfix/* wildcard
+// whose prerelease id is the branch name, which is invalid for any name with
+// a slash (EPRERELEASEBRANCH) once such a branch exists.
+const hotfixRelease = `{
+  "branches": [
+    "main",
+    { "name": "develop", "channel": "alpha", "prerelease": "alpha" },
+    { "name": "hotfix/*", "channel": "beta", "prerelease": true }
+  ],
+  "plugins": ["@semantic-release/commit-analyzer", "@semantic-release/release-notes-generator"]
+}`
+
+// TestIntegration_BranchesAreOrigins: semantic-release sees origin's
+// branches, as in CI, not the developer's local ones; the requested branch is
+// the local one (its unpushed commits count).
+func TestIntegration_BranchesAreOrigins(t *testing.T) {
+	requireToolchain(t)
+	r := newRepo(t)
+	r.write(".releaserc.json", hotfixRelease)
+	r.commit("chore: init", "a.txt")
+	r.git("tag", "v1.0.0")
+	r.git("checkout", "-q", "-b", "develop")
+	r.commit("fix: pushed fix", "b.txt")
+	r.git("push", "-q", "origin", "main", "develop", "--tags")
+	// Unpushed work: a feature on develop and a local-only hotfix branch
+	// (which CI never sees).
+	r.commit("feat: local feature", "c.txt")
+	r.git("branch", "hotfix/tw-1-error-config")
+	name := filepath.Base(r.dir)
+
+	for _, offline := range []bool{false, true} {
+		dev := sole(t, compute(t, Options{RepoRoot: r.dir, Branch: "develop", Offline: offline}), name)
+		// feat from the local, unpushed commit: a minor alpha.
+		if dev.NewReleaseVersion != "1.1.0-alpha.1" || dev.NewReleaseChannel != "alpha" || dev.NewReleaseGitHead != r.git("rev-parse", "develop") {
+			t.Errorf("develop (offline %v): %+v", offline, dev)
+		}
+		main := sole(t, compute(t, Options{RepoRoot: r.dir, Branch: "main", Offline: offline}), name)
+		if main.NewReleasePublished || main.LastReleaseVersion != "1.0.0" {
+			t.Errorf("main (offline %v): %+v", offline, main)
+		}
+	}
+
+	// A branch only on origin is visible: without a local main there is
+	// still a release branch for develop to follow.
+	r.git("branch", "-D", "main")
+	for _, offline := range []bool{false, true} {
+		dev := sole(t, compute(t, Options{RepoRoot: r.dir, Branch: "develop", Offline: offline}), name)
+		if dev.NewReleaseVersion != "1.1.0-alpha.1" || dev.LastReleaseVersion != "1.0.0" {
+			t.Errorf("develop without a local main (offline %v): %+v", offline, dev)
+		}
 	}
 }

@@ -74,6 +74,8 @@ func fakeRepo(t *testing.T, root string, run func(req runnerRequest) (Result, er
 		switch {
 		case isGit(c, "rev-parse", "--show-toplevel"):
 			return Result{Stdout: []byte(root + "\n")}, nil
+		case isGit(c, "rev-parse", "--verify"):
+			return Result{Stdout: []byte("1111111111111111111111111111111111111111\n")}, nil
 		case isGit(c, "symbolic-ref", "--short", "HEAD"):
 			return Result{Stdout: []byte("main\n")}, nil
 		case isGit(c, "remote", "get-url", "origin"):
@@ -616,6 +618,27 @@ func TestCompute_NodeMissing(t *testing.T) {
 	}}
 	_, err := (&Engine{Runner: f}).Compute(context.Background(), Options{RepoRoot: root, Branch: "main", CacheDir: t.TempDir()})
 	if err == nil || !strings.Contains(err.Error(), "Node.js") {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+// A rev-parse that succeeds but prints no commit is still "not a local
+// branch", reported without a fake wrapped cause.
+func TestCompute_EmptyBranchCommitIsNotALocalBranch(t *testing.T) {
+	root := t.TempDir()
+	f := fakeRepo(t, root, func(runnerRequest) (Result, error) {
+		t.Fatal("the runner must not start")
+		return Result{}, nil
+	})
+	healthy := f.handle
+	f.handle = func(c Command) (Result, error) {
+		if isGit(c, "rev-parse", "--verify") {
+			return Result{}, nil
+		}
+		return healthy(c)
+	}
+	_, err := (&Engine{Runner: f}).Compute(context.Background(), Options{RepoRoot: root, Branch: "main", CacheDir: t.TempDir()})
+	if err == nil || !strings.Contains(err.Error(), `branch "main": not a local branch`) || strings.Contains(err.Error(), "%!w") {
 		t.Fatalf("err = %v", err)
 	}
 }

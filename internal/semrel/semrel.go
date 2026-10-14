@@ -136,17 +136,24 @@ func (e *Engine) Compute(ctx context.Context, opts Options) ([]ProjectResult, er
 			return nil, fmt.Errorf("the current checkout is not on a branch; pass a branch: %w", err)
 		}
 	}
-	if _, err := e.git(ctx, top, env, "rev-parse", "--verify", "--quiet", "refs/heads/"+branch); err != nil {
+	localSHA, err := e.git(ctx, top, env, "rev-parse", "--verify", "--quiet", "refs/heads/"+branch)
+	if err != nil {
 		return nil, fmt.Errorf("branch %q: not a local branch: %w", branch, err)
+	}
+	if localSHA == "" {
+		return nil, fmt.Errorf("branch %q: not a local branch", branch)
 	}
 	remote := origin{Timeout: opts.FetchTimeout}
 	if remote.Timeout <= 0 {
 		remote.Timeout = DefaultFetchTimeout
 	}
+	// No origin remote means there is nothing to sync from and no public
+	// address for the notes' links. Reading the URL is local, offline too.
+	originURL, _ := e.git(ctx, top, env, "remote", "get-url", "origin")
+	remote.Public = publicURL(originURL)
+	remote.Exists = originURL != ""
 	if !opts.Offline {
-		// No origin remote means there is nothing to sync from.
-		url, _ := e.git(ctx, top, env, "remote", "get-url", "origin")
-		remote.URL = resolveRemoteURL(url, top)
+		remote.URL = resolveRemoteURL(originURL, top)
 		if remote.URL != "" {
 			remote.SSHCommand, _ = e.git(ctx, top, env, "config", "--get", "core.sshCommand")
 		}
@@ -163,7 +170,7 @@ func (e *Engine) Compute(ctx context.Context, opts Options) ([]ProjectResult, er
 	script := filepath.Join(scriptDir, runnerMain)
 
 	var results []ProjectResult
-	err = e.withCheckout(ctx, top, branch, remote, env, func(wt, mirror string) error {
+	err = e.withCheckout(ctx, top, branch, localSHA, remote, env, func(wt, mirror string) error {
 		node := func(req runnerRequest) (runnerResponse, error) {
 			req.CacheDir, req.Cwd = cacheDir, wt
 			req.CommitFilesCache = filepath.Join(filepath.Dir(mirror), "commit-files.json")
@@ -238,9 +245,20 @@ func (e *Engine) git(ctx context.Context, dir string, env []string, args ...stri
 //     like a default-channel release, so the last prerelease is missed.
 //     The fetch never prompts (see fetchEnv), never gets the URL on its
 //     command line, and is bounded by remote.Timeout.
+//   - The mirror's branches become origin's (fetched with the tags and notes;
+//     offline, the user's refs/remotes/origin/*), as in CI, plus the
+//     requested branch at the user's local commit (see planHeads). Without
+//     origin, or offline with no remote-tracking branch, the local branches
+//     are kept.
+//   - The mirror's own origin (the user's repository path, set by the clone)
+//     becomes remote.Public, or is removed when there is none:
+//     semantic-release takes the repository URL of the release-notes links
+//     from remote.origin.url when the repository's configuration does not
+//     name one, and a local path there produced links such as
+//     https:/home/me/repo/compare/....
 //   - worktree: a worktree of the mirror on branch (semantic-release needs a
 //     named branch).
-func (e *Engine) withCheckout(ctx context.Context, repo, branch string, remote origin, env []string, fn func(worktree, mirror string) error) error {
+func (e *Engine) withCheckout(ctx context.Context, repo, branch, localSHA string, remote origin, env []string, fn func(worktree, mirror string) error) error {
 	tmp, err := os.MkdirTemp("", "nerv-semrel-")
 	if err != nil {
 		return err
@@ -257,25 +275,41 @@ func (e *Engine) withCheckout(ctx context.Context, repo, branch string, remote o
 			return err
 		}
 	}
+	if err := e.setMirrorHeads(ctx, mirror, remote, env, branch, localSHA); err != nil {
+		return err
+	}
+	originArgs := []string{"remote", "remove", "origin"}
+	if remote.Public != "" {
+		originArgs = []string{"remote", "set-url", "origin", remote.Public}
+	}
+	if _, err := e.git(ctx, mirror, env, originArgs...); err != nil {
+		return fmt.Errorf("setting the copy's origin: %w", err)
+	}
 	if _, err := e.git(ctx, mirror, env, "worktree", "add", "--quiet", wt, branch); err != nil {
 		return err
 	}
 	return fn(wt, mirror)
 }
 
-// fetchOrigin fetches origin's release tags and notes into the mirror.
+// ErrOriginFetch is wrapped by the error Compute returns when origin's
+// branches, release tags and notes cannot be read (unreachable, refused or timed out); callers
+// can offer offline mode (Options.Offline) as the way out.
+var ErrOriginFetch = errors.New("origin's branches, release tags and notes could not be read")
+
+// fetchOrigin fetches origin's release tags and notes into the mirror, and
+// its branches under originHeadsRef (see planHeads).
 func (e *Engine) fetchOrigin(ctx context.Context, mirror string, remote origin, env []string) error {
 	fctx, cancel := context.WithTimeout(ctx, remote.Timeout)
 	defer cancel()
 	_, err := e.git(fctx, mirror, fetchEnv(env, remote), "fetch", "--quiet", "--no-write-fetch-head", originRemote,
-		"+refs/tags/*:refs/tags/*", "+refs/notes/*:refs/notes/*")
+		"+refs/tags/*:refs/tags/*", "+refs/notes/*:refs/notes/*", "+refs/heads/*:"+originHeadsRef+"*")
 	switch {
 	case err == nil:
 		return nil
 	case errors.Is(fctx.Err(), context.DeadlineExceeded) && ctx.Err() == nil:
-		return fmt.Errorf("reading release tags and notes from origin (%s) timed out after %s; use offline mode to rely on the local tags only", redact(remote.URL), remote.Timeout)
+		return fmt.Errorf("reading branches, release tags and notes from origin (%s) timed out after %s; use offline mode to rely on the local tags only: %w", redact(remote.URL), remote.Timeout, ErrOriginFetch)
 	}
-	return fmt.Errorf("reading release tags and notes from origin (%s; needed for release channels; use offline mode to rely on the local tags only): %w", redact(remote.URL), err)
+	return fmt.Errorf("reading branches, release tags and notes from origin (%s; needed for the branch set and release channels; use offline mode to rely on the local tags only): %w: %w", redact(remote.URL), ErrOriginFetch, err)
 }
 
 // node runs the embedded runner with one request.

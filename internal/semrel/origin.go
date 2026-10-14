@@ -1,6 +1,7 @@
 package semrel
 
 import (
+	"net/url"
 	"path/filepath"
 	"regexp"
 	"slices"
@@ -24,6 +25,11 @@ type origin struct {
 	// URL is origin's URL, a local path already made absolute; empty skips
 	// the fetch.
 	URL string
+	// Exists reports that the repository has an origin remote at all.
+	Exists bool
+	// Public is publicURL of origin's URL: the repository address the
+	// release notes link to; empty when there is none.
+	Public string
 	// SSHCommand is the repository's core.sshCommand, if any.
 	SSHCommand string
 	Timeout    time.Duration
@@ -135,4 +141,30 @@ func setEnv(env []string, name, value string) []string {
 		return k == name
 	})
 	return append(out, name+"="+value)
+}
+
+// publicSchemes are the URL schemes of a remote other people can reach.
+var publicSchemes = []string{"http", "https", "ssh", "git", "git+ssh", "ssh+git"}
+
+// publicURL is the address of the user's origin to name in release-notes
+// links, as semantic-release would read it from remote.origin.url in CI:
+// scheme URLs lose their user info, query and fragment (credentials never
+// reach the notes or a command line), scp-like ssh addresses stay as they
+// are, and a local repository (a path, a file: URL) or no origin gives "",
+// as there is no public page to link to.
+func publicURL(raw string) string {
+	switch {
+	case raw == "", driveRe.MatchString(raw), filepath.IsAbs(raw):
+		return ""
+	case urlSchemeRe.MatchString(raw):
+		u, err := url.Parse(raw)
+		if err != nil || u.Host == "" || !slices.Contains(publicSchemes, strings.ToLower(u.Scheme)) {
+			return ""
+		}
+		u.User, u.RawQuery, u.ForceQuery, u.Fragment, u.RawFragment = nil, "", false, "", ""
+		return u.String()
+	case scpLikeRe.MatchString(raw):
+		return raw
+	}
+	return ""
 }

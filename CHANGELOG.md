@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- version: `nerv version next` computes the next semantic version of any repository (or of each project of its
+  `release:` section) with the repository's own semantic-release configuration, as text, JSON or GitHub Actions
+  output lines; `/nerv:version` shows it in Claude Code. Plain `nerv version` still prints the binary version.
+
 ## [4.0.0] - 2026-10-09
 
 ### Breaking

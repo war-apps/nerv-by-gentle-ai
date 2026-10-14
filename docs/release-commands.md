@@ -2,10 +2,10 @@
 
 The `release:` section of the project-scope `<repo>/.nerv/nerv.yaml`
 configures how a repository is versioned and released. It is read by the
-release commands `nerv version` (the next version of each project, from a
-semantic-release dry run) and `nerv ship` (a full local release: pipeline,
-publish, tag, CHANGELOG and GitHub release). **Both commands are coming in
-later tasks**; today the section is parsed and validated only.
+release commands `nerv version next` (the next version of each project,
+from a semantic-release dry run; see [below](#nerv-version-next)) and
+`nerv ship` (a full local release: pipeline, publish, tag, CHANGELOG and
+GitHub release; **coming in a later task**).
 
 The section is project scope only: it is never read from the user-scope
 `~/.claude/nerv/nerv.yaml` and never merged with it. When the section is
@@ -17,6 +17,126 @@ configuration (`.releaserc*`, `release.config.*` or `package.json`
 `release`). `release:` adds what semantic-release does not know: which
 projects a monorepo holds, how they depend on each other, and how each one
 is built and published.
+
+## `nerv version next`
+
+```
+nerv version next [--cwd <dir>] [--branch <name>] [--project <name>]
+                  [--offline] [--fetch-timeout <dur>] [--format text|json|env | --json]
+```
+
+Computes the next semantic version of the repository, or of each project of
+its `release:` section, with the repository's own semantic-release
+configuration in dry-run mode (see
+[How the next version is computed](#how-the-next-version-is-computed)).
+Nothing in the repository changes. In Claude Code, `/nerv:version [args]`
+runs it with `--json` and shows a table per project.
+
+Plain `nerv version` (and `nerv version --json`) still prints the binary and
+plugin versions.
+
+| Flag | Default | Meaning |
+|---|---|---|
+| `--cwd <dir>` | `.` | Any directory inside the repository; the git top level is used. |
+| `--branch <name>` | current branch | Local branch to compute. |
+| `--project <name>` | all projects | Only this project of the `release:` section (its dependencies are still computed, for `depends_on`). An unknown name is refused, listing the declared projects. |
+| `--offline` | off | Use the local tags and notes only. By default origin's release tags and semantic-release notes are read first, with your git credentials, into a throwaway copy. Offline, a prerelease branch may compute a different version than CI when a release's channel note exists only on origin. |
+| `--fetch-timeout <dur>` | `60s` | Bound for reading origin (Go duration: `30s`, `2m`); must be positive, there is no unbounded mode (use `--offline` to skip origin). |
+| `--format text\|json\|env` | `text` | Output format. |
+| `--json` | | Same as `--format json`. |
+
+Requirements: git (2.31 or newer when a project's `path` is not `.`),
+Node.js 20.8.1 or newer and npm (semantic-release and its plugins are
+installed in the NERV cache, see [Installed plugins](#installed-plugins)).
+
+### Outputs
+
+The outputs of `cycjimmy/semantic-release-action`, per project. Unlike the
+action, `last_release_*` are also filled when there is no new release.
+
+| Output | Meaning |
+|---|---|
+| `new_release_published` | `true` when there is a new release, else `false` |
+| `new_release_version` | Next version, e.g. `1.2.0-alpha.2` |
+| `new_release_major_version` | Its major number |
+| `new_release_minor_version` | Its minor number |
+| `new_release_patch_version` | Its patch number |
+| `new_release_channel` | Distribution channel (`alpha`, `rc`, ...); empty for the default channel |
+| `new_release_notes` | Release notes (Markdown, several lines) |
+| `new_release_git_head` | Commit the release would be tagged on |
+| `new_release_git_tag` | Tag it would get, e.g. `v1.2.0` or `api-v1.2.0` |
+| `last_release_version` | Last release on the branch's channel; empty when none |
+| `last_release_git_head` | Its commit |
+| `last_release_git_tag` | Its tag |
+
+### Formats
+
+stdout carries only the result; progress and errors go to stderr.
+
+`text` (default), one block per project:
+
+```
+api (develop)
+  next release: no new release
+  last release: 1.0.0 (tag api-v1.0.0)
+
+web-app (develop)
+  next release: 1.1.0-alpha.1 (channel alpha, tag web-app-v1.1.0-alpha.1)
+  last release: 1.0.0 (tag web-app-v1.0.0)
+```
+
+The output shape follows the request, not the number of results: when the
+`release:` section declares more than one project and `--project` is not
+given, the output covers every project (a JSON array, prefixed env keys);
+otherwise (no `release:` section, a single project, or `--project`) it is
+exactly that one project, even though the engine also computes the
+dependencies of `--project` for `depends_on` (they are not printed). If the
+engine returns no result for the requested project, the command fails
+(exit 2) and prints nothing on stdout.
+
+`json`: one object with `project`, `branch` and the 12 outputs for one
+project; an array of those objects, in dependency order, for several.
+
+```json
+{"project":"widgets","branch":"main","new_release_published":true,"new_release_version":"1.0.1","new_release_major_version":"1","new_release_minor_version":"0","new_release_patch_version":"1","new_release_channel":"","new_release_notes":"## 1.0.1 ...","new_release_git_head":"c1918a5...","new_release_git_tag":"v1.0.1","last_release_version":"1.0.0","last_release_git_head":"ac22764...","last_release_git_tag":"v1.0.0"}
+```
+
+`env`: GitHub Actions output syntax, ready to append to `$GITHUB_OUTPUT`.
+Single-line values are `key=value`; a multi-line value (the notes) uses the
+heredoc form with a random `ghadelimiter_<hex>` delimiter that does not
+occur in the value. For one project the keys are the output names; for
+several, each key is prefixed with the project name, `-` written as `_`
+(`web-app` gives `web_app_new_release_version`).
+
+```
+new_release_published=true
+new_release_version=1.0.1
+...
+new_release_channel=
+new_release_notes<<ghadelimiter_b098f27b1474f83aefb3da07e735c9d1
+## [1.0.1](...) (2026-10-13)
+
+### Bug Fixes
+
+* **api:** handle empty input (c1918a5)
+
+ghadelimiter_b098f27b1474f83aefb3da07e735c9d1
+new_release_git_head=c1918a53581d83a5f8ba787da39446550e1bb166
+...
+```
+
+### Exit codes and errors
+
+| Code | When |
+|---|---|
+| `0` | Computed, including when there is no new release (`new_release_published=false`). |
+| `1` | Refused: an invalid `release:` section (every problem, path-qualified), an unknown `--project`, `--project` without a `release:` section, a directory outside any git repository. |
+| `2` | Usage error, or an environment error: git, node or npm missing or too old, a plugin not pinned, origin unreachable or timed out (the message suggests `--offline`), no result for the requested project, the result could not be written to stdout. |
+| `128 + signal` | Interrupted: `130` for Ctrl-C (SIGINT), `143` for SIGTERM, `129` for SIGHUP. |
+
+Ctrl-C, `SIGTERM` and (on Unix) `SIGHUP` cancel the run and stop git, npm
+and node, which run in their own session or process group. After the first
+signal NERV stops catching them, so a second Ctrl-C ends `nerv` at once.
 
 ## Paths
 
@@ -104,9 +224,23 @@ its version.
   (`verifyConditions`, `verifyRelease`, `prepare`, `publish`, `success`,
   `fail`) are skipped, so no `GH_TOKEN`, `NPM_TOKEN` or exec script is
   needed.
-- It runs on a disposable mirror of the repository (all local branches and
-  tags), checked out on the requested local branch: the working tree,
-  branches and tags of the repository are never changed.
+- It runs on a disposable mirror of the repository, checked out on the
+  requested local branch: the working tree, branches and tags of the
+  repository are never changed.
+- semantic-release sees origin's branches, as in CI, not your local ones: a
+  local-only branch (say `hotfix/x` under a `hotfix/*` prerelease entry)
+  does not count, and a branch that exists only on origin does. The branch
+  you compute is taken at your local commit, so its unpushed commits count.
+  Online, origin's branches are read with its tags and notes; with
+  `--offline`, your `refs/remotes/origin/*` (as of your last fetch) are
+  used. With no `origin` remote, or offline with no remote-tracking branch,
+  the local branches are used as they are.
+- The release notes link to the repository's public address, as in CI:
+  the `repositoryUrl` of its semantic-release configuration, the
+  `package.json` `repository`, or the `origin` remote's URL (offline too;
+  user info, query and fragment removed, so credentials never reach the
+  notes). With none of these, or a local path, the notes have no links
+  (`## 1.0.1 (2026-10-13)`, `* fix thing (c1918a5)`).
 - Release tags and semantic-release's git notes are read from the `origin`
   remote first (read access is enough). semantic-release records each
   release's channel in a note that a plain `git fetch` never brings; without
@@ -118,7 +252,7 @@ its version.
   ssh in batch mode (`-o BatchMode=yes` is appended to `GIT_SSH_COMMAND`,
   or to `core.sshCommand`, when that command is `ssh`; a non-ssh command
   such as `plink`, or a `GIT_SSH` program, is used as it is and must not
-  prompt by itself), and it fails after 60 seconds. Credentials must
+  prompt by itself), and it fails after 60 seconds (`--fetch-timeout`). Credentials must
   therefore come from a credential helper, an ssh agent or an unencrypted
   key. The origin URL never appears on a command line, and credentials
   embedded in it (`https://user:token@host/...`, `?access_token=...`) are

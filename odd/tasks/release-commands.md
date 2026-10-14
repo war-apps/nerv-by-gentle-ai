@@ -1,10 +1,10 @@
-# Release commands: `nerv version` and `nerv ship`
+# Release commands: `nerv version next` and `nerv ship`
 
 ## Objective
 
 Two repo-agnostic commands for any repository NERV works on:
 
-- `nerv version` (`/nerv:version`): the next semantic version of a repo (or of
+- `nerv version next` (`/nerv:version`): the next semantic version of a repo (or of
   each project of a monorepo) from a branch's commits, using the repo's own
   semantic-release configuration, with the outputs of
   `cycjimmy/semantic-release-action`.
@@ -12,7 +12,7 @@ Two repo-agnostic commands for any repository NERV works on:
   workflow where it cannot or should not run: pipeline (restore, lint, build,
   test, coverage, package), version files, publish (docker, nuget, npm), tag,
   CHANGELOG and GitHub release, configurable through `.nerv/nerv.yaml` and
-  hooks running node, pwsh or bash scripts. It reuses `nerv version`.
+  hooks running node, pwsh or bash scripts. It reuses `nerv version next`.
 
 ## Why
 
@@ -25,7 +25,7 @@ tagged with version, channel and `latest`).
 ## Decisions (user, 2026-10-13)
 
 - Engine: semantic-release itself, run through its programmatic API (dry run
-  for `nerv version`), so every semantic-release config form is accepted
+  for `nerv version next`), so every semantic-release config form is accepted
   (`.releaserc*`, `release.config.*`, `package.json` `release`, presets,
   `releaseRules`, `branches`, `extends`). Requires Node; semantic-release and
   the plugins the config names are installed at pinned versions in a NERV
@@ -50,9 +50,10 @@ tagged with version, channel and `latest`).
 
 ## Technical design (parent's proposal)
 
-- Names `version` / `ship` avoid the existing `nerv release`, NERV's own
-  maintainer tool.
-- `nerv version [--branch <b>] [--project <p>] [--json|--format env]`:
+- Names `version next` / `ship` avoid the existing `nerv release`, NERV's own
+  maintainer tool, and the existing `nerv version` (binary version; user
+  decision 2026-10-13: the computation is the `next` subcommand).
+- `nerv version next [--branch <b>] [--project <p>] [--json|--format env]`:
   semantic-release dry run in a temporary `git worktree` of the branch; a
   NERV-owned node plugin filters commits per project (path OR scope) and
   applies `depends_on` bumps. Output: the 12 action outputs
@@ -61,7 +62,7 @@ tagged with version, channel and `latest`).
   `new_release_patch_version`, `new_release_channel`, `new_release_notes`,
   `new_release_git_head`, `new_release_git_tag`, `last_release_version`,
   `last_release_git_head`, `last_release_git_tag`), per project.
-- `nerv ship [--project <p>] [--dry-run] [--yes]`: shows `nerv version`'s
+- `nerv ship [--project <p>] [--dry-run] [--yes]`: shows `nerv version next`'s
   result and asks for confirmation; runs the pipeline stages; then runs
   semantic-release for real with an injected NERV lifecycle plugin, so
   version-file writes, providers and hooks run at semantic-release's
@@ -92,7 +93,7 @@ tagged with version, channel and `latest`).
 - [x] T2 — node engine: embedded runner using semantic-release's API, pinned
   dependency cache, branch worktree, NERV commit-filter plugin (path OR
   scope), dependency bumps; output normalised to the 12 action outputs.
-- [ ] T3 — `nerv version` CLI (single repo and monorepo, `--json` and
+- [x] T3 — `nerv version next` CLI (single repo and monorepo, `--json` and
   `--format env`) plus `/nerv:version`.
 - [ ] T4 — streaming script runner with env and working directory; hooks
   for node, pwsh and bash on Linux and Windows.
@@ -106,7 +107,7 @@ tagged with version, channel and `latest`).
 
 ## Acceptance criteria
 
-- On a copy of `dim.comprobantes.api`, `nerv version --branch develop` returns
+- On a copy of `dim.comprobantes.api`, `nerv version next --branch develop` returns
   the same next version and channel as `npx semantic-release --dry-run` on
   that branch.
 - A monorepo fixture releases two projects from one commit (path + scope),
@@ -125,6 +126,10 @@ order). Slice boundaries: one PR per task, recorded below as they open.
 
 - PR #91 (T1): `feat/release-commands` → develop, commits f2f7801..294f7b3. Merged 7a23170.
 - T2 branch `feat/release-version-engine` from 7a23170.
+- PR #92 (T2): `feat/release-version-engine` → develop, commits d543f72..543a8df.
+  Merged.
+- T3 branch `feat/release-version-cli` from 2dca250 (commits 95d90a7 and
+  this document's update).
 
 ## Progress
 
@@ -328,7 +333,7 @@ and observed failing.
   in core -> core 1.0.1, app 1.0.1 (patch), sdk 1.1.0 (minor), tool not
   released (none), order core,app,tool,sdk. Unpinned
   `semantic-release-slack-bot` -> error naming it.
-- Not run: `nerv version` vs `npx semantic-release --dry-run` on a real
+- Not run: `nerv version next` vs `npx semantic-release --dry-run` on a real
   copy of dim.comprobantes.api with origin on GitHub (reading origin is a
   remote operation with the user's credentials; it belongs to T3's
   acceptance run).
@@ -480,6 +485,207 @@ delegated (one writer). Test-first where a test can express the defect.
 - Carried to T3: R3-setsid-drops-sighup-propagation — the CLI must cancel
   the context on SIGINT, SIGTERM and SIGHUP.
 
+### T3
+
+- Route: delegated (writer trigger: CLI, signals, docs, slash command).
+- Name conflict found before writing: `nerv version [--json]` already printed
+  the binary and plugin versions. User decision (option 3): the computation
+  is `nerv version next [flags]`; bare `nerv version` / `--json` unchanged
+  (their tests untouched and green); any other argument after `version` is a
+  usage error. `/nerv:version` runs `nerv version next --json [args]`.
+- CLI (`cmd/nerv/version_next.go`): flags `--cwd` (git top level through the
+  `env.Runner` seam), `--branch`, `--project`, `--offline`, `--fetch-timeout`,
+  `--format text|json|env`, `--json` (conflicts with another explicit
+  `--format`). Before the engine runs, the `release:` section is loaded:
+  `*shipconfig.ValidationError` -> exit 1 with its path-qualified lines;
+  unknown `--project` -> exit 1 listing the projects; `--project` with no
+  section or a directory outside git -> exit 1. Engine errors -> exit 2
+  (validation from the engine also 1); `semrel.ErrOriginFetch` adds an
+  "--offline" hint; a cancelled run says "interrupted" (exit 2). No new
+  release -> exit 0. Progress and errors on stderr; stdout only the format.
+  json: object for one result, array for several. env: `key=value`,
+  multi-line values `key<<ghadelimiter_<32 hex>` ... value, newline,
+  delimiter (as @actions/core), the delimiter regenerated if it occurs in
+  the value; several results -> keys prefixed `<project>_`, `-` as `_`.
+- Signals: `signal.NotifyContext` on `cancelSignals` (build-tagged:
+  `signal_unix.go` SIGINT, SIGTERM, SIGHUP; `signal_other.go` SIGINT,
+  SIGTERM). Seams in `options`: `ComputeVersions` (default
+  `semrel.Compute`), `SignalContext` (default `signalContext`).
+- `internal/semrel` (small additive change): exported `ErrOriginFetch`,
+  wrapped by both origin-fetch errors (failure and timeout), so the CLI
+  can suggest `--offline` without matching message text.
+- RED: `go test ./cmd/nerv/ ./internal/semrel/` -> build failed
+  (`undefined: signalContext`, `opts.ComputeVersions undefined`,
+  `undefined: ErrOriginFetch`). GREEN: both `ok`; 39 targeted cmd/nerv
+  tests pass. `TestRun_VersionUnknownSubcommandIsAUsageError` had no
+  behavioural RED (bare `version` already rejected unknown arguments);
+  it pins that the usage now names `version next`.
+- Real-signal proof: `TestSignalContext_CancelsOnInterruptTerminateAndHangup`
+  (Unix) sends SIGINT, SIGTERM and SIGHUP to the test process and sees the
+  context cancelled each time.
+- Local end-to-end run (no remote; npm cache warm), fixture repo with
+  `package.json` `release.branches: [main, {develop, prerelease alpha}]`,
+  tag `v1.0.0`, `fix(api)` on main, `feat(web)` on develop:
+  `go run ./cmd/nerv version next --offline --cwd <fixture>` -> `widgets
+  (main)` next `1.0.1` (default channel, tag `v1.0.1`), last `1.0.0`;
+  `--branch develop` -> `1.1.0-alpha.1` (channel alpha). With a `release:`
+  section (api: `api`, web-app: `web`) on develop: api no new release (last
+  `api-v1.0.0`), web-app `1.1.0-alpha.1` (`web-app-v1.1.0-alpha.1`); env
+  keys `api_*` / `web_app_*`; `--project mobile` -> exit 1 "unknown project
+  "mobile"; the release: section declares: api, web-app". All exit 0
+  otherwise.
+- Observed (T2 behaviour, not changed): with no origin remote and no
+  `repository` in package.json, the notes links read
+  `https:/<absolute repo path>/compare/...`.
+- Docs: `docs/release-commands.md` `nerv version next` section (flags,
+  requirements node >= 20.8.1, npm, git >= 2.31 for path filters; outputs
+  table; formats with examples; exit codes; signals), `docs/commands.md`
+  (both forms and `/nerv:version`), `docs/configuration.md`, README docs
+  index, CHANGELOG `[Unreleased]` `### Added`, `plugin/commands/version.md`.
+  No prose test pins the command list (checked: `assets_test.go` requires
+  only `commands/configure.md`).
+- Checks: `go test ./...` ok (24 packages), `go test -tags
+  semrel_integration -run Integration -count=1 ./internal/semrel/` ok
+  (13.8s), `go vet ./...`, `go vet -tags semrel_integration
+  ./internal/semrel/`, `GOOS=windows go vet ./cmd/nerv/ ./internal/semrel/`
+  clean, `gofmt -l .` empty.
+- Size: `95d90a7` 15 files changed, 1200 insertions(+), 17 deletions(-).
+  Above the ~400-line heuristic: about 560 lines are tests and 290 docs;
+  the CLI, its formats and the slash command are one user-facing unit.
+- Commit: `95d90a7` `feat(cli): add nerv version next and /nerv:version`.
+
+## Decisions after T2 (user, 2026-10-13)
+
+- `nerv version next` reads origin's tags and semantic-release notes by default
+  (on the throwaway mirror, with the user's git credentials); `--offline`
+  uses local refs only.
+- Kept: `last_release_*` filled even without a new release; no `release:`
+  section means one project named after the repo directory.
+
+### T3 review
+
+- Native review of 668472b..6b20c5c (high risk, 4 lenses, user granted):
+  approved and acknowledged. Advisory: R4-second-signal-swallowed (WARNING:
+  later Ctrl-C presses are swallowed until return), R3-env-key-prefix-
+  collision (WARNING; refuted by the parent: project names are validated as
+  `[a-z0-9-]`, so `web-app` and `web_app` cannot coexist),
+  R4-json-text-write-errors-ignored, R2-fetch-timeout-implicit-default,
+  R3-shape-depends-on-result-count, R3-empty-results-json-null.
+
+### T3 follow-ups
+
+All T3 review advisories but the refuted R3-env-key-prefix-collision fixed,
+plus the T2 notes-link defect found in the T3 run (user authorized). Route:
+delegated (one writer). Test-first.
+
+| Item | Fix | Evidence |
+|---|---|---|
+| R4-second-signal-swallowed | `signalContext` (own `signal.Notify` loop instead of `signal.NotifyContext`) calls `signal.Stop` as soon as the context is done (first signal, parent or stop), before the cancellation is visible; a second Ctrl-C gets the default handler. `signalNotify`/`signalStop` package seams. | RED: `signal_test.go` failed to build (`undefined: signalStop`, `signalContext returns 2 values`); no behavioural RED for the release itself (the seam did not exist). GREEN: `TestSignalContext_FirstSignalReleasesTheHandler` (handler released once, before the cancellation), `..._ParentCancellationReleasesTheHandler`, `..._StopWithoutASignalReleasesTheHandler`; `go test -race -count=3` clean. |
+| Interrupted exit codes | `received()` reports the signal; exit `128 + signal` (SIGINT 130, SIGTERM 143, SIGHUP 129), `2` when cancelled without one; stderr `interrupted (<signal>)`. The `SignalContext` seam returns `(ctx, stop, received)`. | RED: build failure as above. GREEN: `TestVersionNext_InterruptedExitsWith128PlusTheSignal` (4 cases); the real-signal Unix test also checks `received()`. |
+| R4-json-text-write-errors-ignored | `writeVersionResult` renders every format into memory, writes once and calls `Flush()` when the writer has one; an error is `writing the result: ...`, exit 2. | RED: `TestVersionNext_WriteErrorsAreReported` text/json write+flush and env flush failed (exit 0). GREEN. Manual: `> /dev/full` -> "no space left on device", exit 2. |
+| R2-fetch-timeout-implicit-default | `--fetch-timeout` defaults to `semrel.DefaultFetchTimeout`; `<= 0` is a usage error ("must be positive ... use --offline"). | RED: `zero fetch timeout` cases (exit 0) and `TestVersionNext_DefaultsReadOriginOnTheCurrentBranch` (timeout 0 sent). GREEN; `TestVersionNext_UsageShowsTheDefaultFetchTimeout` pins "default 60s". |
+| R3-shape-depends-on-result-count, R3-empty-results-json-null | `requestShape`: several (array, prefixed env) only for a `release:` section with more than one project and no `--project`; otherwise one object / unprefixed keys for the requested, only, or repository-named project, dependency results dropped. No result for it -> exit 2 "the engine returned no result ...", nothing on stdout. | RED: `TestVersionNext_ProjectFlagPrintsOnlyThatProject`, `..._MonorepoIsAnArrayEvenWithOneResult`, `..._MissingRequestedResultIsAnError` (15 cases). GREEN; `..._SingleProjectSectionIsAnObject`. |
+| Notes links with no remote (T2) | Worse than reported: the mirror's `remote.origin.url` is the user's repository path, so every repository without `repositoryUrl` / package.json `repository` got `https:/<local path>/...` links, GitHub origin included. Go: the mirror's origin is set to `publicURL(origin)` (scheme URLs without user info, query, fragment; scp-like kept; local paths and `file:` -> none), read offline too, or removed. Runner: no public URL (or a local one) -> notes generated against the reserved `https://nerv-no-remote.invalid/...` placeholder, whose Markdown links are then replaced by their text. | RED: `TestPublicURL`, `TestCompute_MirrorOriginIsThePublicURL` (stub); node: missing exports; integration in a temp worktree of the old HEAD: `MonorepoPathOrScope` and the new `NotesLinkThePublicOrigin` showed `https:/tmp/.../compare/...` for a local and a GitHub origin. GREEN: all; node 11/11; integration no-origin notes `## 1.0.1 (2026-10-13)` / `* repair widgets (d3783ab)`, GitHub origin links `https://github.com/example/widgets/compare/v1.0.0...v1.0.1` without the credentials. |
+
+- Docs: `docs/release-commands.md` (output shape by request, positive
+  `--fetch-timeout`, exit codes incl. `128 + signal`, second Ctrl-C, notes
+  links), `plugin/commands/version.md` (shape, interrupted codes).
+- Local run (no remote, offline): `nerv version next --offline --cwd
+  <fixture> --branch develop --project web-app --format env` -> notes
+  `# 1.1.0-alpha.1 (2026-10-13)` ... `* **web:** add dark mode (ba07a36)`,
+  no links; `--json` one object for web-app; `--fetch-timeout 0` usage
+  error.
+- Checks: `go test ./...` ok (24 packages), `go test -tags
+  semrel_integration -run Integration -count=1 ./internal/semrel/` ok (5
+  tests), `go vet ./...`, `GOOS=windows go vet ./cmd/nerv/
+  ./internal/semrel/` clean, `gofmt -l .` empty.
+- Commits: `e9d2c84` `fix(cli): release signals early and shape version
+  output by request` (7 files changed, 498 insertions(+), 69 deletions(-));
+  `d2d10f1` `fix(semrel): link release notes to the public origin, or not
+  at all` (8 files changed, 256 insertions(+), 16 deletions(-)).
+
+### T3 follow-up review
+
+- Native review of a1b20f0..ddc6c48 (medium, user granted): approved and
+  acknowledged. One WARNING, R3-no-section-project-name-coupling-untested:
+  without a release: section the CLI required the result's project name to
+  equal the git top-level's base name, so a name the engine derives
+  differently (symlink, Windows case) became "no result". Fixed inline by
+  the parent in `ddb79a1` (route: inline, one mechanical file + test):
+  a sectionless repository prints the engine's single result whatever its
+  name. RED: `TestVersionNext_NoSectionPrintsTheSingleResultWhateverItsName`
+  failed; GREEN after the fix; `go test ./...`, `go vet ./...`,
+  `GOOS=windows go vet ./cmd/nerv/`, `gofmt -l .` clean.
+
+### T3 acceptance fix
+
+- Bug (parent's acceptance run on dim.comprobantes.api): `nerv version next
+  --branch develop` (and `main`) exited 2 with `semantic-release:
+  EPRERELEASEBRANCH A pre-release branch configuration is invalid in the
+  branches configuration`.
+- Cause: the mirror (`git clone --mirror --shared` of the user's repo)
+  carried every local head, including a local-only
+  `hotfix/tw-49276610-error-config-destino`; dim's `{"name": "hotfix/*",
+  "prerelease": true}` made it a release branch whose name is an invalid
+  prerelease id. CI only has origin's branches. Same root: a branch only on
+  origin was invisible (no local `main` -> `ERELEASEBRANCHES`).
+- Fix (route: delegated, one writer; `internal/semrel/heads.go`): the
+  origin fetch also brings `+refs/heads/*:refs/nerv-origin-heads/*` (same
+  safe path: no prompts, redacted, bounded, `ErrOriginFetch`); `planHeads`
+  builds one `git update-ref --stdin` transaction on the mirror: heads =
+  origin's (online), or the user's `refs/remotes/origin/*` minus `HEAD`
+  (offline), plus the requested branch at the user's local commit (unpushed
+  commits count); scratch refs deleted. The user's repo is only read.
+- Deviation from the request (for the parent to confirm): with no origin
+  remote, or offline with no remote-tracking branch, the local branches are
+  kept instead of only the requested branch. Single-branch semantics would
+  make every prerelease branch of an origin-less repository fail with
+  `ERELEASEBRANCHES` (no `main` to follow), a regression of the earlier
+  local runs; it is one condition in `planHeads` if the parent prefers it.
+- RED: new `TestIntegration_BranchesAreOrigins` (dim-shaped `hotfix/*`
+  config, local-only `hotfix/tw-1-error-config`) -> `EPRERELEASEBRANCH`;
+  with the hotfix line removed, the origin-only-main half against the old
+  engine (temp worktree of 0f1df74) -> `ERELEASEBRANCHES`. Unit:
+  `heads_test.go` failed to build (`undefined: planHeads`,
+  `originHeadsRef`). GREEN: all; online and offline develop ->
+  `1.1.0-alpha.1` from the unpushed `feat`, head = local develop; main no
+  release, last `1.0.0`; without a local main develop still computes.
+- Docs: `docs/release-commands.md` (origin's branch set, local commit of
+  the requested branch, offline and no-origin rules).
+- Checks: `go test ./...` ok (24 packages), integration suite ok (6 tests,
+  20.7s), `go vet ./...`, `GOOS=windows go vet ./cmd/nerv/
+  ./internal/semrel/` clean, `gofmt -l .` empty.
+- Commit: `70bf856` `fix(semrel): compute against origin's branches, not
+  local ones` (7 files changed, 346 insertions(+), 13 deletions(-)).
+
+### T3 acceptance (user authorized GitHub read, 2026-10-13)
+
+- Reference: semantic-release 24.2.9 with dim.comprobantes.api's CI plugin
+  pins, `--dry-run --no-ci`, on a throwaway clone whose branches equal
+  origin's (the user's local `develop` is behind origin), GH_TOKEN from
+  `gh auth token`. Result: develop no release; main 2.9.0; release/rc no
+  release (last v2.9.0-rc.1).
+- `nerv version next` (after `70bf856`) on the same clone: develop no release
+  (last 2.9.0-alpha.9); main 2.9.0 (last 2.8.1); release/rc no release (last
+  2.9.0-rc.1). Match on all three branches.
+- On the user's own repo, `develop` (local commit, behind origin) gives no
+  release with last 2.9.0-alpha.8, as designed (the requested branch is
+  taken at the local commit). The user's repo was only read.
+- Accepted deviation: with no origin (or offline with no remote-tracking
+  branches) the local branches are kept, so prerelease branches still find
+  their release branches.
+
+### T3 acceptance fix review
+
+- Native review of 0f1df74..8dd5ebf (medium, user granted): approved and
+  acknowledged. One SUGGESTION, R3-001: an empty `rev-parse` result with no
+  error rendered `%!w(<nil>)`. Fixed inline by the parent in `fe01cbb`
+  (RED: `TestCompute_EmptyBranchCommitIsNotALocalBranch` showed the
+  artifact; GREEN after the fix; `go test ./...`, `go vet`, `gofmt -l .`
+  clean).
+
 ## Next step
 
-T3 (`nerv version` CLI) on top of T2.
+Review of the T3 follow-ups, then the acceptance comparison against
+dim.comprobantes.api on GitHub (needs the user's authorization: it reads
+origin with their credentials), then T4.
