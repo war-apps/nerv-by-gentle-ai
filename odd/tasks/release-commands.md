@@ -949,7 +949,54 @@ delegated (one writer). Test-first where a test expresses the defect.
   misnamed), R3-exec-windows-shims (npm/pnpm/yarn are .cmd shims on
   Windows), R3-coverage-rounding-message.
 
+### T5 follow-ups
+
+All T5 review findings fixed (user authorized). Route: delegated (one
+writer). Test-first: RED observed before each fix (a build failure, then a
+behavioural failure once the new names existed, where a test can show it).
+
+| Finding | Fix | Evidence |
+|---|---|---|
+| R1-nuget-key-argv | The requested temporary `NuGet.Config` was tried first and does not work on Linux. Observed with the .NET SDK 10.0.112 (NuGet 7.0.3) against a loopback HTTP feed that logs headers: a clear-text `<apikeys>` entry fails with "encryption is not supported on non-Windows platforms" (NuGet always DPAPI-decrypts it); `dotnet nuget push ... @push.rsp` delivers the key, but `/proc/<pid>/cmdline` of the child `dotnet exec .../NuGet.CommandLine.XPlat.dll ... --api-key <key>` shows it on argv; `dotnet exec NuGet.CommandLine.XPlat.dll ... @push.rsp` gives "file does not exist" (no response files); `dotnet nuget setapikey` does not exist; NuGet reads no API key from the environment (string scan of the SDK's NuGet DLLs). The argv-free mechanism chosen instead: `nuget:push` is an in-process step (`pushNuGet`, `nugetpush.go`) implementing NuGet's push protocol. A v3 index is read without the key and its `PackagePublish` / `SymbolPackagePublish` resources are used; any other source is a v2 push URL. Each package is a PUT to `<url>/`, multipart part `package` / `package.nupkg`, header `X-NuGet-ApiKey`, which matches what the real client sends (captured: same part name, filename and content type; the client uses chunked encoding, NERV sends a Content-Length). 409 means skipped (duplicate). Redirects are not followed; plain http is refused unless the host is loopback. A key a feed echoes is replaced by `***`. Step model: `Step.Exec` is now `[]string`, `Arg` removed, `Check` became `Func(ctx, lookupEnv)`, and `Step.Secrets` declares the variables checked before the run. Limitation (documented): a feed whose service index needs credentials (GitHub Packages, Azure Artifacts) needs a publish override. | RED: `undefined: pushNuGet` (build). GREEN: `TestPushNuGet_V3IndexAndSymbols`, `..._V2URLDuplicatesAndFailures` (409 skipped; a 403 echoing the key is redacted), `..._NeverSendsTheKeyElsewhere` (a 307 to another server: not followed, that server got 0 requests; non-loopback http, ftp and garbage URLs refused), `..._Errors`, `TestPlan_NuGetKeyNeverOnACommandLineOrInTheListing` (0 process steps, the key only in the feed's header, not in Render or output). Smoke: the real `Calc.1.2.3-smoke.1.nupkg` is pushed to a loopback fake feed (body byte-identical, key header present). |
+| R4-stale-coverage-reports, R4-stale-nupkg-push, R3-stale-artifacts | `Plan.ResetDirs` (the coverage and nuget directories the plan uses); `Executor.Run` removes and recreates them after the secrets check and before the first stage, after checking each one is strictly inside `Context.ArtifactsDir` (lexical `Rel` + `IsLocal`; the root itself is refused too). Other projects' directories are untouched. | RED: `TestExecutor_LeftoversOfAnEarlierRunAreNotUsed` ("line coverage 8.64% (95 of 1100 lines, 2 reports)") and `TestExecutor_ResetsOnlyInsideTheArtifactsRoot` (no refusal). GREEN. `TestExecutor_CoverageCheckRunsInProcess` now writes its report from the test step. |
+| R3-csproj-nonatomic | `replaceFile`: resolves symlinks, creates a temp file in the same directory (`createTemp` seam), sets the original's permission bits, then Write, Sync, Close and Rename; on any error the temp file is removed and the original is untouched. | RED (seam only): `TestWriteCsproj_AtomicReplace` write/sync/close failures returned nil; the call order was `[]`. GREEN: the original is byte-identical on each failure, no leftover file, calls `[write sync close]`, mode 0640 kept. `..._ThroughASymlinkKeepsTheLink` passed before and after. |
+| R2-001, R3-coverage-rounding-message | `Coverage{..., Threshold}` with `String()` and `belowError()` built on one `measure()`. The percentage is truncated to hundredths in integer arithmetic, and the threshold is compared exactly (`covered*100 < threshold*valid`). The preset's summary is `c.String()`. | RED: `c.String undefined` (build); the old code printed 79.996% as `80.00%`. GREEN: `TestCoverage_TextNeverRoundsUpToTheThreshold` (79996/100000 vs 80 gives `79.99%`; 85.49 vs 85.5; 99.99 pass; 95.00). |
+| R3-exec-windows-shims | `checkCmdSafe` refuses `& \| < > ^ % "`, CR and LF in `npm.dist_tag`, `npm.registry` and the channel used as the dist-tag, on every OS (the other node/npm arguments are fixed). Documented in the `shiprun.Step.Exec` comment and in the docs. | RED: 8 cases of `TestBuild_NpmRefusesCmdMetacharacters` built without an error. GREEN. |
+| R2-002 | `context` local renamed `buildContext`. | Refactor; tests green. |
+| R2-003 | `Context.NotesFile` removed (T6 passes the notes to `WriteCsproj`). | Refactor. |
+| R2-004 | `writeJSON` renamed `writeFile`. | In `18a049f`. |
+
+- Also fixed: the fake feed and the smoke test now ignore stray `GET /`
+  requests. Another local process on this shared host probes newly opened
+  loopback ports, which made the smoke test fail 1 run in 5 ("4
+  requests"). `14715ea`.
+- Process slip: `18a049f` was first committed with an unformatted test file
+  and amended before anything else (unpushed). `9239f17` was committed
+  while `go test` piped through `tail` hid a failure; that failure was the
+  probe flake above, fixed in `14715ea`. Later checks capture the exit
+  status.
+- Docs: `docs/release-commands.md` (NuGet push protocol and why, redirects,
+  http and index-credential limits, artifacts reset, atomic csproj write,
+  Windows `.cmd` shims).
+- Checks: `go test -count=1 ./...` exit 0 (27 packages ok, smoke tests
+  included: dotnet 10.4s, docker 0.39s), `go vet ./...` and
+  `GOOS=windows go vet ./...` clean, `gofmt -l .` empty.
+- Commits: `18a049f` `fix(shipplan): push nuget packages without the api
+  key on any command line` (9 files changed, 586 insertions(+), 124
+  deletions(-)); `3dd25a0` `fix(shipplan): empty coverage and package
+  directories before each run` (5 files, +116 -7); `7c84af5`
+  `fix(shipplan): replace the dotnet project file atomically` (3 files,
+  +155 -3); `9239f17` `fix(shipplan): format coverage results in one place
+  without rounding up` (3 files, +77 -16); `14715ea` `test(shipplan):
+  ignore stray loopback probes in the fake nuget feed` (2 files, +19 -2);
+  `1a1e589` `fix(shipplan): refuse cmd.exe metacharacters in npm publish
+  arguments` (5 files, +71 -6); `1d8edbf` `refactor(shipplan): rename the
+  docker build context and drop the unused notes file` (2 files, +4 -6).
+  Total `git diff --shortstat 288701f 1d8edbf`: 14 files changed, 1024
+  insertions(+), 160 deletions(-).
+
 ## Next step
 
-Review of T5 (88562b0..6510255 plus this document), then the T5 pull
-request, then T6 (`nerv ship`).
+Review of the T5 follow-ups (288701f..1d8edbf), then the T5 pull request,
+then T6 (`nerv ship`; open: write the csproj before the pipeline so the
+nupkg carries the release notes).
