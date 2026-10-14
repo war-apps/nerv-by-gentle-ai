@@ -995,6 +995,19 @@ behavioural failure once the new names existed, where a test can show it).
   Total `git diff --shortstat 288701f 1d8edbf`: 14 files changed, 1024
   insertions(+), 160 deletions(-).
 
+### T5 follow-up review
+
+- Native review of 288701f..7078e96 (high risk, 4 lenses, user granted):
+  approved and acknowledged. Advisory: R4-nuget-partial-push-unreported and
+  R3-partial-push-summary-lost (WARNING: a push that fails part-way does not
+  name the packages already accepted), R3-atomic-test-close-leak (WARNING,
+  test only: the injected close failure leaks the temp descriptor, which
+  breaks cleanup on Windows), R1-nuget-partial-key-echo (redact before
+  truncating the feed's error body), R4-nuget-put-body-not-rewindable
+  (no GetBody for retried requests), R2-nugetpush-client-param-unused,
+  R2-multipart-tail-handbuilt, R2-nuget-protocol-version-constant,
+  R2-replacefile-closed-flag, R3-nupkg-glob-metachar.
+
 ## Next step
 
 Review of the T5 follow-ups (288701f..1d8edbf), then the T5 pull request,
