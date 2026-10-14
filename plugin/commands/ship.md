@@ -1,6 +1,6 @@
 ---
 description: Release this repository (or each monorepo project) from origin with nerv ship — always a dry run first, the real release only after the user's explicit yes
-argument-hint: [--branch <name>] [--project <name>]
+argument-hint: [--branch <name>] [--project <name>] (nothing else is accepted)
 ---
 
 # /nerv:ship
@@ -13,14 +13,21 @@ a throwaway clone. The user's repository is never modified.
 `nerv ship` releases **what is on origin**: the local branch must equal
 origin's (it never pushes the user's commits). `--branch <name>` picks the
 branch (default: the current one); `--project <name>` releases only that
-project of the `release:` section. Pass `$ARGUMENTS` through unchanged in
-both runs below, and never add `--yes` or `--dry-run` to them yourself
-except as written here.
+project of the `release:` section.
+
+**Accepted arguments.** Check `$ARGUMENTS` before running anything: it may
+hold only `--branch <name>` and `--project <name>`, each at most once, each
+followed by a non-empty value that does not start with `-`. Anything else
+(including `--dry-run`, `--yes`, `--expect`, `--cwd`, `--json`, extra
+words) is not accepted: tell the user which part is not accepted, that
+`/nerv:ship` takes only `--branch` and `--project`, and stop without
+running `nerv`. Below, `<args>` means exactly those accepted arguments.
+Never add flags other than the ones written here.
 
 1. **Rehearse first, always.** Run:
 
    ```
-   nerv ship --dry-run --json $ARGUMENTS
+   nerv ship --dry-run --json <args>
    ```
 
    If `nerv` is not on PATH, tell the user to install it — `curl -fsSL
@@ -70,15 +77,23 @@ except as written here.
    "release it") counts; anything else, silence or a question means do not
    release: answer the question or confirm that nothing was released.
 
-5. **Release, only after that yes.** Run:
+5. **Release, only after that yes, bound to what was approved.** Run:
 
    ```
-   nerv ship --yes --json $ARGUMENTS
+   nerv ship --yes --json <args> --expect <project>=<version> ...
    ```
 
-   It reads origin and computes again. If the versions or tags it reports
-   differ from the ones the user approved (origin moved in between), say
-   so plainly in the report.
+   with one `--expect <project>=<version>` for each project of the dry-run
+   document whose `status` is `dry-run`, using its `project` and `version`
+   exactly as printed. The real run reads origin and computes again; if
+   origin moved since the dry run and the computed releases are not
+   exactly the approved ones, it refuses (exit 1, `status` `refused`,
+   `error` naming expected and computed versions) before running anything.
+   Tell the user this before running it: they approved these versions, and
+   a moved origin makes the release refuse instead of releasing something
+   they did not approve. On that refusal, say that nothing was released
+   and that a new `/nerv:ship` will rehearse and show the new plan; do not
+   rerun on your own.
 
 6. **Report the result document.** In the user's language: `status`
    (`released`, `nothing-to-release`, `declined`, `refused`, `failed`,
