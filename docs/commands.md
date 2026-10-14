@@ -11,6 +11,9 @@ Nerv by Gentle-AI has two command surfaces: Claude Code slash commands
 | `/nerv:configure` | Configure NERV through guided questions (git, tasks, skills, models, repo, commands) |
 | `/nerv:init` | Bootstrap NERV for the current repository (writes `.nerv/nerv.yaml`) |
 | `/nerv:status` | Show NERV activation, config resolution, and change status (read-only) |
+| `/nerv:version` | Show the next release version of the repository (or of each project) |
+| `/nerv:ship` | Release the repository from origin: dry run first, the real release only after your explicit yes |
+| `/nerv:release-setup` | Write the `release:` section of `.nerv/nerv.yaml` from what the repository has, asking only what it cannot detect |
 
 ### /nerv:configure
 
@@ -45,6 +48,49 @@ the skill registry with `gentle-ai skill-registry refresh`. An existing
 /nerv:init
 ```
 
+### /nerv:version
+
+Runs `nerv version next --json` with the arguments you give (`--branch`,
+`--project`, `--offline`, ...) and shows, per project, whether there is a
+new release, the next version, its channel and tag, and the last release.
+By default it reads origin's release tags and notes with your git
+credentials; add `--offline` to use the local ones only.
+
+```
+/nerv:version --branch develop
+```
+
+### /nerv:ship
+
+Always rehearses first with `nerv ship --dry-run --json` (the pipeline runs
+in a throwaway clone; nothing is tagged or published) and shows, per
+project, the version, channel, tag and last version, and the plan's
+stages. Then it asks you; only on your explicit yes does it run `nerv ship
+--yes --json` and report the result, with the recovery advice of a failed
+project. `--branch` and `--project` pass through. It releases what is on
+origin: push or pull first when your branch differs.
+
+```
+/nerv:ship --branch develop --project api
+```
+
+### /nerv:release-setup
+
+Sets up the `release:` section used by `/nerv:version` and `/nerv:ship`.
+It detects the repository's semantic-release configuration, .NET projects
+and solutions, Dockerfiles and CI docker steps, `package.json` scripts,
+release scripts and monorepo layout; proposes a complete section; asks
+only what it cannot detect, one question at a time; writes the section
+into `.nerv/nerv.yaml` without touching the rest of the file; and
+validates it with `nerv version next --offline`. An existing section is
+shown first and never overwritten without asking. `--project <name>` adds
+or edits one project. It never commits, pushes or releases. See
+[release-commands.md](release-commands.md#interactive-setup).
+
+```
+/nerv:release-setup
+```
+
 ### /nerv:status
 
 Read-only report of NERV's state for the current repo: activation,
@@ -63,6 +109,8 @@ isn't taking effect.
 | Command | What it does |
 |---|---|
 | `nerv version` | Print the binary and plugin versions |
+| `nerv version next` | Compute the next release version with semantic-release |
+| `nerv ship` | Release the repository from origin: pipeline, semantic-release, publish |
 | `nerv configure` | Configure NERV non-interactively (or run the wizard) |
 | `nerv install` | Install NERV (plugin, cache, skills, Engram KB) |
 | `nerv uninstall` | Uninstall NERV |
@@ -124,6 +172,39 @@ nerv configure --set git.base_branch=develop --set tasks.provider=teamwork
 
 ```
 nerv configure --set-model aoba=opus/high
+```
+
+### nerv version next
+
+Computes the next semantic version of the repository, or of each project of
+its `release:` section, with the repository's own semantic-release
+configuration in dry-run mode, and prints the 12 outputs of
+`cycjimmy/semantic-release-action` as text, JSON or GitHub Actions output
+lines. Flags, formats, monorepo key naming and exit codes:
+[release-commands.md](release-commands.md#nerv-version-next).
+
+```
+nerv version next --branch develop --json
+```
+
+```
+nerv version next --offline --format env >> "$GITHUB_OUTPUT"
+```
+
+### nerv ship
+
+A full local release of what is on origin, in a throwaway clone: dotnet
+project file, pipeline (restore to package), semantic-release for real
+(release commit, CHANGELOG, tag, GitHub release), then publish (docker,
+NuGet, npm) and the lifecycle hooks, per project in dependency order. It
+asks for confirmation (`--yes` to skip; required without a terminal);
+`--dry-run` builds without releasing or publishing. Flow, credentials,
+failure handling and exit codes:
+[release-commands.md](release-commands.md#nerv-ship).
+
+```
+nerv ship --dry-run
+nerv ship --branch develop --project api
 ```
 
 ### nerv install

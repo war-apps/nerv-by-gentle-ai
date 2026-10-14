@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.1.0] - 2026-10-14
+
+### Added
+- release: local release commands for your own repositories, a replacement for the CI release where it cannot or
+  should not run (guide: `docs/release-commands.md`).
+  - `nerv version next` computes the next semantic version of any repository (or of each project of a monorepo)
+    with the repository's own semantic-release configuration and origin's tags and notes, as text, JSON or GitHub
+    Actions output lines (the outputs of `cycjimmy/semantic-release-action`); `--offline` uses local refs only.
+    `/nerv:version` shows it in Claude Code. Plain `nerv version` still prints the binary version.
+  - `nerv ship` releases what is on origin from your machine, in a throwaway clone: pipeline and presets (dotnet,
+    node, docker, NuGet, npm), semantic-release for real with the repository's own plugins, publish, and `prepare` /
+    `publish` / `success` / `fail` hooks, per project in dependency order; `--dry-run` builds without releasing,
+    `--yes` skips the confirmation, `--expect <project>=<version>` refuses any release other than the approved one,
+    and a failure reports what was tagged and published and what to do. `/nerv:ship` always rehearses with
+    `--dry-run` and releases only after your explicit yes, bound to the dry run's versions.
+  - The `release:` section of `.nerv/nerv.yaml` declares the projects (paths, shared paths, scopes, tag formats,
+    `depends_on` bumps), presets, stage overrides and hooks (bash, pwsh or node), validated with every problem
+    reported at once.
+  - `/nerv:release-setup` writes the `release:` section interactively: it detects the repository's semantic-release
+    configuration, projects, Dockerfiles, scripts and monorepo layout, asks only what it cannot detect, writes the
+    section without touching the rest of `.nerv/nerv.yaml`, and validates it with `nerv version next --offline`.
+  - In a monorepo each project's release writes its own `changelog` (default `<path>/CHANGELOG.md`): the
+    repository's `@semantic-release/changelog` and `@semantic-release/git` entries are pointed at it, so each
+    release commit holds only that project's CHANGELOG. A single project keeps the repository's configured
+    changelog unless `changelog` is set explicitly; without a changelog plugin the field has no effect (one warning).
+
 ## [4.0.0] - 2026-10-09
 
 ### Breaking

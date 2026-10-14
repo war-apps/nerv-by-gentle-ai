@@ -43,7 +43,15 @@ tasks:
       stages: { inDev: DESARROLLO, testing: TESTING, implemented: IMPLEMENTA, blocked: BLOQUEA, canceled: CANCEL, pending: PENDIENTE, analysis: ANALISIS }
   sources:                          # extra work sources for listings (replaces ~/.claude/work/sources.md)
     - { name: erp-proveedores, type: google-sheets, ... }
+release:                            # project scope only, never merged with the user file; see release-commands.md
+  projects:
+    - { name: api, path: . }
 ```
+
+`release:` configures the release commands (`nerv version next` and
+`nerv ship`, also `/nerv:version` and `/nerv:ship`): projects, dependencies,
+tag formats, presets, stages and hooks. Its full reference is
+[release-commands.md](release-commands.md#configuration-release).
 
 `models:` assigns a per-role `model` and `effort` override, with project
 overriding user key by key like every other section — each entry is an

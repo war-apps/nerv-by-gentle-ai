@@ -309,6 +309,11 @@ example YAML, and how to configure per-role models and effort (wizard,
   configuration schema and how to configure per-role models and effort.
 - [docs/releases.md](docs/releases.md) — versioning, release channels,
   and how to cut a release.
+- [docs/release-commands.md](docs/release-commands.md) — release commands
+  for your own repositories: `nerv version next` / `/nerv:version` (the next
+  semantic version of a repo or of each monorepo project), `nerv ship` /
+  `/nerv:ship` (a local release of what is on origin) and the `release:`
+  section, which `/nerv:release-setup` writes interactively.
 - [docs/troubleshooting.md](docs/troubleshooting.md) — known limitations
   and troubleshooting.
 
