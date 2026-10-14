@@ -444,6 +444,7 @@ The same holds for `nerv ship`.
 ```
 nerv ship [--cwd <dir>] [--branch <name>] [--project <name>]
           [--dry-run] [--yes] [--fetch-timeout <dur>] [--json]
+          [--expect <project>=<version> ...]
 ```
 
 A full release from your machine, replacing the CI release workflow where
@@ -451,7 +452,9 @@ it cannot or should not run. It releases **what is on origin**, in a
 throwaway clone, with the repository's own semantic-release configuration.
 In Claude Code, `/nerv:ship [--branch <name>] [--project <name>]` always
 runs `nerv ship --dry-run --json` first, shows the plan, and runs `nerv
-ship --yes --json` only after your explicit yes.
+ship --yes --json --expect <project>=<version> ...` (the dry run's
+versions) only after your explicit yes, so the release you approved is the
+only one that can run.
 
 | Flag | Default | Meaning |
 |---|---|---|
@@ -462,6 +465,7 @@ ship --yes --json` only after your explicit yes.
 | `--yes` | off | Release without asking (required without a terminal). |
 | `--fetch-timeout <dur>` | `60s` | Bound for each read of origin (the fetch, the push check, the tag check); must be positive. |
 | `--json` | off | Final summary as JSON. |
+| `--expect <project>=<version>` | none | Repeatable. Release only when the computed releases are exactly these: every listed project releases that version and no other project releases. Otherwise the run is refused (exit 1, `--json` status `refused`, expected vs computed per project) before any stage runs. Use the names and versions a `--dry-run --json` printed (for a repository without a `release:` section, the project name it prints). A malformed value or a project given twice is a usage error (exit 2). |
 
 ### Flow
 
@@ -481,7 +485,9 @@ ship --yes --json` only after your explicit yes.
    refused too.
 4. Compute every project's next version in the clone (as `nerv version
    next`, from the refs just read; origin is read once). Projects without a
-   new release are reported and skipped.
+   new release are reported and skipped. With `--expect`, refuse here
+   unless the releasing projects and versions are exactly the expected
+   ones.
 5. Print each releasing project's version, channel, tag and last release,
    and its plan ([Pipeline and presets](#pipeline-and-presets), secrets
    shown as `$<VARIABLE>`), then ask `Release <n> project(s)? [y/N]` on an
@@ -909,6 +915,7 @@ Nothing has been tagged or published in any of these cases.
 |---|---|---|
 | `your local <b> (...) is not origin/<b> (...)` | `nerv ship` releases what is on origin. | `git push` or `git pull`, then run again. |
 | `branch <b> is not on origin` / `has no origin remote` | Nothing on origin to release. | Push the branch (or add the remote). |
+| `the computed release is not the expected one (<project>: expected X, computed Y; ...)` | `--expect` no longer matches: origin moved since the dry run. | Run the dry run again, review the new plan, then release with its versions. |
 | `confirmation needed but stdin is not an interactive terminal` | No terminal for `[y/N]`. | `--yes` (after a `--dry-run`), or run it in a terminal. |
 | `invalid release configuration: ...` | The `release:` section (every problem listed). | Fix each line; see [Validation](#validation). |
 | `unknown project "x"; the release: section declares: ...` | `--project` typo. | Use one of the listed names. |

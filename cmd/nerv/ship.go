@@ -8,8 +8,10 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"maps"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 	"time"
@@ -42,6 +44,11 @@ Flags:
                             clone, but never semantic-release or publish
   --yes                    Release without asking for confirmation
   --fetch-timeout <dur>    Bound for each read of origin (default 60s)
+  --expect <project>=<version>
+                           Release only if the computed versions are exactly
+                            these (repeat once per releasing project, as the
+                            dry run printed them); anything else is refused
+                            before any stage runs
   --json                   Print the final summary as JSON
 
 Credentials stay with git (ssh keys, credential helpers), docker and the
@@ -107,6 +114,7 @@ type shipRun struct {
 	project        string
 	dryRun, yes    bool
 	timeout        time.Duration
+	expect         expectations
 
 	ws shipWorkspace
 	// computed are every computed result, the dependencies of --project
@@ -128,6 +136,8 @@ func runShip(args []string, stdout, stderr io.Writer, opts options) int {
 	fs.BoolVar(&s.dryRun, "dry-run", false, "")
 	fs.BoolVar(&s.yes, "yes", false, "")
 	fs.DurationVar(&s.timeout, "fetch-timeout", semrel.DefaultFetchTimeout, "")
+	s.expect = expectations{}
+	fs.Var(s.expect, "expect", "")
 	jsonOut := fs.Bool("json", false, "")
 	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
@@ -216,6 +226,66 @@ func classifyShipError(ctx context.Context, sig os.Signal, stderr io.Writer, err
 	return 2, "failed", err.Error()
 }
 
+// expectations are the --expect <project>=<version> pairs: the versions the
+// user approved (from a dry run). An empty set checks nothing.
+type expectations map[string]string
+
+// expectProjectRe is a release: project name (shipconfig: [a-z0-9-]) or a
+// repository directory name for a sectionless repository.
+var expectProjectRe = regexp.MustCompile(`^[A-Za-z0-9._-]+$`)
+
+// expectVersionRe is a semantic version's characters.
+var expectVersionRe = regexp.MustCompile(`^[0-9A-Za-z][0-9A-Za-z.+-]*$`)
+
+func (e expectations) String() string { return "" }
+
+// Set parses one <project>=<version>; a project given twice is an error.
+func (e expectations) Set(v string) error {
+	name, version, ok := strings.Cut(v, "=")
+	if !ok || !expectProjectRe.MatchString(name) || !expectVersionRe.MatchString(version) {
+		return fmt.Errorf("want <project>=<version>, got %q", v)
+	}
+	if _, dup := e[name]; dup {
+		return fmt.Errorf("project %q given twice", name)
+	}
+	e[name] = version
+	return nil
+}
+
+// check refuses unless the releasing projects and their versions are
+// exactly the expected ones: no other version, no missing release, no
+// release that was not expected.
+func (e expectations) check(results []semrel.ProjectResult) error {
+	if len(e) == 0 {
+		return nil
+	}
+	computed := map[string]string{}
+	for _, r := range results {
+		if r.NewReleasePublished {
+			computed[r.Project] = r.NewReleaseVersion
+		}
+	}
+	var problems []string
+	for _, name := range slices.Sorted(maps.Keys(e)) {
+		switch got, ok := computed[name]; {
+		case !ok:
+			problems = append(problems, fmt.Sprintf("%s: expected %s, computed no release", name, e[name]))
+		case got != e[name]:
+			problems = append(problems, fmt.Sprintf("%s: expected %s, computed %s", name, e[name], got))
+		}
+	}
+	for _, name := range slices.Sorted(maps.Keys(computed)) {
+		if _, ok := e[name]; !ok {
+			problems = append(problems, fmt.Sprintf("%s: not expected, computed %s", name, computed[name]))
+		}
+	}
+	if len(problems) == 0 {
+		return nil
+	}
+	return refuse("the computed release is not the expected one (%s); nothing was run. Origin probably moved since the dry run: run the dry run again and review the new plan",
+		strings.Join(problems, "; "))
+}
+
 func shipUsageError(stderr io.Writer, problem string) int {
 	fmt.Fprintf(stderr, "nerv ship: %s\n\n%s", problem, shipUsage)
 	return 2
@@ -282,6 +352,9 @@ func (s *shipRun) execute(ctx context.Context) ([]shipOutcome, error) {
 	s.computed = results
 	if s.project != "" {
 		results = slices.DeleteFunc(slices.Clone(results), func(r semrel.ProjectResult) bool { return r.Project != s.project })
+	}
+	if err := s.expect.check(results); err != nil {
+		return nil, err
 	}
 	s.results = results
 	return s.release(ctx)

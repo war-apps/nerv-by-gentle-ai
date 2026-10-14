@@ -17,8 +17,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `nerv ship` releases what is on origin from your machine, in a throwaway clone: pipeline and presets (dotnet,
     node, docker, NuGet, npm), semantic-release for real with the repository's own plugins, publish, and `prepare` /
     `publish` / `success` / `fail` hooks, per project in dependency order; `--dry-run` builds without releasing,
-    `--yes` skips the confirmation, and a failure reports what was tagged and published and what to do.
-    `/nerv:ship` always rehearses with `--dry-run` and releases only after your explicit yes.
+    `--yes` skips the confirmation, `--expect <project>=<version>` refuses any release other than the approved one,
+    and a failure reports what was tagged and published and what to do. `/nerv:ship` always rehearses with
+    `--dry-run` and releases only after your explicit yes, bound to the dry run's versions.
   - The `release:` section of `.nerv/nerv.yaml` declares the projects (paths, shared paths, scopes, tag formats,
     `depends_on` bumps), presets, stage overrides and hooks (bash, pwsh or node), validated with every problem
     reported at once.
