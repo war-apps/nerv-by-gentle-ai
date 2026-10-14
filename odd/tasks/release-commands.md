@@ -1242,6 +1242,29 @@ directly.
   untested (the CR/LF/NUL refusal and the quoting of the insteadOf rule have
   no test).
 
+### T6 final pass
+
+Last bounded pass on the T6 follow-up review's findings (user authorized).
+Route: delegated (one writer). Test-first; `go test` exit codes captured
+directly.
+
+| Item | Fix | Evidence |
+|---|---|---|
+| R3-rerun-advice-error-branch-untested | `rerunAdvice` reads origin's branch under its own 10s deadline (`rerunCheckTimeout`) on `context.WithoutCancel(ctx)`, so an interrupted run still gets accurate advice. Tests for the unreadable-origin branch ("git fetch") and for the interrupted path. | RED: `TestShip_InterruptedRunStillReadsOriginForTheAdvice` (origin read with `context canceled`; advice fell back to "git fetch"). The unreadable case already behaved (test only, no RED). GREEN. |
+| R3-rerun-advice-deleted-branch-says-moved | An empty origin head says "Branch <b> was deleted on origin during this run: check what happened before releasing it again", no `git pull`. Docs updated. | RED: `TestShip_RerunAdviceWhenOriginCannotBeReadOrTheBranchIsGone/deleted` (got the pull advice). GREEN. |
+| R3-origin-rewrite-linebreak-untested | Tests only: LF, CR and NUL in either URL are refused and nothing is written; a URL with `"`, `\`, `#` and `;` is read back exactly by `git config --file <cfg> --null --get-regexp '^url\.'` (key `url.<real>.insteadof`, value the push address); file mode 0600. | Passed at once (behaviour already correct). Mutation check: with the escaping and the refusal removed, all four cases failed; code restored (no diff). |
+
+- Checks: `go test -count=1 ./...` exit 0 (27 packages); `go test -tags
+  semrel_integration -run Integration -count=1 ./internal/semrel/
+  ./cmd/nerv/` exit 0; `go vet ./...` and `GOOS=windows go vet ./...` exit
+  0; `gofmt -l .` empty.
+- Commits: `7fe6222` `fix(cli): read origin for the rerun advice after an
+  interrupt and name a deleted branch` (3 files changed, 95 insertions(+),
+  7 deletions(-)); `4e5b6fa` `test(semrel): prove the origin rewrite
+  refuses line breaks and escapes quotes` (1 file changed, 55
+  insertions(+)). Total `git diff --shortstat e290b8c 4e5b6fa`: 4 files
+  changed, 150 insertions(+), 7 deletions(-).
+
 ## Next step
 
 Review of T6 (910004e..6347f25), then the T6 pull request
