@@ -14,6 +14,7 @@ import (
 	nerv "github.com/war-apps/nerv-by-gentle-ai"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/env"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/semrel"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/shipplan"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/version"
 )
 
@@ -23,6 +24,8 @@ Commands:
   version [--json]     Print the binary and plugin versions
   version next [flags] Compute the next release version with semantic-release
                        (see "nerv version next --help")
+  ship [flags]         Release the repository from origin: pipeline,
+                       semantic-release, publish (see "nerv ship --help")
   configure [flags]    Configure NERV (non-interactive; see "nerv configure --help")
   install [flags]      Install NERV (see "nerv install --help")
   uninstall [flags]    Uninstall NERV (see "nerv uninstall --help")
@@ -82,6 +85,17 @@ type options struct {
 	// and the signal received (nil if none). Tests inject a controllable one.
 	// Nil means signalContext.
 	SignalContext func(context.Context) (context.Context, context.CancelFunc, func() os.Signal)
+	// OpenShipWorkspace creates nerv ship's release clone; tests inject a
+	// fake. Nil means semrel.NewWorkspace.
+	OpenShipWorkspace func(context.Context, semrel.WorkspaceOptions) (shipWorkspace, error)
+	// ShipSteps returns the runner of nerv ship's process steps for the
+	// release clone at repoRoot, streaming to output; tests inject a
+	// recorder. Nil means a shiprun.Runner.
+	ShipSteps func(repoRoot string, output io.Writer) shipplan.StepRunner
+	// GitHubToken returns a token for semantic-release when the environment
+	// has no GH_TOKEN or GITHUB_TOKEN; tests inject a fixed one so no real
+	// credential is read. Nil means `gh auth token` through Runner.
+	GitHubToken func(context.Context) string
 }
 
 func defaultOptions() options {
@@ -127,6 +141,8 @@ func run(args []string, stdout, stderr io.Writer, opts options) int {
 		return runSkills(args[1:], stdout, stderr, opts)
 	case "spec-compose":
 		return runSpecCompose(args[1:], stdout, stderr)
+	case "ship":
+		return runShip(args[1:], stdout, stderr, opts)
 	case "release":
 		return runRelease(args[1:], stdout, stderr, opts)
 	default:

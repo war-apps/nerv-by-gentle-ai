@@ -15,6 +15,7 @@ import {
   RESULT_MARKER,
   commitFileLister,
   commitScopes,
+  failureResult,
   makeFilter,
   neededPackages,
   notesRepositoryUrl,
@@ -22,6 +23,7 @@ import {
   pathMatcher,
   raiseReleaseType,
   stripNoRemoteLinks,
+  versionGuard,
 } from "./nerv-semrel-lib.mjs";
 
 const libURL = pathToFileURL(path.join(path.dirname(fileURLToPath(import.meta.url)), "nerv-semrel-lib.mjs")).href;
@@ -282,4 +284,28 @@ test("stripNoRemoteLinks turns the placeholder's links into plain text and keeps
   );
   assert.equal(stripNoRemoteLinks(""), "");
   assert.equal(stripNoRemoteLinks(undefined), undefined);
+});
+
+test("versionGuard throws a typed mismatch error only for another version", () => {
+  assert.doesNotThrow(() => versionGuard("1.1.0", "1.1.0"));
+  assert.throws(
+    () => versionGuard("1.1.0", "1.2.0"),
+    (e) => e.code === "ENERVVERSIONMISMATCH" && e.expected === "1.1.0" && e.actual === "1.2.0" && !e.semanticRelease,
+  );
+});
+
+test("failureResult carries the version mismatch as a structured field", () => {
+  let mismatch;
+  try {
+    versionGuard("1.1.0", "2.0.0");
+  } catch (e) {
+    mismatch = e;
+  }
+  const r = failureResult({ errors: [new Error("other"), mismatch] });
+  assert.equal(r.ok, false);
+  assert.deepEqual(r.versionMismatch, { expected: "1.1.0", actual: "2.0.0" });
+  assert.match(r.error, /ENERVVERSIONMISMATCH/);
+  const plain = failureResult(Object.assign(new Error("boom"), { code: "EGITHUB" }));
+  assert.equal(plain.versionMismatch, undefined);
+  assert.equal(plain.error, "EGITHUB boom");
 });

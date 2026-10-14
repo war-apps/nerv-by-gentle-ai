@@ -30,6 +30,9 @@ type Executor struct {
 type StepFailure struct {
 	Stage string
 	Step  string
+	// Index is the step's position in its stage's Steps (or in the hook
+	// key's list): the steps before it succeeded.
+	Index int
 	Err   error
 }
 
@@ -91,6 +94,18 @@ func (e Executor) RunPublish(ctx context.Context, plan *Plan, vars shiprun.Vars)
 	return e.run(ctx, []Stage{*pub}, vars)
 }
 
+// RunHooks runs the plan's hooks of one lifecycle key (prepare, publish,
+// success, fail) in order and stops at the first failure, a *StepFailure
+// whose Stage is the key. No hook for the key is no error. It runs in a dry
+// run too: the caller decides which keys a dry run reaches.
+func (e Executor) RunHooks(ctx context.Context, plan *Plan, key string, vars shiprun.Vars) error {
+	hooks := plan.Hooks[key]
+	if len(hooks) == 0 {
+		return nil
+	}
+	return e.run(ctx, []Stage{{Name: key, Steps: hooks}}, vars)
+}
+
 // checkSecrets fails when a secret of a step that may run is not set or
 // empty, naming the step and the variable (never a value).
 func (e Executor) checkSecrets(plan *Plan) error {
@@ -112,9 +127,9 @@ func (e Executor) checkSecrets(plan *Plan) error {
 
 func (e Executor) run(ctx context.Context, stages []Stage, vars shiprun.Vars) error {
 	for _, st := range stages {
-		for _, s := range st.Steps {
+		for i, s := range st.Steps {
 			if err := e.step(ctx, s, vars); err != nil {
-				return &StepFailure{Stage: st.Name, Step: s.Name, Err: err}
+				return &StepFailure{Stage: st.Name, Step: s.Name, Index: i, Err: err}
 			}
 		}
 	}

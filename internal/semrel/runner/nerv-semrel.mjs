@@ -15,6 +15,22 @@
 //     One semantic-release dry run in cwd (a worktree on the requested branch).
 //     commitFilesCache is a JSON file (commit hash -> files) shared by the
 //     projects of one NERV run.
+//   {"mode":"release", ... as run ..., "expectedVersion"}
+//     One REAL semantic-release run (nerv ship) in cwd, a clone of the user's
+//     repository checked out on origin's commit of the branch, pushing to
+//     repositoryUrl (origin's address without credentials; git rewrites it
+//     to the real URL through its environment). Every step is the
+//     repository's own (verifyConditions, prepare, publish, success, fail,
+//     ...), except that analyzeCommits and generateNotes are wrapped as in
+//     run mode (project commit filter, depends_on raise, notes links) and
+//     verifyRelease first checks that the next version is expectedVersion:
+//     any other version throws ENERVVERSIONMISMATCH there (reported as the
+//     result's structured versionMismatch field), before prepare and
+//     the tag (lib/definitions/plugins.js order: verifyConditions,
+//     analyzeCommits, verifyRelease, generateNotes, prepare, then the tag and
+//     push in index.js, then publish, success). The error has no
+//     `semanticRelease` flag, so semantic-release does not call the fail
+//     plugins for it (index.js callFail keeps only errors with that flag).
 //
 // The pure logic (package listing, commit filter, depends_on raise, result
 // writing) lives in nerv-semrel-lib.mjs, embedded next to this file.
@@ -69,6 +85,7 @@ import { pathToFileURL } from "node:url";
 import {
   NO_REMOTE_URL,
   commitFileLister,
+  failureResult,
   finish,
   isPackage,
   makeFilter,
@@ -77,6 +94,7 @@ import {
   packageName,
   raiseReleaseType,
   stripNoRemoteLinks,
+  versionGuard,
 } from "./nerv-semrel-lib.mjs";
 
 async function readStdin() {
@@ -143,7 +161,8 @@ function saveKnownFiles(file, known) {
 }
 
 async function run(req) {
-  const { cacheDir, cwd, repositoryUrl, tagFormat, filter, minReleaseType, commitFilesCache } = req;
+  const { cacheDir, cwd, repositoryUrl, tagFormat, filter, minReleaseType, commitFilesCache, expectedVersion } = req;
+  const real = req.mode === "release";
   const m = cacheModules(cacheDir);
   const semanticRelease = (await m.index()).default;
   const getConfig = (await m.lib("get-config.js")).default;
@@ -159,6 +178,10 @@ async function run(req) {
   }
 
   const baseOptions = tagFormat ? { tagFormat } : {};
+  // A real run pushes to repositoryUrl and its notes link to it (never to
+  // the clone's remote.origin.url, which git may rewrite to a URL holding
+  // credentials).
+  if (real) baseOptions.repositoryUrl = repositoryUrl;
   // The repository's own steps, built exactly as semantic-release builds them.
   const context = { cwd, env, stdout: process.stderr, stderr: process.stderr };
   context.logger = getLogger(context);
@@ -191,22 +214,32 @@ async function run(req) {
     return publicUrl === NO_REMOTE_URL ? stripNoRemoteLinks(notes) : notes;
   }
 
+  async function nervVerifyRelease(_pluginConfig, input) {
+    versionGuard(expectedVersion, input.nextRelease && input.nextRelease.version);
+    return own.verifyRelease(input);
+  }
+
+  const steps = real
+    ? {
+        dryRun: false,
+        analyzeCommits: [[nervAnalyzeCommits, {}]],
+        verifyRelease: [[nervVerifyRelease, {}]],
+        generateNotes: [[nervGenerateNotes, {}]],
+      }
+    : {
+        dryRun: true,
+        verifyConditions: [],
+        analyzeCommits: [[nervAnalyzeCommits, {}]],
+        verifyRelease: [],
+        generateNotes: [[nervGenerateNotes, {}]],
+        prepare: [],
+        publish: [],
+        addChannel: [],
+        success: [],
+        fail: [],
+      };
   const result = await semanticRelease(
-    {
-      ...baseOptions,
-      dryRun: true,
-      ci: false,
-      repositoryUrl,
-      verifyConditions: [],
-      analyzeCommits: [[nervAnalyzeCommits, {}]],
-      verifyRelease: [],
-      generateNotes: [[nervGenerateNotes, {}]],
-      prepare: [],
-      publish: [],
-      addChannel: [],
-      success: [],
-      fail: [],
-    },
+    { ...baseOptions, ci: false, repositoryUrl, ...steps },
     { cwd, env, stdout: process.stderr, stderr: process.stderr },
   );
   saveKnownFiles(commitFilesCache, knownFiles);
@@ -233,16 +266,9 @@ async function run(req) {
 
 try {
   const req = await readStdin();
+  // run and release modes share run(), which reads req.mode.
   const result = req.mode === "plan" ? await plan(req) : await run(req);
   finish(process.stdout, result, 0);
 } catch (error) {
-  const errors = error && Array.isArray(error.errors) ? error.errors : [error];
-  finish(
-    process.stdout,
-    {
-      ok: false,
-      error: errors.map((e) => (e && e.code ? `${e.code} ${e.message}` : String(e && e.message ? e.message : e))).join("; "),
-    },
-    1,
-  );
+  finish(process.stdout, failureResult(error), 1);
 }

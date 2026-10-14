@@ -12,8 +12,8 @@ import (
 // preset commands as their argument lists (quoted for reading only),
 // overrides and hooks as [shell] run, in-process steps by what they do.
 // Secrets are named as $<variable>, never shown. The publish stage is
-// marked as run at semantic-release's publish step, or not run in a dry
-// run; the lifecycle hooks follow.
+// marked as run after semantic-release tags the release, or not run in a
+// dry run; the lifecycle hooks follow.
 func (p *Plan) Render() string {
 	var b strings.Builder
 	channel := "default channel"
@@ -31,7 +31,7 @@ func (p *Plan) Render() string {
 			if p.Context.DryRun {
 				header += " (not run: dry run)"
 			} else {
-				header += " (runs at semantic-release's publish step)"
+				header += " (runs after semantic-release tags the release)"
 			}
 		}
 		fmt.Fprintf(&b, "  %s\n", header)
@@ -43,7 +43,7 @@ func (p *Plan) Render() string {
 	for _, key := range shipconfig.LifecycleHooks {
 		for _, s := range p.Hooks[key] {
 			if first {
-				b.WriteString("  hooks at semantic-release steps\n")
+				b.WriteString("  hooks (prepare: before semantic-release; publish, success: after the publish stage; fail: on a failure once semantic-release started)\n")
 				first = false
 			}
 			fmt.Fprintf(&b, "    %s  %s\n", s.Name, renderStep(s))

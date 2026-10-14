@@ -12,6 +12,7 @@ package semrel
 
 import (
 	"context"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -427,5 +428,97 @@ func TestIntegration_BranchesAreOrigins(t *testing.T) {
 		if dev.NewReleaseVersion != "1.1.0-alpha.1" || dev.LastReleaseVersion != "1.0.0" {
 			t.Errorf("develop without a local main (offline %v): %+v", offline, dev)
 		}
+	}
+}
+
+// releaseConfig releases main with a CHANGELOG committed by the git plugin;
+// no plugin needs a token.
+const releaseConfig = `{
+  "name": "widgets", "version": "0.0.0", "private": true,
+  "release": {
+    "branches": ["main"],
+    "plugins": [
+      "@semantic-release/commit-analyzer",
+      "@semantic-release/release-notes-generator",
+      "@semantic-release/changelog",
+      ["@semantic-release/git", { "assets": ["CHANGELOG.md"] }]
+    ]
+  }
+}
+`
+
+func TestIntegration_WorkspaceReleasesToOrigin(t *testing.T) {
+	requireToolchain(t)
+	r := newRepo(t)
+	origin := &repo{t: t, dir: filepath.Join(r.dir, r.git("remote", "get-url", "origin"))}
+	// semantic-release fetches origin's HEAD (git fetch --tags <url>), which
+	// must name an existing branch, as on any hosted origin.
+	origin.git("symbolic-ref", "HEAD", "refs/heads/main")
+	r.write("package.json", releaseConfig)
+	r.commit("chore: init", "a.txt")
+	r.git("tag", "v1.0.0")
+	r.commit("feat: add gadgets", "b.txt")
+	r.git("push", "-q", "origin", "main", "--tags")
+	before := r.git("for-each-ref", "--format=%(refname) %(objectname)")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+	defer cancel()
+	ws, err := NewWorkspace(ctx, WorkspaceOptions{RepoRoot: r.dir, Branch: "main", Env: testEnv(), CacheDir: integrationCache})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ws.Close()
+	if ws.OriginHead() != r.git("rev-parse", "main") {
+		t.Fatalf("origin head %s", ws.OriginHead())
+	}
+	results, err := ws.Compute(ctx, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(results) != 1 || results[0].NewReleaseVersion != "1.1.0" {
+		t.Fatalf("computed %+v", results)
+	}
+	if err := ws.CheckPush(ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	// A version other than the computed one stops before the tag.
+	wrong := results[0]
+	wrong.NewReleaseVersion = "9.9.9"
+	if _, err := ws.Release(ctx, ReleaseRequest{Expected: wrong, Computed: results}); !errors.Is(err, ErrVersionMismatch) {
+		t.Fatalf("mismatch: err = %v", err)
+	}
+	if tags := origin.git("tag", "--list"); tags != "v1.0.0" {
+		t.Fatalf("origin tags after the mismatch: %q", tags)
+	}
+
+	var log strings.Builder
+	got, err := ws.Release(ctx, ReleaseRequest{Expected: results[0], Computed: results, Output: &log})
+	if err != nil {
+		t.Fatalf("Release: %v\n%s", err, log.String())
+	}
+	if got.NewReleaseVersion != "1.1.0" || got.NewReleaseGitTag != "v1.1.0" {
+		t.Errorf("released %+v", got)
+	}
+	if !strings.Contains(log.String(), "Published release 1.1.0") {
+		t.Errorf("semantic-release log not streamed:\n%s", log.String())
+	}
+	if origin.git("rev-parse", "v1.1.0^{commit}") != origin.git("rev-parse", "main") {
+		t.Errorf("tag v1.1.0 is not on origin's main")
+	}
+	if msg := origin.git("log", "-1", "--format=%s", "main"); !strings.HasPrefix(msg, "chore(release): 1.1.0") {
+		t.Errorf("origin's main head: %q", msg)
+	}
+	if changelog := origin.git("show", "main:CHANGELOG.md"); !strings.Contains(changelog, "add gadgets") {
+		t.Errorf("CHANGELOG on origin:\n%s", changelog)
+	}
+	if ok, err := ws.TagOnOrigin(ctx, "v1.1.0"); !ok || err != nil {
+		t.Errorf("TagOnOrigin = %v, %v", ok, err)
+	}
+	if after := r.git("for-each-ref", "--format=%(refname) %(objectname)"); after != before {
+		t.Errorf("the user's refs changed:\nbefore %s\nafter  %s", before, after)
+	}
+	if status := r.git("status", "--porcelain"); status != "" {
+		t.Errorf("the user's checkout changed: %q", status)
 	}
 }

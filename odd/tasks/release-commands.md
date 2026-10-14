@@ -100,7 +100,7 @@ tagged with version, channel and `latest`).
 - [x] T5 — pipeline stages and built-in presets (dotnet: restore, format
   check, build, test, coverage, pack; node; docker build/tag/push; nuget
   push; npm publish) and the dotnet `.csproj` version / release-notes writer.
-- [ ] T6 — `nerv ship`: clean worktree, confirmation, pipeline, real
+- [x] T6 — `nerv ship`: clean worktree, confirmation, pipeline, real
   semantic-release run with the injected lifecycle plugin, monorepo order by
   `depends_on`, `--dry-run`.
 - [ ] T7 — `/nerv:ship`, user docs (`docs/release-commands.md`), CHANGELOG.
@@ -134,6 +134,8 @@ order). Slice boundaries: one PR per task, recorded below as they open.
   Merged 2e2cea2.
 - T4 branch `feat/release-script-runner` from 2e2cea2.
 - PR #94 (T4): `feat/release-script-runner` → develop. Merged f540bdc.
+- PR #95 (T5): `feat/release-pipeline-presets` → develop. Merged aad9dff.
+- T6 branch `feat/release-ship` from aad9dff.
 - T5 branch `feat/release-pipeline-presets` from f540bdc.
 
 ## Progress
@@ -1058,8 +1060,213 @@ directly.
   client disconnect; it now uses the release-channel pattern of the
   neighbouring test.
 
+### T6
+
+- Route: delegated (writer trigger: semrel real-run mode, a CLI command,
+  shipplan additions, docs; 2+ non-trivial files).
+- `internal/semrel`: `Workspace` (`NewWorkspace(ctx, WorkspaceOptions{RepoRoot,
+  Branch, Env, CacheDir, FetchTimeout})`; `Dir`, `ArtifactsDir`, `NotesDir`,
+  `OriginHead`, `PublicURL`, `Compute`, `CheckPush`, `Release`,
+  `TagOnOrigin`, `Close`), `ReleaseRequest`, `ReleaseURL`, `ErrNoOrigin`,
+  `ErrVersionMismatch`, `ErrPushDenied`. Refactor kept behaviour:
+  `prepareNode` / `checkPlan` shared by Compute and Release; `fetchEnv` built
+  on new `withGitConfig` + `promptFreeEnv`; `node()` can stream
+  semantic-release's log.
+- Release clone (decided): `git clone --quiet --shared --no-checkout
+  --no-tags <user repo> <tmp>/<repo name>` (named like the repository so a
+  sectionless project keeps its name), origin set to the push address,
+  `git fetch --prune origin +refs/heads/*:refs/remotes/origin/*
+  +refs/tags/*:refs/tags/* +refs/notes/*:refs/notes/*` (local-only branches
+  and tags never reach it), `checkout -B <branch> refs/remotes/origin/<branch>`.
+  Removed at the end on success and failure (path printed while running);
+  artifacts and notes live in sibling temp dirs outside the clone.
+- Credentials (decided): the push address is `publicURL(origin)` (no user
+  info) or, for a local origin, its resolved path; when the real URL differs
+  (it carries credentials) git gets `url.<real>.insteadOf=<push address>`
+  through `GIT_CONFIG_COUNT` only, so semantic-release passes a
+  credential-free URL on argv and git rewrites it. Prompt-free env (as the
+  T2 fetch). `CheckPush` runs `git push --dry-run --no-verify origin
+  HEAD:refs/heads/<branch>` before the first release, which also keeps
+  semantic-release's getGitAuthUrl from building a token URL (it does so
+  only when that check fails). GH_TOKEN: environment, else `gh auth token`,
+  passed only in the runner's env; never to the pipeline.
+- Compute on the clone runs offline (decision, deviation from "online"):
+  the clone was just fetched from origin with prune, so the Compute mirror
+  gets exactly origin's heads (`refs/remotes/origin/*`), tags and notes;
+  origin is read once per ship run.
+- Runner release mode: `{"mode":"release", ..., "expectedVersion"}` = one
+  real `semanticRelease({dryRun: false, ci: false, repositoryUrl,
+  tagFormat})` with the repository's own steps, `analyzeCommits` /
+  `generateNotes` wrapped as in run mode, and `verifyRelease` wrapped: a next
+  version other than `expectedVersion` throws `ENERVVERSIONMISMATCH` before
+  prepare and the tag (no `semanticRelease` flag, so the repository's fail
+  plugins are not called). Go maps it, a different released version, and
+  "released nothing" to `ErrVersionMismatch`.
+- `internal/shipplan` (small additive): `Executor.RunHooks(ctx, plan, key,
+  vars)`, `StepFailure.Index`, `WriteCsprojVersion`; Render wording (publish
+  runs after semantic-release tags; hook timing).
+- `cmd/nerv/ship.go`: flags `--cwd --branch --project --dry-run --yes
+  --fetch-timeout --json`; seams `OpenShipWorkspace`, `ShipSteps`,
+  `GitHubToken` in `options`. Flow: config/project refusal, local branch
+  sha, workspace, refuse when origin's head is missing or differs (exit 1,
+  "push or pull first"), Compute (`--project` keeps only that project),
+  plans from the clone's config, listing on stderr, confirmation (`[y/N]`
+  on a terminal, `--yes`, refusal without a terminal, never in a dry run),
+  push check + GH token (real runs only), then per project: notes file,
+  csproj (dotnet preset: release link from `semrel.ReleaseURL`, or version
+  only with a warning), pipeline, prepare hooks, [dry run stops], release,
+  publish stage, publish hooks, success hooks. Failures after the release
+  started run the fail hooks (skipped when interrupted) and set an action
+  (tag on origin checked with `ls-remote`); later projects are
+  `not-started`. Summary on stdout (text or `--json` outcomes). Exit 0 / 1
+  (refusal) / 2 / 128+signal.
+- RED: `go test ./internal/semrel/` -> build failed (`undefined:
+  ReleaseURL`, `pushAddress`, `Workspace`, `NewWorkspace`, ...);
+  `go test ./internal/shipplan/` -> build failed (`RunHooks undefined`,
+  `f.Index undefined`, `undefined: WriteCsprojVersion`); `go test
+  ./cmd/nerv/` -> build failed (`opts.OpenShipWorkspace undefined`,
+  `undefined: shipWorkspace`, `undefined: shipOutcome`). GREEN: each `ok`;
+  one cmd test fix after the first GREEN run (a case-sensitive "nothing was
+  tagged" match).
+- Integration (real git, node 24, npm, bash; local bare origins only):
+  `TestIntegration_WorkspaceReleasesToOrigin` (semrel): a 9.9.9 expectation
+  stops before the tag (origin tags still only `v1.0.0`); the real run
+  pushes `v1.1.0` on origin's main, head `chore(release): 1.1.0`, CHANGELOG
+  with the feat, semantic-release log streamed; user refs and checkout
+  unchanged. First run RED on the fixture: a bare origin whose HEAD names a
+  missing branch fails semantic-release's `git fetch --tags <url>`; the
+  fixture sets HEAD to main (as on hosted origins).
+  `TestIntegration_ShipReleasesWhatOriginHas` (cmd): `--dry-run` -> origin
+  refs unchanged, marker `build ... dry=true`, `prepare ... dry=true`;
+  without `--yes` and no terminal -> exit 1, no step ran; `--yes` -> tag
+  `v1.1.0` = origin's main, `chore(release): 1.1.0`, CHANGELOG, marker
+  build, prepare (after `test -s $NERV_RELEASE_NOTES_FILE`), publish-stage,
+  publish-hook, success with version/tag/`dry=false`; user's refs and
+  status unchanged; a second run (user's main now behind) -> exit 1 "push or
+  pull". `TestIntegration_ShipMonorepoInOrder`: api (`feat`, path api) and
+  web (`fix`, path web) -> `api-v1.1.0` and `web-v1.0.1` on origin, two
+  release commits in order, docs "no new release", 10 marker lines api then
+  web. Both pass (18.2s and 8.8s).
+- Checks: `go test -count=1 ./...` exit 0 (27 packages); `go test -tags
+  semrel_integration -run Integration -count=1 ./internal/semrel/` exit 0;
+  `go test -tags semrel_integration -run Integration -count=1 ./cmd/nerv/`
+  exit 0; `go vet ./...`, `GOOS=windows go vet ./...`, `go vet -tags
+  semrel_integration ./cmd/nerv/ ./internal/semrel/` exit 0; `gofmt -l .`
+  empty.
+- Known limitations: the release clone does not initialise submodules or
+  Git LFS objects; an origin whose HEAD names a missing branch fails
+  semantic-release's own fetch; a `--project` release applies dependency
+  bumps from dependencies it does not release (as `version next
+  --project`); semantic-release's addChannel step (moving earlier releases
+  to a channel) runs before the version guard; Windows paths are
+  compile-checked only.
+- Commits: `751fd4c` `feat(semrel): run semantic-release for real in a
+  release clone` (7 files changed, 1005 insertions(+), 50 deletions(-));
+  `8af9297` `feat(shipplan): run lifecycle hooks and name where a stage
+  failed` (6 files changed, 156 insertions(+), 14 deletions(-)); `6347f25`
+  `feat(cli): add nerv ship` (8 files changed, 1800 insertions(+), 26
+  deletions(-)). Total `git diff --shortstat 910004e 6347f25`: 21 files
+  changed, 2961 insertions(+), 90 deletions(-). Above the ~400-line
+  heuristic: about 1450 lines are tests (unit and integration) and 170
+  docs; the three commits are separate work units (engine real run,
+  executor additions, CLI).
+
+## Decisions before T6 (user, 2026-10-14)
+
+- `<PackageReleaseNotes>` holds the release link
+  (`https://<host>/<org>/<repo>/releases/tag/<tag>`, from origin's public URL),
+  as dim.comprobantes.api's `bump-csproj.sh` does; without an origin the
+  element is left unchanged with a warning.
+
+### T6 review
+
+- Native review of 910004e..6acd661 (high risk, 4 lenses, user granted).
+  One corroborated CRITICAL, R3-project-filter-drops-depends-on: with
+  `--project` the dependency results that drive `depends_on` were dropped
+  before the real release, so a dependent raised by a dependency failed the
+  version guard (safely, before any tag). Native correction (plan 60 lines,
+  budget 200): fixed in `ef9be0b` (71 lines) by the T6 writer — ship computes
+  every project and filters only what it releases; RED/GREEN with a unit
+  test and a real integration test (`app-v1.1.0` released from a `core`
+  minor bump, `core` not released). The first targeted-validator run was
+  killed (`signal: killed`, nothing mutated); the exact-lineage STATUS
+  re-offered the same slot and the rerun validated the correction: approved
+  and acknowledged.
+- Advisory findings left: R1-001 (WARNING: a credentialed origin URL sits
+  in the workspace environment as an insteadOf key), R4-version-mismatch-
+  recovery-advice (WARNING: recovery advice can be wrong when another
+  version was released), R2-001 (WARNING: every `git remote get-url`
+  failure becomes ErrNoOrigin), R2-002 (WARNING: the version guard is
+  matched by error-text substring), R4-json-summary-missing-on-early-failure,
+  R4-rerun-advice-refused-after-pushed-release-commit, R2-003 (duplicated
+  csproj writer body).
+
+### T6 follow-ups
+
+All seven advisory findings of the T6 review fixed (user authorized).
+Route: delegated (one writer). Test-first; `go test` exit codes captured
+directly.
+
+| Finding | Fix | Evidence |
+|---|---|---|
+| R1-001 | A credentialed origin URL is written only into the release clone's `.git/config` as `[url "<real>"] insteadOf = "<push address>"` (subsection and value quoted and escaped; line breaks refused; file chmod 0600 inside the 0700 temp dir removed at the end); the workspace environment holds only prompt-free settings. Manual real-git check: a clone-local rule rewrites both `git remote get-url origin` and an explicit URL. Docs: credentials (a credential helper is still recommended: git error output may echo the URL). | RED: `TestNewWorkspace_ClonesReadsOriginAndChecksOutOriginsBranch` (no rule in the config file; secret in the fetch env), `TestWorkspace_ReleaseIsARealRunGuardedByTheComputedVersion` (secret in the runner env, `noSecretAnywhere` over every command's argv and env). GREEN. |
+| R4-version-mismatch-recovery-advice | When semantic-release released another version whose tag is on origin, the action says which version and tag exist, that the publish stage did not run (built for the confirmed version), how to publish or delete it, to pull, and not to rerun. The guard-stopped case keeps "stopped before the tag". | RED: build failure of the new tests, then `TestShip_ReleasedAnotherVersionSaysWhichTagExists` and the extra "stopped before the tag" assertion. GREEN. |
+| R2-001 | `NewWorkspace` lists remotes (`git remote`): only a missing `origin` is `ErrNoOrigin`; a failing listing or `get-url` is returned with its cause (exit 2 in the CLI). | RED: `TestNewWorkspace_RemoteListingFailureIsAnEnvironmentError` (got ErrNoOrigin for `context.Canceled`). GREEN. |
+| R2-002 | Runner lib `versionGuard(expected, actual)` throws a typed error (`code`, `expected`, `actual`, no `semanticRelease` flag); `failureResult` adds `versionMismatch {expected, actual}` to the result; Go checks `runnerResponse.VersionMismatch`, no text matching. | RED: node `does not provide an export named 'failureResult'`; Go `runner guard` case (structured field, text without the code) and `TestWorkspace_ReleaseErrorTextIsNotAMismatchSignal` (code only in a message -> must not be a mismatch). GREEN: node 13/13; the semrel integration 9.9.9 guard passes through the real runner. |
+| R4-json-summary-missing-on-early-failure | `--json` always prints `{status, error, projects}` (`released`, `dry-run`, `nothing-to-release`, `refused`, `declined`, `failed`, `interrupted`); `projects` is `[]` before computing. Shape change from the T6 array (unreleased). Documented. | RED: build failure (`undefined: shipDocument`); GREEN: `TestShip_JSONDocumentOnEveryPath` (8 paths, exit codes 0/1/2/130). |
+| R4-rerun-advice-refused-after-pushed-release-commit | `Workspace.BranchOnOrigin` (ls-remote of the branch); every "run again" advice says to `git pull` first when origin's branch moved during the run (or to check when it cannot be read). | RED: build failure; GREEN: `TestShip_RerunAdviceSaysPullWhenOriginMoved` (moved / unchanged). `BranchOnOrigin`'s unit check was written with the method (no separate RED). |
+| R2-003 | `writeCsproj(path, version, props)` shared by `WriteCsproj` and `WriteCsprojVersion`. | Refactor; csproj tests green. |
+
+- Checks: `go test -count=1 ./...` exit 0 (27 packages); `go test -tags
+  semrel_integration -run Integration -count=1 ./internal/semrel/
+  ./cmd/nerv/` exit 0; `go vet ./...`, `GOOS=windows go vet ./...`, `go vet
+  -tags semrel_integration ./cmd/nerv/ ./internal/semrel/` exit 0; `gofmt
+  -l .` empty.
+- Commits: `443a71d` `refactor(shipplan): share one csproj writer between
+  the version and notes writes` (1 file changed, 10 insertions(+), 21
+  deletions(-)); `32f42df` `fix(semrel): keep origin credentials out of the
+  environment and type the version guard` (7 files changed, 196
+  insertions(+), 64 deletions(-)); `68eb48a` `fix(cli): print one json
+  document, say which tag a wrong release left, and pull before a rerun` (5
+  files changed, 260 insertions(+), 38 deletions(-)). Total `git diff
+  --shortstat 3b486a7 68eb48a`: 10 files changed, 466 insertions(+), 123
+  deletions(-).
+
+### T6 follow-up review
+
+- Native review of 3b486a7..52aa916 (medium, user granted): approved and
+  acknowledged. Advisory: R3-rerun-advice-error-branch-untested (WARNING:
+  no test for the BranchOnOrigin failure branch, also taken on interrupted
+  runs), R3-rerun-advice-deleted-branch-says-moved (a branch deleted on
+  origin is reported as "moved, git pull"), R3-origin-rewrite-linebreak-
+  untested (the CR/LF/NUL refusal and the quoting of the insteadOf rule have
+  no test).
+
+### T6 final pass
+
+Last bounded pass on the T6 follow-up review's findings (user authorized).
+Route: delegated (one writer). Test-first; `go test` exit codes captured
+directly.
+
+| Item | Fix | Evidence |
+|---|---|---|
+| R3-rerun-advice-error-branch-untested | `rerunAdvice` reads origin's branch under its own 10s deadline (`rerunCheckTimeout`) on `context.WithoutCancel(ctx)`, so an interrupted run still gets accurate advice. Tests for the unreadable-origin branch ("git fetch") and for the interrupted path. | RED: `TestShip_InterruptedRunStillReadsOriginForTheAdvice` (origin read with `context canceled`; advice fell back to "git fetch"). The unreadable case already behaved (test only, no RED). GREEN. |
+| R3-rerun-advice-deleted-branch-says-moved | An empty origin head says "Branch <b> was deleted on origin during this run: check what happened before releasing it again", no `git pull`. Docs updated. | RED: `TestShip_RerunAdviceWhenOriginCannotBeReadOrTheBranchIsGone/deleted` (got the pull advice). GREEN. |
+| R3-origin-rewrite-linebreak-untested | Tests only: LF, CR and NUL in either URL are refused and nothing is written; a URL with `"`, `\`, `#` and `;` is read back exactly by `git config --file <cfg> --null --get-regexp '^url\.'` (key `url.<real>.insteadof`, value the push address); file mode 0600. | Passed at once (behaviour already correct). Mutation check: with the escaping and the refusal removed, all four cases failed; code restored (no diff). |
+
+- Checks: `go test -count=1 ./...` exit 0 (27 packages); `go test -tags
+  semrel_integration -run Integration -count=1 ./internal/semrel/
+  ./cmd/nerv/` exit 0; `go vet ./...` and `GOOS=windows go vet ./...` exit
+  0; `gofmt -l .` empty.
+- Commits: `7fe6222` `fix(cli): read origin for the rerun advice after an
+  interrupt and name a deleted branch` (3 files changed, 95 insertions(+),
+  7 deletions(-)); `4e5b6fa` `test(semrel): prove the origin rewrite
+  refuses line breaks and escapes quotes` (1 file changed, 55
+  insertions(+)). Total `git diff --shortstat e290b8c 4e5b6fa`: 4 files
+  changed, 150 insertions(+), 7 deletions(-).
+
 ## Next step
 
-Review of the T5 final pass (19473b5..d461038), then the T5 pull request,
-then T6 (`nerv ship`; open: write the csproj before the pipeline so the
-nupkg carries the release notes).
+Review of T6 (910004e..6347f25), then the T6 pull request
+(`feat/release-ship` -> develop), then T7 (`/nerv:ship` and the final docs
+pass).

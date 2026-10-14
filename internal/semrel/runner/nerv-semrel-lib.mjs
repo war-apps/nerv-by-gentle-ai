@@ -226,3 +226,35 @@ const placeholderLinkRe = new RegExp(`\\[([^\\]]*)\\]\\(${NO_REMOTE_URL.replace(
 export function stripNoRemoteLinks(notes) {
   return typeof notes === "string" ? notes.replace(placeholderLinkRe, "$1") : notes;
 }
+
+// VERSION_MISMATCH is the code of versionGuard's error.
+export const VERSION_MISMATCH = "ENERVVERSIONMISMATCH";
+
+// versionGuard throws when semantic-release's next version (actual) is not
+// the version nerv ship computed and the user confirmed (expected). The
+// error carries both versions and no `semanticRelease` flag, so
+// semantic-release does not call the fail plugins for it.
+export function versionGuard(expected, actual) {
+  if (actual === expected) return;
+  const error = new Error(
+    `semantic-release would release ${actual}, but nerv ship computed and confirmed ${expected}; stopped before the tag, nothing was released`,
+  );
+  error.code = VERSION_MISMATCH;
+  error.expected = expected;
+  error.actual = actual;
+  throw error;
+}
+
+// failureResult is the runner's result for a failed run: every error's
+// "<code> <message>", and, when one of them is versionGuard's, a structured
+// versionMismatch {expected, actual} the Go side checks instead of the text.
+export function failureResult(error) {
+  const errors = error && Array.isArray(error.errors) ? error.errors : [error];
+  const result = {
+    ok: false,
+    error: errors.map((e) => (e && e.code ? `${e.code} ${e.message}` : String(e && e.message ? e.message : e))).join("; "),
+  };
+  const mismatch = errors.find((e) => e && e.code === VERSION_MISMATCH);
+  if (mismatch) result.versionMismatch = { expected: mismatch.expected, actual: mismatch.actual };
+  return result;
+}
