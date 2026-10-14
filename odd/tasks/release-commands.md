@@ -776,6 +776,22 @@ delegated (one writer). Test-first.
   streaming layer, the config fields and the runner are separate work-unit
   commits that can be reviewed one by one.
 
+### T4 review
+
+- Native review of d3f0108..54063a7 (high risk, 4 lenses, user granted):
+  approved and acknowledged. Advisory: R4-pwsh-stale-lastexitcode (WARNING:
+  the inline epilogue exits with a stale `$LASTEXITCODE`, failing a script
+  that handled a native failure), R2-env-parallel-arrays (WARNING:
+  `Vars.values` and `EnvVars` are zipped by index), R3-symlink-script-escape
+  (WARNING: a repo symlink pointing outside the repository is run as a
+  script file), R1-001 (Run does not re-check an escaping workdir),
+  R2-dangling-doc-ref, R2-duplicated-path-normalisation,
+  R2-magic-programs-sentinel, R2-dead-total-counter,
+  R3-output-write-error-untested.
+- Accepted by the parent: the writer's additions `NERV_RELEASE_REPO_ROOT`,
+  dropping inherited `NERV_RELEASE_*` variables, and skipping WSL's bash
+  launcher on Windows.
+
 ## Next step
 
 Review of the T4 commits (26d0544..c34f47b), then the T4 pull request,
