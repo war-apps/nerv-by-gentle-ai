@@ -97,7 +97,7 @@ tagged with version, channel and `latest`).
   `--format env`) plus `/nerv:version`.
 - [x] T4 — streaming script runner with env and working directory; hooks
   for node, pwsh and bash on Linux and Windows.
-- [ ] T5 — pipeline stages and built-in presets (dotnet: restore, format
+- [x] T5 — pipeline stages and built-in presets (dotnet: restore, format
   check, build, test, coverage, pack; node; docker build/tag/push; nuget
   push; npm publish) and the dotnet `.csproj` version / release-notes writer.
 - [ ] T6 — `nerv ship`: clean worktree, confirmation, pipeline, real
@@ -835,7 +835,106 @@ delegated (one writer). Test-first where a test expresses the defect.
   GREEN: `TestReal_PwshInlineRefusesAnOlderPowerShell` with the minimum
   raised to 99.0, plus every pwsh test on 7.6.6); docs updated.
 
+### T5
+
+- Route: delegated (writer trigger: new package `internal/shipplan`, a
+  shiprun addition, docs).
+- `internal/shiprun` (minimal additive change): `Step.Exec []string` runs an
+  argument list without a shell (program from PATH; missing -> wraps
+  `ErrInterpreterNotFound`, "<program> not found on PATH"); `Command.Env`,
+  `Workdir`, `Timeout` still apply; `StepError.Shell` is `exec` and
+  `Script` the program, never the arguments. `Step.Stage` sets
+  `NERV_RELEASE_STAGE` (empty -> `Name`, so existing callers are
+  unchanged). `internal/proc` and `internal/shipconfig` untouched.
+- `internal/shipplan`: `Build(repoRoot, shipconfig.Project, Context) (*Plan,
+  error)`; `Context{Version (required), Channel, Tag, GitHead, NotesFile,
+  DryRun, ArtifactsDir (required, absolute)}`; `Plan{Project, Context,
+  Stages []Stage, Hooks map[string][]Step}` with `Pipeline()` (all but
+  publish) and `Publish()`; `Step{Name, Stage, Command, Exec []Arg, Check,
+  Describe}`, `Arg{Value, SecretEnv}`; `Plan.Render()` for `--dry-run`;
+  `Executor{Steps StepRunner, Output, LookupEnv}` with `Run` (pipeline,
+  first failure -> `*StepFailure{Stage, Step, Err}`) and `RunPublish`
+  (no-op in a dry run); `WriteCsproj(path, version, notes)`;
+  `CheckCoverage(dir, threshold) (Coverage, error)`; `ArtifactsEnv`.
+- Decisions:
+  - A `stages:` override is the stage: it replaces every enabled preset's
+    commands for it. Preset commands follow the order of `presets:`. A
+    stage with no command is skipped with its hooks.
+  - One test run, as dim's CI: with `coverage_threshold` > 0 the
+    `dotnet:test` step collects coverage into
+    `<artifacts>/<project>/coverage` and the `coverage` stage is an
+    in-process Go check (instead of the suggested second `dotnet test`
+    with `--collect`, which would run the suite twice). Every step gets
+    `NERV_RELEASE_ARTIFACTS_DIR` (via `Command.Env`) so a `test` or
+    `package` override can write reports / packages where the checks
+    read them.
+  - Cobertura merge: sum of `lines-covered` / `lines-valid` over every
+    `*.cobertura.xml`; no report, malformed XML, missing counts or zero
+    coverable lines fail. Line rate only (no branch threshold).
+  - `dotnet pack` only with the nuget preset; nuget without the dotnet
+    preset is a plan error unless `stages.package` is overridden.
+  - Docker tags as dim's metadata-action: version always; channel when not
+    the default (empty or `default`); latest on the default channel only;
+    duplicates dropped; an invalid docker tag (`+build`, `/` in a channel)
+    is a plan error. Builds also add OCI labels `image.version` and (when
+    known) `image.revision`, as dim does. dim's `-warnaserror`,
+    `--settings coverlet.runsettings` and trx logger are repo-specific:
+    documented as stage overrides, not built in.
+  - Yarn: `--immutable` for Yarn 2+ (package.json `packageManager`
+    `yarn@>=2`, or `.yarnrc.yml` in the project or repo root), else
+    `--frozen-lockfile`. Node scripts lint/build/test only when defined.
+  - npm preset: no detection of `@semantic-release/npm` publishing (any
+    config form may enable it, and it is in semantic-release's default
+    plugins); documented instead.
+  - NuGet key: an `Arg{SecretEnv}` resolved only when the step runs;
+    Render shows `$NAME`; a missing/empty variable fails before the first
+    stage (`Run` checks the publish stage's secrets too, except in a dry
+    run). Limitation documented: it is on the `dotnet nuget push` argv
+    while the push runs (visible to process listings).
+  - csproj writer: every element outside comments replaced (attributes
+    kept, `<Version />` opened), missing ones added at the top of the
+    first unconditioned `<PropertyGroup>` (indented like its first
+    child) or in a new group after `<Project>`; BOM and CRLF kept, notes
+    written with the file's line ending, XML-escaped and MSBuild-escaped
+    (`%`->`%25`, `$`->`%24`, `@`->`%40`). dim's bump script writes a
+    release URL as the notes; what T6 passes is T6's choice.
+- Open for T6: `WriteCsproj` at semantic-release's prepare runs after the
+  pipeline built and packed, so the nupkg carries `-p:Version` but not the
+  new `PackageReleaseNotes` unless T6 writes the csproj in the release
+  worktree before the pipeline (the git plugin then commits it at
+  prepare). Recommended: write it before the pipeline.
+- RED: `go test ./internal/shiprun/` -> build failed (`unknown field Stage /
+  Exec in struct literal of type Step`); `go test ./internal/shipplan/` ->
+  `undefined: WriteCsproj`, then `undefined: CheckCoverage`, then
+  `undefined: Context`, `undefined: Build` [build failed]. GREEN: each
+  `ok` (one test-index correction in `TestBuild_DotnetAndDockerLikeDim`).
+- Smoke (real tools, skipped under `-short` and without the tool):
+  `TestSmoke_DotnetPipeline` (generated classlib + xunit + slnx, csproj
+  written with notes `* fix <b> & $(Foo) at 50%`, restore, lint, build,
+  test, coverage 100.00% >= 90, pack) PASS in 10.6s (setup 2.6s, pipeline
+  8.0s; packages from the warm NuGet cache); the nupkg's nuspec has
+  version `1.2.3-smoke.1` and `<releaseNotes>* fix &lt;b&gt; &amp; $(Foo)
+  at 50%</releaseNotes>` (MSBuild escaping round-trips).
+  `TestSmoke_DockerBuild` (FROM scratch, build arg, version + latest tags,
+  labels checked with `docker image inspect`, image removed, never pushed)
+  PASS in 0.3s build / 0.47s total.
+- Checks: `go test -count=1 ./...` ok (27 packages), `go vet ./...` and
+  `GOOS=windows go vet ./...` clean, `gofmt -l .` empty.
+- Commits: `578501b` `feat(shiprun): run preset steps as argument lists
+  without a shell` (2 files changed, 136 insertions(+), 15 deletions(-));
+  `fa2720d` `feat(shipplan): write dotnet project version and release
+  notes` (3 files changed, 481 insertions(+)); `4895d34`
+  `feat(shipplan): check coverage thresholds from cobertura reports` (2
+  files changed, 262 insertions(+)); `6510255` `feat(shipplan): plan
+  pipeline stages from presets` (7 files changed, 1733 insertions(+), 4
+  deletions(-): 839 tests, 745 code, 149 docs).
+- Size: `git diff --shortstat 88562b0 6510255` 14 files changed, 2612
+  insertions(+), 19 deletions(-). Above the ~400-line heuristic: about
+  half is tests (table-driven plan tests, fixtures, real smoke runs); the
+  four commits are separate work units (argv runner, csproj writer,
+  coverage check, plan and presets with their docs).
+
 ## Next step
 
-Review of the T4 follow-ups (085ff1e..edc46c8), then the T4 pull request,
-then T5 (pipeline stages and built-in presets on top of `internal/shiprun`).
+Review of T5 (88562b0..6510255 plus this document), then the T5 pull
+request, then T6 (`nerv ship`).
