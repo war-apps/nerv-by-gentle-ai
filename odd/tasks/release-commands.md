@@ -100,7 +100,7 @@ tagged with version, channel and `latest`).
 - [x] T5 — pipeline stages and built-in presets (dotnet: restore, format
   check, build, test, coverage, pack; node; docker build/tag/push; nuget
   push; npm publish) and the dotnet `.csproj` version / release-notes writer.
-- [ ] T6 — `nerv ship`: clean worktree, confirmation, pipeline, real
+- [x] T6 — `nerv ship`: clean worktree, confirmation, pipeline, real
   semantic-release run with the injected lifecycle plugin, monorepo order by
   `depends_on`, `--dry-run`.
 - [ ] T7 — `/nerv:ship`, user docs (`docs/release-commands.md`), CHANGELOG.
@@ -1060,6 +1060,117 @@ directly.
   client disconnect; it now uses the release-channel pattern of the
   neighbouring test.
 
+### T6
+
+- Route: delegated (writer trigger: semrel real-run mode, a CLI command,
+  shipplan additions, docs; 2+ non-trivial files).
+- `internal/semrel`: `Workspace` (`NewWorkspace(ctx, WorkspaceOptions{RepoRoot,
+  Branch, Env, CacheDir, FetchTimeout})`; `Dir`, `ArtifactsDir`, `NotesDir`,
+  `OriginHead`, `PublicURL`, `Compute`, `CheckPush`, `Release`,
+  `TagOnOrigin`, `Close`), `ReleaseRequest`, `ReleaseURL`, `ErrNoOrigin`,
+  `ErrVersionMismatch`, `ErrPushDenied`. Refactor kept behaviour:
+  `prepareNode` / `checkPlan` shared by Compute and Release; `fetchEnv` built
+  on new `withGitConfig` + `promptFreeEnv`; `node()` can stream
+  semantic-release's log.
+- Release clone (decided): `git clone --quiet --shared --no-checkout
+  --no-tags <user repo> <tmp>/<repo name>` (named like the repository so a
+  sectionless project keeps its name), origin set to the push address,
+  `git fetch --prune origin +refs/heads/*:refs/remotes/origin/*
+  +refs/tags/*:refs/tags/* +refs/notes/*:refs/notes/*` (local-only branches
+  and tags never reach it), `checkout -B <branch> refs/remotes/origin/<branch>`.
+  Removed at the end on success and failure (path printed while running);
+  artifacts and notes live in sibling temp dirs outside the clone.
+- Credentials (decided): the push address is `publicURL(origin)` (no user
+  info) or, for a local origin, its resolved path; when the real URL differs
+  (it carries credentials) git gets `url.<real>.insteadOf=<push address>`
+  through `GIT_CONFIG_COUNT` only, so semantic-release passes a
+  credential-free URL on argv and git rewrites it. Prompt-free env (as the
+  T2 fetch). `CheckPush` runs `git push --dry-run --no-verify origin
+  HEAD:refs/heads/<branch>` before the first release, which also keeps
+  semantic-release's getGitAuthUrl from building a token URL (it does so
+  only when that check fails). GH_TOKEN: environment, else `gh auth token`,
+  passed only in the runner's env; never to the pipeline.
+- Compute on the clone runs offline (decision, deviation from "online"):
+  the clone was just fetched from origin with prune, so the Compute mirror
+  gets exactly origin's heads (`refs/remotes/origin/*`), tags and notes;
+  origin is read once per ship run.
+- Runner release mode: `{"mode":"release", ..., "expectedVersion"}` = one
+  real `semanticRelease({dryRun: false, ci: false, repositoryUrl,
+  tagFormat})` with the repository's own steps, `analyzeCommits` /
+  `generateNotes` wrapped as in run mode, and `verifyRelease` wrapped: a next
+  version other than `expectedVersion` throws `ENERVVERSIONMISMATCH` before
+  prepare and the tag (no `semanticRelease` flag, so the repository's fail
+  plugins are not called). Go maps it, a different released version, and
+  "released nothing" to `ErrVersionMismatch`.
+- `internal/shipplan` (small additive): `Executor.RunHooks(ctx, plan, key,
+  vars)`, `StepFailure.Index`, `WriteCsprojVersion`; Render wording (publish
+  runs after semantic-release tags; hook timing).
+- `cmd/nerv/ship.go`: flags `--cwd --branch --project --dry-run --yes
+  --fetch-timeout --json`; seams `OpenShipWorkspace`, `ShipSteps`,
+  `GitHubToken` in `options`. Flow: config/project refusal, local branch
+  sha, workspace, refuse when origin's head is missing or differs (exit 1,
+  "push or pull first"), Compute (`--project` keeps only that project),
+  plans from the clone's config, listing on stderr, confirmation (`[y/N]`
+  on a terminal, `--yes`, refusal without a terminal, never in a dry run),
+  push check + GH token (real runs only), then per project: notes file,
+  csproj (dotnet preset: release link from `semrel.ReleaseURL`, or version
+  only with a warning), pipeline, prepare hooks, [dry run stops], release,
+  publish stage, publish hooks, success hooks. Failures after the release
+  started run the fail hooks (skipped when interrupted) and set an action
+  (tag on origin checked with `ls-remote`); later projects are
+  `not-started`. Summary on stdout (text or `--json` outcomes). Exit 0 / 1
+  (refusal) / 2 / 128+signal.
+- RED: `go test ./internal/semrel/` -> build failed (`undefined:
+  ReleaseURL`, `pushAddress`, `Workspace`, `NewWorkspace`, ...);
+  `go test ./internal/shipplan/` -> build failed (`RunHooks undefined`,
+  `f.Index undefined`, `undefined: WriteCsprojVersion`); `go test
+  ./cmd/nerv/` -> build failed (`opts.OpenShipWorkspace undefined`,
+  `undefined: shipWorkspace`, `undefined: shipOutcome`). GREEN: each `ok`;
+  one cmd test fix after the first GREEN run (a case-sensitive "nothing was
+  tagged" match).
+- Integration (real git, node 24, npm, bash; local bare origins only):
+  `TestIntegration_WorkspaceReleasesToOrigin` (semrel): a 9.9.9 expectation
+  stops before the tag (origin tags still only `v1.0.0`); the real run
+  pushes `v1.1.0` on origin's main, head `chore(release): 1.1.0`, CHANGELOG
+  with the feat, semantic-release log streamed; user refs and checkout
+  unchanged. First run RED on the fixture: a bare origin whose HEAD names a
+  missing branch fails semantic-release's `git fetch --tags <url>`; the
+  fixture sets HEAD to main (as on hosted origins).
+  `TestIntegration_ShipReleasesWhatOriginHas` (cmd): `--dry-run` -> origin
+  refs unchanged, marker `build ... dry=true`, `prepare ... dry=true`;
+  without `--yes` and no terminal -> exit 1, no step ran; `--yes` -> tag
+  `v1.1.0` = origin's main, `chore(release): 1.1.0`, CHANGELOG, marker
+  build, prepare (after `test -s $NERV_RELEASE_NOTES_FILE`), publish-stage,
+  publish-hook, success with version/tag/`dry=false`; user's refs and
+  status unchanged; a second run (user's main now behind) -> exit 1 "push or
+  pull". `TestIntegration_ShipMonorepoInOrder`: api (`feat`, path api) and
+  web (`fix`, path web) -> `api-v1.1.0` and `web-v1.0.1` on origin, two
+  release commits in order, docs "no new release", 10 marker lines api then
+  web. Both pass (18.2s and 8.8s).
+- Checks: `go test -count=1 ./...` exit 0 (27 packages); `go test -tags
+  semrel_integration -run Integration -count=1 ./internal/semrel/` exit 0;
+  `go test -tags semrel_integration -run Integration -count=1 ./cmd/nerv/`
+  exit 0; `go vet ./...`, `GOOS=windows go vet ./...`, `go vet -tags
+  semrel_integration ./cmd/nerv/ ./internal/semrel/` exit 0; `gofmt -l .`
+  empty.
+- Known limitations: the release clone does not initialise submodules or
+  Git LFS objects; an origin whose HEAD names a missing branch fails
+  semantic-release's own fetch; a `--project` release applies dependency
+  bumps from dependencies it does not release (as `version next
+  --project`); semantic-release's addChannel step (moving earlier releases
+  to a channel) runs before the version guard; Windows paths are
+  compile-checked only.
+- Commits: `751fd4c` `feat(semrel): run semantic-release for real in a
+  release clone` (7 files changed, 1005 insertions(+), 50 deletions(-));
+  `8af9297` `feat(shipplan): run lifecycle hooks and name where a stage
+  failed` (6 files changed, 156 insertions(+), 14 deletions(-)); `6347f25`
+  `feat(cli): add nerv ship` (8 files changed, 1800 insertions(+), 26
+  deletions(-)). Total `git diff --shortstat 910004e 6347f25`: 21 files
+  changed, 2961 insertions(+), 90 deletions(-). Above the ~400-line
+  heuristic: about 1450 lines are tests (unit and integration) and 170
+  docs; the three commits are separate work units (engine real run,
+  executor additions, CLI).
+
 ## Decisions before T6 (user, 2026-10-14)
 
 - `<PackageReleaseNotes>` holds the release link
@@ -1069,6 +1180,6 @@ directly.
 
 ## Next step
 
-Review of the T5 final pass (19473b5..d461038), then the T5 pull request,
-then T6 (`nerv ship`; open: write the csproj before the pipeline so the
-nupkg carries the release notes).
+Review of T6 (910004e..6347f25), then the T6 pull request
+(`feat/release-ship` -> develop), then T7 (`/nerv:ship` and the final docs
+pass).
