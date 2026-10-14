@@ -356,6 +356,84 @@ commands run in order.
 | `run` | required | Command line or script path. |
 | `shell` | `bash` | `node`, `pwsh` or `bash`. |
 | `env` | `{}` | Extra environment variables. Names starting with `NERV_RELEASE_` are reserved for the variables NERV passes (version, channel, tag, notes file, project). |
+| `workdir` | the repository root | Working directory, relative to the repository root (not to the project's `path`); absolute or escaping paths are rejected like any other path. |
+| `timeout` | none | Bound for the command, as a Go duration (`90s`, `10m`, `1h30m`); must be positive. When it expires the command and every process it started are killed and the stage or hook fails. |
+
+#### How a command runs
+
+`run` is a **script file** when, trimmed, it is one line naming an existing
+file relative to the repository root (backslashes accepted, never outside
+the repository, symlinks included) with an extension the shell runs as a file: any for `bash`,
+`.ps1` for `pwsh`, `.js`, `.mjs` or `.cjs` for `node`. The file is passed
+relative to the working directory. A script path whose real location,
+once symlinks are resolved, is outside the repository fails the stage or
+hook (it is neither run as a file nor as an inline command). Anything
+else, including a script path followed by arguments, is an **inline**
+command:
+
+| Shell | Script file | Inline command |
+|---|---|---|
+| `bash` | `bash --noprofile --norc <file>` | `bash --noprofile --norc -e -o pipefail -c <run>` |
+| `pwsh` | `pwsh -NoLogo -NoProfile -NonInteractive -File <file>` | `pwsh -NoLogo -NoProfile -NonInteractive -Command <run>`, preceded by `$ErrorActionPreference = 'Stop'; $PSNativeCommandUseErrorActionPreference = $true` and followed by `exit 0` |
+| `node` | `node <file>` | `node -e <run>` |
+
+- Inline commands stop at the first failure, like a CI step: bash with
+  `-e` and `pipefail` (`false | true` fails), pwsh with errors made
+  terminating, including a native command's non-zero exit. Inline pwsh
+  commands need PowerShell 7.3 or newer: an older pwsh exits `3` with a
+  message before running the command, because without
+  `$PSNativeCommandUseErrorActionPreference` a failing native command could
+  look like a success. An inline pwsh command's exit code says how it ended: `0`
+  when it ran to its end (a native failure it handled with `try`/`catch`,
+  or checked through `$LASTEXITCODE` and moved on, does not count), `1` on
+  an uncaught error (an unhandled native failure included), `N` on an
+  explicit `exit N`. A script file runs as
+  written: its own `set -e`, `$ErrorActionPreference` and `exit` codes
+  decide.
+- Interpreters are looked up on `PATH`: `bash`, `pwsh` (PowerShell 7;
+  Windows PowerShell 5.1 `powershell.exe` is not used) and `node`. A
+  missing interpreter fails the stage or hook with a message saying what
+  to install. On Windows, `bash` is Git Bash: `bash.exe` on `PATH` unless
+  it is WSL's launcher (`System32\bash.exe` or its `WindowsApps` alias),
+  then `bin\bash.exe` of the Git for Windows installation holding
+  `git.exe`, then `%ProgramFiles%\Git\bin\bash.exe` and
+  `%LocalAppData%\Programs\Git\bin\bash.exe`.
+- The working directory is the repository root, or `workdir`; a
+  `workdir` that resolves outside the repository through a symlink fails
+  the stage or hook.
+- Standard input is empty (the null device) and the command has no
+  terminal: a tool that prompts fails instead of waiting.
+- stdout and stderr are streamed live, as one stream in the order they were
+  written, each line prefixed with `[<project>:<stage or hook>] `, e.g.
+  `[api:before_test] restoring tools`.
+- A failure names the project, the stage or hook, the shell (and the
+  script file), and the exit code, the signal, `timed out after <timeout>`
+  or `interrupted`, followed by the last 20 lines of output (terminal
+  colour codes removed). Environment values are never printed.
+- Ctrl-C, or the `timeout`, kills the command and every process it
+  started.
+
+#### Environment
+
+A command inherits NERV's environment, plus its `env` (which overrides an
+inherited variable of the same name), plus these variables, always set
+(empty when the value does not apply). Inherited `NERV_RELEASE_*` variables
+are removed first.
+
+| Variable | Value |
+|---|---|
+| `NERV_RELEASE_PROJECT` | Project name. |
+| `NERV_RELEASE_PROJECT_PATH` | Project `path`, repository-relative with forward slashes (`.` for the root). |
+| `NERV_RELEASE_REPO_ROOT` | Absolute repository root. |
+| `NERV_RELEASE_STAGE` | The stage or hook key: `test`, `before_test`, `prepare`, ... |
+| `NERV_RELEASE_VERSION` | Next version, e.g. `1.2.0-alpha.2`. |
+| `NERV_RELEASE_CHANNEL` | Release channel (`alpha`, `rc`, ...); empty for the default channel. |
+| `NERV_RELEASE_TAG` | Next tag, e.g. `api-v1.2.0`. |
+| `NERV_RELEASE_GIT_HEAD` | Commit being released. |
+| `NERV_RELEASE_LAST_VERSION` | Last release on the channel; empty when none. |
+| `NERV_RELEASE_NOTES_FILE` | File holding the release notes (Markdown). |
+| `NERV_RELEASE_BRANCH` | Branch being released. |
+| `NERV_RELEASE_DRY_RUN` | `true` under `nerv ship --dry-run`, else `false`. |
 
 ## Validation
 

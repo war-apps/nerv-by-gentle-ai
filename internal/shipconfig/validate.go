@@ -7,6 +7,7 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"time"
 )
 
 // Presets are the built-in technology presets.
@@ -68,6 +69,15 @@ func (r *Release) finalizePaths() {
 		if p.Dotnet != nil {
 			p.Dotnet.ProjectFile = normalize(p.Dotnet.ProjectFile)
 			p.Dotnet.Solution = normalize(p.Dotnet.Solution)
+		}
+		for stage, c := range p.Stages {
+			c.Workdir = normalize(c.Workdir)
+			p.Stages[stage] = c
+		}
+		for _, cmds := range p.Hooks {
+			for j := range cmds {
+				cmds[j].Workdir = normalize(cmds[j].Workdir)
+			}
 		}
 		if p.Docker != nil {
 			for j := range p.Docker.Images {
@@ -314,6 +324,17 @@ func (v *validator) checkCommand(at string, c Command) {
 	}
 	if !slices.Contains(Shells, c.Shell) {
 		v.addf("%s.shell: unknown shell %q (want %s)", at, c.Shell, list(Shells))
+	}
+	if c.Workdir != "" {
+		v.checkPath(at+".workdir", c.Workdir)
+	}
+	if c.Timeout != "" {
+		switch d, err := time.ParseDuration(c.Timeout); {
+		case err != nil:
+			v.addf("%s.timeout: %q is not a duration such as 90s or 10m", at, c.Timeout)
+		case d <= 0:
+			v.addf("%s.timeout: %q must be positive", at, c.Timeout)
+		}
 	}
 	for _, key := range sortedKeys(c.Env) {
 		switch {
