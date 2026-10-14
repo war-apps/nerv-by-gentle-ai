@@ -238,22 +238,42 @@ the commands that use them, and the tools of the enabled presets.
 ### Summary and failures
 
 stdout carries the summary: one line per project (`released`, with the
-publish steps that completed; `no new release`; `not started`; `dry run`),
-or, with `--json`, an array of objects with `project`, `branch`, `status`
-(`released`, `dry-run`, `no-release`, `failed`, `not-started`), `version`,
-`channel`, `tag`, `last_version`, `tagged`, `published`, `error` and
-`action`.
+publish steps that completed; `no new release`; `not started`; `dry run`).
+With `--json`, every run that gets past the flags prints exactly one JSON
+document, early refusals and failures included:
+
+```json
+{"status":"failed","error":"project core failed (see above)","projects":[
+  {"project":"core","branch":"main","status":"failed","version":"1.1.0","tag":"core-v1.1.0",
+   "last_version":"1.0.0","tagged":true,"published":["publish"],"error":"...","action":"..."}]}
+```
+
+- `status`: `released`, `dry-run`, `nothing-to-release`, `refused` (exit
+  1), `declined` (answered no; exit 1), `failed` (exit 2) or `interrupted`
+  (128 + signal).
+- `error`: the reason, when the run did not succeed.
+- `projects`: one object per computed project (an empty array when the run
+  stopped before computing them), with `project`, `branch`, `status`
+  (`released`, `dry-run`, `no-release`, `failed`, `not-started`),
+  `version`, `channel`, `tag`, `last_version`, `tagged`, `published`
+  (publish-stage steps that completed), `error` and `action`.
 
 On a failure the summary says what happened and what to do:
 
 | Failure | State | What to do |
 |---|---|---|
-| Project file, pipeline or `prepare` hook | Nothing tagged or published. | Fix it and run `nerv ship` again. |
-| semantic-release, no tag on origin | Nothing tagged (a prepare plugin such as `@semantic-release/git` may have pushed a release commit). | Check origin, fix, run again. |
-| Another version than the confirmed one | Stopped before the tag. | Run again to review the new plan. |
+| Project file, pipeline or `prepare` hook | Nothing tagged or published for this project. | Fix it and run `nerv ship` again (after `git pull` when origin moved, see below). |
+| semantic-release, no tag on origin | Nothing tagged (a prepare plugin such as `@semantic-release/git` may have pushed a release commit). | Fix it, pull if origin moved, run again. |
+| Another version than the confirmed one, stopped by the guard | Stopped before the tag. | Run again (pull if origin moved) to review the new plan. |
+| semantic-release released another version anyway | That version's tag is on origin; NERV's publish stage did not run (it was built for the confirmed version). | Publish by hand from that tag rebuilt with its version, or delete the tag and release if wrong; pull; do not rerun. |
 | semantic-release after the tag (e.g. the GitHub release) | Tag on origin; NERV's publish stage not run. | Finish semantic-release's remaining steps and publish by hand from the tag. |
 | Publish stage or `publish` hook | Tag and release on origin; the summary lists what was published and what was not (a NuGet push names the packages the feed accepted). | Publish the rest by hand from the tag. |
 | `success` hook | Released and published. | Run what the hook does by hand if needed. |
+
+The advice to run again checks origin's branch at the end of the run: when
+it moved (an earlier project's release commit, or a commit a prepare plugin
+pushed) your local branch is now behind origin, which `nerv ship` refuses,
+so the advice says to `git pull` first.
 
 Once semantic-release has started, a failure runs the project's `fail`
 hooks (not after Ctrl-C). Do not run `nerv ship` again for a release whose

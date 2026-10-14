@@ -76,7 +76,10 @@ type fakeWorkspace struct {
 	tags       map[string]bool
 	requests   []semrel.ReleaseRequest
 	computed   []string
-	closed     bool
+	computeErr error
+	// originNow is origin's branch head at the end of the run ("" = head).
+	originNow string
+	closed    bool
 }
 
 func (w *fakeWorkspace) Dir() string          { return w.dir }
@@ -89,7 +92,7 @@ func (w *fakeWorkspace) Close() error         { w.closed = true; w.f.log("close"
 func (w *fakeWorkspace) Compute(_ context.Context, project string) ([]semrel.ProjectResult, error) {
 	w.computed = append(w.computed, project)
 	w.f.log("compute")
-	return w.results, nil
+	return w.results, w.computeErr
 }
 
 func (w *fakeWorkspace) CheckPush(context.Context) error {
@@ -112,6 +115,13 @@ func (w *fakeWorkspace) Release(ctx context.Context, req semrel.ReleaseRequest) 
 func (w *fakeWorkspace) TagOnOrigin(_ context.Context, tag string) (bool, error) {
 	w.f.log("tag? " + tag)
 	return w.tags[tag], nil
+}
+
+func (w *fakeWorkspace) BranchOnOrigin(context.Context) (string, error) {
+	if w.originNow != "" {
+		return w.originNow, nil
+	}
+	return w.head, nil
 }
 
 // shipFixture is a fake repository for nerv ship: git answers come from a
@@ -510,7 +520,7 @@ func TestShip_VersionMismatchStopsBeforePublishing(t *testing.T) {
 	if !slices.Contains(f.events, "core: echo fail core") || !slices.Contains(f.events, "tag? core-v1.1.0") {
 		t.Errorf("fail hooks or tag check missing: %v", f.events)
 	}
-	for _, s := range []string{"nothing was tagged", "not started"} {
+	for _, s := range []string{"nothing was tagged", "not started", "stopped before the tag"} {
 		if !strings.Contains(stdout+stderr, s) {
 			t.Errorf("report lacks %q:\nstdout %s\nstderr %s", s, stdout, stderr)
 		}
@@ -529,9 +539,13 @@ func TestShip_FailureAfterTheTagRunsFailHooksAndSaysWhatWasPublished(t *testing.
 	if failAt < 0 || indexOf(f.events, "core: echo fail core") < failAt || slices.Contains(f.events, "core: echo success core") || slices.Contains(f.events, "release web") {
 		t.Errorf("events %v", f.events)
 	}
-	var outcomes []shipOutcome
-	if err := json.Unmarshal([]byte(stdout), &outcomes); err != nil {
+	var doc shipDocument
+	if err := json.Unmarshal([]byte(stdout), &doc); err != nil {
 		t.Fatalf("stdout is not JSON: %v\n%s", err, stdout)
+	}
+	outcomes := doc.Projects
+	if doc.Status != "failed" || doc.Error == "" {
+		t.Errorf("document status %q error %q", doc.Status, doc.Error)
 	}
 	byName := map[string]shipOutcome{}
 	for _, o := range outcomes {
@@ -559,11 +573,11 @@ func TestShip_ReleaseFailureReportsWhetherTheTagExists(t *testing.T) {
 				return semrel.ProjectResult{}, errors.New("semantic-release: EGITHUB boom")
 			}
 			code, stdout, _ := f.run(t, "--yes", "--json")
-			var outcomes []shipOutcome
-			if err := json.Unmarshal([]byte(stdout), &outcomes); err != nil {
+			var doc shipDocument
+			if err := json.Unmarshal([]byte(stdout), &doc); err != nil {
 				t.Fatal(err)
 			}
-			core := outcomes[0]
+			core := doc.Projects[0]
 			if code != 2 || core.Tagged != tagged || core.Status != "failed" || slices.Contains(f.events, "core: echo publish core") {
 				t.Errorf("exit %d, core %+v, events %v", code, core, f.events)
 			}
@@ -654,5 +668,109 @@ func TestShip_ProjectKeepsDependencyResultsForDependsOn(t *testing.T) {
 	}
 	if got := f.released(); !slices.Equal(got, []string{"web"}) {
 		t.Errorf("released %v, want only web", got)
+	}
+}
+
+func TestShip_ReleasedAnotherVersionSaysWhichTagExists(t *testing.T) {
+	f := newShipFixture(t, shipMonorepoYAML)
+	f.monorepoResults()
+	f.ws.originNow = strings.Repeat("9", 40)
+	f.ws.release = func(context.Context, semrel.ReleaseRequest) (semrel.ProjectResult, error) {
+		f.ws.tags["core-v1.2.0"] = true
+		r := shipResult("core", "1.2.0", "core-v1.2.0")
+		return r, fmt.Errorf("project core: %w: computed 1.1.0, semantic-release released 1.2.0 (tag core-v1.2.0)", semrel.ErrVersionMismatch)
+	}
+	code, stdout, _ := f.run(t, "--yes", "--json")
+	var doc shipDocument
+	if err := json.Unmarshal([]byte(stdout), &doc); err != nil {
+		t.Fatal(err)
+	}
+	core := doc.Projects[0]
+	if code != 2 || !core.Tagged || slices.Contains(f.events, "core: echo publish core") {
+		t.Errorf("exit %d, core %+v, events %v", code, core, f.events)
+	}
+	for _, want := range []string{"released 1.2.0", "core-v1.2.0", "instead of the confirmed 1.1.0", "publish stage did not run", "do not run nerv ship again"} {
+		if !strings.Contains(core.Action, want) {
+			t.Errorf("action lacks %q: %s", want, core.Action)
+		}
+	}
+}
+
+func TestShip_RerunAdviceSaysPullWhenOriginMoved(t *testing.T) {
+	tests := []struct {
+		name      string
+		originNow string
+		wantPull  bool
+	}{
+		{"origin unchanged", "", false},
+		{"origin moved", strings.Repeat("9", 40), true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f := newShipFixture(t, shipMonorepoYAML)
+			f.monorepoResults()
+			f.ws.originNow = tt.originNow
+			// core is released, then web fails in its pipeline.
+			f.failStep = map[string]error{"web: echo build web": errors.New("exit code 1")}
+			code, stdout, _ := f.run(t, "--yes", "--json")
+			var doc shipDocument
+			if err := json.Unmarshal([]byte(stdout), &doc); err != nil {
+				t.Fatal(err)
+			}
+			web := doc.Projects[2]
+			if code != 2 || web.Status != "failed" || doc.Projects[0].Status != "released" {
+				t.Fatalf("exit %d, %+v", code, doc)
+			}
+			if got := strings.Contains(web.Action, "git pull"); got != tt.wantPull {
+				t.Errorf("pull advice %v, want %v: %s", got, tt.wantPull, web.Action)
+			}
+			if !strings.Contains(web.Action, "run nerv ship again") {
+				t.Errorf("action %s", web.Action)
+			}
+		})
+	}
+}
+
+func TestShip_JSONDocumentOnEveryPath(t *testing.T) {
+	tests := []struct {
+		name       string
+		setup      func(f *shipFixture)
+		args       []string
+		wantCode   int
+		wantStatus string
+		projects   int
+	}{
+		{"released", func(f *shipFixture) {}, []string{"--yes"}, 0, "released", 3},
+		{"dry run", func(f *shipFixture) {}, []string{"--dry-run"}, 0, "dry-run", 3},
+		{"nothing to release", func(f *shipFixture) { f.ws.results = []semrel.ProjectResult{{Project: "core"}} }, []string{"--yes"}, 0, "nothing-to-release", 1},
+		{"refused: behind origin", func(f *shipFixture) { f.ws.head = strings.Repeat("2", 40) }, []string{"--yes"}, 1, "refused", 0},
+		{"refused: no --yes", func(f *shipFixture) {}, nil, 1, "refused", 0},
+		{"declined", func(f *shipFixture) { f.tty, f.stdin = true, "n\n" }, nil, 1, "declined", 0},
+		{"failed: compute", func(f *shipFixture) { f.ws.computeErr = errors.New("node missing") }, []string{"--yes"}, 2, "failed", 0},
+		{"interrupted", func(f *shipFixture) {
+			f.signal = syscall.SIGINT
+			f.ws.release = func(ctx context.Context, _ semrel.ReleaseRequest) (semrel.ProjectResult, error) {
+				f.cancel()
+				return semrel.ProjectResult{}, ctx.Err()
+			}
+		}, []string{"--yes"}, 130, "interrupted", 3},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f := newShipFixture(t, shipMonorepoYAML)
+			f.monorepoResults()
+			tt.setup(f)
+			code, stdout, stderr := f.run(t, append(tt.args, "--json")...)
+			var doc shipDocument
+			if err := json.Unmarshal([]byte(stdout), &doc); err != nil {
+				t.Fatalf("stdout is not one JSON document: %v\n%q\nstderr %s", err, stdout, stderr)
+			}
+			if code != tt.wantCode || doc.Status != tt.wantStatus || len(doc.Projects) != tt.projects || doc.Projects == nil {
+				t.Errorf("exit %d, document %+v; want exit %d, status %s, %d projects", code, doc, tt.wantCode, tt.wantStatus, tt.projects)
+			}
+			if (code != 0) != (doc.Error != "") {
+				t.Errorf("error %q with exit %d", doc.Error, code)
+			}
+		})
 	}
 }

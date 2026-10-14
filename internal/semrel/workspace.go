@@ -228,6 +228,20 @@ func (w *Workspace) TagOnOrigin(ctx context.Context, tag string) (bool, error) {
 	return out != "", nil
 }
 
+// BranchOnOrigin returns origin's current commit of the branch ("" when
+// origin no longer has it), read now: a release commit pushed during the run
+// moves it past OriginHead.
+func (w *Workspace) BranchOnOrigin(ctx context.Context) (string, error) {
+	fctx, cancel := context.WithTimeout(ctx, w.timeout)
+	defer cancel()
+	out, err := w.e.git(fctx, w.dir, w.env, "ls-remote", "--heads", "origin", "refs/heads/"+w.branch)
+	if err != nil {
+		return "", err
+	}
+	sha, _, _ := strings.Cut(out, "\t")
+	return strings.TrimSpace(sha), nil
+}
+
 // ReleaseRequest is one real semantic-release run in a Workspace.
 type ReleaseRequest struct {
 	// Expected is the project's computed result: its project name selects

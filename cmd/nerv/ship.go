@@ -66,6 +66,7 @@ type shipWorkspace interface {
 	CheckPush(ctx context.Context) error
 	Release(ctx context.Context, req semrel.ReleaseRequest) (semrel.ProjectResult, error)
 	TagOnOrigin(ctx context.Context, tag string) (bool, error)
+	BranchOnOrigin(ctx context.Context) (string, error)
 	Close() error
 }
 
@@ -150,28 +151,69 @@ func runShip(args []string, stdout, stderr io.Writer, opts options) int {
 	defer stop()
 
 	outcomes, err := s.execute(ctx)
-	if outcomes != nil {
-		if werr := writeShipSummary(stdout, *jsonOut, s.dryRun, outcomes); werr != nil && err == nil {
-			err = fmt.Errorf("writing the summary: %w", werr)
+	doc := shipDocument{Status: successStatus(outcomes, s.dryRun), Projects: outcomes}
+	code := 0
+	if err != nil {
+		code, doc.Status, doc.Error = classifyShipError(ctx, received(), stderr, err)
+	}
+	if doc.Projects == nil {
+		doc.Projects = []shipOutcome{}
+	}
+	if *jsonOut || outcomes != nil {
+		if werr := writeShipSummary(stdout, *jsonOut, s.dryRun, doc); werr != nil && code == 0 {
+			fmt.Fprintf(stderr, "nerv ship: writing the summary: %v\n", werr)
+			code = 2
 		}
 	}
-	if err == nil {
-		return 0
+	return code
+}
+
+// shipDocument is the --json summary, printed on every run that gets past
+// the flags: the run's status (released, dry-run, nothing-to-release,
+// refused, declined, failed, interrupted), its error, and each project's
+// outcome (empty when the run stopped before computing them).
+type shipDocument struct {
+	Status   string        `json:"status"`
+	Error    string        `json:"error,omitempty"`
+	Projects []shipOutcome `json:"projects"`
+}
+
+// successStatus is the status of a run that ended without an error.
+func successStatus(outcomes []shipOutcome, dryRun bool) string {
+	if !slices.ContainsFunc(outcomes, func(o shipOutcome) bool { return o.Status != shipNoRelease }) {
+		return "nothing-to-release"
 	}
+	if dryRun {
+		return "dry-run"
+	}
+	return "released"
+}
+
+// errDeclined is the answer "no" to the confirmation.
+var errDeclined = errors.New("cancelled: nothing was released")
+
+// classifyShipError prints err on stderr and returns the exit code, the run
+// status and the error text: 128 + the signal (interrupted), 1 for a
+// refusal or an invalid configuration (declined when the user said no), 2
+// otherwise (failed).
+func classifyShipError(ctx context.Context, sig os.Signal, stderr io.Writer, err error) (int, string, string) {
 	if ctx.Err() != nil {
-		if sig := received(); sig != nil {
+		if sig != nil {
 			fmt.Fprintf(stderr, "nerv ship: interrupted (%v)\n", sig)
-			return interruptedExitCode(sig)
+			return interruptedExitCode(sig), "interrupted", "interrupted (" + sig.String() + ")"
 		}
 		fmt.Fprintln(stderr, "nerv ship: interrupted")
-		return 2
+		return 2, "interrupted", "interrupted"
 	}
 	fmt.Fprintf(stderr, "nerv ship: %v\n", err)
 	var invalid *shipconfig.ValidationError
-	if errors.As(err, &invalid) {
-		return 1
+	switch {
+	case errors.Is(err, errDeclined):
+		return 1, "declined", err.Error()
+	case errors.As(err, &invalid), exitCodeFor(err) == 1:
+		return 1, "refused", err.Error()
 	}
-	return exitCodeFor(err)
+	return 2, "failed", err.Error()
 }
 
 func shipUsageError(stderr io.Writer, problem string) int {
@@ -405,7 +447,7 @@ func (s *shipRun) confirm(n int) error {
 		fmt.Fprintln(s.stderr)
 	}
 	if answer := strings.ToLower(strings.TrimSpace(line)); answer != "y" && answer != "yes" {
-		return refuse("cancelled: nothing was released")
+		return &refusal.Error{Err: errDeclined}
 	}
 	return nil
 }
@@ -450,17 +492,19 @@ func (s *shipRun) ship(ctx context.Context, it shipItem) error {
 		Tag: r.NewReleaseGitTag, GitHead: r.NewReleaseGitHead, LastVersion: r.LastReleaseVersion, NotesFile: notes,
 		Branch: s.branch, DryRun: s.dryRun,
 	}
-	beforeTag := "Nothing was tagged or published. Fix the cause and run nerv ship again."
+	beforeTag := func() string {
+		return "Nothing was tagged or published for " + r.Project + ". Fix the cause. " + s.rerunAdvice(ctx)
+	}
 	if err := s.writeProjectFile(it); err != nil {
-		o.Action = beforeTag
+		o.Action = beforeTag()
 		return err
 	}
 	if err := s.exec.Run(ctx, it.plan, vars); err != nil {
-		o.Action = beforeTag
+		o.Action = beforeTag()
 		return err
 	}
 	if err := s.exec.RunHooks(ctx, it.plan, "prepare", vars); err != nil {
-		o.Action = beforeTag
+		o.Action = beforeTag()
 		return err
 	}
 	if s.dryRun {
@@ -545,18 +589,37 @@ func (s *shipRun) releaseFailed(ctx context.Context, it shipItem, vars shiprun.V
 			o.Tagged, tag = true, t
 		}
 	}
+	confirmed := it.result.NewReleaseVersion
 	switch {
+	case o.Tagged && errors.Is(err, semrel.ErrVersionMismatch) && tag != it.result.NewReleaseGitTag:
+		o.Action = fmt.Sprintf("semantic-release released %s (tag %s, now on origin) instead of the confirmed %s. NERV's publish stage did not run (its packages were built as %s): either publish %s by hand from the tag (git checkout %s) rebuilt as %s, or delete the tag and its release on origin if %s is wrong. Pull first (git pull); do not run nerv ship again for this release: it would compute the next version.",
+			released.NewReleaseVersion, tag, confirmed, confirmed, listOrNothing(publishSteps(it.plan, 0)), tag, released.NewReleaseVersion, released.NewReleaseVersion)
 	case o.Tagged:
 		o.Action = fmt.Sprintf("Tag %s is on origin, but semantic-release failed after tagging (its publish or success plugins, e.g. the GitHub release): finish those by hand. NERV's publish stage did not run: publish %s by hand from the tag (git checkout %s). Do not run nerv ship again for this release: it would compute the next version.",
 			tag, listOrNothing(publishSteps(it.plan, 0)), tag)
 	case checkErr != nil:
 		o.Action = fmt.Sprintf("Could not tell whether tag %s reached origin (%v): check with git ls-remote --tags origin %s before running nerv ship again.", tag, checkErr, tag)
 	case errors.Is(err, semrel.ErrVersionMismatch):
-		o.Action = "semantic-release would have released another version than the one you confirmed (origin changed?): it was stopped before the tag, nothing was tagged or published. Run nerv ship again to review the new plan."
+		o.Action = "semantic-release would have released another version than the one you confirmed (origin changed?): it was stopped before the tag, nothing was tagged or published. " + s.rerunAdvice(ctx) + " (to review the new plan)"
 	default:
-		o.Action = fmt.Sprintf("No tag %s on origin: nothing was tagged or published (a prepare plugin such as @semantic-release/git may have pushed a release commit: check origin). Fix the cause and run nerv ship again.", tag)
+		o.Action = fmt.Sprintf("No tag %s on origin: nothing was tagged or published (a prepare plugin such as @semantic-release/git may have pushed a release commit). Fix the cause. %s", tag, s.rerunAdvice(ctx))
 	}
 	s.failHooks(ctx, it, vars)
+}
+
+// rerunAdvice says how to run nerv ship again: after a pull when origin's
+// branch moved during this run (an earlier project's release commit, or one
+// a prepare plugin pushed), since nerv ship refuses a local branch behind
+// origin.
+func (s *shipRun) rerunAdvice(ctx context.Context) string {
+	head, err := s.ws.BranchOnOrigin(ctx)
+	switch {
+	case err != nil:
+		return fmt.Sprintf("Check whether origin's %s moved during this run (git fetch); if it did, pull first (git pull), then run nerv ship again.", s.branch)
+	case head != s.ws.OriginHead():
+		return fmt.Sprintf("Origin's %s moved during this run (a release commit was pushed): pull first (git pull), then run nerv ship again.", s.branch)
+	}
+	return "Then run nerv ship again."
 }
 
 // afterTagFailed records a failure once the tag is on origin: what was
@@ -608,12 +671,13 @@ func listOrNothing(names []string) string {
 	return strings.Join(names, ", ")
 }
 
-// writeShipSummary writes the final summary in one write: JSON (an array of
-// outcomes) or one line per project with the action after a failure.
-func writeShipSummary(w io.Writer, asJSON, dryRun bool, outcomes []shipOutcome) error {
+// writeShipSummary writes the final summary in one write: the JSON
+// document, or one line per project with the action after a failure.
+func writeShipSummary(w io.Writer, asJSON, dryRun bool, doc shipDocument) error {
+	outcomes := doc.Projects
 	var b bytes.Buffer
 	if asJSON {
-		data, err := json.Marshal(outcomes)
+		data, err := json.Marshal(doc)
 		if err != nil {
 			return err
 		}

@@ -429,6 +429,9 @@ func TestWorkspace_CheckPushAndTagOnOrigin(t *testing.T) {
 			if strings.HasSuffix(c.Args[len(c.Args)-1], "v1.0.0") {
 				return Result{Stdout: []byte("abc\trefs/tags/v1.0.0\n")}, nil
 			}
+			if c.Args[len(c.Args)-1] == "refs/heads/main" {
+				return Result{Stdout: []byte("def\trefs/heads/main\n")}, nil
+			}
 			return Result{}, nil
 		}
 		return base(c)
@@ -450,5 +453,8 @@ func TestWorkspace_CheckPushAndTagOnOrigin(t *testing.T) {
 	}
 	if ok, err := ws.TagOnOrigin(context.Background(), "v9.9.9"); ok || err != nil {
 		t.Errorf("TagOnOrigin(v9.9.9) = %v, %v", ok, err)
+	}
+	if head, err := ws.BranchOnOrigin(context.Background()); head != "def" || err != nil {
+		t.Errorf("BranchOnOrigin = %q, %v", head, err)
 	}
 }
