@@ -1201,6 +1201,37 @@ directly.
   R4-rerun-advice-refused-after-pushed-release-commit, R2-003 (duplicated
   csproj writer body).
 
+### T6 follow-ups
+
+All seven advisory findings of the T6 review fixed (user authorized).
+Route: delegated (one writer). Test-first; `go test` exit codes captured
+directly.
+
+| Finding | Fix | Evidence |
+|---|---|---|
+| R1-001 | A credentialed origin URL is written only into the release clone's `.git/config` as `[url "<real>"] insteadOf = "<push address>"` (subsection and value quoted and escaped; line breaks refused; file chmod 0600 inside the 0700 temp dir removed at the end); the workspace environment holds only prompt-free settings. Manual real-git check: a clone-local rule rewrites both `git remote get-url origin` and an explicit URL. Docs: credentials (a credential helper is still recommended: git error output may echo the URL). | RED: `TestNewWorkspace_ClonesReadsOriginAndChecksOutOriginsBranch` (no rule in the config file; secret in the fetch env), `TestWorkspace_ReleaseIsARealRunGuardedByTheComputedVersion` (secret in the runner env, `noSecretAnywhere` over every command's argv and env). GREEN. |
+| R4-version-mismatch-recovery-advice | When semantic-release released another version whose tag is on origin, the action says which version and tag exist, that the publish stage did not run (built for the confirmed version), how to publish or delete it, to pull, and not to rerun. The guard-stopped case keeps "stopped before the tag". | RED: build failure of the new tests, then `TestShip_ReleasedAnotherVersionSaysWhichTagExists` and the extra "stopped before the tag" assertion. GREEN. |
+| R2-001 | `NewWorkspace` lists remotes (`git remote`): only a missing `origin` is `ErrNoOrigin`; a failing listing or `get-url` is returned with its cause (exit 2 in the CLI). | RED: `TestNewWorkspace_RemoteListingFailureIsAnEnvironmentError` (got ErrNoOrigin for `context.Canceled`). GREEN. |
+| R2-002 | Runner lib `versionGuard(expected, actual)` throws a typed error (`code`, `expected`, `actual`, no `semanticRelease` flag); `failureResult` adds `versionMismatch {expected, actual}` to the result; Go checks `runnerResponse.VersionMismatch`, no text matching. | RED: node `does not provide an export named 'failureResult'`; Go `runner guard` case (structured field, text without the code) and `TestWorkspace_ReleaseErrorTextIsNotAMismatchSignal` (code only in a message -> must not be a mismatch). GREEN: node 13/13; the semrel integration 9.9.9 guard passes through the real runner. |
+| R4-json-summary-missing-on-early-failure | `--json` always prints `{status, error, projects}` (`released`, `dry-run`, `nothing-to-release`, `refused`, `declined`, `failed`, `interrupted`); `projects` is `[]` before computing. Shape change from the T6 array (unreleased). Documented. | RED: build failure (`undefined: shipDocument`); GREEN: `TestShip_JSONDocumentOnEveryPath` (8 paths, exit codes 0/1/2/130). |
+| R4-rerun-advice-refused-after-pushed-release-commit | `Workspace.BranchOnOrigin` (ls-remote of the branch); every "run again" advice says to `git pull` first when origin's branch moved during the run (or to check when it cannot be read). | RED: build failure; GREEN: `TestShip_RerunAdviceSaysPullWhenOriginMoved` (moved / unchanged). `BranchOnOrigin`'s unit check was written with the method (no separate RED). |
+| R2-003 | `writeCsproj(path, version, props)` shared by `WriteCsproj` and `WriteCsprojVersion`. | Refactor; csproj tests green. |
+
+- Checks: `go test -count=1 ./...` exit 0 (27 packages); `go test -tags
+  semrel_integration -run Integration -count=1 ./internal/semrel/
+  ./cmd/nerv/` exit 0; `go vet ./...`, `GOOS=windows go vet ./...`, `go vet
+  -tags semrel_integration ./cmd/nerv/ ./internal/semrel/` exit 0; `gofmt
+  -l .` empty.
+- Commits: `443a71d` `refactor(shipplan): share one csproj writer between
+  the version and notes writes` (1 file changed, 10 insertions(+), 21
+  deletions(-)); `32f42df` `fix(semrel): keep origin credentials out of the
+  environment and type the version guard` (7 files changed, 196
+  insertions(+), 64 deletions(-)); `68eb48a` `fix(cli): print one json
+  document, say which tag a wrong release left, and pull before a rerun` (5
+  files changed, 260 insertions(+), 38 deletions(-)). Total `git diff
+  --shortstat 3b486a7 68eb48a`: 10 files changed, 466 insertions(+), 123
+  deletions(-).
+
 ## Next step
 
 Review of T6 (910004e..6347f25), then the T6 pull request
