@@ -15,6 +15,10 @@
 //     One semantic-release dry run in cwd (a worktree on the requested branch).
 //     commitFilesCache is a JSON file (commit hash -> files) shared by the
 //     projects of one NERV run.
+//   Both run and release take an optional "changelog": the project's
+//   changelog file, applied to the repository's @semantic-release/changelog
+//   and @semantic-release/git entries (rewriteChangelogPlugins); the result
+//   says changelogIgnored when the configuration has no changelog plugin.
 //   {"mode":"release", ... as run ..., "expectedVersion"}
 //     One REAL semantic-release run (nerv ship) in cwd, a clone of the user's
 //     repository checked out on origin's commit of the branch, pushing to
@@ -93,6 +97,7 @@ import {
   notesRepositoryUrl,
   packageName,
   raiseReleaseType,
+  rewriteChangelogPlugins,
   stripNoRemoteLinks,
   versionGuard,
 } from "./nerv-semrel-lib.mjs";
@@ -161,7 +166,7 @@ function saveKnownFiles(file, known) {
 }
 
 async function run(req) {
-  const { cacheDir, cwd, repositoryUrl, tagFormat, filter, minReleaseType, commitFilesCache, expectedVersion } = req;
+  const { cacheDir, cwd, repositoryUrl, tagFormat, filter, minReleaseType, commitFilesCache, expectedVersion, changelog } = req;
   const real = req.mode === "release";
   const m = cacheModules(cacheDir);
   const semanticRelease = (await m.index()).default;
@@ -185,7 +190,21 @@ async function run(req) {
   // The repository's own steps, built exactly as semantic-release builds them.
   const context = { cwd, env, stdout: process.stderr, stderr: process.stderr };
   context.logger = getLogger(context);
-  const { plugins: own, options: ownOptions } = await getConfig(context, baseOptions);
+  let { plugins: own, options: ownOptions } = await getConfig(context, baseOptions);
+  // A project's own changelog (monorepo, or set explicitly): the
+  // repository's plugin list with its changelog and git entries pointed at
+  // it, passed as the `plugins` API option (which replaces the config's)
+  // and loaded again so the wrapped steps use the same configuration.
+  let changelogIgnored = false;
+  if (changelog) {
+    const rewritten = rewriteChangelogPlugins(ownOptions.plugins, changelog);
+    if (rewritten.applied) {
+      baseOptions.plugins = rewritten.plugins;
+      ({ plugins: own, options: ownOptions } = await getConfig(context, baseOptions));
+    } else {
+      changelogIgnored = true;
+    }
+  }
   // The notes link to the repository's public address: its configured
   // repositoryUrl, package.json repository or origin (the mirror's origin is
   // the user's public origin, or absent; see internal/semrel withCheckout).
@@ -246,7 +265,7 @@ async function run(req) {
 
   const last = (r) => (r && r.version ? { version: r.version, gitHead: r.gitHead || "", gitTag: r.gitTag || "" } : null);
   if (!result || !result.nextRelease) {
-    return { ok: true, released: false, lastRelease: last(lastRelease) };
+    return { ok: true, released: false, lastRelease: last(lastRelease), changelogIgnored };
   }
   const n = result.nextRelease;
   return {
@@ -261,6 +280,7 @@ async function run(req) {
       notes: n.notes || "",
     },
     lastRelease: last(result.lastRelease),
+    changelogIgnored,
   };
 }
 

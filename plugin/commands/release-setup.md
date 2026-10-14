@@ -91,8 +91,11 @@ choice (why this project file, why a stage override, why a hook). Rules:
   `Directory.Packages.props`, a shared library folder). Names match
   `[a-z0-9][a-z0-9-]*`. Keep the default `tag_format` unless the
   repository's existing tags use another one (then match them).
-- **`changelog`**: the changelog plugin's `changelogFile` when it differs
-  from the default `<path>/CHANGELOG.md`.
+- **`changelog`**: in a monorepo each project writes its own changelog
+  (default `<path>/CHANGELOG.md`, applied to the changelog and git
+  plugins); set it only to use another file. A single project keeps the
+  changelog plugin's own `changelogFile`: leave `changelog` unset unless
+  it should override it.
 - **Presets** in pipeline order: `dotnet` (with `project_file`, the
   `solution` CI builds, `coverage_threshold` when CI enforces a line
   threshold), `node` (with `package_manager`), `docker`, `nuget` (only

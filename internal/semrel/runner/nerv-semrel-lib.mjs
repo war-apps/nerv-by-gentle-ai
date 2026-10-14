@@ -258,3 +258,42 @@ export function failureResult(error) {
   if (mismatch) result.versionMismatch = { expected: mismatch.expected, actual: mismatch.actual };
   return result;
 }
+
+const CHANGELOG_PLUGIN = "@semantic-release/changelog";
+const GIT_PLUGIN = "@semantic-release/git";
+// The plugins' own defaults (@semantic-release/changelog 6 and
+// @semantic-release/git 10, lib/resolve-config.js).
+const DEFAULT_CHANGELOG_FILE = "CHANGELOG.md";
+const DEFAULT_GIT_ASSETS = ["CHANGELOG.md", "package.json", "package-lock.json", "npm-shrinkwrap.json"];
+
+// rewriteChangelogPlugins returns the repository's plugin list with one
+// project's changelog: every @semantic-release/changelog entry writes
+// changelog (repository-relative), and every @semantic-release/git entry
+// commits it instead of the file(s) the changelog entries pointed at (only
+// those exact paths are dropped; every other asset is kept; `assets: false`
+// is left alone). Other plugins are untouched, and the input is not
+// modified. Without a changelog plugin nothing changes (applied false).
+export function rewriteChangelogPlugins(plugins, changelog) {
+  const list = Array.isArray(plugins) ? plugins : [];
+  const split = (p) => (Array.isArray(p) ? [p[0], { ...(p[1] || {}) }] : [p, {}]);
+  const replaced = new Set();
+  let applied = false;
+  const step1 = list.map((p) => {
+    const [name, options] = split(p);
+    if (name !== CHANGELOG_PLUGIN) return p;
+    applied = true;
+    replaced.add(options.changelogFile == null ? DEFAULT_CHANGELOG_FILE : options.changelogFile);
+    return [name, { ...options, changelogFile: changelog }];
+  });
+  if (!applied) return { plugins: list, applied };
+  const assetPath = (a) => (a && typeof a === "object" ? a.path : a);
+  const out = step1.map((p) => {
+    const [name, options] = split(p);
+    if (name !== GIT_PLUGIN || options.assets === false) return p;
+    const assets = options.assets == null ? DEFAULT_GIT_ASSETS : [].concat(options.assets);
+    const kept = assets.filter((a) => assetPath(a) === changelog || !replaced.has(assetPath(a)));
+    if (!kept.some((a) => assetPath(a) === changelog)) kept.push(changelog);
+    return [name, { ...options, assets: kept }];
+  });
+  return { plugins: out, applied };
+}

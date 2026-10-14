@@ -16,6 +16,9 @@ type project struct {
 	// Filter selects the project's commits; nil means every commit.
 	Filter    *commitFilter           `json:",omitempty"`
 	DependsOn []shipconfig.Dependency `json:",omitempty"`
+	// Changelog is the file the project's release writes (see
+	// shipconfig.Release.ChangelogFor); empty keeps the repository's own.
+	Changelog string `json:",omitempty"`
 }
 
 // planProjects lists the computations for a release section, in dependency
@@ -61,7 +64,7 @@ func planProjects(rel *shipconfig.Release, repoName, only string) ([]project, er
 		if only != "" && !keep[p.Name] {
 			continue
 		}
-		pr := project{Name: p.Name, TagFormat: p.TagFormat, DependsOn: p.DependsOn}
+		pr := project{Name: p.Name, TagFormat: p.TagFormat, DependsOn: p.DependsOn, Changelog: rel.ChangelogFor(p)}
 		if single && p.TagFormat == shipconfig.DefaultTagFormat {
 			pr.TagFormat = ""
 		}

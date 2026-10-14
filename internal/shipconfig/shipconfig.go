@@ -69,7 +69,11 @@ type Project struct {
 	// otherwise.
 	TagFormat string `yaml:"tag_format"`
 	// Changelog is the CHANGELOG file. Default: <path>/DefaultChangelog.
+	// Whether it is applied is Release.ChangelogFor's rule.
 	Changelog string `yaml:"changelog"`
+	// ChangelogExplicit reports that changelog was written in the section
+	// (not defaulted).
+	ChangelogExplicit bool `yaml:"-"`
 	// DependsOn lists the projects whose new release bumps this one.
 	DependsOn []Dependency `yaml:"depends_on"`
 	// Presets enables built-in stages and publishers: a subset of
@@ -206,6 +210,18 @@ func (c Command) TimeoutDuration() time.Duration {
 }
 
 // Project returns the project called name.
+// ChangelogFor is the changelog file NERV makes p's release write, or ""
+// when the repository's own semantic-release configuration decides: a
+// project's changelog applies when the section has more than one project
+// (each project its own CHANGELOG) or when it was written explicitly; a
+// single project without one keeps the repository's configuration.
+func (r *Release) ChangelogFor(p Project) string {
+	if len(r.Projects) > 1 || p.ChangelogExplicit {
+		return p.Changelog
+	}
+	return ""
+}
+
 func (r *Release) Project(name string) (Project, bool) {
 	for _, p := range r.Projects {
 		if p.Name == name {

@@ -27,6 +27,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     configuration, projects, Dockerfiles, scripts and monorepo layout, asks only what it cannot detect, writes the
     section without touching the rest of `.nerv/nerv.yaml`, and validates it with `nerv version next --offline`.
 
+### Fixed
+- release: in a monorepo each project's release now writes its own `changelog` (default `<path>/CHANGELOG.md`):
+  the repository's `@semantic-release/changelog` and `@semantic-release/git` entries are pointed at it, so each
+  release commit holds only that project's CHANGELOG. A single project keeps the repository's configured
+  changelog unless `changelog` is set explicitly; without a changelog plugin the field has no effect (one warning).
+
 ## [4.0.0] - 2026-10-09
 
 ### Breaking

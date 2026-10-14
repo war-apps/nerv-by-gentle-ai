@@ -64,7 +64,7 @@ func (r *Release) finalizePaths() {
 		if p.Changelog == "" {
 			p.Changelog = defaultChangelog(p.Path)
 		} else {
-			p.Changelog = normalize(p.Changelog)
+			p.Changelog, p.ChangelogExplicit = normalize(p.Changelog), true
 		}
 		if p.Dotnet != nil {
 			p.Dotnet.ProjectFile = normalize(p.Dotnet.ProjectFile)

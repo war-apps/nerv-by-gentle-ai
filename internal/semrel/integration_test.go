@@ -522,3 +522,95 @@ func TestIntegration_WorkspaceReleasesToOrigin(t *testing.T) {
 		t.Errorf("the user's checkout changed: %q", status)
 	}
 }
+
+// releaseAll computes in a fresh release clone of r and releases every
+// project with a new release, in order.
+func releaseAll(t *testing.T, r *repo) []ProjectResult {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+	defer cancel()
+	ws, err := NewWorkspace(ctx, WorkspaceOptions{RepoRoot: r.dir, Branch: "main", Env: testEnv(), CacheDir: integrationCache})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ws.Close()
+	results, err := ws.Compute(ctx, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out []ProjectResult
+	for _, res := range results {
+		if !res.NewReleasePublished {
+			continue
+		}
+		var log strings.Builder
+		got, err := ws.Release(ctx, ReleaseRequest{Expected: res, Computed: results, Output: &log})
+		if err != nil {
+			t.Fatalf("release %s: %v\n%s", res.Project, err, log.String())
+		}
+		out = append(out, got)
+	}
+	return out
+}
+
+// newOriginRepo is newRepo with origin's HEAD on main, ready for real
+// releases.
+func newOriginRepo(t *testing.T) (*repo, *repo) {
+	r := newRepo(t)
+	origin := &repo{t: t, dir: filepath.Join(r.dir, r.git("remote", "get-url", "origin"))}
+	origin.git("symbolic-ref", "HEAD", "refs/heads/main")
+	return r, origin
+}
+
+func TestIntegration_MonorepoProjectsWriteTheirOwnChangelog(t *testing.T) {
+	requireToolchain(t)
+	r, origin := newOriginRepo(t)
+	r.write("package.json", releaseConfig)
+	writeConfig(t, r.dir, "release:\n  projects:\n    - name: api\n      path: api\n      tag_format: \"api-v${version}\"\n    - name: web\n      path: web\n      tag_format: \"web-v${version}\"\n")
+	r.commit("chore: init", "api/a.txt", "web/a.txt")
+	r.git("tag", "api-v1.0.0")
+	r.git("tag", "web-v1.0.0")
+	r.commit("feat: api endpoint", "api/b.txt")
+	r.commit("fix: web layout", "web/b.txt")
+	r.git("push", "-q", "origin", "main", "--tags")
+
+	got := releaseAll(t, r)
+	if len(got) != 2 || got[0].NewReleaseGitTag != "api-v1.1.0" || got[1].NewReleaseGitTag != "web-v1.0.1" {
+		t.Fatalf("released %+v", got)
+	}
+	if cl := origin.git("show", "main:api/CHANGELOG.md"); !strings.Contains(cl, "api endpoint") || strings.Contains(cl, "web layout") {
+		t.Errorf("api/CHANGELOG.md:\n%s", cl)
+	}
+	if cl := origin.git("show", "main:web/CHANGELOG.md"); !strings.Contains(cl, "web layout") || strings.Contains(cl, "api endpoint") {
+		t.Errorf("web/CHANGELOG.md:\n%s", cl)
+	}
+	if out, err := exec.Command("git", "-C", origin.dir, "cat-file", "-e", "main:CHANGELOG.md").CombinedOutput(); err == nil {
+		t.Errorf("a repository-level CHANGELOG.md was written: %s", out)
+	}
+	for tag, want := range map[string]string{"api-v1.1.0": "api/CHANGELOG.md", "web-v1.0.1": "web/CHANGELOG.md"} {
+		if files := origin.git("show", "--name-only", "--format=", tag); files != want {
+			t.Errorf("release commit %s holds %q, want only %s", tag, files, want)
+		}
+	}
+}
+
+func TestIntegration_SingleProjectKeepsTheConfiguredChangelog(t *testing.T) {
+	requireToolchain(t)
+	r, origin := newOriginRepo(t)
+	r.write("package.json", strings.NewReplacer(
+		`"@semantic-release/changelog",`, `["@semantic-release/changelog", { "changelogFile": "docs/CHANGES.md" }],`,
+		`{ "assets": ["CHANGELOG.md"] }`, `{ "assets": ["docs/CHANGES.md"] }`).Replace(releaseConfig))
+	writeConfig(t, r.dir, "release:\n  projects:\n    - name: widgets\n      path: .\n")
+	r.commit("chore: init", "a.txt")
+	r.git("tag", "v1.0.0")
+	r.commit("feat: add gadgets", "b.txt")
+	r.git("push", "-q", "origin", "main", "--tags")
+
+	got := releaseAll(t, r)
+	if len(got) != 1 || got[0].NewReleaseGitTag != "v1.1.0" {
+		t.Fatalf("released %+v", got)
+	}
+	if files := origin.git("show", "--name-only", "--format=", "v1.1.0"); files != "docs/CHANGES.md" {
+		t.Errorf("release commit holds %q, want the configured docs/CHANGES.md only", files)
+	}
+}
