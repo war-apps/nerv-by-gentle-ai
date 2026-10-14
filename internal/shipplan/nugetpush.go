@@ -214,36 +214,13 @@ func withSlash(u string) string {
 	return u + "/"
 }
 
-// put uploads one package as NuGet does: a multipart/form-data PUT whose
-// one file part is named "package". It reports a 409 (already there).
+// put uploads one package (uploadRequest) and reports a 409 (the version
+// is already there).
 func (p *nugetPush) put(ctx context.Context, target, path string) (duplicate bool, err error) {
-	f, err := os.Open(path)
+	req, err := uploadRequest(ctx, target, path, p.key)
 	if err != nil {
 		return false, err
 	}
-	defer f.Close()
-	info, err := f.Stat()
-	if err != nil {
-		return false, err
-	}
-	var head bytes.Buffer
-	mw := multipart.NewWriter(&head)
-	h := textproto.MIMEHeader{}
-	h.Set("Content-Disposition", `form-data; name="package"; filename="package.nupkg"`)
-	h.Set("Content-Type", "application/octet-stream")
-	if _, err := mw.CreatePart(h); err != nil {
-		return false, err
-	}
-	tail := "\r\n--" + mw.Boundary() + "--\r\n"
-	body := io.MultiReader(bytes.NewReader(head.Bytes()), f, strings.NewReader(tail))
-	req, err := http.NewRequestWithContext(ctx, http.MethodPut, target, body)
-	if err != nil {
-		return false, err
-	}
-	req.ContentLength = int64(head.Len()) + info.Size() + int64(len(tail))
-	req.Header.Set("Content-Type", mw.FormDataContentType())
-	req.Header.Set("X-NuGet-ApiKey", p.key)
-	req.Header.Set("X-NuGet-Protocol-Version", "4.1.0")
 	resp, err := p.client.Do(req)
 	if err != nil {
 		return false, err
@@ -284,4 +261,58 @@ func (p *nugetPush) errorText(body string) string {
 func fileExists(path string) bool {
 	info, err := os.Stat(path)
 	return err == nil && info.Mode().IsRegular()
+}
+
+// uploadRequest builds the upload of one package as the NuGet client sends
+// it: a PUT of a multipart/form-data body whose one file part is named
+// "package", with the key in the X-NuGet-ApiKey header.
+//
+// The body is streamed from the file rather than built in memory
+// (packages can be large), and it has a known ContentLength (some feeds
+// refuse chunked uploads). multipart.Writer only writes its closing
+// boundary when the whole part went through it, so the part's header comes
+// from the Writer and the closing boundary ("\r\n--<boundary>--\r\n") is
+// written by hand around the file. GetBody reopens the file and rebuilds
+// the same bytes, so net/http can resend the request when a reused
+// keep-alive connection turns out to be closed.
+func uploadRequest(ctx context.Context, target, path, key string) (*http.Request, error) {
+	info, err := os.Stat(path)
+	if err != nil {
+		return nil, err
+	}
+	var head bytes.Buffer
+	mw := multipart.NewWriter(&head)
+	h := textproto.MIMEHeader{}
+	h.Set("Content-Disposition", `form-data; name="package"; filename="package.nupkg"`)
+	h.Set("Content-Type", "application/octet-stream")
+	if _, err := mw.CreatePart(h); err != nil {
+		return nil, err
+	}
+	tail := "\r\n--" + mw.Boundary() + "--\r\n"
+	body := func() (io.ReadCloser, error) {
+		f, err := os.Open(path)
+		if err != nil {
+			return nil, err
+		}
+		r := io.MultiReader(bytes.NewReader(head.Bytes()), f, strings.NewReader(tail))
+		return struct {
+			io.Reader
+			io.Closer
+		}{r, f}, nil
+	}
+	first, err := body()
+	if err != nil {
+		return nil, err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPut, target, first)
+	if err != nil {
+		first.Close()
+		return nil, err
+	}
+	req.GetBody = body
+	req.ContentLength = int64(head.Len()) + info.Size() + int64(len(tail))
+	req.Header.Set("Content-Type", mw.FormDataContentType())
+	req.Header.Set("X-NuGet-ApiKey", key)
+	req.Header.Set("X-NuGet-Protocol-Version", "4.1.0")
+	return req, nil
 }

@@ -233,3 +233,53 @@ func TestPushNuGet_KeyStraddlingTheErrorCutIsHidden(t *testing.T) {
 		}
 	}
 }
+
+func TestUploadRequest_BodyParsesAndRewinds(t *testing.T) {
+	dir := packages(t, "Sdk.1.0.0.nupkg")
+	pkg := filepath.Join(dir, "Sdk.1.0.0.nupkg")
+	req, err := uploadRequest(context.Background(), "https://feed.example/api/v2/package/", pkg, testKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	first, err := io.ReadAll(req.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Body.Close()
+	if int64(len(first)) != req.ContentLength {
+		t.Errorf("ContentLength %d, body %d bytes", req.ContentLength, len(first))
+	}
+	if req.GetBody == nil {
+		t.Fatal("no GetBody: net/http cannot retry the upload on a closed keep-alive connection")
+	}
+	again, err := req.GetBody()
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, _ := io.ReadAll(again)
+	again.Close()
+	if string(second) != string(first) {
+		t.Error("GetBody gave different bytes")
+	}
+
+	// The hand-built closing boundary makes a well-formed multipart body.
+	_, params, err := mime.ParseMediaType(req.Header.Get("Content-Type"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	mr := multipart.NewReader(strings.NewReader(string(first)), params["boundary"])
+	part, err := mr.NextPart()
+	if err != nil {
+		t.Fatal(err)
+	}
+	content, _ := io.ReadAll(part)
+	if part.FormName() != "package" || part.FileName() != "package.nupkg" || string(content) != "zip of Sdk.1.0.0.nupkg" {
+		t.Errorf("part %q %q %q", part.FormName(), part.FileName(), content)
+	}
+	if _, err := mr.NextPart(); err != io.EOF {
+		t.Errorf("after the one part: %v, want io.EOF (a closed body)", err)
+	}
+	if req.Header.Get("X-NuGet-ApiKey") != testKey || req.Method != http.MethodPut {
+		t.Error("method or key header missing")
+	}
+}
