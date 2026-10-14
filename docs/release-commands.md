@@ -379,8 +379,11 @@ command:
 
 - Inline commands stop at the first failure, like a CI step: bash with
   `-e` and `pipefail` (`false | true` fails), pwsh with errors made
-  terminating, including a native command's non-zero exit (PowerShell 7.3
-  or newer). An inline pwsh command's exit code says how it ended: `0`
+  terminating, including a native command's non-zero exit. Inline pwsh
+  commands need PowerShell 7.3 or newer: an older pwsh exits `3` with a
+  message before running the command, because without
+  `$PSNativeCommandUseErrorActionPreference` a failing native command could
+  look like a success. An inline pwsh command's exit code says how it ended: `0`
   when it ran to its end (a native failure it handled with `try`/`catch`,
   or checked through `$LASTEXITCODE` and moved on, does not count), `1` on
   an uncaught error (an unhandled native failure included), `N` on an

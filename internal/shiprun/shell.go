@@ -30,13 +30,35 @@ import (
 // ran to its end, 1 on an uncaught error (an unhandled native failure
 // included), N on an explicit `exit N`.
 //
+// Inline pwsh commands need PowerShell 7.3 or newer; an older pwsh exits
+// pwshTooOldExit before running the command.
+//
 // A script file whose real location (symlinks resolved) is outside the
 // repository is refused (ErrOutsideRepository).
+
+// pwshTooOldExit is the exit code of an inline pwsh command refused because
+// the PowerShell running it is older than 7.3.
+const pwshTooOldExit = 3
+
+// pwshPrelude makes an inline pwsh command stop at the first error: cmdlet
+// errors become terminating, and so does a native command's non-zero exit.
+// A terminating error exits 1. The native-command part needs PowerShell 7.3
+// ($PSNativeCommandUseErrorActionPreference); without it a failing native
+// command as the last statement would reach the `exit 0` epilogue and look
+// like a success, so an older pwsh is refused first.
+var pwshPrelude = buildPwshPrelude(7, 3)
+
+// buildPwshPrelude returns the prelude requiring PowerShell major.minor or
+// newer.
+func buildPwshPrelude(major, minor int) string {
+	return fmt.Sprintf("$nervPs = $PSVersionTable.PSVersion; "+
+		"if ($nervPs.Major -lt %[1]d -or ($nervPs.Major -eq %[1]d -and $nervPs.Minor -lt %[2]d)) { "+
+		"[Console]::Error.WriteLine(\"nerv needs PowerShell %[1]d.%[2]d or newer for inline commands (found $nervPs)\"); exit %[3]d }\n"+
+		"$ErrorActionPreference = 'Stop'; $PSNativeCommandUseErrorActionPreference = $true\n",
+		major, minor, pwshTooOldExit)
+}
+
 const (
-	// pwshPrelude makes an inline pwsh command stop at the first error:
-	// cmdlet errors become terminating, and so does a native command's
-	// non-zero exit (PowerShell 7.3 or newer). A terminating error exits 1.
-	pwshPrelude = "$ErrorActionPreference = 'Stop'; $PSNativeCommandUseErrorActionPreference = $true\n"
 	// pwshEpilogue makes a command that ran to its end exit 0. Without it
 	// pwsh -Command exits with $LASTEXITCODE, which still holds a native
 	// failure the script handled (try/catch, or checked and continued).

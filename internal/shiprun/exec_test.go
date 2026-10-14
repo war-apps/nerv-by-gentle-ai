@@ -110,6 +110,23 @@ func TestReal_BashFile(t *testing.T) {
 	}
 }
 
+// Before PowerShell 7.3 a failing native command does not stop an inline
+// script, so the `exit 0` epilogue would turn it into a success: the prelude
+// refuses to run on an older pwsh. The installed pwsh is newer, so the test
+// raises the minimum instead.
+func TestReal_PwshInlineRefusesAnOlderPowerShell(t *testing.T) {
+	needShell(t, "pwsh")
+	saved := pwshPrelude
+	pwshPrelude = buildPwshPrelude(99, 0)
+	t.Cleanup(func() { pwshPrelude = saved })
+
+	root := realRepo(t, nil)
+	out, err := runReal(t, root, "build", shipconfig.Command{Run: `Write-Output after`, Shell: "pwsh"}, Vars{})
+	if err == nil || exitCode(t, err) != pwshTooOldExit || strings.Contains(out, "] after\n") || !strings.Contains(err.Error(), "PowerShell 99.0 or newer") {
+		t.Fatalf("err %v, output %q; want exit %d naming the minimum before running the command", err, out, pwshTooOldExit)
+	}
+}
+
 func TestReal_PwshInlineFailuresExitNonZero(t *testing.T) {
 	needShell(t, "pwsh")
 	root := realRepo(t, nil)
