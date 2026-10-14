@@ -1,15 +1,135 @@
-# Release configuration (`release:`)
+# Release commands: `nerv version next` and `nerv ship`
 
-The `release:` section of the project-scope `<repo>/.nerv/nerv.yaml`
-configures how a repository is versioned and released. It is read by the
-release commands `nerv version next` (the next version of each project,
-from a semantic-release dry run; see [below](#nerv-version-next)) and
-`nerv ship` (a full local release: pipeline, publish, tag, CHANGELOG and
-GitHub release; see [below](#nerv-ship)).
+Two commands for releasing your own repositories (any language, single
+repository or monorepo) from your machine, with the repository's own
+semantic-release configuration. Use them where the CI release workflow
+cannot or should not run; they compute and release exactly what CI would.
+
+| Command | What it does | Changes anything? |
+|---|---|---|
+| `nerv version next` (`/nerv:version`) | The next semantic version of the repository, or of each project of a monorepo, from a semantic-release dry run, with the outputs of `cycjimmy/semantic-release-action`. | No. |
+| `nerv ship` (`/nerv:ship`) | A full release of what is on origin, in a throwaway clone: pipeline (restore, lint, build, test, coverage, package), semantic-release for real (release commit, CHANGELOG, tag, GitHub release), publish (docker, NuGet, npm) and hooks, per project in dependency order. | Yes, on origin and your registries; never your local repository. |
+
+Both read the optional `release:` section of the project-scope
+`<repo>/.nerv/nerv.yaml`. Without it a repository is one project and is
+computed exactly like plain semantic-release.
+
+## Contents
+
+- [Requirements](#requirements)
+- [Quick start](#quick-start)
+- [Configuration (`release:`)](#configuration-release)
+- [`nerv version next`](#nerv-version-next)
+- [`nerv ship`](#nerv-ship)
+- [Pipeline and presets](#pipeline-and-presets)
+- [Stages, hooks and commands](#stages-hooks-and-commands)
+- [Security notes](#security-notes)
+- [Troubleshooting and recovery](#troubleshooting-and-recovery)
+- [Known limitations](#known-limitations)
+
+## Requirements
+
+| Tool | Needed for |
+|---|---|
+| git | Always. 2.31 or newer when a project's `path` is not `.` (path filters); an older git stops before computing anything, naming the git found and the minimum. |
+| Node.js 20.8.1 or newer, and npm | Always: semantic-release and its plugins are installed in a NERV cache, never in the repository ([Installed plugins](#installed-plugins)). |
+| bash, pwsh (PowerShell 7) or node | `nerv ship`: the stage overrides and hooks that use them. Inline pwsh commands need PowerShell 7.3 or newer. On Windows, bash is Git Bash. |
+| .NET SDK | The `dotnet` and `nuget` presets. |
+| docker | The `docker` preset (and your `docker login` to push). |
+| npm, pnpm or yarn | The `node` and `npm` presets. |
+| `gh` (optional) | `nerv ship`: the GitHub token when `GH_TOKEN` / `GITHUB_TOKEN` are not set. |
+
+Read access to origin is needed for both commands (`nerv version next
+--offline` skips it); push access for `nerv ship`.
+
+## Quick start
+
+### Single repository: dotnet API with a docker image
+
+A repository shaped like `dim.comprobantes.api`: semantic-release
+configured in its `package.json` `release` (branches main, `release/rc`
+with channel `rc`, develop with channel `alpha`), the API's `.csproj`
+receives the version, and one docker image is tagged with the version, the
+release channel and `latest` (only on releases of the default channel,
+main). Add to `.nerv/nerv.yaml`, commit and push it:
+
+```yaml
+release:
+  projects:
+    - name: api
+      path: .
+      presets: [dotnet, docker]
+      dotnet:
+        project_file: src/Comprobantes.Api/Comprobantes.Api.csproj
+        solution: Comprobantes.sln
+        coverage_threshold: 80
+      docker:
+        images:
+          - name: ghcr.io/org/comprobantes-api
+            dockerfile: Dockerfile
+            context: .
+            build_args: { APP_VERSION: "${version}" }
+            tags: [version, channel, latest]
+      hooks:
+        after_test:
+          - run: scripts/report-coverage.ps1
+            shell: pwsh
+```
+
+With one project the tag is `v1.4.0` and the CHANGELOG is `CHANGELOG.md`.
+Then:
+
+```sh
+nerv version next --branch develop    # what would be released (read-only)
+nerv ship --dry-run                   # build, test, pack and docker build in a clone
+nerv ship                             # the real release, after a [y/N] confirmation
+```
+
+In Claude Code, `/nerv:version` and `/nerv:ship` do the same; `/nerv:ship`
+always rehearses with `--dry-run` first and releases only after your
+explicit yes.
+
+### Monorepo
+
+Each project gets its own version, tag (`<name>-v${version}`) and CHANGELOG
+under its `path`. A commit counts for a project when it touches its `path`
+or `shared_paths`, or when its conventional scope is one of the project's
+`scopes`; one commit can release several projects. A new release of `core`
+releases `api` with at least a patch:
+
+```yaml
+release:
+  projects:
+    - name: core
+      path: src/core
+      presets: [dotnet, nuget]
+      dotnet: { project_file: src/core/Core.csproj }
+    - name: api
+      path: src/api
+      shared_paths: [Directory.Build.props]
+      depends_on:
+        - { project: core, bump: patch }
+      presets: [dotnet, docker]
+      dotnet: { project_file: src/api/Api.csproj }
+      docker:
+        images:
+          - name: ghcr.io/org/api
+            dockerfile: src/api/Dockerfile
+    - name: web
+      path: web
+      scopes: [web, ui]
+      presets: [node]
+```
+
+`nerv version next` prints one block per project; `nerv ship --project api`
+releases only `api` (its dependencies are computed for `depends_on`, not
+released).
+
+## Configuration (`release:`)
 
 The section is project scope only: it is never read from the user-scope
-`~/.claude/nerv/nerv.yaml` and never merged with it. When the section is
-absent, the repository simply has no release configuration.
+`~/.claude/nerv/nerv.yaml` and never merged with it. When it is absent, the
+repository simply has no release configuration.
 
 The versioning rules themselves (branches and channels, `releaseRules`,
 presets, plugins) stay in the repository's own semantic-release
@@ -17,6 +137,149 @@ configuration (`.releaserc*`, `release.config.*` or `package.json`
 `release`). `release:` adds what semantic-release does not know: which
 projects a monorepo holds, how they depend on each other, and how each one
 is built and published.
+
+`nerv ship` plans the release from the `release:` section committed on
+origin (the release clone's `.nerv/nerv.yaml`); your local copy is only
+validated first. Commit and push changes to it before releasing.
+
+### Paths
+
+Every path in the section is relative to the repository root, whatever the
+project's own `path` is. Forward slashes are canonical; backslashes are
+accepted and normalised. Absolute paths (`/x`, `C:\x`) and paths that
+escape the repository (`../x`) are rejected.
+
+### `release.semantic_release`
+
+| Field | Default | Meaning |
+|---|---|---|
+| `version` | `24.2.3` | Exact semantic-release version installed in the NERV cache (never in the repo). Ranges such as `^24` are rejected. |
+| `extra_plugins` | `[]` | npm packages the repo's semantic-release configuration needs beyond the bundled plugins, each pinned as `name@version` (e.g. `@semantic-release/exec@6.0.3`). |
+
+#### Installed plugins
+
+NERV installs semantic-release with its plugins in
+`<user cache dir>/nerv/semantic-release/<hash>` (on Linux
+`~/.cache/nerv/...`, on Windows `%LocalAppData%\nerv\...`), once per set of
+versions, with `npm install --ignore-scripts`. Always available:
+
+| Package | Version |
+|---|---|
+| `semantic-release` | `version` above |
+| `@semantic-release/commit-analyzer`, `@semantic-release/release-notes-generator`, `@semantic-release/npm`, `@semantic-release/github`, `conventional-changelog-angular` | bundled with semantic-release |
+| `@semantic-release/changelog` | `6.0.3` |
+| `@semantic-release/git` | `10.0.1` |
+| `@semantic-release/exec` | `7.1.0` |
+| `conventional-changelog-conventionalcommits` | `8.0.0` (9.x also works; 10 and later fail with the `conventional-changelog-writer` 8 that semantic-release 24 bundles, see `ConventionalCommitsVersion` in `internal/semrel/cache.go`) |
+
+Any other package the repository's semantic-release configuration names (a
+plugin, a shareable config in `extends`, a `preset`'s
+`conventional-changelog-<preset>` package, a `config` or `releaseRules`
+module) must be pinned in `extra_plugins`; otherwise the command fails and
+names it. An `extra_plugins` entry for one of the packages above replaces
+its version.
+
+### `release.projects[]`
+
+At least one project is required. A single-repo setup is one project with
+`path: .`.
+
+| Field | Default | Meaning |
+|---|---|---|
+| `name` | required | Unique id, `[a-z0-9][a-z0-9-]*`. Used in tags, `--project` and `depends_on`. |
+| `path` | required | The project's directory. A commit touching it counts for the project. |
+| `shared_paths` | `[]` | Extra paths or globs whose changes also count for the project (shared code, build files). |
+| `scopes` | `[<name>]` | Conventional-commit scopes whose commits count for the project wherever they touch. A commit counts when it touches `path`/`shared_paths` **or** its scope matches; one commit can release several projects. |
+| `tag_format` | `v${version}` (one project) / `<name>-v${version}` | semantic-release `tagFormat`. Must contain `${version}`, no other placeholder, and be unique across projects. |
+| `changelog` | `<path>/CHANGELOG.md` | The project's CHANGELOG file. |
+| `depends_on` | `[]` | Projects whose new release bumps this one; see below. |
+| `presets` | `[]` | Built-in stages and publishers: any of `dotnet`, `node`, `docker`, `nuget`, `npm`. A settings block (`dotnet:`, `docker:`, ...) without its preset enabled is an error. |
+| `stages` | preset commands | Override or add a pipeline stage command; see [Stages, hooks and commands](#stages-hooks-and-commands). |
+| `hooks` | `{}` | Extra scripts around stages and release steps; same section. |
+
+### `depends_on[]`
+
+| Field | Default | Meaning |
+|---|---|---|
+| `project` | required | Another project of the section (not itself). |
+| `bump` | `patch` | What a new release of that project does to this one: `patch`, `minor` or `none` (no bump, but still released after it). |
+
+Dependencies must not form a cycle; the error names it
+(`dependency cycle a -> b -> a`). Projects are computed and released in
+dependency order, otherwise in declaration order.
+
+### Preset settings
+
+| Block | Field | Default | Meaning |
+|---|---|---|---|
+| `dotnet` | `project_file` | required | The `.csproj` that receives `<Version>` and `<PackageReleaseNotes>` ([The dotnet project file](#the-dotnet-project-file)). |
+| | `solution` | the project file | The `.sln`/`.slnx` restore, build and test run against. |
+| | `coverage_threshold` | `0` (off) | Minimum line coverage percentage, 0-100. |
+| | `configuration` | `Release` | Build configuration. |
+| `node` | `package_manager` | `npm` | `npm`, `pnpm` or `yarn`. |
+| `docker` | `images[]` | required (one or more) | Images built, tagged and pushed in order. |
+| | `images[].name` | required | Image repository, e.g. `ghcr.io/org/api`. |
+| | `images[].dockerfile` | `Dockerfile` | Dockerfile path. |
+| | `images[].context` | `.` | Build context. |
+| | `images[].build_args` | `{}` | `--build-arg` values; may use `${version}`, `${channel}` and `${tag}`. |
+| | `images[].tags` | `[version, channel, latest]` | `version` (e.g. `1.4.0`), `channel` (e.g. `alpha`, `rc`), `latest` (default-channel releases only). |
+| | `images[].push` | `true` | Push the tags after building. |
+| `nuget` | `source` | `https://api.nuget.org/v3/index.json` | Push source. |
+| | `api_key_env` | `NUGET_API_KEY` | Environment variable holding the API key. |
+| `npm` | `registry` | npm's own configuration | Publish registry. |
+| | `access` | `public` | `public` or `restricted`. |
+| | `dist_tag` | the release channel | npm dist-tag. |
+
+### Validation
+
+Unknown keys are errors, and every problem (unknown keys included) is
+reported at once with its path in the section, for example:
+
+```text
+invalid release configuration:
+  release.projects[0].pth: unknown field (line 5)
+  release.projects[0].path: required
+  release.projects[1].depends_on[0].project: unknown project "lib2"
+```
+
+Only a section that cannot be decoded at all (a value of the wrong kind,
+such as `presets: docker`) stops at the decoding problems. Both commands
+refuse an invalid section (exit 1) before reading origin.
+
+### YAML notes
+
+- Only the `release:` block is parsed: it is cut out of `nerv.yaml` by
+  indentation, so a YAML error elsewhere in the file never affects the
+  release commands. When the file's layout does not allow the cut
+  (`---` between documents, an indented or flow top level), the whole file
+  is parsed instead. The key may be quoted (`"release":`, `'release':`) or
+  carry an anchor or a tag (`&r release:`, `!!str release:`). If the file
+  is not valid YAML and a top-level line may still be the release key
+  without being recognised (e.g. an escaped quoted key), that is an error
+  naming the line, not a repository without release configuration.
+- Anchors and merge keys work inside the section, e.g. to share settings
+  between projects:
+
+  ```text
+  projects:
+    - &base
+      name: api
+      path: api
+      presets: [dotnet]
+      dotnet: { project_file: api/Api.csproj }
+    - <<: *base
+      name: worker
+      path: worker
+  ```
+
+  Keys reached through a merge are checked like any other.
+- An alias inside the section cannot refer to an anchor defined outside
+  it; that is reported as an error. An alias whose anchor is defined
+  nowhere before it (a typo, or an alias used before its anchor) is
+  reported as an undefined anchor, with the line of the alias.
+- A file whose top level is not a mapping is an error; an empty file, or
+  one without `release:`, means the repository has no release
+  configuration.
 
 ## `nerv version next`
 
@@ -27,13 +290,10 @@ nerv version next [--cwd <dir>] [--branch <name>] [--project <name>]
 
 Computes the next semantic version of the repository, or of each project of
 its `release:` section, with the repository's own semantic-release
-configuration in dry-run mode (see
-[How the next version is computed](#how-the-next-version-is-computed)).
-Nothing in the repository changes. In Claude Code, `/nerv:version [args]`
-runs it with `--json` and shows a table per project.
-
-Plain `nerv version` (and `nerv version --json`) still prints the binary and
-plugin versions.
+configuration in dry-run mode. Nothing in the repository changes. In Claude
+Code, `/nerv:version [args]` runs it with `--json` and shows a table per
+project. Plain `nerv version` (and `nerv version --json`) still prints the
+binary and plugin versions.
 
 | Flag | Default | Meaning |
 |---|---|---|
@@ -45,9 +305,49 @@ plugin versions.
 | `--format text\|json\|env` | `text` | Output format. |
 | `--json` | | Same as `--format json`. |
 
-Requirements: git (2.31 or newer when a project's `path` is not `.`),
-Node.js 20.8.1 or newer and npm (semantic-release and its plugins are
-installed in the NERV cache, see [Installed plugins](#installed-plugins)).
+### How the next version is computed
+
+- semantic-release runs in dry-run mode with the repository's own
+  configuration; only the commit analysis and the release notes run, exactly
+  as configured. The steps that check credentials or have side effects
+  (`verifyConditions`, `verifyRelease`, `prepare`, `publish`, `success`,
+  `fail`) are skipped, so no `GH_TOKEN`, `NPM_TOKEN` or exec script is
+  needed.
+- It runs on a disposable mirror of the repository, checked out on the
+  requested local branch: the working tree, branches and tags of the
+  repository are never changed.
+- semantic-release sees origin's branches, as in CI, not your local ones: a
+  local-only branch (say `hotfix/x` under a `hotfix/*` prerelease entry)
+  does not count, and a branch that exists only on origin does. The branch
+  you compute is taken at your local commit, so its unpushed commits count.
+  Online, origin's branches are read with its tags and notes; with
+  `--offline`, your `refs/remotes/origin/*` (as of your last fetch) are
+  used. With no `origin` remote, or offline with no remote-tracking branch,
+  the local branches are used as they are.
+- Release tags and semantic-release's git notes are read from the `origin`
+  remote first (read access is enough). semantic-release records each
+  release's channel in a note that a plain `git fetch` never brings; without
+  it a prerelease tag such as `v2.9.0-alpha.8` is not recognised as the last
+  `alpha` release. Offline, only the local tags are used and the result may
+  differ from CI on prerelease branches. How origin is read safely:
+  [Reading origin](#reading-origin).
+- The release notes link to the repository's public address, as in CI:
+  the `repositoryUrl` of its semantic-release configuration, the
+  `package.json` `repository`, or the `origin` remote's URL (offline too;
+  user info, query and fragment removed, so credentials never reach the
+  notes). With none of these, or a local path, the notes have no links
+  (`## 1.0.1 (2026-10-13)`, `* fix thing (c1918a5)`).
+- In a monorepo, each project is computed in dependency order with its own
+  `tag_format`, from the commits that touch its `path` or `shared_paths` or
+  carry one of its `scopes` (`type(scope): ...`, several scopes separated by
+  commas). A merge commit touches what it brings into the branch (its
+  changes against its first parent); the merged commits count on their own.
+  This needs git 2.31 or newer. A project whose `path` is `.` sees every
+  commit. When a dependency gets a new release, the dependent is released
+  with at least the dependency's `bump`, even without commits of its own.
+- A single project with the default `tag_format` keeps the repository's own
+  `tagFormat`, and a repository without a `release:` section is computed
+  exactly like plain semantic-release.
 
 ### Outputs
 
@@ -125,7 +425,7 @@ new_release_git_head=c1918a53581d83a5f8ba787da39446550e1bb166
 ...
 ```
 
-### Exit codes and errors
+### Exit codes
 
 | Code | When |
 |---|---|
@@ -137,6 +437,7 @@ new_release_git_head=c1918a53581d83a5f8ba787da39446550e1bb166
 Ctrl-C, `SIGTERM` and (on Unix) `SIGHUP` cancel the run and stop git, npm
 and node, which run in their own session or process group. After the first
 signal NERV stops catching them, so a second Ctrl-C ends `nerv` at once.
+The same holds for `nerv ship`.
 
 ## `nerv ship`
 
@@ -148,6 +449,19 @@ nerv ship [--cwd <dir>] [--branch <name>] [--project <name>]
 A full release from your machine, replacing the CI release workflow where
 it cannot or should not run. It releases **what is on origin**, in a
 throwaway clone, with the repository's own semantic-release configuration.
+In Claude Code, `/nerv:ship [--branch <name>] [--project <name>]` always
+runs `nerv ship --dry-run --json` first, shows the plan, and runs `nerv
+ship --yes --json` only after your explicit yes.
+
+| Flag | Default | Meaning |
+|---|---|---|
+| `--cwd <dir>` | `.` | Any directory inside the repository. |
+| `--branch <name>` | current branch | Branch to release; your local branch must equal origin's. |
+| `--project <name>` | all projects | Only this project of the `release:` section. |
+| `--dry-run` | off | Build and run the prepare hooks in the clone; never release or publish. |
+| `--yes` | off | Release without asking (required without a terminal). |
+| `--fetch-timeout <dur>` | `60s` | Bound for each read of origin (the fetch, the push check, the tag check); must be positive. |
+| `--json` | off | Final summary as JSON. |
 
 ### Flow
 
@@ -157,9 +471,10 @@ throwaway clone, with the repository's own semantic-release configuration.
    else.
 2. Create the **release clone**: a fresh `git clone --shared` of your
    repository in a temporary directory (never a worktree of it), whose
-   `origin` is your origin; origin's branches, tags and semantic-release
-   notes are fetched into it and the branch is checked out at origin's
-   commit. Your repository is never modified.
+   `origin` is your origin's address; origin's branches, tags and
+   semantic-release notes are fetched into it and the branch is checked out
+   at origin's commit. Local-only branches and tags never reach it. Your
+   repository is never modified.
 3. Refuse (exit 1) when your local branch is not exactly origin's (ahead:
    push first; behind: pull first): CI releases what origin has, and
    `nerv ship` never pushes your commits. A branch that is not on origin is
@@ -201,41 +516,7 @@ In stages and hooks, `NERV_RELEASE_REPO_ROOT` is the release clone, and
 then the commit semantic-release tagged (its release commit when a plugin
 such as `@semantic-release/git` made one).
 
-| Flag | Default | Meaning |
-|---|---|---|
-| `--cwd <dir>` | `.` | Any directory inside the repository. |
-| `--branch <name>` | current branch | Branch to release; your local branch must equal origin's. |
-| `--project <name>` | all projects | Only this project of the `release:` section. |
-| `--dry-run` | off | Build and run the prepare hooks in the clone; never release or publish. |
-| `--yes` | off | Release without asking (required without a terminal). |
-| `--fetch-timeout <dur>` | `60s` | Bound for each read of origin (the fetch, the push check, the tag check); must be positive. |
-| `--json` | off | Final summary as JSON. |
-
-Requirements: those of `nerv version next`, plus bash, pwsh or node for
-the commands that use them, and the tools of the enabled presets.
-
-### Credentials
-
-- git: your own credentials (ssh keys, a credential helper such as
-  `gh auth setup-git`, recommended). The release clone's origin is your
-  origin's address without user info; when your origin URL itself carries
-  credentials (`https://user:token@host/...`), the real URL is written only
-  into the release clone's own `.git/config` as `url.<real>.insteadOf`
-  (an owner-only file in an owner-only temporary directory, removed at the
-  end), never on a command line or in any environment. Git error output
-  may still echo that URL; prefer a credential helper. git never prompts (`GIT_TERMINAL_PROMPT=0`, ssh
-  `BatchMode`). Checking the push first also keeps semantic-release from
-  falling back to a token embedded in the push URL.
-- GitHub: `GH_TOKEN` or `GITHUB_TOKEN` from the environment; when neither
-  is set, `gh auth token` is read and passed as `GH_TOKEN` to
-  semantic-release's environment only (never printed, never given to the
-  pipeline). Without a token a GitHub plugin fails its checks, before any
-  tag.
-- docker: your `docker login`. NuGet: the variable named by
-  `nuget.api_key_env` ([Secrets](#secrets)). npm: `NPM_TOKEN` or your npm
-  configuration.
-
-### Summary and failures
+### Summary
 
 stdout carries the summary: one line per project (`released`, with the
 publish steps that completed; `no new release`; `not started`; `dry run`).
@@ -256,34 +537,8 @@ document, early refusals and failures included:
   stopped before computing them), with `project`, `branch`, `status`
   (`released`, `dry-run`, `no-release`, `failed`, `not-started`),
   `version`, `channel`, `tag`, `last_version`, `tagged`, `published`
-  (publish-stage steps that completed), `error` and `action`.
-
-On a failure the summary says what happened and what to do:
-
-| Failure | State | What to do |
-|---|---|---|
-| Project file, pipeline or `prepare` hook | Nothing tagged or published for this project. | Fix it and run `nerv ship` again (after `git pull` when origin moved, see below). |
-| semantic-release, no tag on origin | Nothing tagged (a prepare plugin such as `@semantic-release/git` may have pushed a release commit). | Fix it, pull if origin moved, run again. |
-| Another version than the confirmed one, stopped by the guard | Stopped before the tag. | Run again (pull if origin moved) to review the new plan. |
-| semantic-release released another version anyway | That version's tag is on origin; NERV's publish stage did not run (it was built for the confirmed version). | Publish by hand from that tag rebuilt with its version, or delete the tag and release if wrong; pull; do not rerun. |
-| semantic-release after the tag (e.g. the GitHub release) | Tag on origin; NERV's publish stage not run. | Finish semantic-release's remaining steps and publish by hand from the tag. |
-| Publish stage or `publish` hook | Tag and release on origin; the summary lists what was published and what was not (a NuGet push names the packages the feed accepted). | Publish the rest by hand from the tag. |
-| `success` hook | Released and published. | Run what the hook does by hand if needed. |
-
-The advice to run again checks origin's branch at the end of the run: when
-it moved (an earlier project's release commit, or a commit a prepare plugin
-pushed) your local branch is now behind origin, which `nerv ship` refuses,
-so the advice says to `git pull` first. When the branch was deleted on
-origin, the advice says so instead; when origin cannot be read (within 10
-seconds, also after Ctrl-C), it says to check with `git fetch`.
-
-Once semantic-release has started, a failure runs the project's `fail`
-hooks (not after Ctrl-C). Do not run `nerv ship` again for a release whose
-tag is on origin: it would compute the next version.
-
-The release clone and everything built in it are removed at the end, on
-success or failure; to publish by hand, check the tag out (`git checkout
-<tag>`) and rebuild.
+  (publish-stage steps that completed), `error` and `action` (what to do
+  after a failure; see [Troubleshooting and recovery](#troubleshooting-and-recovery)).
 
 ### Exit codes
 
@@ -294,314 +549,11 @@ success or failure; to publish by hand, check the tag out (`git checkout
 | `2` | Usage error, an environment error (origin unreachable, git cannot push, node or npm missing), or a failed step or release. |
 | `128 + signal` | Interrupted (`130` Ctrl-C, `143` SIGTERM, `129` SIGHUP); a second Ctrl-C ends `nerv` at once. |
 
-## Paths
-
-Every path in the section is relative to the repository root, whatever the
-project's own `path` is. Forward slashes are canonical; backslashes are
-accepted and normalised. Absolute paths (`/x`, `C:\x`) and paths that
-escape the repository (`../x`) are rejected.
-
-## Example: dotnet API with a docker image
-
-A single-project repository shaped like `dim.comprobantes.api`: the API's
-`.csproj` receives the version, and one docker image is tagged with the
-version, the release channel (`alpha` on develop, `rc` on `release/rc`) and
-`latest` (only on releases of the default channel, main).
-
-```yaml
-release:
-  semantic_release:
-    version: "24.2.3"
-    extra_plugins: ["@semantic-release/exec@6.0.3"]
-  projects:
-    - name: api
-      path: .
-      presets: [dotnet, docker]
-      dotnet:
-        project_file: src/Comprobantes.Api/Comprobantes.Api.csproj
-        solution: Comprobantes.sln
-        coverage_threshold: 80
-      docker:
-        images:
-          - name: ghcr.io/org/comprobantes-api
-            dockerfile: Dockerfile
-            context: .
-            build_args: { APP_VERSION: "${version}" }
-            tags: [version, channel, latest]
-      hooks:
-        after_test:
-          - run: scripts/report-coverage.ps1
-            shell: pwsh
-```
-
-With one project the tag is `v1.4.0` and the CHANGELOG is `CHANGELOG.md`.
-Split the same repository into `api` and `worker` projects and the tags
-become `api-v1.4.0` and `worker-v2.0.1`, each with its own CHANGELOG under
-its `path`.
-
-## Field reference
-
-### `release.semantic_release`
-
-| Field | Default | Meaning |
-|---|---|---|
-| `version` | `24.2.3` | Exact semantic-release version installed in the NERV cache (never in the repo). Ranges such as `^24` are rejected. |
-| `extra_plugins` | `[]` | npm packages the repo's semantic-release configuration needs beyond the bundled plugins, each pinned as `name@version` (e.g. `@semantic-release/exec@6.0.3`). |
-
-#### Installed plugins
-
-NERV installs semantic-release with its plugins in
-`<user cache dir>/nerv/semantic-release/<hash>` (on Linux
-`~/.cache/nerv/...`, on Windows `%LocalAppData%\nerv\...`), once per set of
-versions, with `npm install --ignore-scripts`. Node.js 20.8.1 or newer and
-npm are required. Always available:
-
-| Package | Version |
-|---|---|
-| `semantic-release` | `version` above |
-| `@semantic-release/commit-analyzer`, `@semantic-release/release-notes-generator`, `@semantic-release/npm`, `@semantic-release/github`, `conventional-changelog-angular` | bundled with semantic-release |
-| `@semantic-release/changelog` | `6.0.3` |
-| `@semantic-release/git` | `10.0.1` |
-| `@semantic-release/exec` | `7.1.0` |
-| `conventional-changelog-conventionalcommits` | `8.0.0` (9.x also works; 10 and later fail with the `conventional-changelog-writer` 8 that semantic-release 24 bundles, see `ConventionalCommitsVersion` in `internal/semrel/cache.go`) |
-
-Any other package the repository's semantic-release configuration names (a
-plugin, a shareable config in `extends`, a `preset`'s
-`conventional-changelog-<preset>` package, a `config` or `releaseRules`
-module) must be pinned in `extra_plugins`; otherwise the command fails and
-names it. An `extra_plugins` entry for one of the packages above replaces
-its version.
-
-#### How the next version is computed
-
-- semantic-release runs in dry-run mode with the repository's own
-  configuration; only the commit analysis and the release notes run, exactly
-  as configured. The steps that check credentials or have side effects
-  (`verifyConditions`, `verifyRelease`, `prepare`, `publish`, `success`,
-  `fail`) are skipped, so no `GH_TOKEN`, `NPM_TOKEN` or exec script is
-  needed.
-- It runs on a disposable mirror of the repository, checked out on the
-  requested local branch: the working tree, branches and tags of the
-  repository are never changed.
-- semantic-release sees origin's branches, as in CI, not your local ones: a
-  local-only branch (say `hotfix/x` under a `hotfix/*` prerelease entry)
-  does not count, and a branch that exists only on origin does. The branch
-  you compute is taken at your local commit, so its unpushed commits count.
-  Online, origin's branches are read with its tags and notes; with
-  `--offline`, your `refs/remotes/origin/*` (as of your last fetch) are
-  used. With no `origin` remote, or offline with no remote-tracking branch,
-  the local branches are used as they are.
-- The release notes link to the repository's public address, as in CI:
-  the `repositoryUrl` of its semantic-release configuration, the
-  `package.json` `repository`, or the `origin` remote's URL (offline too;
-  user info, query and fragment removed, so credentials never reach the
-  notes). With none of these, or a local path, the notes have no links
-  (`## 1.0.1 (2026-10-13)`, `* fix thing (c1918a5)`).
-- Release tags and semantic-release's git notes are read from the `origin`
-  remote first (read access is enough). semantic-release records each
-  release's channel in a note that a plain `git fetch` never brings; without
-  it a prerelease tag such as `v2.9.0-alpha.8` is not recognised as the last
-  `alpha` release. Offline, only the local tags are used and the result may
-  differ from CI on prerelease branches.
-- That read never prompts and is bounded: it runs with
-  `GIT_TERMINAL_PROMPT=0`, `GCM_INTERACTIVE=never`, no standard input and
-  ssh in batch mode (`-o BatchMode=yes` is appended to `GIT_SSH_COMMAND`,
-  or to `core.sshCommand`, when that command is `ssh`; a non-ssh command
-  such as `plink`, or a `GIT_SSH` program, is used as it is and must not
-  prompt by itself), and it fails after 60 seconds (`--fetch-timeout`). Credentials must
-  therefore come from a credential helper, an ssh agent or an unencrypted
-  key. The origin URL never appears on a command line, and credentials
-  embedded in it (`https://user:token@host/...`, `?access_token=...`) are
-  hidden in every error. A relative local origin path is resolved against
-  the repository.
-- In a monorepo, each project is computed in dependency order with its own
-  `tag_format`, from the commits that touch its `path` or `shared_paths` or
-  carry one of its `scopes` (`type(scope): ...`, several scopes separated by
-  commas). A merge commit touches what it brings into the branch (its
-  changes against its first parent); the merged commits count on their own.
-  This needs git 2.31 or newer: with an older git, a release with a
-  project `path` other than `.` stops before computing anything, with an
-  error naming the git found and the minimum. A project whose `path` is `.` sees every
-  commit. When a dependency gets a new release, the dependent is released
-  with at least the dependency's `bump`, even without commits of its own. A single project with the default `tag_format` keeps
-  the repository's own `tagFormat`, and a repository without a `release:`
-  section is computed exactly like plain semantic-release.
-- The result per project is the outputs of
-  `cycjimmy/semantic-release-action` (`new_release_published`,
-  `new_release_version`, `new_release_major_version`,
-  `new_release_minor_version`, `new_release_patch_version`,
-  `new_release_channel`, `new_release_notes`, `new_release_git_head`,
-  `new_release_git_tag`, `last_release_version`, `last_release_git_head`,
-  `last_release_git_tag`); the `last_release_*` values are also given when
-  there is no new release.
-
-### `release.projects[]`
-
-At least one project is required. A single-repo setup is one project with
-`path: .`.
-
-| Field | Default | Meaning |
-|---|---|---|
-| `name` | required | Unique id, `[a-z0-9][a-z0-9-]*`. Used in tags, `--project` and `depends_on`. |
-| `path` | required | The project's directory. A commit touching it counts for the project. |
-| `shared_paths` | `[]` | Extra paths or globs whose changes also count for the project (shared code, build files). |
-| `scopes` | `[<name>]` | Conventional-commit scopes whose commits count for the project wherever they touch. A commit counts when it touches `path`/`shared_paths` **or** its scope matches; one commit can release several projects. |
-| `tag_format` | `v${version}` (one project) / `<name>-v${version}` | semantic-release `tagFormat`. Must contain `${version}`, no other placeholder, and be unique across projects. |
-| `changelog` | `<path>/CHANGELOG.md` | The project's CHANGELOG file. |
-| `depends_on` | `[]` | Projects whose new release bumps this one; see below. |
-| `presets` | `[]` | Built-in stages and publishers: any of `dotnet`, `node`, `docker`, `nuget`, `npm`. A settings block (`dotnet:`, `docker:`, ...) without its preset enabled is an error. |
-| `stages` | preset commands | Override or add a pipeline stage command; see below. |
-| `hooks` | `{}` | Extra scripts around stages and release steps; see below. |
-
-### `depends_on[]`
-
-| Field | Default | Meaning |
-|---|---|---|
-| `project` | required | Another project of the section (not itself). |
-| `bump` | `patch` | What a new release of that project does to this one: `patch`, `minor` or `none` (no bump, but still released after it). |
-
-Dependencies must not form a cycle; the error names it
-(`dependency cycle a -> b -> a`). Projects are released in dependency
-order, otherwise in declaration order.
-
-### Presets
-
-| Block | Field | Default | Meaning |
-|---|---|---|---|
-| `dotnet` | `project_file` | required | The `.csproj` that receives `<Version>` and `<PackageReleaseNotes>` in the release commit. |
-| | `solution` | the project file | The `.sln`/`.slnx` restore, build and test run against. |
-| | `coverage_threshold` | `0` (off) | Minimum line coverage percentage, 0-100. |
-| | `configuration` | `Release` | Build configuration. |
-| `node` | `package_manager` | `npm` | `npm`, `pnpm` or `yarn`. |
-| `docker` | `images[]` | required (one or more) | Images built, tagged and pushed in order. |
-| | `images[].name` | required | Image repository, e.g. `ghcr.io/org/api`. |
-| | `images[].dockerfile` | `Dockerfile` | Dockerfile path. |
-| | `images[].context` | `.` | Build context. |
-| | `images[].build_args` | `{}` | `--build-arg` values; may use `${version}`, `${channel}` and `${tag}`. |
-| | `images[].tags` | `[version, channel, latest]` | `version` (e.g. `1.4.0`), `channel` (e.g. `alpha`, `rc`), `latest` (default-channel releases only). |
-| | `images[].push` | `true` | Push the tags after building. |
-| `nuget` | `source` | `https://api.nuget.org/v3/index.json` | Push source. |
-| | `api_key_env` | `NUGET_API_KEY` | Environment variable holding the API key. |
-| `npm` | `registry` | npm's own configuration | Publish registry. |
-| | `access` | `public` | `public` or `restricted`. |
-| | `dist_tag` | the release channel | npm dist-tag. |
-
-### `stages`
-
-Keys are pipeline stages, run in this order: `restore`, `lint`, `build`,
-`test`, `coverage`, `package`, `publish`. A key **is** the stage: it
-replaces the commands of every enabled preset for that stage (with `dotnet`
-and `node` both enabled, `stages.build` replaces both builds), or adds the
-stage when no preset provides it. Any failing stage aborts the release
-before a tag exists. See [Pipeline and presets](#pipeline-and-presets).
-
-```yaml
-stages:
-  test: { run: "dotnet test --no-build", shell: bash }
-```
-
-### `hooks`
-
-Keys are `before_<stage>` / `after_<stage>` (for any stage above) and the
-lifecycle keys `prepare` (after the pipeline, before semantic-release:
-write version files here, in time for the release commit), `publish`
-(after the `publish` stage), `success` (last) and `fail` (on any failure
-once semantic-release has started). Each key holds a list of
-commands run in order. `before_<stage>` / `after_<stage>` run only when
-the stage has commands: a stage without any (no preset command, no
-override) is skipped with its hooks.
-
-### Commands (stage overrides and hooks)
-
-| Field | Default | Meaning |
-|---|---|---|
-| `run` | required | Command line or script path. |
-| `shell` | `bash` | `node`, `pwsh` or `bash`. |
-| `env` | `{}` | Extra environment variables. Names starting with `NERV_RELEASE_` are reserved for the variables NERV passes (version, channel, tag, notes file, project). |
-| `workdir` | the repository root | Working directory, relative to the repository root (not to the project's `path`); absolute or escaping paths are rejected like any other path. |
-| `timeout` | none | Bound for the command, as a Go duration (`90s`, `10m`, `1h30m`); must be positive. When it expires the command and every process it started are killed and the stage or hook fails. |
-
-#### How a command runs
-
-`run` is a **script file** when, trimmed, it is one line naming an existing
-file relative to the repository root (backslashes accepted, never outside
-the repository, symlinks included) with an extension the shell runs as a file: any for `bash`,
-`.ps1` for `pwsh`, `.js`, `.mjs` or `.cjs` for `node`. The file is passed
-relative to the working directory. A script path whose real location,
-once symlinks are resolved, is outside the repository fails the stage or
-hook (it is neither run as a file nor as an inline command). Anything
-else, including a script path followed by arguments, is an **inline**
-command:
-
-| Shell | Script file | Inline command |
-|---|---|---|
-| `bash` | `bash --noprofile --norc <file>` | `bash --noprofile --norc -e -o pipefail -c <run>` |
-| `pwsh` | `pwsh -NoLogo -NoProfile -NonInteractive -File <file>` | `pwsh -NoLogo -NoProfile -NonInteractive -Command <run>`, preceded by `$ErrorActionPreference = 'Stop'; $PSNativeCommandUseErrorActionPreference = $true` and followed by `exit 0` |
-| `node` | `node <file>` | `node -e <run>` |
-
-- Inline commands stop at the first failure, like a CI step: bash with
-  `-e` and `pipefail` (`false | true` fails), pwsh with errors made
-  terminating, including a native command's non-zero exit. Inline pwsh
-  commands need PowerShell 7.3 or newer: an older pwsh exits `3` with a
-  message before running the command, because without
-  `$PSNativeCommandUseErrorActionPreference` a failing native command could
-  look like a success. An inline pwsh command's exit code says how it ended: `0`
-  when it ran to its end (a native failure it handled with `try`/`catch`,
-  or checked through `$LASTEXITCODE` and moved on, does not count), `1` on
-  an uncaught error (an unhandled native failure included), `N` on an
-  explicit `exit N`. A script file runs as
-  written: its own `set -e`, `$ErrorActionPreference` and `exit` codes
-  decide.
-- Interpreters are looked up on `PATH`: `bash`, `pwsh` (PowerShell 7;
-  Windows PowerShell 5.1 `powershell.exe` is not used) and `node`. A
-  missing interpreter fails the stage or hook with a message saying what
-  to install. On Windows, `bash` is Git Bash: `bash.exe` on `PATH` unless
-  it is WSL's launcher (`System32\bash.exe` or its `WindowsApps` alias),
-  then `bin\bash.exe` of the Git for Windows installation holding
-  `git.exe`, then `%ProgramFiles%\Git\bin\bash.exe` and
-  `%LocalAppData%\Programs\Git\bin\bash.exe`.
-- The working directory is the repository root, or `workdir`; a
-  `workdir` that resolves outside the repository through a symlink fails
-  the stage or hook.
-- Standard input is empty (the null device) and the command has no
-  terminal: a tool that prompts fails instead of waiting.
-- stdout and stderr are streamed live, as one stream in the order they were
-  written, each line prefixed with `[<project>:<stage or hook>] `, e.g.
-  `[api:before_test] restoring tools`.
-- A failure names the project, the stage or hook, the shell (and the
-  script file), and the exit code, the signal, `timed out after <timeout>`
-  or `interrupted`, followed by the last 20 lines of output (terminal
-  colour codes removed). Environment values are never printed.
-- Ctrl-C, or the `timeout`, kills the command and every process it
-  started.
-
-#### Environment
-
-A command inherits NERV's environment, plus its `env` (which overrides an
-inherited variable of the same name), plus these variables, always set
-(empty when the value does not apply). Inherited `NERV_RELEASE_*` variables
-are removed first.
-
-| Variable | Value |
-|---|---|
-| `NERV_RELEASE_PROJECT` | Project name. |
-| `NERV_RELEASE_PROJECT_PATH` | Project `path`, repository-relative with forward slashes (`.` for the root). |
-| `NERV_RELEASE_REPO_ROOT` | Absolute repository root. |
-| `NERV_RELEASE_STAGE` | The stage or hook key: `test`, `before_test`, `prepare`, ... |
-| `NERV_RELEASE_VERSION` | Next version, e.g. `1.2.0-alpha.2`. |
-| `NERV_RELEASE_CHANNEL` | Release channel (`alpha`, `rc`, ...); empty for the default channel. |
-| `NERV_RELEASE_TAG` | Next tag, e.g. `api-v1.2.0`. |
-| `NERV_RELEASE_GIT_HEAD` | Commit being released. |
-| `NERV_RELEASE_LAST_VERSION` | Last release on the channel; empty when none. |
-| `NERV_RELEASE_NOTES_FILE` | File holding the release notes (Markdown). |
-| `NERV_RELEASE_BRANCH` | Branch being released. |
-| `NERV_RELEASE_DRY_RUN` | `true` under `nerv ship --dry-run`, else `false`. |
-
 ## Pipeline and presets
 
-`nerv ship` plans each project's pipeline from its
-presets, `stages` and `hooks` (`internal/shipplan`), for the release being
-made (version, channel, tag):
+`nerv ship` plans each project's pipeline from its presets, `stages` and
+`hooks` (`internal/shipplan`), for the release being made (version,
+channel, tag):
 
 1. For each stage in order (`restore`, `lint`, `build`, `test`,
    `coverage`, `package`, `publish`), the commands are the stage's override
@@ -613,16 +565,16 @@ made (version, channel, tag):
    failing step stops the release, naming the stage and step. The
    `publish` stage runs after semantic-release has tagged the release;
    under `--dry-run` it is listed but never run.
-4. `--dry-run` prints every step per stage, secrets shown as
-   `$<VARIABLE>`:
+4. The plan is printed on stderr before the confirmation, every step per
+   stage, secrets shown as `$<VARIABLE>`:
 
    ```text
    api 2.9.0-alpha.3 (channel alpha, tag v2.9.0-alpha.3)
      restore
-       dotnet:restore  dotnet restore Dim.Comprobantes.slnx
+       dotnet:restore  dotnet restore Comprobantes.sln
      ...
      publish (not run: dry run)
-       docker:push ghcr.io/org/api:2.9.0-alpha.3  docker push ghcr.io/org/api:2.9.0-alpha.3
+       docker:push ghcr.io/org/comprobantes-api:2.9.0-alpha.3  docker push ghcr.io/org/comprobantes-api:2.9.0-alpha.3
    ```
 
 Preset commands run **without a shell**: each is an argument list given
@@ -667,7 +619,7 @@ commands run in the project's `path`.
 | | lint, build, test | `node:<script>` | `<package_manager> run <script>`, only for the scripts `lint`, `build`, `test` that `package.json` defines |
 | `docker` | package | `docker:build <name>` | per image: `docker build -f <dockerfile> -t <name>:<tag>... --build-arg K=V... --label org.opencontainers.image.version=<version> [--label org.opencontainers.image.revision=<commit>] <context>` (build args sorted by name, placeholders replaced) |
 | | publish | `docker:push <name>:<tag>` | per tag, when `push` is true: `docker push <name>:<tag>` |
-| `nuget` | publish | `nuget:push` | in NERV, no process: pushes `<artifacts>/nuget/*.nupkg` (and each matching `.snupkg`) to `<source>` over NuGet's push protocol, with the key from `$<api_key_env>`; see [Secrets](#secrets) |
+| `nuget` | publish | `nuget:push` | in NERV, no process: pushes `<artifacts>/nuget/*.nupkg` (and each matching `.snupkg`) to `<source>` over NuGet's push protocol, with the key from `$<api_key_env>`; see [NuGet API key](#nuget-api-key) |
 | `npm` | publish | `npm:publish` | `npm publish --access <access> [--tag <dist_tag, else the channel>] [--registry <registry>]` |
 
 Modelled on `dim.comprobantes.api`'s CI (restore, `dotnet format
@@ -744,7 +696,171 @@ origin (a local path) only `<Version>` is written, with a warning.
   not expanded; `dotnet pack` restores them in the package's
   `releaseNotes`.
 
-### Secrets
+## Stages, hooks and commands
+
+### `stages`
+
+Keys are pipeline stages, run in this order: `restore`, `lint`, `build`,
+`test`, `coverage`, `package`, `publish`. A key **is** the stage: it
+replaces the commands of every enabled preset for that stage (with `dotnet`
+and `node` both enabled, `stages.build` replaces both builds), or adds the
+stage when no preset provides it. Any failing stage before `publish` aborts
+the release before a tag exists.
+
+```yaml
+stages:
+  test: { run: "dotnet test --no-build", shell: bash }
+```
+
+### `hooks`
+
+Keys are `before_<stage>` / `after_<stage>` (for any stage above) and the
+lifecycle keys `prepare` (after the pipeline, before semantic-release:
+write version files here, in time for the release commit), `publish`
+(after the `publish` stage), `success` (last) and `fail` (on any failure
+once semantic-release has started; not after Ctrl-C). Each key holds a list
+of commands run in order. `before_<stage>` / `after_<stage>` run only when
+the stage has commands: a stage without any (no preset command, no
+override) is skipped with its hooks.
+
+### Command fields
+
+Stage overrides and hooks are commands:
+
+| Field | Default | Meaning |
+|---|---|---|
+| `run` | required | Command line or script path. |
+| `shell` | `bash` | `node`, `pwsh` or `bash`. |
+| `env` | `{}` | Extra environment variables. Names starting with `NERV_RELEASE_` are reserved for the variables NERV passes (version, channel, tag, notes file, project). |
+| `workdir` | the repository root | Working directory, relative to the repository root (not to the project's `path`); absolute or escaping paths are rejected like any other path. |
+| `timeout` | none | Bound for the command, as a Go duration (`90s`, `10m`, `1h30m`); must be positive. When it expires the command and every process it started are killed and the stage or hook fails. |
+
+### How a command runs
+
+`run` is a **script file** when, trimmed, it is one line naming an existing
+file relative to the repository root (backslashes accepted, never outside
+the repository, symlinks included) with an extension the shell runs as a
+file: any for `bash`, `.ps1` for `pwsh`, `.js`, `.mjs` or `.cjs` for
+`node`. The file is passed relative to the working directory. A script path
+whose real location, once symlinks are resolved, is outside the repository
+fails the stage or hook (it is neither run as a file nor as an inline
+command). Anything else, including a script path followed by arguments, is
+an **inline** command:
+
+| Shell | Script file | Inline command |
+|---|---|---|
+| `bash` | `bash --noprofile --norc <file>` | `bash --noprofile --norc -e -o pipefail -c <run>` |
+| `pwsh` | `pwsh -NoLogo -NoProfile -NonInteractive -File <file>` | `pwsh -NoLogo -NoProfile -NonInteractive -Command <run>`, preceded by `$ErrorActionPreference = 'Stop'; $PSNativeCommandUseErrorActionPreference = $true` and followed by `exit 0` |
+| `node` | `node <file>` | `node -e <run>` |
+
+- Inline commands stop at the first failure, like a CI step: bash with
+  `-e` and `pipefail` (`false | true` fails), pwsh with errors made
+  terminating, including a native command's non-zero exit. Inline pwsh
+  commands need PowerShell 7.3 or newer: an older pwsh exits `3` with a
+  message before running the command, because without
+  `$PSNativeCommandUseErrorActionPreference` a failing native command could
+  look like a success. An inline pwsh command's exit code says how it
+  ended: `0` when it ran to its end (a native failure it handled with
+  `try`/`catch`, or checked through `$LASTEXITCODE` and moved on, does not
+  count), `1` on an uncaught error (an unhandled native failure included),
+  `N` on an explicit `exit N`. A script file runs as written: its own
+  `set -e`, `$ErrorActionPreference` and `exit` codes decide.
+- Interpreters are looked up on `PATH`: `bash`, `pwsh` (PowerShell 7;
+  Windows PowerShell 5.1 `powershell.exe` is not used) and `node`. A
+  missing interpreter fails the stage or hook with a message saying what
+  to install. On Windows, `bash` is Git Bash: `bash.exe` on `PATH` unless
+  it is WSL's launcher (`System32\bash.exe` or its `WindowsApps` alias),
+  then `bin\bash.exe` of the Git for Windows installation holding
+  `git.exe`, then `%ProgramFiles%\Git\bin\bash.exe` and
+  `%LocalAppData%\Programs\Git\bin\bash.exe`.
+- The working directory is the repository root, or `workdir`; a
+  `workdir` that resolves outside the repository through a symlink fails
+  the stage or hook.
+- Standard input is empty (the null device) and the command has no
+  terminal: a tool that prompts fails instead of waiting.
+- stdout and stderr are streamed live, as one stream in the order they were
+  written, each line prefixed with `[<project>:<stage or hook>] `, e.g.
+  `[api:before_test] restoring tools`.
+- A failure names the project, the stage or hook, the shell (and the
+  script file), and the exit code, the signal, `timed out after <timeout>`
+  or `interrupted`, followed by the last 20 lines of output (terminal
+  colour codes removed). Environment values are never printed.
+- Ctrl-C, or the `timeout`, kills the command and every process it
+  started.
+
+### Environment variables
+
+A command inherits NERV's environment, plus its `env` (which overrides an
+inherited variable of the same name), plus these variables, always set
+(empty when the value does not apply). Inherited `NERV_RELEASE_*` variables
+are removed first.
+
+| Variable | Value |
+|---|---|
+| `NERV_RELEASE_PROJECT` | Project name. |
+| `NERV_RELEASE_PROJECT_PATH` | Project `path`, repository-relative with forward slashes (`.` for the root). |
+| `NERV_RELEASE_REPO_ROOT` | Absolute repository root (under `nerv ship`, the release clone). |
+| `NERV_RELEASE_STAGE` | The stage or hook key: `test`, `before_test`, `prepare`, ... |
+| `NERV_RELEASE_VERSION` | Next version, e.g. `1.2.0-alpha.2`. |
+| `NERV_RELEASE_CHANNEL` | Release channel (`alpha`, `rc`, ...); empty for the default channel. |
+| `NERV_RELEASE_TAG` | Next tag, e.g. `api-v1.2.0`. |
+| `NERV_RELEASE_GIT_HEAD` | Commit being released. |
+| `NERV_RELEASE_LAST_VERSION` | Last release on the channel; empty when none. |
+| `NERV_RELEASE_NOTES_FILE` | File holding the release notes (Markdown). |
+| `NERV_RELEASE_BRANCH` | Branch being released. |
+| `NERV_RELEASE_DRY_RUN` | `true` under `nerv ship --dry-run`, else `false`. |
+| `NERV_RELEASE_ARTIFACTS_DIR` | Per-project directory for build outputs, outside the repository (see [Pipeline and presets](#pipeline-and-presets)). |
+
+## Security notes
+
+### Credentials
+
+`nerv ship` runs with your own credentials; nothing is stored by NERV.
+
+- git: your own credentials (ssh keys, a credential helper such as
+  `gh auth setup-git`, recommended). The release clone's origin is your
+  origin's address without user info; when your origin URL itself carries
+  credentials (`https://user:token@host/...`), the real URL is written only
+  into the release clone's own `.git/config` as `url.<real>.insteadOf`
+  (an owner-only file in an owner-only temporary directory, removed at the
+  end), never on a command line or in any environment. Git error output
+  may still echo that URL; prefer a credential helper. Checking the push
+  first also keeps semantic-release from falling back to a token embedded
+  in the push URL.
+- GitHub: `GH_TOKEN` or `GITHUB_TOKEN` from the environment; when neither
+  is set, `gh auth token` is read and passed as `GH_TOKEN` to
+  semantic-release's environment only (never printed, never given to the
+  pipeline). Without a token a GitHub plugin fails its checks, before any
+  tag.
+- docker: your `docker login`. NuGet: the variable named by
+  `nuget.api_key_env` ([NuGet API key](#nuget-api-key)). npm: `NPM_TOKEN`
+  or your npm configuration.
+
+`nerv version next` needs no `GH_TOKEN` or `NPM_TOKEN` (the credential
+checks are skipped), only read access to origin.
+
+### Reading origin
+
+Every read of origin (the fetch of both commands, the push check, the tag
+check) never prompts and is bounded:
+
+- It runs with `GIT_TERMINAL_PROMPT=0`, `GCM_INTERACTIVE=never`, no
+  standard input and ssh in batch mode (`-o BatchMode=yes` is appended to
+  `GIT_SSH_COMMAND`, or to `core.sshCommand`, when that command is `ssh`; a
+  non-ssh command such as `plink`, or a `GIT_SSH` program, is used as it is
+  and must not prompt by itself). Credentials must therefore come from a
+  credential helper, an ssh agent or an unencrypted key.
+- It fails after 60 seconds (`--fetch-timeout`); a cancelled or timed-out
+  command is killed with every process it started.
+- The origin URL never appears on a command line, and credentials embedded
+  in it (`https://user:token@host/...`, `?access_token=...`) are hidden in
+  every error. A relative local origin path is resolved against the
+  repository.
+- Only origin is released: `nerv ship` never pushes your local commits,
+  refuses a local branch that differs from origin's, and plans from the
+  `release:` section committed on origin.
+
+### NuGet API key
 
 The NuGet API key is read from the variable named by `nuget.api_key_env`
 (default `NUGET_API_KEY`) only when the push runs, and it never appears on
@@ -780,64 +896,86 @@ as the NuGet client sends it:
   already on the feed and is skipped, like `--skip-duplicate`.
 - Each request (the service index read, each package's upload) is bounded
   by 10 minutes; a feed that hangs fails the push.
-- A push stops at the first package the feed refuses, and a push cannot
-  be undone, so the error names what the feed already holds, e.g.
+- Redirects are not followed (the key would go with them), and a plain
+  `http://` source is refused unless its host is loopback.
+
+## Troubleshooting and recovery
+
+### Refusals and environment errors
+
+Nothing has been tagged or published in any of these cases.
+
+| Message (abridged) | Cause | What to do |
+|---|---|---|
+| `your local <b> (...) is not origin/<b> (...)` | `nerv ship` releases what is on origin. | `git push` or `git pull`, then run again. |
+| `branch <b> is not on origin` / `has no origin remote` | Nothing on origin to release. | Push the branch (or add the remote). |
+| `confirmation needed but stdin is not an interactive terminal` | No terminal for `[y/N]`. | `--yes` (after a `--dry-run`), or run it in a terminal. |
+| `invalid release configuration: ...` | The `release:` section (every problem listed). | Fix each line; see [Validation](#validation). |
+| `unknown project "x"; the release: section declares: ...` | `--project` typo. | Use one of the listed names. |
+| origin unreachable or timed out | Network, credentials or a prompt blocked by the no-prompt rules. | Fix access ([Reading origin](#reading-origin)); `nerv version next --offline` works without origin. |
+| `git X.Y.Z is too old: selecting a project's commits by path needs git 2.31.0 or newer` | Path filters need `--diff-merges`. | Upgrade git. |
+| `Node.js ... is too old` / node or npm not found | semantic-release needs Node.js 20.8.1+. | Install or upgrade Node.js. |
+| a package not pinned in `release.semantic_release.extra_plugins` | The semantic-release configuration names a package NERV does not install. | Add it as `name@version`. |
+| `<program> not found on PATH` / missing interpreter | A preset tool or a hook shell is missing. | Install it (Git for Windows, PowerShell 7, Node.js, ...). |
+| an inline pwsh command exits `3` | PowerShell older than 7.3. | Upgrade PowerShell. |
+| the NuGet key variable is not set or empty | `nuget.api_key_env`. | Export it; a `--dry-run` does not need it. |
+
+### Failures during a release
+
+On a failure the summary (and the `--json` `action`) says what happened and
+what to do:
+
+| Failure | State | What to do |
+|---|---|---|
+| Project file, pipeline or `prepare` hook | Nothing tagged or published for this project. | Fix it and run `nerv ship` again (after `git pull` when origin moved, see below). |
+| semantic-release, no tag on origin | Nothing tagged (a prepare plugin such as `@semantic-release/git` may have pushed a release commit). | Fix it, pull if origin moved, run again. |
+| Another version than the confirmed one, stopped by the guard | Stopped before the tag. | Run again (pull if origin moved) to review the new plan. |
+| semantic-release released another version anyway | That version's tag is on origin; NERV's publish stage did not run (it was built for the confirmed version). | Publish by hand from that tag rebuilt with its version, or delete the tag and release if wrong; pull; do not rerun. |
+| semantic-release after the tag (e.g. the GitHub release) | Tag on origin; NERV's publish stage not run. | Finish semantic-release's remaining steps and publish by hand from the tag. |
+| Publish stage or `publish` hook | Tag and release on origin; the summary lists what was published and what was not. | Publish the rest by hand from the tag. |
+| `success` hook | Released and published. | Run what the hook does by hand if needed. |
+
+- The advice to run again checks origin's branch at the end of the run:
+  when it moved (an earlier project's release commit, or a commit a prepare
+  plugin pushed) your local branch is now behind origin, which `nerv ship`
+  refuses, so the advice says to `git pull` first. When the branch was
+  deleted on origin, the advice says so instead; when origin cannot be read
+  (within 10 seconds, also after Ctrl-C), it says to check with `git
+  fetch`.
+- Once semantic-release has started, a failure runs the project's `fail`
+  hooks (not after Ctrl-C). Do not run `nerv ship` again for a release
+  whose tag is on origin: it would compute the next version.
+- A NuGet push stops at the first package the feed refuses, and a push
+  cannot be undone, so the error names what the feed already holds, e.g.
   `pushed: Sdk.1.4.0.nupkg, Sdk.1.4.0.snupkg; already on the feed:
   Cli.1.4.0.nupkg; failed on Web.1.4.0.nupkg: HTTP 500 ...; not attempted:
   Zip.1.4.0.nupkg` (`nothing pushed; failed on ...` when the first one
   fails). Run the release's push again after fixing the cause: packages
   already there are skipped.
-- Redirects are not followed (the key would go with them), and a plain
-  `http://` source is refused unless its host is loopback. A feed whose
-  service index needs credentials (GitHub Packages, Azure Artifacts) is
-  not supported by the preset: use a `publish` stage override for it.
+- The release clone and everything built in it are removed at the end, on
+  success or failure; to publish by hand, check the tag out (`git checkout
+  <tag>`) and rebuild.
 
-## Validation
+## Known limitations
 
-Unknown keys are errors, and every problem (unknown keys included) is
-reported at once with its path in the section, for example:
-
-```text
-invalid release configuration:
-  release.projects[0].pth: unknown field (line 5)
-  release.projects[0].path: required
-  release.projects[1].depends_on[0].project: unknown project "lib2"
-```
-
-Only a section that cannot be decoded at all (a value of the wrong kind,
-such as `presets: docker`) stops at the decoding problems.
-
-## YAML notes
-
-- Only the `release:` block is parsed: it is cut out of `nerv.yaml` by
-  indentation, so a YAML error elsewhere in the file never affects the
-  release commands. When the file's layout does not allow the cut
-  (`---` between documents, an indented or flow top level), the whole file
-  is parsed instead. The key may be quoted (`"release":`, `'release':`) or
-  carry an anchor or a tag (`&r release:`, `!!str release:`). If the file
-  is not valid YAML and a top-level line may still be the release key
-  without being recognised (e.g. an escaped quoted key), that is an error
-  naming the line, not a repository without release configuration.
-- Anchors and merge keys work inside the section, e.g. to share settings
-  between projects:
-
-  ```text
-  projects:
-    - &base
-      name: api
-      path: api
-      presets: [dotnet]
-      dotnet: { project_file: api/Api.csproj }
-    - <<: *base
-      name: worker
-      path: worker
-  ```
-
-  Keys reached through a merge are checked like any other.
-- An alias inside the section cannot refer to an anchor defined outside
-  it; that is reported as an error. An alias whose anchor is defined
-  nowhere before it (a typo, or an alias used before its anchor) is
-  reported as an undefined anchor, with the line of the alias.
-- A file whose top level is not a mapping is an error; an empty file, or
-  one without `release:`, means the repository has no release
-  configuration.
+- **Windows is compile-checked only**: the whole-tree kill of a cancelled
+  command (`taskkill /T`), the Git Bash lookup and pwsh/node script-file
+  runs are unit-tested with a fake OS, never on a real Windows machine. On
+  Windows, a descendant process that outlives its command keeps running.
+- **No submodules or Git LFS**: the release clone initialises neither, so
+  a build that needs them fails (or uses LFS pointer files).
+- **NuGet feeds whose service index needs credentials** (GitHub Packages,
+  Azure Artifacts) are not supported by the `nuget` preset: use a `publish`
+  stage override for them.
+- An origin whose `HEAD` names a missing branch fails semantic-release's
+  own fetch.
+- `--project` applies the dependency bumps of dependencies it does not
+  release, in both commands.
+- semantic-release's `addChannel` step (moving earlier releases to a
+  channel) runs before the version guard.
+- Offline (`nerv version next --offline`), a prerelease branch may compute
+  another version than CI when a channel note exists only on origin.
+- Coverage is checked on line coverage only (no branch threshold).
+- Commands run in their own session or process group without a
+  controlling terminal, so a terminal Ctrl-C reaches them only through
+  NERV, which cancels them on the first signal.
