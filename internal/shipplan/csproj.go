@@ -35,33 +35,22 @@ var versionRe = regexp.MustCompile(`^[0-9A-Za-z][0-9A-Za-z.+-]*$`)
 // (a synced temp file renamed over it, keeping its permission bits), so on
 // any error it is left byte for byte unchanged.
 func WriteCsproj(path, version, releaseNotes string) error {
-	if !versionRe.MatchString(version) {
-		return fmt.Errorf("%s: invalid version %q", path, version)
-	}
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return err
-	}
-	out, err := setCsprojProperties(string(data), []property{
-		{"Version", version},
-		{"PackageReleaseNotes", escapeNotes(releaseNotes, lineEnding(string(data)))},
+	return writeCsproj(path, version, func(eol string) []property {
+		return []property{{"Version", version}, {"PackageReleaseNotes", escapeNotes(releaseNotes, eol)}}
 	})
-	if err != nil {
-		return fmt.Errorf("%s: %w", path, err)
-	}
-	if out == string(data) {
-		return nil
-	}
-	if err := replaceFile(path, []byte(out)); err != nil {
-		return fmt.Errorf("%s: %w", path, err)
-	}
-	return nil
 }
 
 // WriteCsprojVersion sets only <Version> in the MSBuild project file at
 // path, as WriteCsproj does, leaving <PackageReleaseNotes> as it is (nerv
 // ship uses it when there is no release page to link to).
 func WriteCsprojVersion(path, version string) error {
+	return writeCsproj(path, version, func(string) []property { return []property{{"Version", version}} })
+}
+
+// writeCsproj checks version, then sets the properties props returns (given
+// the file's line ending) in the project file at path, replacing it
+// atomically only when its content changes.
+func writeCsproj(path, version string, props func(eol string) []property) error {
 	if !versionRe.MatchString(version) {
 		return fmt.Errorf("%s: invalid version %q", path, version)
 	}
@@ -69,7 +58,7 @@ func WriteCsprojVersion(path, version string) error {
 	if err != nil {
 		return err
 	}
-	out, err := setCsprojProperties(string(data), []property{{"Version", version}})
+	out, err := setCsprojProperties(string(data), props(lineEnding(string(data))))
 	if err != nil {
 		return fmt.Errorf("%s: %w", path, err)
 	}
