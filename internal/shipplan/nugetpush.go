@@ -106,15 +106,17 @@ func pushNuGet(ctx context.Context, client *http.Client, dir, source, key string
 			if len(parts) == 0 {
 				parts = []string{"nothing pushed"}
 			}
-			parts = append(parts, fmt.Sprintf("failed on %s: %v", filepath.Base(u.path), err))
 			var rest []string
 			for _, r := range uploads[i+1:] {
 				rest = append(rest, filepath.Base(r.path))
 			}
+			tail := ""
 			if len(rest) > 0 {
-				parts = append(parts, "not attempted: "+strings.Join(rest, ", "))
+				tail = "; not attempted: " + strings.Join(rest, ", ")
 			}
-			return "", p.redact(errors.New(strings.Join(parts, "; ")))
+			// %w keeps the cause, so a cancelled or timed-out push stays
+			// distinguishable (errors.Is) from a refusal by the feed.
+			return "", p.redact(fmt.Errorf("%s; failed on %s: %w%s", strings.Join(parts, "; "), filepath.Base(u.path), err, tail))
 		}
 		if dup {
 			present = append(present, filepath.Base(u.path))
@@ -135,7 +137,21 @@ func (p *nugetPush) redact(err error) error {
 	if p.key == "" || !strings.Contains(err.Error(), p.key) {
 		return err
 	}
-	return errors.New(strings.ReplaceAll(err.Error(), p.key, "***"))
+	return &redactedError{msg: strings.ReplaceAll(err.Error(), p.key, "***"), cause: err}
+}
+
+// redactedError carries a message with the API key hidden. It does not
+// unwrap to the original error, whose text still holds the key; it only
+// answers errors.Is for the cancellation causes a caller needs to tell apart.
+type redactedError struct {
+	msg   string
+	cause error
+}
+
+func (e *redactedError) Error() string { return e.msg }
+
+func (e *redactedError) Is(target error) bool {
+	return (target == context.Canceled || target == context.DeadlineExceeded) && errors.Is(e.cause, target)
 }
 
 // endpoints returns the package and symbol push URLs of source.
@@ -327,8 +343,9 @@ func uploadRequest(ctx context.Context, target, path, key string) (*http.Request
 	return req, nil
 }
 
-// nupkgs lists the *.nupkg regular files of dir in name order. It reads
-// the directory instead of globbing, so a directory name holding glob
+// nupkgs lists the *.nupkg files of dir in name order, following symlinks
+// (a linked package is a package; a directory named *.nupkg is not). It
+// reads the directory instead of globbing, so a directory name holding glob
 // characters ([, *, ?) is taken as it is.
 func nupkgs(dir string) ([]string, error) {
 	entries, err := os.ReadDir(dir)
@@ -337,8 +354,12 @@ func nupkgs(dir string) ([]string, error) {
 	}
 	var pkgs []string
 	for _, e := range entries {
-		if e.Type().IsRegular() && strings.HasSuffix(e.Name(), ".nupkg") {
-			pkgs = append(pkgs, filepath.Join(dir, e.Name()))
+		if !strings.HasSuffix(e.Name(), ".nupkg") {
+			continue
+		}
+		path := filepath.Join(dir, e.Name())
+		if st, err := os.Stat(path); err == nil && st.Mode().IsRegular() {
+			pkgs = append(pkgs, path)
 		}
 	}
 	if len(pkgs) == 0 {

@@ -2,6 +2,7 @@ package shipplan
 
 import (
 	"context"
+	"errors"
 	"io"
 	"mime"
 	"mime/multipart"
@@ -299,6 +300,46 @@ func TestPushNuGet_DirectoryNameWithGlobCharacters(t *testing.T) {
 	summary, err := pushNuGet(context.Background(), nil, dir, srv.URL+"/api/v2/package", testKey)
 	if err != nil || summary != "pushed: Sdk.1.0.0.nupkg" {
 		t.Errorf("pushNuGet = %q, %v; want the one package pushed", summary, err)
+	}
+}
+
+// A symlinked package is a package: listing follows the link like the glob
+// it replaced did.
+func TestPushNuGet_SymlinkedPackageIsPushed(t *testing.T) {
+	feed := &fakeFeed{}
+	srv := httptest.NewServer(feed)
+	defer srv.Close()
+	store := t.TempDir()
+	if err := os.WriteFile(filepath.Join(store, "Real.1.0.0.nupkg"), []byte("zip"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	if err := os.Symlink(filepath.Join(store, "Real.1.0.0.nupkg"), filepath.Join(dir, "Linked.1.0.0.nupkg")); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	summary, err := pushNuGet(context.Background(), nil, dir, srv.URL+"/api/v2/package", testKey)
+	if err != nil || summary != "pushed: Linked.1.0.0.nupkg" {
+		t.Errorf("pushNuGet = %q, %v; want the symlinked package pushed", summary, err)
+	}
+}
+
+// A part-way failure keeps its cause, so a cancelled or timed-out push can be
+// told apart from a refusal by the feed.
+func TestPushNuGet_FailureKeepsTheCause(t *testing.T) {
+	release := make(chan struct{})
+	hang := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		select {
+		case <-release:
+		case <-r.Context().Done():
+		}
+	}))
+	defer hang.Close()
+	defer close(release)
+	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	defer cancel()
+	_, err := pushNuGet(ctx, nil, packages(t, "A.1.0.0.nupkg"), hang.URL+"/api/v2/package", testKey)
+	if err == nil || !errors.Is(err, context.DeadlineExceeded) || !strings.Contains(err.Error(), "nothing pushed; failed on A.1.0.0.nupkg") {
+		t.Errorf("pushNuGet = %v; want the summary wrapping context.DeadlineExceeded", err)
 	}
 }
 
