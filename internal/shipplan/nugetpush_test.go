@@ -215,3 +215,21 @@ func TestPushNuGet_FailurePartWayNamesWhatTheFeedAccepted(t *testing.T) {
 		t.Errorf("pushNuGet error = %v, want %q", err, want)
 	}
 }
+
+func TestPushNuGet_KeyStraddlingTheErrorCutIsHidden(t *testing.T) {
+	for _, before := range []int{500, 508, 511, 0} {
+		feed := &fakeFeed{status: http.StatusForbidden, body: strings.Repeat("x", before) + testKey + strings.Repeat("y", 600)}
+		srv := httptest.NewServer(feed)
+		_, err := pushNuGet(context.Background(), nil, packages(t, "A.1.0.0.nupkg"), srv.URL+"/api/v2/package", testKey)
+		srv.Close()
+		if err == nil {
+			t.Fatalf("key at %d: want an error", before)
+		}
+		for n := 4; n <= len(testKey); n++ {
+			if strings.Contains(err.Error(), testKey[:n]) {
+				t.Errorf("key at %d: the error shows the key's first %d characters: %v", before, n, err)
+				break
+			}
+		}
+	}
+}

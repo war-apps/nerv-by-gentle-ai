@@ -34,6 +34,15 @@ import (
 // nugetPushTimeout bounds one HTTP request of a push (an upload included).
 const nugetPushTimeout = 10 * time.Minute
 
+const (
+	// errorBodyReadLimit bounds how much of a feed's error body is read:
+	// enough to find the key anywhere a feed would echo it.
+	errorBodyReadLimit = 64 << 10
+	// errorBodyShowLimit bounds the part of it shown in an error: a feed's
+	// message is short, an HTML error page is not worth more.
+	errorBodyShowLimit = 512
+)
+
 // pushNuGet pushes every *.nupkg in dir, in name order, to source with key,
 // each followed by its .snupkg when the source's service index offers a
 // SymbolPackagePublish resource. source is a v3 service index (…/index.json,
@@ -248,8 +257,28 @@ func (p *nugetPush) put(ctx context.Context, target, path string) (duplicate boo
 	case resp.StatusCode >= 300 && resp.StatusCode < 400:
 		return false, fmt.Errorf("HTTP %s: the feed answered with a redirect to %q, which is not followed so the API key goes nowhere else", resp.Status, resp.Header.Get("Location"))
 	}
-	msg, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
-	return false, fmt.Errorf("HTTP %s: %s", resp.Status, strings.TrimSpace(string(msg)))
+	msg, _ := io.ReadAll(io.LimitReader(resp.Body, errorBodyReadLimit))
+	return false, fmt.Errorf("HTTP %s: %s", resp.Status, p.errorText(string(msg)))
+}
+
+// errorText is a feed's error body as shown in an error: the key redacted
+// in the whole body first, then cut to errorBodyShowLimit bytes, and a
+// trailing start of the key (4 characters or more) the cut left behind
+// redacted too, so no part of the key is shown.
+func (p *nugetPush) errorText(body string) string {
+	if p.key != "" {
+		body = strings.ReplaceAll(body, p.key, "***")
+	}
+	if len(body) > errorBodyShowLimit {
+		body = body[:errorBodyShowLimit]
+		for n := min(len(p.key)-1, len(body)); n >= 4; n-- {
+			if strings.HasSuffix(body, p.key[:n]) {
+				body = body[:len(body)-n] + "***"
+				break
+			}
+		}
+	}
+	return strings.TrimSpace(body)
 }
 
 func fileExists(path string) bool {
