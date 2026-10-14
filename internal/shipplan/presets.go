@@ -40,6 +40,7 @@ func (b *builder) dotnet() error {
 	test := []string{"dotnet", "test", target, "-c", cfg, "--no-build"}
 	if threshold := d.CoverageThreshold; threshold > 0 {
 		dir := filepath.Join(b.artifacts, "coverage")
+		b.resetDirs = append(b.resetDirs, dir)
 		test = append(test, "--collect", "XPlat Code Coverage", "--results-directory", dir)
 		b.add("coverage", Step{
 			Name:     "dotnet:coverage",
@@ -266,6 +267,7 @@ func (b *builder) nuget() error {
 		return fmt.Errorf("nuget.source: %w", err)
 	}
 	dir := b.packagesDir()
+	b.resetDirs = append(b.resetDirs, dir)
 	b.add(PublishStage, Step{
 		Name:     "nuget:push",
 		Describe: fmt.Sprintf("push %s (and *.snupkg) to %s with the API key from $%s, skipping packages already there", filepath.Join(dir, "*.nupkg"), source, keyEnv),

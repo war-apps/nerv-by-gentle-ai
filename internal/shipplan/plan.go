@@ -58,6 +58,11 @@ type Plan struct {
 	// Hooks are the commands of the semantic-release lifecycle hook keys
 	// (prepare, publish, success, fail), for T6; Executor never runs them.
 	Hooks map[string][]Step
+	// ResetDirs are the project's artifact directories Executor.Run empties
+	// before the first stage, so outputs of an earlier run (coverage
+	// reports, packages) are never counted or pushed. Each must be inside
+	// Context.ArtifactsDir.
+	ResetDirs []string
 }
 
 // Stage is one pipeline stage: its before_<stage> hooks, its commands
@@ -151,7 +156,7 @@ func Build(repoRoot string, project shipconfig.Project, c Context) (*Plan, error
 		}
 	}
 
-	plan := &Plan{Project: project.Name, Context: c, Hooks: map[string][]Step{}}
+	plan := &Plan{Project: project.Name, Context: c, Hooks: map[string][]Step{}, ResetDirs: b.resetDirs}
 	for _, stage := range shipconfig.Stages {
 		cmds := b.steps[stage]
 		if override, ok := project.Stages[stage]; ok {
@@ -180,6 +185,7 @@ type builder struct {
 	ctx       Context
 	artifacts string
 	steps     map[string][]Step
+	resetDirs []string
 }
 
 func (b *builder) add(stage string, s Step) {

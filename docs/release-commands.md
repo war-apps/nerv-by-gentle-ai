@@ -479,7 +479,10 @@ Every step (preset command, override or hook) also receives
 repository for build outputs. The dotnet preset writes its coverage
 reports to `$NERV_RELEASE_ARTIFACTS_DIR/coverage` and its packages to
 `$NERV_RELEASE_ARTIFACTS_DIR/nuget`; an override replacing those commands
-writes there too.
+writes there too. Both directories are emptied before the first stage of
+every run, so a coverage report or package left by an earlier run is never
+counted or pushed (only those two, and only inside the artifacts
+directory).
 
 ### Preset commands
 

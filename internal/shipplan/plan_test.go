@@ -595,9 +595,13 @@ func TestExecutor_CoverageCheckRunsInProcess(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	writeFile(t, dir, "api/coverage/0a/coverage.cobertura.xml", cobertura(85, 100))
+	// The test step writes the report, as dotnet test does.
+	report := func(covered int) *writingRunner {
+		return &writingRunner{root: dir, t: t, writes: map[string]map[string]string{
+			"dotnet:test": {"api/coverage/0a/coverage.cobertura.xml": cobertura(covered, 100)}}}
+	}
 	var out strings.Builder
-	r := &fakeRunner{}
+	r := report(85)
 	err = (Executor{Steps: r, Output: &out}).Run(context.Background(), plan, shiprun.Vars{Project: "api"})
 	var f *StepFailure
 	if !errors.As(err, &f) || f.Stage != "coverage" || f.Step != "dotnet:coverage" || !strings.Contains(err.Error(), "85.00%") {
@@ -607,9 +611,8 @@ func TestExecutor_CoverageCheckRunsInProcess(t *testing.T) {
 		t.Error("the check was sent to the process runner")
 	}
 
-	writeFile(t, dir, "api/coverage/0a/coverage.cobertura.xml", cobertura(95, 100))
 	out.Reset()
-	if err := (Executor{Steps: &fakeRunner{}, Output: &out}).Run(context.Background(), plan, shiprun.Vars{Project: "api"}); err != nil {
+	if err := (Executor{Steps: report(95), Output: &out}).Run(context.Background(), plan, shiprun.Vars{Project: "api"}); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(out.String(), "[api:dotnet:coverage] line coverage 95.00% (95 of 100 lines, 1 report), threshold 90%") {
@@ -671,5 +674,73 @@ func TestPlan_Render(t *testing.T) {
 `
 	if got := plan.Render(); got != want {
 		t.Errorf("Render =\n%s\nwant\n%s", got, want)
+	}
+}
+
+// writingRunner is a fakeRunner that writes files when a step runs:
+// step name -> (artifacts-relative path -> content).
+type writingRunner struct {
+	fakeRunner
+	root   string
+	writes map[string]map[string]string
+	t      *testing.T
+}
+
+func (w *writingRunner) Run(ctx context.Context, s shiprun.Step, v shiprun.Vars) error {
+	for rel, content := range w.writes[s.Name] {
+		writeFile(w.t, w.root, rel, content)
+	}
+	return w.fakeRunner.Run(ctx, s, v)
+}
+
+func TestExecutor_LeftoversOfAnEarlierRunAreNotUsed(t *testing.T) {
+	feed := &fakeFeed{}
+	srv := httptest.NewServer(feed)
+	defer srv.Close()
+	p := nugetProject()
+	p.NuGet.Source = srv.URL + "/api/v2/package"
+	p.Dotnet.CoverageThreshold = 90
+	c := ctxFor("3.1.0", "")
+	c.ArtifactsDir = t.TempDir()
+	plan, err := Build(t.TempDir(), p, c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// An earlier run left a report with no coverage and an older package.
+	writeFile(t, c.ArtifactsDir, "sdk/coverage/old/coverage.cobertura.xml", cobertura(0, 1000))
+	writeFile(t, c.ArtifactsDir, "sdk/nuget/Sdk.3.0.0.nupkg", "old")
+	writeFile(t, c.ArtifactsDir, "other-project/keep.txt", "not ours")
+	r := &writingRunner{root: c.ArtifactsDir, t: t, writes: map[string]map[string]string{
+		"dotnet:test": {"sdk/coverage/new/coverage.cobertura.xml": cobertura(95, 100)},
+		"dotnet:pack": {"sdk/nuget/Sdk.3.1.0.nupkg": "new"},
+	}}
+	e := Executor{Steps: r, LookupEnv: envOf(map[string]string{"MY_NUGET_KEY": testKey})}
+	if err := e.Run(context.Background(), plan, shiprun.Vars{Project: "sdk"}); err != nil {
+		t.Fatalf("Run = %v (the old report must not count)", err)
+	}
+	if err := e.RunPublish(context.Background(), plan, shiprun.Vars{Project: "sdk"}); err != nil {
+		t.Fatal(err)
+	}
+	if len(feed.got) != 1 || string(feed.got[0].body) != "new" {
+		t.Errorf("pushed %d packages, want only the new one: %+v", len(feed.got), feed.got)
+	}
+	if _, err := os.Stat(filepath.Join(c.ArtifactsDir, "other-project", "keep.txt")); err != nil {
+		t.Errorf("another project's artifacts were removed: %v", err)
+	}
+}
+
+func TestExecutor_ResetsOnlyInsideTheArtifactsRoot(t *testing.T) {
+	root := t.TempDir()
+	outside := t.TempDir()
+	writeFile(t, outside, "precious.txt", "x")
+	for _, dir := range []string{outside, root, filepath.Join(root, "..", filepath.Base(outside))} {
+		plan := &Plan{Project: "x", Context: Context{Version: "1.0.0", ArtifactsDir: root}, ResetDirs: []string{dir}}
+		err := (Executor{Steps: &fakeRunner{}}).Run(context.Background(), plan, shiprun.Vars{})
+		if err == nil || !strings.Contains(err.Error(), "not inside the artifacts directory") {
+			t.Errorf("ResetDirs %q: Run = %v, want a refusal", dir, err)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(outside, "precious.txt")); err != nil {
+		t.Errorf("a directory outside the artifacts root was touched: %v", err)
 	}
 }

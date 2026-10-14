@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 
 	"github.com/war-apps/nerv-by-gentle-ai/internal/shiprun"
 )
@@ -42,12 +43,38 @@ func (e *StepFailure) Unwrap() error { return e.Err }
 // at the first failing step, returning a *StepFailure. Before anything
 // runs it checks that every secret the plan will need is set: the
 // publish stage's too (so a missing key fails before the build), except
-// in a dry run, which never publishes.
+// in a dry run, which never publishes. Then it empties the plan's
+// ResetDirs, so a report or package of an earlier run is never used.
 func (e Executor) Run(ctx context.Context, plan *Plan, vars shiprun.Vars) error {
 	if err := e.checkSecrets(plan); err != nil {
 		return err
 	}
+	if err := resetDirs(plan); err != nil {
+		return err
+	}
 	return e.run(ctx, plan.Pipeline(), vars)
+}
+
+// resetDirs removes and recreates each of the plan's ResetDirs, after
+// checking every one is strictly inside the artifacts directory (lexically:
+// the plan builds them there, and a hand-built plan must not reach out).
+func resetDirs(plan *Plan) error {
+	root := plan.Context.ArtifactsDir
+	for _, dir := range plan.ResetDirs {
+		rel, err := filepath.Rel(root, dir)
+		if root == "" || err != nil || rel == "." || !filepath.IsLocal(rel) {
+			return fmt.Errorf("artifact directory %s is not inside the artifacts directory %s", dir, root)
+		}
+	}
+	for _, dir := range plan.ResetDirs {
+		if err := os.RemoveAll(dir); err != nil {
+			return fmt.Errorf("emptying %s: %w", dir, err)
+		}
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // RunPublish runs the publish stage (T6 calls it inside semantic-release's
