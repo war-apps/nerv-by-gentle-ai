@@ -217,10 +217,13 @@ the commands that use them, and the tools of the enabled presets.
 ### Credentials
 
 - git: your own credentials (ssh keys, a credential helper such as
-  `gh auth setup-git`). The release clone's origin is your origin's address
-  without user info; when your origin URL carries credentials, git gets the
-  real URL only through its environment (`url.<real>.insteadOf`), never on
-  a command line. git never prompts (`GIT_TERMINAL_PROMPT=0`, ssh
+  `gh auth setup-git`, recommended). The release clone's origin is your
+  origin's address without user info; when your origin URL itself carries
+  credentials (`https://user:token@host/...`), the real URL is written only
+  into the release clone's own `.git/config` as `url.<real>.insteadOf`
+  (an owner-only file in an owner-only temporary directory, removed at the
+  end), never on a command line or in any environment. Git error output
+  may still echo that URL; prefer a credential helper. git never prompts (`GIT_TERMINAL_PROMPT=0`, ssh
   `BatchMode`). Checking the push first also keeps semantic-release from
   falling back to a token embedded in the push URL.
 - GitHub: `GH_TOKEN` or `GITHUB_TOKEN` from the environment; when neither
@@ -265,7 +268,7 @@ success or failure; to publish by hand, check the tag out (`git checkout
 | Code | When |
 |---|---|
 | `0` | Released, nothing to release, or a dry run that passed. |
-| `1` | Refused: invalid `release:` section, unknown `--project`, not a git repository or not on a branch, no origin, local branch not equal to origin's, no confirmation (or not a terminal without `--yes`), a plan that cannot be built. |
+| `1` | Refused: invalid `release:` section, unknown `--project`, not a git repository or not on a branch, no origin remote, local branch not equal to origin's, no confirmation (or not a terminal without `--yes`), a plan that cannot be built. |
 | `2` | Usage error, an environment error (origin unreachable, git cannot push, node or npm missing), or a failed step or release. |
 | `128 + signal` | Interrupted (`130` Ctrl-C, `143` SIGTERM, `129` SIGHUP); a second Ctrl-C ends `nerv` at once. |
 

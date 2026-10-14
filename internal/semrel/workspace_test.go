@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
@@ -70,8 +71,13 @@ func workspaceRunner(t *testing.T, root, originURL, originHead string, node func
 				return Result{Stderr: []byte("error: No such remote 'origin'")}, errors.New("exit status 2")
 			}
 			return Result{Stdout: []byte(originURL + "\n")}, nil
+		case isGit(c, "remote") && c.Args[len(c.Args)-1] == "remote":
+			if originURL == "" {
+				return Result{Stdout: []byte("upstream\n")}, nil
+			}
+			return Result{Stdout: []byte("upstream\norigin\n")}, nil
 		case isGit(c, "clone"):
-			if err := os.MkdirAll(c.Args[len(c.Args)-1], 0o755); err != nil {
+			if err := os.MkdirAll(filepath.Join(c.Args[len(c.Args)-1], ".git"), 0o755); err != nil {
 				return Result{}, err
 			}
 			return Result{}, nil
@@ -142,30 +148,36 @@ func TestNewWorkspace_ClonesReadsOriginAndChecksOutOriginsBranch(t *testing.T) {
 	if v, _ := lookupEnv(fetch[0].Env, "GIT_TERMINAL_PROMPT"); v != "0" {
 		t.Errorf("fetch may prompt: %v", fetch[0].Env)
 	}
-	if !rewritesTo(fetch[0].Env, "https://bot:s3cr3t@github.com/acme/widgets.git", "https://github.com/acme/widgets.git") {
-		t.Errorf("fetch env lacks the origin rewrite: %v", fetch[0].Env)
+	cfg := filepath.Join(ws.Dir(), ".git", "config")
+	data, err := os.ReadFile(cfg)
+	if err != nil || !strings.Contains(string(data), `[url "https://bot:s3cr3t@github.com/acme/widgets.git"]`) ||
+		!strings.Contains(string(data), `insteadOf = "https://github.com/acme/widgets.git"`) {
+		t.Errorf("clone config lacks the origin rewrite: %q %v", data, err)
+	}
+	if info, err := os.Stat(cfg); err != nil || (runtime.GOOS != "windows" && info.Mode().Perm() != 0o600) {
+		t.Errorf("clone config mode: %v %v", info, err)
 	}
 	checkout := f.find(func(c Command) bool { return isGit(c, "checkout") })
 	if len(checkout) != 1 || !slices.Contains(checkout[0].Args, "-B") || !slices.Contains(checkout[0].Args, "refs/remotes/origin/main") {
 		t.Errorf("checkout: %v", checkout)
 	}
-	for _, c := range f.calls {
-		if strings.Contains(strings.Join(c.Args, " "), "s3cr3t") {
-			t.Errorf("credentials on a command line: %s %v", c.Name, c.Args)
-		}
-	}
+	noSecretAnywhere(t, f, "s3cr3t")
 }
 
-// rewritesTo reports whether env carries the git config url.<real>.insteadOf = public.
-func rewritesTo(env []string, real, public string) bool {
-	for _, kv := range env {
-		name, value, _ := strings.Cut(kv, "=")
-		if strings.HasPrefix(name, "GIT_CONFIG_KEY_") && value == "url."+real+".insteadOf" {
-			v, _ := lookupEnv(env, "GIT_CONFIG_VALUE_"+strings.TrimPrefix(name, "GIT_CONFIG_KEY_"))
-			return v == public
+// noSecretAnywhere fails when secret is on the command line or in the
+// environment of any command the runner was given.
+func noSecretAnywhere(t *testing.T, f *fakeRunner, secret string) {
+	t.Helper()
+	for _, c := range f.calls {
+		if strings.Contains(strings.Join(c.Args, " "), secret) {
+			t.Errorf("secret on a command line: %s %v", c.Name, c.Args)
+		}
+		for _, kv := range c.Env {
+			if strings.Contains(kv, secret) {
+				t.Errorf("secret in the environment of %s %v: %s", c.Name, c.Args, kv)
+			}
 		}
 	}
-	return false
 }
 
 func TestNewWorkspace_OriginBranchMissingLeavesNoCheckout(t *testing.T) {
@@ -178,8 +190,8 @@ func TestNewWorkspace_OriginBranchMissingLeavesNoCheckout(t *testing.T) {
 	if c := f.find(func(c Command) bool { return isGit(c, "checkout") }); len(c) != 0 {
 		t.Errorf("checked out %v", c)
 	}
-	if fetch := f.find(func(c Command) bool { return isGit(c, "fetch") }); rewritesTo(fetch[0].Env, "git@github.com:acme/widgets.git", "git@github.com:acme/widgets.git") {
-		t.Errorf("no rewrite is needed when the push address is origin's own URL")
+	if data, _ := os.ReadFile(filepath.Join(ws.Dir(), ".git", "config")); strings.Contains(string(data), "insteadOf") {
+		t.Errorf("no rewrite is needed when the push address is origin's own URL: %q", data)
 	}
 }
 
@@ -192,6 +204,22 @@ func TestNewWorkspace_NoOriginIsARefusal(t *testing.T) {
 	}
 	if c := f.find(func(c Command) bool { return isGit(c, "clone") }); len(c) != 0 {
 		t.Errorf("cloned without an origin: %v", c)
+	}
+}
+
+func TestNewWorkspace_RemoteListingFailureIsAnEnvironmentError(t *testing.T) {
+	root := t.TempDir()
+	f := workspaceRunner(t, root, "https://github.com/acme/w.git", "", nil)
+	base := f.handle
+	f.handle = func(c Command) (Result, error) {
+		if isGit(c, "remote") {
+			return Result{}, context.Canceled
+		}
+		return base(c)
+	}
+	_, err := (&Engine{Runner: f}).NewWorkspace(context.Background(), WorkspaceOptions{RepoRoot: root, Branch: "main", Env: []string{}})
+	if err == nil || errors.Is(err, ErrNoOrigin) || !errors.Is(err, context.Canceled) {
+		t.Fatalf("err = %v, want the git failure, not ErrNoOrigin", err)
 	}
 }
 
@@ -330,12 +358,10 @@ func TestWorkspace_ReleaseIsARealRunGuardedByTheComputedVersion(t *testing.T) {
 	if v, _ := lookupEnv(last, "GH_TOKEN"); v != "tok-123" {
 		t.Errorf("GH_TOKEN not passed to the runner")
 	}
-	if !rewritesTo(last, "https://bot:s3cr3t@github.com/acme/w.git", "https://github.com/acme/w.git") {
-		t.Errorf("the runner's git cannot reach origin with its credentials: %v", last)
-	}
+	noSecretAnywhere(t, f, "s3cr3t")
 	for _, c := range f.calls {
-		if strings.Contains(strings.Join(c.Args, " "), "tok-123") || strings.Contains(strings.Join(c.Args, " "), "s3cr3t") {
-			t.Errorf("secret on a command line: %s %v", c.Name, c.Args)
+		if strings.Contains(strings.Join(c.Args, " "), "tok-123") {
+			t.Errorf("token on a command line: %s %v", c.Name, c.Args)
 		}
 	}
 }
@@ -347,7 +373,7 @@ func TestWorkspace_ReleaseVersionMismatch(t *testing.T) {
 	}{
 		{"another version", map[string]any{"ok": true, "released": true, "nextRelease": map[string]any{"version": "1.2.0"}}},
 		{"no release", map[string]any{"ok": true, "released": false}},
-		{"runner guard", map[string]any{"ok": false, "error": "ENERVVERSIONMISMATCH semantic-release would release 1.2.0, but nerv ship computed 1.1.0"}},
+		{"runner guard", map[string]any{"ok": false, "error": "semantic-release would release 1.2.0", "versionMismatch": map[string]any{"expected": "1.1.0", "actual": "1.2.0"}}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -368,6 +394,22 @@ func TestWorkspace_ReleaseVersionMismatch(t *testing.T) {
 				t.Fatalf("err = %v, want ErrVersionMismatch", err)
 			}
 		})
+	}
+}
+
+func TestWorkspace_ReleaseErrorTextIsNotAMismatchSignal(t *testing.T) {
+	root := t.TempDir()
+	f := workspaceRunner(t, root, "https://github.com/acme/w.git", "abc", func(req runnerRequest) (Result, error) {
+		if req.Mode == "plan" {
+			return okPlan()
+		}
+		res, _ := respond(map[string]any{"ok": false, "error": "EGITHUB a commit message mentioning ENERVVERSIONMISMATCH"})
+		return res, errors.New("exit status 1")
+	})
+	ws := openWorkspace(t, f, root)
+	_, err := ws.Release(context.Background(), ReleaseRequest{Expected: ProjectResult{Project: filepath.Base(root), NewReleasePublished: true, NewReleaseVersion: "1.1.0"}})
+	if err == nil || errors.Is(err, ErrVersionMismatch) {
+		t.Fatalf("err = %v, want a plain failure", err)
 	}
 }
 

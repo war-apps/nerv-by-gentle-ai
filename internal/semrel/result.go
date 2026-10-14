@@ -99,6 +99,14 @@ type runnerResponse struct {
 	Released    bool     `json:"released"`
 	NextRelease *release `json:"nextRelease"`
 	LastRelease *release `json:"lastRelease"`
+	// release mode: set when the version guard stopped semantic-release.
+	VersionMismatch *versionMismatch `json:"versionMismatch"`
+}
+
+// versionMismatch is the runner's structured report of its version guard.
+type versionMismatch struct {
+	Expected string `json:"expected"`
+	Actual   string `json:"actual"`
 }
 
 type release struct {

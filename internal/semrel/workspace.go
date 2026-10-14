@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -49,9 +50,10 @@ type WorkspaceOptions struct {
 // user's repository is never modified), holding exactly origin's branches,
 // tags and semantic-release notes, checked out on origin's commit of the
 // branch. Its origin remote is origin's push address without credentials;
-// the real URL, when it differs (it carries credentials), is given to git
-// only through the environment (url.<real>.insteadOf), so no command line
-// ever shows it. Close removes everything.
+// the real URL, when it differs (it carries credentials), is written only
+// into the clone's own .git/config as url.<real>.insteadOf (owner-only file
+// in an owner-only temporary directory), so neither a command line nor an
+// environment ever holds it. Close removes everything.
 type Workspace struct {
 	e       *Engine
 	root    string
@@ -95,8 +97,18 @@ func (e *Engine) NewWorkspace(ctx context.Context, opts WorkspaceOptions) (*Work
 		return nil, fmt.Errorf("not a git repository: %w", err)
 	}
 	top = filepath.Clean(top)
+	remotes, err := e.git(ctx, top, env, "remote")
+	if err != nil {
+		return nil, fmt.Errorf("listing the repository's remotes: %w", err)
+	}
+	if !slices.Contains(strings.Fields(remotes), "origin") {
+		return nil, ErrNoOrigin
+	}
 	raw, err := e.git(ctx, top, env, "remote", "get-url", "origin")
-	if err != nil || raw == "" {
+	if err != nil {
+		return nil, fmt.Errorf("reading origin's URL: %w", err)
+	}
+	if raw == "" {
 		return nil, ErrNoOrigin
 	}
 	resolved := resolveRemoteURL(raw, top)
@@ -105,11 +117,7 @@ func (e *Engine) NewWorkspace(ctx context.Context, opts WorkspaceOptions) (*Work
 		return nil, err
 	}
 	sshCommand, _ := e.git(ctx, top, env, "config", "--get", "core.sshCommand")
-	wenv := env
-	if resolved != pushURL {
-		wenv = withGitConfig(wenv, "url."+resolved+".insteadOf", pushURL)
-	}
-	wenv = promptFreeEnv(wenv, sshCommand)
+	wenv := promptFreeEnv(env, sshCommand)
 
 	root, err := os.MkdirTemp("", "nerv-ship-")
 	if err != nil {
@@ -117,14 +125,14 @@ func (e *Engine) NewWorkspace(ctx context.Context, opts WorkspaceOptions) (*Work
 	}
 	w := &Workspace{e: e, root: root, dir: filepath.Join(root, filepath.Base(top)), branch: opts.Branch, env: wenv,
 		pushURL: pushURL, public: publicURL(raw), cache: opts.CacheDir, timeout: timeout}
-	if err := w.init(ctx, top, env); err != nil {
+	if err := w.init(ctx, top, env, resolved); err != nil {
 		os.RemoveAll(root)
 		return nil, err
 	}
 	return w, nil
 }
 
-func (w *Workspace) init(ctx context.Context, top string, env []string) error {
+func (w *Workspace) init(ctx context.Context, top string, env []string, realURL string) error {
 	for _, d := range []string{w.ArtifactsDir(), w.NotesDir()} {
 		if err := os.MkdirAll(d, 0o700); err != nil {
 			return err
@@ -136,6 +144,11 @@ func (w *Workspace) init(ctx context.Context, top string, env []string) error {
 	}
 	if _, err := e.git(ctx, w.dir, env, "remote", "set-url", "origin", w.pushURL); err != nil {
 		return fmt.Errorf("setting the release clone's origin: %w", err)
+	}
+	if realURL != w.pushURL {
+		if err := writeOriginRewrite(filepath.Join(w.dir, ".git", "config"), realURL, w.pushURL); err != nil {
+			return fmt.Errorf("configuring the release clone's origin: %w", err)
+		}
 	}
 	fctx, cancel := context.WithTimeout(ctx, w.timeout)
 	defer cancel()
@@ -295,10 +308,11 @@ func (w *Workspace) Release(ctx context.Context, req ReleaseRequest) (ProjectRes
 		ExpectedVersion:  expected,
 		CommitFilesCache: filepath.Join(w.root, "commit-files.json"),
 	}, req.Output)
+	if m := resp.VersionMismatch; m != nil {
+		return ProjectResult{}, fmt.Errorf("project %s: %w: semantic-release would release %s, computed and confirmed %s; stopped before the tag, nothing was released",
+			p.Name, ErrVersionMismatch, m.Actual, m.Expected)
+	}
 	if err != nil {
-		if strings.Contains(err.Error(), versionMismatchCode) {
-			return ProjectResult{}, fmt.Errorf("project %s: %w: %w", p.Name, ErrVersionMismatch, err)
-		}
 		return ProjectResult{}, fmt.Errorf("project %s: %w", p.Name, err)
 	}
 	r := normalize(p.Name, w.branch, resp)
@@ -311,9 +325,28 @@ func (w *Workspace) Release(ctx context.Context, req ReleaseRequest) (ProjectRes
 	return r, nil
 }
 
-// versionMismatchCode is the error code the runner's verifyRelease guard
-// throws (runner/nerv-semrel.mjs).
-const versionMismatchCode = "ENERVVERSIONMISMATCH"
+// writeOriginRewrite appends url.<realURL>.insteadOf = <pushURL> to the git
+// config file at path and makes it owner-only: git (and semantic-release's
+// git) then reaches origin's real URL, with the credentials it holds, while
+// every command line and environment only shows pushURL.
+func writeOriginRewrite(path, realURL, pushURL string) error {
+	if strings.ContainsAny(realURL+pushURL, "\n\r\x00") {
+		return errors.New("origin's URL contains a line break")
+	}
+	quote := strings.NewReplacer(`\`, `\\`, `"`, `\"`)
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0o600)
+	if err != nil {
+		return err
+	}
+	_, werr := fmt.Fprintf(f, "[url \"%s\"]\n\tinsteadOf = \"%s\"\n", quote.Replace(realURL), quote.Replace(pushURL))
+	if err := f.Close(); werr == nil {
+		werr = err
+	}
+	if werr != nil {
+		return werr
+	}
+	return os.Chmod(path, 0o600)
+}
 
 // pushAddress is the address semantic-release pushes to and names: origin's
 // URL without credentials (publicURL), or, for a local origin, its resolved

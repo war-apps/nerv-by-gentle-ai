@@ -24,7 +24,8 @@
 //     ...), except that analyzeCommits and generateNotes are wrapped as in
 //     run mode (project commit filter, depends_on raise, notes links) and
 //     verifyRelease first checks that the next version is expectedVersion:
-//     any other version throws ENERVVERSIONMISMATCH there, before prepare and
+//     any other version throws ENERVVERSIONMISMATCH there (reported as the
+//     result's structured versionMismatch field), before prepare and
 //     the tag (lib/definitions/plugins.js order: verifyConditions,
 //     analyzeCommits, verifyRelease, generateNotes, prepare, then the tag and
 //     push in index.js, then publish, success). The error has no
@@ -84,6 +85,7 @@ import { pathToFileURL } from "node:url";
 import {
   NO_REMOTE_URL,
   commitFileLister,
+  failureResult,
   finish,
   isPackage,
   makeFilter,
@@ -92,6 +94,7 @@ import {
   packageName,
   raiseReleaseType,
   stripNoRemoteLinks,
+  versionGuard,
 } from "./nerv-semrel-lib.mjs";
 
 async function readStdin() {
@@ -212,14 +215,7 @@ async function run(req) {
   }
 
   async function nervVerifyRelease(_pluginConfig, input) {
-    const version = input.nextRelease && input.nextRelease.version;
-    if (version !== expectedVersion) {
-      const error = new Error(
-        `semantic-release would release ${version}, but nerv ship computed and confirmed ${expectedVersion}; stopped before the tag, nothing was released`,
-      );
-      error.code = "ENERVVERSIONMISMATCH";
-      throw error;
-    }
+    versionGuard(expectedVersion, input.nextRelease && input.nextRelease.version);
     return own.verifyRelease(input);
   }
 
@@ -274,13 +270,5 @@ try {
   const result = req.mode === "plan" ? await plan(req) : await run(req);
   finish(process.stdout, result, 0);
 } catch (error) {
-  const errors = error && Array.isArray(error.errors) ? error.errors : [error];
-  finish(
-    process.stdout,
-    {
-      ok: false,
-      error: errors.map((e) => (e && e.code ? `${e.code} ${e.message}` : String(e && e.message ? e.message : e))).join("; "),
-    },
-    1,
-  );
+  finish(process.stdout, failureResult(error), 1);
 }
