@@ -31,6 +31,9 @@ type fakeFeed struct {
 	status  int
 	body    string
 	symbols bool
+	// statuses answer the PUTs in order; later PUTs get status.
+	statuses []int
+	puts     int
 }
 
 func (f *fakeFeed) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -60,6 +63,12 @@ func (f *fakeFeed) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	f.record(rec)
 	status := f.status
+	f.mu.Lock()
+	if f.puts < len(f.statuses) {
+		status = f.statuses[f.puts]
+	}
+	f.puts++
+	f.mu.Unlock()
 	if status == 0 {
 		status = http.StatusCreated
 	}
@@ -110,7 +119,7 @@ func TestPushNuGet_V3IndexAndSymbols(t *testing.T) {
 			t.Errorf("request %d = %+v\nwant %+v", i, g, w)
 		}
 	}
-	if !strings.Contains(summary, "pushed Other.2.0.0.nupkg, Sdk.1.0.0.nupkg, Sdk.1.0.0.snupkg") || strings.Contains(summary, testKey) {
+	if !strings.Contains(summary, "pushed: Other.2.0.0.nupkg, Sdk.1.0.0.nupkg, Sdk.1.0.0.snupkg") || strings.Contains(summary, testKey) {
 		t.Errorf("summary = %q", summary)
 	}
 }
@@ -184,5 +193,25 @@ func TestPushNuGet_Errors(t *testing.T) {
 	defer locked.Close()
 	if _, err := pushNuGet(context.Background(), nil, packages(t, "A.1.0.0.nupkg"), locked.URL+"/v3/index.json", testKey); err == nil || !strings.Contains(err.Error(), "401") {
 		t.Errorf("index needing credentials: %v", err)
+	}
+}
+
+func TestPushNuGet_FailurePartWayNamesWhatTheFeedAccepted(t *testing.T) {
+	feed := &fakeFeed{symbols: true, statuses: []int{201, 201, 409, 500}, body: "boom"}
+	srv := httptest.NewServer(feed)
+	defer srv.Close()
+	dir := packages(t, "A.1.0.0.nupkg", "A.1.0.0.snupkg", "B.1.0.0.nupkg", "C.1.0.0.nupkg", "D.1.0.0.nupkg")
+	_, err := pushNuGet(context.Background(), nil, dir, srv.URL+"/v3/index.json", testKey)
+	want := "pushed: A.1.0.0.nupkg, A.1.0.0.snupkg; already on the feed: B.1.0.0.nupkg; failed on C.1.0.0.nupkg: HTTP 500 Internal Server Error: boom; not attempted: D.1.0.0.nupkg"
+	if err == nil || err.Error() != want {
+		t.Fatalf("pushNuGet error =\n%v\nwant\n%s", err, want)
+	}
+
+	feed2 := &fakeFeed{statuses: []int{500}, body: "down"}
+	srv2 := httptest.NewServer(feed2)
+	defer srv2.Close()
+	_, err = pushNuGet(context.Background(), nil, packages(t, "A.1.0.0.nupkg"), srv2.URL+"/api/v2/package", testKey)
+	if want := "nothing pushed; failed on A.1.0.0.nupkg: HTTP 500 Internal Server Error: down"; err == nil || err.Error() != want {
+		t.Errorf("pushNuGet error = %v, want %q", err, want)
 	}
 }

@@ -41,7 +41,10 @@ const nugetPushTimeout = 10 * time.Minute
 // answer means the version is already there and is skipped, like
 // --skip-duplicate. Redirects are not followed (the key would go with
 // them), and plain http is refused except on a loopback host. The key never
-// appears in the summary or in errors. client nil means a default client.
+// appears in the summary or in errors. A failure part-way names what the
+// feed already accepted, what it already had, the package that failed and
+// those not attempted (a push cannot be undone). client nil means a
+// default client.
 func pushNuGet(ctx context.Context, client *http.Client, dir, source, key string) (string, error) {
 	if client == nil {
 		client = &http.Client{Timeout: nugetPushTimeout}
@@ -59,32 +62,50 @@ func pushNuGet(ctx context.Context, client *http.Client, dir, source, key string
 	if err != nil {
 		return "", p.redact(err)
 	}
-	var pushed, present []string
+	type upload struct{ path, url string }
+	var uploads []upload
 	for _, pkg := range pkgs {
-		files := []struct{ path, url string }{{pkg, publish}}
+		uploads = append(uploads, upload{pkg, publish})
 		if snupkg := strings.TrimSuffix(pkg, ".nupkg") + ".snupkg"; symbols != "" && fileExists(snupkg) {
-			files = append(files, struct{ path, url string }{snupkg, symbols})
-		}
-		for _, f := range files {
-			dup, err := p.put(ctx, f.url, f.path)
-			if err != nil {
-				return "", p.redact(fmt.Errorf("pushing %s: %w", filepath.Base(f.path), err))
-			}
-			if dup {
-				present = append(present, filepath.Base(f.path))
-			} else {
-				pushed = append(pushed, filepath.Base(f.path))
-			}
+			uploads = append(uploads, upload{snupkg, symbols})
 		}
 	}
-	var parts []string
-	if len(pushed) > 0 {
-		parts = append(parts, "pushed "+strings.Join(pushed, ", "))
+	var pushed, present []string
+	report := func() []string {
+		var parts []string
+		if len(pushed) > 0 {
+			parts = append(parts, "pushed: "+strings.Join(pushed, ", "))
+		}
+		if len(present) > 0 {
+			parts = append(parts, "already on the feed: "+strings.Join(present, ", "))
+		}
+		return parts
 	}
-	if len(present) > 0 {
-		parts = append(parts, "already on the feed: "+strings.Join(present, ", "))
+	for i, u := range uploads {
+		dup, err := p.put(ctx, u.url, u.path)
+		if err != nil {
+			// Name what the feed already holds: a failed push is not undone.
+			parts := report()
+			if len(parts) == 0 {
+				parts = []string{"nothing pushed"}
+			}
+			parts = append(parts, fmt.Sprintf("failed on %s: %v", filepath.Base(u.path), err))
+			var rest []string
+			for _, r := range uploads[i+1:] {
+				rest = append(rest, filepath.Base(r.path))
+			}
+			if len(rest) > 0 {
+				parts = append(parts, "not attempted: "+strings.Join(rest, ", "))
+			}
+			return "", p.redact(errors.New(strings.Join(parts, "; ")))
+		}
+		if dup {
+			present = append(present, filepath.Base(u.path))
+		} else {
+			pushed = append(pushed, filepath.Base(u.path))
+		}
 	}
-	return strings.Join(parts, "; "), nil
+	return strings.Join(report(), "; "), nil
 }
 
 type nugetPush struct {

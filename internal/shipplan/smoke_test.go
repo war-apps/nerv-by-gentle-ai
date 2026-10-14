@@ -132,7 +132,7 @@ func TestSmoke_DotnetPipeline(t *testing.T) {
 		}
 		t.Errorf("the feed did not receive the package once with the key header: %d PUTs", len(puts))
 	}
-	if !strings.Contains(out.String(), "[calc:nuget:push] pushed Calc.1.2.3-smoke.1.nupkg") || strings.Contains(out.String(), testKey) {
+	if !strings.Contains(out.String(), "[calc:nuget:push] pushed: Calc.1.2.3-smoke.1.nupkg") || strings.Contains(out.String(), testKey) {
 		t.Errorf("push output:\n%s", out.String())
 	}
 }

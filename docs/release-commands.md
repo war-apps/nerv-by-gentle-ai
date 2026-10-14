@@ -615,6 +615,13 @@ as the NuGet client sends it:
   `multipart/form-data` body whose one part is the package, with the key in
   the `X-NuGet-ApiKey` header. A `409 Conflict` means that version is
   already on the feed and is skipped, like `--skip-duplicate`.
+- A push stops at the first package the feed refuses, and a push cannot
+  be undone, so the error names what the feed already holds, e.g.
+  `pushed: Sdk.1.4.0.nupkg, Sdk.1.4.0.snupkg; already on the feed:
+  Cli.1.4.0.nupkg; failed on Web.1.4.0.nupkg: HTTP 500 ...; not attempted:
+  Zip.1.4.0.nupkg` (`nothing pushed; failed on ...` when the first one
+  fails). Run the release's push again after fixing the cause: packages
+  already there are skipped.
 - Redirects are not followed (the key would go with them), and a plain
   `http://` source is refused unless its host is loopback. A feed whose
   service index needs credentials (GitHub Packages, Azure Artifacts) is
