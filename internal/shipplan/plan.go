@@ -147,7 +147,7 @@ func Build(repoRoot string, project shipconfig.Project, c Context) (*Plan, error
 		case "nuget":
 			err = b.nuget()
 		case "npm":
-			b.npm()
+			err = b.npm()
 		default:
 			err = fmt.Errorf("unknown preset %q", name)
 		}

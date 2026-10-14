@@ -67,7 +67,11 @@ type Step struct {
 	// Exec[0] is looked up on PATH and the rest are passed as they are, so
 	// nothing is quoted or expanded on any OS. Command.Run and Command.Shell
 	// are then ignored; its Env, Workdir and Timeout still apply. Failures
-	// name the program only, never its arguments.
+	// name the program only, never its arguments. On Windows a program
+	// found as a .cmd or .bat shim (npm, pnpm and yarn are) runs through
+	// cmd.exe, which interprets & | < > ^ % in its arguments: callers must
+	// keep such characters out of any configured value they pass (the
+	// shipplan presets refuse them).
 	Exec []string
 }
 

@@ -278,7 +278,7 @@ func (b *builder) nuget() error {
 // npm plans the npm preset: npm publish from the project directory, with
 // the dist-tag dist_tag, else the release channel (none on the default
 // channel, so npm uses latest).
-func (b *builder) npm() {
+func (b *builder) npm() error {
 	n := b.project.Npm
 	if n == nil {
 		n = &shipconfig.Npm{}
@@ -288,15 +288,37 @@ func (b *builder) npm() {
 		access = shipconfig.DefaultNpmAccess
 	}
 	publish := []string{"npm", "publish", "--access", access}
-	tag := n.DistTag
+	tag, tagFrom := n.DistTag, "npm.dist_tag"
 	if tag == "" && !b.ctx.defaultChannel() {
-		tag = b.ctx.Channel
+		tag, tagFrom = b.ctx.Channel, "the release channel"
 	}
 	if tag != "" {
+		if err := checkCmdSafe(tagFrom, tag); err != nil {
+			return err
+		}
 		publish = append(publish, "--tag", tag)
 	}
 	if n.Registry != "" {
+		if err := checkCmdSafe("npm.registry", n.Registry); err != nil {
+			return err
+		}
 		publish = append(publish, "--registry", n.Registry)
 	}
 	b.add(PublishStage, Step{Name: "npm:publish", Command: shipconfig.Command{Workdir: b.workdir()}, Exec: publish})
+	return nil
+}
+
+// cmdMetacharacters are the characters cmd.exe interprets even inside an
+// argument: on Windows npm, pnpm and yarn are .cmd shims that run through
+// cmd.exe, so a configured value holding one could run another command.
+const cmdMetacharacters = "&|<>^%\"\r\n"
+
+// checkCmdSafe refuses a value that reaches a .cmd shim's command line
+// with a cmd.exe metacharacter, on every OS so a configuration behaves the
+// same everywhere.
+func checkCmdSafe(what, value string) error {
+	if strings.ContainsAny(value, cmdMetacharacters) {
+		return fmt.Errorf("%s %q contains a character cmd.exe interprets (& | < > ^ %% \" or a line break); npm runs through cmd.exe on Windows, so it is refused", what, value)
+	}
+	return nil
 }

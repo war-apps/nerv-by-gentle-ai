@@ -470,7 +470,12 @@ made (version, channel, tag):
 Preset commands run **without a shell**: each is an argument list given
 to the program found on `PATH` (`dotnet`, `docker`, `npm`, `pnpm`,
 `yarn`), so paths with spaces need no quoting on any OS. A missing program
-fails the step with `<program> not found on PATH`. Overrides and hooks run
+fails the step with `<program> not found on PATH`. On Windows `npm`,
+`pnpm` and `yarn` are `.cmd` shims that run through `cmd.exe`, which
+interprets `& | < > ^ %` even inside an argument: the node and npm presets
+pass only fixed arguments plus `npm.dist_tag`, `npm.registry` and the
+release channel, and refuse those values (on every OS) when they hold one
+of these characters, a `"` or a line break. Overrides and hooks run
 through their `shell` as described in
 [How a command runs](#how-a-command-runs).
 

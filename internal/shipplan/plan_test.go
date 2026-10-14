@@ -744,3 +744,37 @@ func TestExecutor_ResetsOnlyInsideTheArtifactsRoot(t *testing.T) {
 		t.Errorf("a directory outside the artifacts root was touched: %v", err)
 	}
 }
+
+func TestBuild_NpmRefusesCmdMetacharacters(t *testing.T) {
+	tests := []struct {
+		name    string
+		npm     shipconfig.Npm
+		channel string
+		field   string
+	}{
+		{"dist_tag with &", shipconfig.Npm{Access: "public", DistTag: "beta&calc"}, "", "npm.dist_tag"},
+		{"registry with a query", shipconfig.Npm{Access: "public", Registry: "https://npm.example/?a=1&b=2"}, "", "npm.registry"},
+		{"channel with a pipe", shipconfig.Npm{Access: "public"}, "alpha|x", "the release channel"},
+		{"percent", shipconfig.Npm{Access: "public", DistTag: "%PATH%"}, "", "npm.dist_tag"},
+		{"caret", shipconfig.Npm{Access: "public", DistTag: "a^b"}, "", "npm.dist_tag"},
+		{"redirect", shipconfig.Npm{Access: "public", Registry: "https://x>out"}, "", "npm.registry"},
+		{"quote", shipconfig.Npm{Access: "public", DistTag: `a"b`}, "", "npm.dist_tag"},
+		{"newline", shipconfig.Npm{Access: "public", DistTag: "a\nb"}, "", "npm.dist_tag"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			p := project("cli", "cli", "npm")
+			n := tt.npm
+			p.Npm = &n
+			_, err := Build(t.TempDir(), p, ctxFor("1.0.0", tt.channel))
+			if err == nil || !strings.Contains(err.Error(), tt.field) || !strings.Contains(err.Error(), "cmd.exe") {
+				t.Errorf("Build = %v, want a refusal naming %s", err, tt.field)
+			}
+		})
+	}
+	p := project("cli", "cli", "npm")
+	p.Npm = &shipconfig.Npm{Access: "restricted", DistTag: "next-1.x_beta", Registry: "https://npm.pkg.github.com/@org"}
+	if _, err := Build(t.TempDir(), p, ctxFor("1.0.0", "rc")); err != nil {
+		t.Errorf("ordinary values refused: %v", err)
+	}
+}
