@@ -218,7 +218,15 @@ func TestIntegration_ShipReleasesWhatOriginHas(t *testing.T) {
 		t.Error("steps ran without a confirmation")
 	}
 
-	code, stdout, stderr = runShipCommand(t, cache, "--cwd", work.dir, "--yes")
+	// An approval of another version is refused before anything runs.
+	if code, _, stderr := runShipCommand(t, cache, "--cwd", work.dir, "--yes", "--expect", "widgets=1.0.1"); code != 1 || !strings.Contains(stderr, "expected 1.0.1, computed 1.1.0") {
+		t.Errorf("--expect mismatch: exit %d\n%s", code, stderr)
+	}
+	if readMarker(t, marker) != nil || origin.git("for-each-ref", "--format=%(refname) %(objectname)") != originBefore {
+		t.Error("something ran or changed origin despite the --expect refusal")
+	}
+
+	code, stdout, stderr = runShipCommand(t, cache, "--cwd", work.dir, "--yes", "--expect", "widgets=1.1.0")
 	if code != 0 {
 		t.Fatalf("ship: exit %d\nstdout %s\nstderr %s", code, stdout, stderr)
 	}

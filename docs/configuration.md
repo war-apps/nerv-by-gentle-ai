@@ -48,10 +48,10 @@ release:                            # project scope only, never merged with the 
     - { name: api, path: . }
 ```
 
-`release:` configures the release commands (`nerv version next`;
-`nerv ship`, coming in a later task): projects, dependencies, tag formats, presets,
-stages and hooks. Its full reference is
-[release-commands.md](release-commands.md).
+`release:` configures the release commands (`nerv version next` and
+`nerv ship`, also `/nerv:version` and `/nerv:ship`): projects, dependencies,
+tag formats, presets, stages and hooks. Its full reference is
+[release-commands.md](release-commands.md#configuration-release).
 
 `models:` assigns a per-role `model` and `effort` override, with project
 overriding user key by key like every other section — each entry is an

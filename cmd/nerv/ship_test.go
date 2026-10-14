@@ -850,3 +850,71 @@ func TestShip_InterruptedRunStillReadsOriginForTheAdvice(t *testing.T) {
 		t.Errorf("action %s", action)
 	}
 }
+
+func TestShip_ExpectBindsTheReleaseToTheApprovedVersions(t *testing.T) {
+	tests := []struct {
+		name      string
+		expect    []string
+		wantCode  int
+		wantInErr []string
+	}{
+		{"match", []string{"core=1.1.0", "web=2.1.0"}, 0, nil},
+		{"other version", []string{"core=1.0.9", "web=2.1.0"}, 1, []string{"core: expected 1.0.9, computed 1.1.0"}},
+		{"releasing project not listed", []string{"core=1.1.0"}, 1, []string{"web: not expected, computed 2.1.0"}},
+		{"expected project has no release", []string{"core=1.1.0", "web=2.1.0", "cli=0.4.0"}, 1, []string{"cli: expected 0.4.0, computed no release"}},
+		{"unknown project", []string{"core=1.1.0", "web=2.1.0", "mobile=1.0.0"}, 1, []string{"mobile: expected 1.0.0, computed no release"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f := newShipFixture(t, shipMonorepoYAML)
+			f.monorepoResults()
+			args := []string{"--yes", "--json"}
+			for _, e := range tt.expect {
+				args = append(args, "--expect", e)
+			}
+			code, stdout, stderr := f.run(t, args...)
+			var doc shipDocument
+			if err := json.Unmarshal([]byte(stdout), &doc); err != nil {
+				t.Fatalf("stdout: %v\n%s", err, stdout)
+			}
+			if code != tt.wantCode {
+				t.Fatalf("exit %d, want %d; stderr:\n%s", code, tt.wantCode, stderr)
+			}
+			if tt.wantCode == 0 {
+				if doc.Status != "released" || len(f.released()) != 2 {
+					t.Errorf("status %s, released %v", doc.Status, f.released())
+				}
+				return
+			}
+			if doc.Status != "refused" {
+				t.Errorf("status %q, want refused", doc.Status)
+			}
+			for _, w := range append(tt.wantInErr, "dry run") {
+				if !strings.Contains(doc.Error, w) {
+					t.Errorf("error lacks %q: %s", w, doc.Error)
+				}
+			}
+			if want := []string{"open", "compute", "close"}; !slices.Equal(f.events, want) {
+				t.Errorf("events %v, want %v: nothing may run", f.events, want)
+			}
+		})
+	}
+}
+
+func TestShip_ExpectSyntaxIsAUsageError(t *testing.T) {
+	for _, bad := range [][]string{
+		{"--expect", "core"},
+		{"--expect", "=1.0.0"},
+		{"--expect", "core="},
+		{"--expect", "core=1.0 .0"},
+		{"--expect", "Core Lib=1.0.0"},
+		{"--expect", "core=1.0.0", "--expect", "core=1.0.1"},
+	} {
+		f := newShipFixture(t, shipMonorepoYAML)
+		f.monorepoResults()
+		code, _, stderr := f.run(t, append([]string{"--yes"}, bad...)...)
+		if code != 2 || !strings.Contains(stderr, "--expect") || len(f.events) != 0 {
+			t.Errorf("%v: exit %d, events %v, stderr %q", bad, code, f.events, stderr)
+		}
+	}
+}
