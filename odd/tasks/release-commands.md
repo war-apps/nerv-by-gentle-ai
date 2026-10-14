@@ -1369,6 +1369,28 @@ All seven tasks are done. What shipped:
   noted in T7), R3-arguments-flag-passthrough (`$ARGUMENTS` is passed
   unchecked, so `--dry-run` or `--yes` typed by the user change the flow).
 
+### T7 follow-ups
+
+Both T7 review findings fixed (user authorized), on
+`feat/release-ship-command`. Route: delegated (one writer). Test-first for
+the CLI; the slash command is passive documentation (no runnable RED).
+
+| Item | Fix | Evidence |
+|---|---|---|
+| R3-ship-approval-not-bound | `nerv ship --expect <project>=<version>` (repeatable). After computing in the release clone (and the `--project` filter), before the listing, confirmation or any stage: refused (exit 1, `--json` `refused`) unless the releasing projects and versions are exactly the expected ones; the error lists each problem (`<p>: expected X, computed Y`, `computed no release`, `not expected, computed Y`) and says to rerun the dry run. Syntax `[A-Za-z0-9._-]+=<semver chars>`, a project given twice -> usage error (exit 2). Docs: flags table, flow step 4, refusals table; CHANGELOG ship entry. | RED: `TestShip_ExpectBindsTheReleaseToTheApprovedVersions` and `TestShip_ExpectSyntaxIsAUsageError` (unknown flag). GREEN: match releases both; other version, unlisted release, expected-without-release and unknown project refuse with only open/compute/close events; 6 bad syntaxes exit 2 with nothing run. Integration (`TestIntegration_ShipReleasesWhatOriginHas`): `--expect widgets=1.0.1` -> exit 1 "expected 1.0.1, computed 1.1.0", no marker, origin unchanged; `--expect widgets=1.1.0` releases. |
+| ship.md step 5 (approval binding) | The real run is `nerv ship --yes --json <args> --expect <project>=<version> ...`, one per dry-run project with `status` `dry-run`; the user is told a moved origin makes it refuse instead of releasing something unapproved; on that refusal: nothing released, a new `/nerv:ship` shows the new plan, no rerun. | Structural readback. |
+| R3-arguments-flag-passthrough | `$ARGUMENTS` is checked first: only `--branch <name>` and `--project <name>`, each at most once with a value not starting with `-`; anything else is reported as not accepted and nothing runs. `argument-hint` says nothing else is accepted. | Structural readback. |
+
+- Checks: `go test -count=1 ./...` exit 0 (27 packages); `go test -tags
+  semrel_integration -run Integration -count=1 ./cmd/nerv/` exit 0; `go vet
+  ./...` and `GOOS=windows go vet ./...` exit 0; `gofmt -l .` empty.
+- Commits: `e2066a6` `feat(cli): bind nerv ship to the expected versions`
+  (5 files changed, 162 insertions(+), 5 deletions(-)); `6139613`
+  `fix(plugin): pass only branch and project to /nerv:ship and bind the
+  release to the dry run` (1 file changed, 25 insertions(+), 10
+  deletions(-)). Total `git diff --shortstat dd63b21 6139613`: 6 files
+  changed, 187 insertions(+), 15 deletions(-).
+
 ## Next step
 
 The user's delivery decision for T7: push `feat/release-ship-command` and
