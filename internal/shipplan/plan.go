@@ -18,8 +18,8 @@ import (
 // those commands writes there too.
 const ArtifactsEnv = "NERV_RELEASE_ARTIFACTS_DIR"
 
-// PublishStage is the stage whose steps T6 runs inside semantic-release's
-// publish step; Pipeline leaves it out and Publish returns it.
+// PublishStage is the stage nerv ship runs after semantic-release has tagged
+// the release; Pipeline leaves it out and Publish returns it.
 const PublishStage = "publish"
 
 // Context is the release a plan is made for.

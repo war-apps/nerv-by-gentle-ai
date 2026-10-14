@@ -14,10 +14,10 @@ import (
 var versionRe = regexp.MustCompile(`^[0-9A-Za-z][0-9A-Za-z.+-]*$`)
 
 // WriteCsproj sets <Version> and <PackageReleaseNotes> in the MSBuild
-// project file at path, the dotnet preset's version write (T6 runs it at
-// semantic-release's prepare step, so the file enters the release commit;
-// modelled on dim.comprobantes.api's scripts/bump-csproj.sh, but as a text
-// edit instead of sed).
+// project file at path, the dotnet preset's version write (modelled on
+// dim.comprobantes.api's scripts/bump-csproj.sh, but as a text edit instead
+// of sed). nerv ship writes it in the release clone before the pipeline, so
+// the packages carry the notes and the release commit the file.
 //
 // Every existing element of each name outside XML comments gets the new
 // value (its attributes, e.g. a Condition, are kept; a self-closing
@@ -46,6 +46,30 @@ func WriteCsproj(path, version, releaseNotes string) error {
 		{"Version", version},
 		{"PackageReleaseNotes", escapeNotes(releaseNotes, lineEnding(string(data)))},
 	})
+	if err != nil {
+		return fmt.Errorf("%s: %w", path, err)
+	}
+	if out == string(data) {
+		return nil
+	}
+	if err := replaceFile(path, []byte(out)); err != nil {
+		return fmt.Errorf("%s: %w", path, err)
+	}
+	return nil
+}
+
+// WriteCsprojVersion sets only <Version> in the MSBuild project file at
+// path, as WriteCsproj does, leaving <PackageReleaseNotes> as it is (nerv
+// ship uses it when there is no release page to link to).
+func WriteCsprojVersion(path, version string) error {
+	if !versionRe.MatchString(version) {
+		return fmt.Errorf("%s: invalid version %q", path, version)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	out, err := setCsprojProperties(string(data), []property{{"Version", version}})
 	if err != nil {
 		return fmt.Errorf("%s: %w", path, err)
 	}

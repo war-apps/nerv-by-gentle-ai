@@ -665,10 +665,10 @@ func TestPlan_Render(t *testing.T) {
     dotnet:coverage  check line coverage >= 80% in ` + cov + `
   package
     docker:build ghcr.io/org/dim.comprobantes.api  docker build -f docker/Dockerfile -t ghcr.io/org/dim.comprobantes.api:1.0.0 -t ghcr.io/org/dim.comprobantes.api:latest --build-arg APP_VERSION=1.0.0 --label org.opencontainers.image.version=1.0.0 --label org.opencontainers.image.revision=abc123 .
-  publish (runs at semantic-release's publish step)
+  publish (runs after semantic-release tags the release)
     docker:push ghcr.io/org/dim.comprobantes.api:1.0.0  docker push ghcr.io/org/dim.comprobantes.api:1.0.0
     docker:push ghcr.io/org/dim.comprobantes.api:latest  docker push ghcr.io/org/dim.comprobantes.api:latest
-  hooks at semantic-release steps
+  hooks (prepare: before semantic-release; publish, success: after the publish stage; fail: on a failure once semantic-release started)
     prepare  [bash] echo a
         echo b
 `
