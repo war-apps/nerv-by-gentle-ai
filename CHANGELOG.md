@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.1.0] - 2026-10-14
+
 ### Added
 - release: local release commands for your own repositories, a replacement for the CI release where it cannot or
   should not run (guide: `docs/release-commands.md`).
@@ -26,12 +28,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `/nerv:release-setup` writes the `release:` section interactively: it detects the repository's semantic-release
     configuration, projects, Dockerfiles, scripts and monorepo layout, asks only what it cannot detect, writes the
     section without touching the rest of `.nerv/nerv.yaml`, and validates it with `nerv version next --offline`.
-
-### Fixed
-- release: in a monorepo each project's release now writes its own `changelog` (default `<path>/CHANGELOG.md`):
-  the repository's `@semantic-release/changelog` and `@semantic-release/git` entries are pointed at it, so each
-  release commit holds only that project's CHANGELOG. A single project keeps the repository's configured
-  changelog unless `changelog` is set explicitly; without a changelog plugin the field has no effect (one warning).
+  - In a monorepo each project's release writes its own `changelog` (default `<path>/CHANGELOG.md`): the
+    repository's `@semantic-release/changelog` and `@semantic-release/git` entries are pointed at it, so each
+    release commit holds only that project's CHANGELOG. A single project keeps the repository's configured
+    changelog unless `changelog` is set explicitly; without a changelog plugin the field has no effect (one warning).
 
 ## [4.0.0] - 2026-10-09
 
