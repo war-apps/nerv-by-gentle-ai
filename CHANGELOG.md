@@ -11,6 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - version: `nerv version next` computes the next semantic version of any repository (or of each project of its
   `release:` section) with the repository's own semantic-release configuration, as text, JSON or GitHub Actions
   output lines; `/nerv:version` shows it in Claude Code. Plain `nerv version` still prints the binary version.
+- ship: `nerv ship` releases what is on origin from your machine, in a throwaway clone: pipeline and presets
+  (dotnet, node, docker, NuGet, npm), semantic-release for real with the repository's own plugins, publish, and
+  `prepare` / `publish` / `success` / `fail` hooks, per project in dependency order; `--dry-run` builds without
+  releasing, `--yes` skips the confirmation, and a failure reports what was tagged and published.
 
 ## [4.0.0] - 2026-10-09
 

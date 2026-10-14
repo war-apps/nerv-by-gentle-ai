@@ -77,6 +77,7 @@ isn't taking effect.
 |---|---|
 | `nerv version` | Print the binary and plugin versions |
 | `nerv version next` | Compute the next release version with semantic-release |
+| `nerv ship` | Release the repository from origin: pipeline, semantic-release, publish |
 | `nerv configure` | Configure NERV non-interactively (or run the wizard) |
 | `nerv install` | Install NERV (plugin, cache, skills, Engram KB) |
 | `nerv uninstall` | Uninstall NERV |
@@ -155,6 +156,22 @@ nerv version next --branch develop --json
 
 ```
 nerv version next --offline --format env >> "$GITHUB_OUTPUT"
+```
+
+### nerv ship
+
+A full local release of what is on origin, in a throwaway clone: dotnet
+project file, pipeline (restore to package), semantic-release for real
+(release commit, CHANGELOG, tag, GitHub release), then publish (docker,
+NuGet, npm) and the lifecycle hooks, per project in dependency order. It
+asks for confirmation (`--yes` to skip; required without a terminal);
+`--dry-run` builds without releasing or publishing. Flow, credentials,
+failure handling and exit codes:
+[release-commands.md](release-commands.md#nerv-ship).
+
+```
+nerv ship --dry-run
+nerv ship --branch develop --project api
 ```
 
 ### nerv install

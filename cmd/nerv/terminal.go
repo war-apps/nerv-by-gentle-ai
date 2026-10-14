@@ -43,26 +43,31 @@ func syncConfirmer(opts options, stdout io.Writer) func([]string) bool {
 	}
 	return func(names []string) bool {
 		fmt.Fprintf(stdout, "%s [y/N]: ", skills.SyncPrompt(names))
-		var line []byte
-		sawNewline := false
-		buf := make([]byte, 1)
-		for {
-			n, err := opts.Stdin.Read(buf)
-			if n == 1 {
-				if buf[0] == '\n' {
-					sawNewline = true
-					break
-				}
-				line = append(line, buf[0])
-			}
-			if err != nil {
-				break
-			}
-		}
+		line, sawNewline := readAnswer(opts.Stdin)
 		if !sawNewline {
 			fmt.Fprintln(stdout)
 		}
-		answer := strings.ToLower(strings.TrimSpace(string(line)))
+		answer := strings.ToLower(strings.TrimSpace(line))
 		return answer == "y" || answer == "yes"
+	}
+}
+
+// readAnswer reads one line from r a byte at a time, so nothing past the
+// line is consumed, and reports whether it ended with a newline (false at
+// EOF or on an error).
+func readAnswer(r io.Reader) (string, bool) {
+	var line []byte
+	buf := make([]byte, 1)
+	for {
+		n, err := r.Read(buf)
+		if n == 1 {
+			if buf[0] == '\n' {
+				return string(line), true
+			}
+			line = append(line, buf[0])
+		}
+		if err != nil {
+			return string(line), false
+		}
 	}
 }
