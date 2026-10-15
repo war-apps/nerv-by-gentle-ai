@@ -451,3 +451,70 @@ func TestTest_PrefersTheJSONReports(t *testing.T) {
 		t.Errorf("dotnet test argv %v: want the JSON format requested", last)
 	}
 }
+
+// runReports writes per-run reports: each entry is a run directory holding
+// a JSON report, a Cobertura report, or both ("" = absent).
+func runReports(t *testing.T, runs ...[2]string) (jsons, cobs []string) {
+	t.Helper()
+	dir := t.TempDir()
+	for i, r := range runs {
+		run := filepath.Join(dir, string(rune('a'+i)))
+		if err := os.MkdirAll(run, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if r[0] != "" {
+			p := filepath.Join(run, CoverageJSONFile)
+			os.WriteFile(p, []byte(r[0]), 0o644)
+			jsons = append(jsons, p)
+		}
+		if r[1] != "" {
+			p := filepath.Join(run, CoverageFile)
+			os.WriteFile(p, []byte(r[1]), 0o644)
+			cobs = append(cobs, p)
+		}
+	}
+	return jsons, cobs
+}
+
+func TestCheckCoverage_ChoosesTheReportPerRun(t *testing.T) {
+	// Run a has coverlet's JSON for module B (fully covered); run b only a
+	// Cobertura report for module A (line 1 of 3 covered). Both count.
+	b := jsonReport(t, jm{"B.dll": jm{"b.cs": jm{"B.D": jm{"System.Int32 B.D::M3()": jm{"Lines": jm{"10": 1}, "Branches": []jm{}}}}}})
+	jsons, cobs := runReports(t, [2]string{b, ""}, [2]string{"", reportA})
+	th := &Thresholds{Line: ptr(100), Stat: StatTotal}
+	_, err := checkCoverage("x.runsettings", th, jsons, cobs)
+	// lines: A 1/3 + B 1/1 = 2/4.
+	if err == nil || !strings.Contains(err.Error(), "line 50% < 100%") {
+		t.Fatalf("err = %v, want both runs counted (line 50%%)", err)
+	}
+}
+
+func TestCheckCoverage_SameModuleFromJSONAndCoberturaIsOneModule(t *testing.T) {
+	// The same method of the same assembly, one run in each format: Cobertura
+	// package "Calc" is JSON module "Calc.dll"; the method is matched by
+	// class, name and signature.
+	j := jsonReport(t, jm{"Calc.dll": jm{"/src/Calc/Ops.cs": jm{"Calc.Ops": jm{"System.Int32 Calc.Ops::Add(System.Int32,System.Int32)": jm{"Lines": jm{"4": 1}, "Branches": []jm{}}}}}})
+	c := `<?xml version="1.0"?><coverage><packages><package name="Calc"><classes><class name="Calc.Ops" filename="Calc/Ops.cs"><methods>
+<method name="Add" signature="(System.Int32,System.Int32)"><lines><line number="4" hits="0" branch="False" /></lines></method>
+</methods></class></classes></package></packages></coverage>`
+	jsons, cobs := runReports(t, [2]string{j, ""}, [2]string{"", c})
+	note, err := checkCoverage("x.runsettings", &Thresholds{Line: ptr(100), Method: ptr(100), Stat: StatMinimum}, jsons, cobs)
+	if err != nil || !strings.Contains(note, "line 100% >= 100%, method 100% >= 100%") {
+		t.Errorf("note %q, err %v: want one module, one method, covered", note, err)
+	}
+}
+
+func TestCheckCoverage_UnreadableRunIsAnError(t *testing.T) {
+	good := jsonReport(t, jm{"B.dll": jm{"b.cs": jm{"B.D": jm{"M": jm{"Lines": jm{"1": 1}, "Branches": []jm{}}}}}})
+	// A broken JSON with a readable Cobertura falls back to the Cobertura.
+	jsons, cobs := runReports(t, [2]string{good, ""}, [2]string{"{broken", reportB})
+	if _, err := checkCoverage("x.runsettings", &Thresholds{Line: ptr(100), Stat: StatTotal}, jsons, cobs); err != nil {
+		t.Errorf("fallback to the run's Cobertura: %v", err)
+	}
+	// Neither readable: the run is named.
+	jsons, cobs = runReports(t, [2]string{good, ""}, [2]string{"{broken", "<coverage><packages"})
+	_, err := checkCoverage("x.runsettings", &Thresholds{Line: ptr(100), Stat: StatTotal}, jsons, cobs)
+	if err == nil || !strings.Contains(err.Error(), "no readable coverage report in run") || !strings.Contains(err.Error(), filepath.Dir(cobs[0])) {
+		t.Errorf("err = %v, want the unreadable run named", err)
+	}
+}

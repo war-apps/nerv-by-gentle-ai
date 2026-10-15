@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"maps"
 	"os"
+	"path/filepath"
 	"regexp"
 	"slices"
 	"strconv"
@@ -264,46 +265,105 @@ type jsonMethod struct {
 	} `json:"Branches"`
 }
 
-// readJSONCoverage reads and merges coverlet's JSON reports (module ->
-// document -> class -> method), adding line and branch hits.
+// readJSONCoverage reads and merges coverlet's JSON reports.
 func readJSONCoverage(paths []string) (*coverage, error) {
-	cov := &coverage{modules: map[string]*covModule{}}
+	cov := newCoverage()
 	for _, p := range paths {
-		data, err := os.ReadFile(p)
-		if err != nil {
+		if err := cov.addJSON(p); err != nil {
 			return nil, err
 		}
-		var rep map[string]map[string]map[string]map[string]jsonMethod
-		if err := json.Unmarshal(data, &rep); err != nil {
-			return nil, fmt.Errorf("%s: %w", p, err)
-		}
-		for _, modName := range slices.Sorted(maps.Keys(rep)) {
-			mod := cov.module(modName)
-			for doc, classes := range rep[modName] {
-				for cls, methods := range classes {
-					for name, m := range methods {
-						key := doc + "\x00" + cls + "\x00" + name
-						meth := mod.methods[key]
-						if meth == nil {
-							meth = newMethod()
-							mod.methods[key] = meth
+	}
+	return cov, nil
+}
+
+func newCoverage() *coverage { return &coverage{modules: map[string]*covModule{}} }
+
+// moduleName is the module of a JSON report key ("Calc.dll") as Cobertura
+// names its package ("Calc").
+func moduleName(key string) string {
+	switch strings.ToLower(filepath.Ext(key)) {
+	case ".dll", ".exe":
+		return strings.TrimSuffix(key, filepath.Ext(key))
+	}
+	return key
+}
+
+// methodKey identifies a method in both formats: its class, then its name
+// and signature (JSON "System.Int32 Calc.Ops::Add(System.Int32)" gives
+// "Add(System.Int32)", as Cobertura's name plus signature).
+func methodKey(class, method string) string {
+	if _, after, ok := strings.Cut(method, "::"); ok {
+		method = after
+	}
+	return class + "\x00" + method
+}
+
+// addJSON merges one coverlet JSON report (module -> document -> class ->
+// method), adding line and branch hits. The report is read whole first: a
+// bad file merges nothing.
+func (c *coverage) addJSON(p string) error {
+	data, err := os.ReadFile(p)
+	if err != nil {
+		return err
+	}
+	var rep map[string]map[string]map[string]map[string]jsonMethod
+	if err := json.Unmarshal(data, &rep); err != nil {
+		return fmt.Errorf("%s: %w", p, err)
+	}
+	one := newCoverage()
+	for _, modKey := range slices.Sorted(maps.Keys(rep)) {
+		mod := one.module(moduleName(modKey))
+		for _, classes := range rep[modKey] {
+			for cls, methods := range classes {
+				for name, m := range methods {
+					meth := mod.method(methodKey(cls, name))
+					for line, hits := range m.Lines {
+						n, err := strconv.Atoi(line)
+						if err != nil {
+							return fmt.Errorf("%s: line %q of %s", p, line, name)
 						}
-						for line, hits := range m.Lines {
-							n, err := strconv.Atoi(line)
-							if err != nil {
-								return nil, fmt.Errorf("%s: line %q of %s", p, line, name)
-							}
-							meth.hits[n] += hits
-						}
-						for _, b := range m.Branches {
-							meth.branchHits[branchKey{b.Line, b.Offset, b.EndOffset, b.Path, b.Ordinal}] += b.Hits
-						}
+						meth.hits[n] += hits
+					}
+					for _, b := range m.Branches {
+						meth.branchHits[branchKey{b.Line, b.Offset, b.EndOffset, b.Path, b.Ordinal}] += b.Hits
 					}
 				}
 			}
 		}
 	}
-	return cov, nil
+	c.merge(one)
+	return nil
+}
+
+// method returns the method's entry, created when missing.
+func (m *covModule) method(key string) *covMethod {
+	meth := m.methods[key]
+	if meth == nil {
+		meth = newMethod()
+		m.methods[key] = meth
+	}
+	return meth
+}
+
+// merge adds other into c, as coverlet merges results: line and branch hits
+// added; Cobertura's per-line branch counts keep the best of a line.
+func (c *coverage) merge(other *coverage) {
+	for _, name := range other.order {
+		mod := c.module(name)
+		for key, om := range other.modules[name].methods {
+			meth := mod.method(key)
+			for line, h := range om.hits {
+				meth.hits[line] += h
+			}
+			for b, h := range om.branchHits {
+				meth.branchHits[b] += h
+			}
+			for line, b := range om.branches {
+				prev := meth.branches[line]
+				meth.branches[line] = [2]int{max(prev[0], b[0]), max(prev[1], b[1])}
+			}
+		}
+	}
 }
 
 type coberturaReport struct {
@@ -330,48 +390,55 @@ type coberturaLn struct {
 
 var conditionRe = regexp.MustCompile(`\((\d+)/(\d+)\)`)
 
-// readCoverage reads and merges coverlet's Cobertura reports (the fallback
-// when there is no JSON report).
+// readCoverage reads and merges coverlet's Cobertura reports.
 func readCoverage(paths []string) (*coverage, error) {
-	cov := &coverage{modules: map[string]*covModule{}}
+	cov := newCoverage()
 	for _, p := range paths {
-		data, err := os.ReadFile(p)
-		if err != nil {
+		if err := cov.addCobertura(p); err != nil {
 			return nil, err
 		}
-		var rep coberturaReport
-		if err := xml.Unmarshal(data, &rep); err != nil {
-			return nil, fmt.Errorf("%s: %w", p, err)
-		}
-		for _, pkg := range rep.Packages {
-			mod := cov.module(pkg.Name)
-			for _, cls := range pkg.Classes {
-				for _, m := range cls.Methods {
-					key := cls.Name + "\x00" + cls.Filename + "\x00" + m.Name + m.Signature
-					meth := mod.methods[key]
-					if meth == nil {
-						meth = newMethod()
-						mod.methods[key] = meth
+	}
+	return cov, nil
+}
+
+// addCobertura merges one Cobertura report: line hits, and per line only
+// the count of covered branches (Cobertura does not say which), so the
+// best count of a line is kept. The report is read whole first: a bad file
+// merges nothing.
+func (c *coverage) addCobertura(p string) error {
+	data, err := os.ReadFile(p)
+	if err != nil {
+		return err
+	}
+	var rep coberturaReport
+	if err := xml.Unmarshal(data, &rep); err != nil {
+		return fmt.Errorf("%s: %w", p, err)
+	}
+	one := newCoverage()
+	for _, pkg := range rep.Packages {
+		mod := one.module(pkg.Name)
+		for _, cls := range pkg.Classes {
+			for _, m := range cls.Methods {
+				meth := mod.method(methodKey(cls.Name, m.Name+m.Signature))
+				for _, ln := range m.Lines {
+					meth.hits[ln.Number] += ln.Hits
+					if !strings.EqualFold(ln.Branch, "true") {
+						continue
 					}
-					for _, ln := range m.Lines {
-						meth.hits[ln.Number] += ln.Hits
-						if !strings.EqualFold(ln.Branch, "true") {
-							continue
-						}
-						match := conditionRe.FindStringSubmatch(ln.Condition)
-						if match == nil {
-							return nil, fmt.Errorf("%s: line %d: unreadable condition-coverage %q", p, ln.Number, ln.Condition)
-						}
-						covered, _ := strconv.Atoi(match[1])
-						total, _ := strconv.Atoi(match[2])
-						prev := meth.branches[ln.Number]
-						meth.branches[ln.Number] = [2]int{max(prev[0], covered), max(prev[1], total)}
+					match := conditionRe.FindStringSubmatch(ln.Condition)
+					if match == nil {
+						return fmt.Errorf("%s: line %d: unreadable condition-coverage %q", p, ln.Number, ln.Condition)
 					}
+					covered, _ := strconv.Atoi(match[1])
+					total, _ := strconv.Atoi(match[2])
+					prev := meth.branches[ln.Number]
+					meth.branches[ln.Number] = [2]int{max(prev[0], covered), max(prev[1], total)}
 				}
 			}
 		}
 	}
-	return cov, nil
+	c.merge(one)
+	return nil
 }
 
 // counts returns a module's covered and total for metric.
@@ -392,15 +459,31 @@ func (m *covModule) counts(metric string) (covered, total int) {
 				}
 			}
 		case "branch":
-			for _, h := range meth.branchHits {
-				total++
+			// Per line: the JSON branches (each known), with a Cobertura
+			// count for the same line as a floor (another run that only
+			// wrote Cobertura); a line known only from Cobertura adds its
+			// count.
+			perLine := map[int][2]int{}
+			for b, h := range meth.branchHits {
+				v := perLine[b.Line]
+				v[1]++
 				if h > 0 {
-					covered++
+					v[0]++
 				}
+				perLine[b.Line] = v
 			}
-			for _, b := range meth.branches {
-				covered += b[0]
-				total += b[1]
+			for line, b := range meth.branches {
+				v, known := perLine[line]
+				if !known {
+					perLine[line] = b
+					continue
+				}
+				v[0] = min(max(v[0], b[0]), v[1])
+				perLine[line] = v
+			}
+			for _, v := range perLine {
+				covered += v[0]
+				total += v[1]
 			}
 		default:
 			total++
@@ -482,22 +565,52 @@ func checkThresholds(cov *coverage, th *Thresholds) []MetricCheck {
 	return out
 }
 
-// checkCoverage enforces th on the run's reports: the JSON reports when
-// there are any, else the Cobertura ones. It returns the summary note when
-// every threshold is met, an error naming every metric when not.
+// checkCoverage enforces th on the run's reports. Each test run (one per
+// test project, in its own run directory) contributes its JSON report, or,
+// when it has none or it cannot be read, its Cobertura report; no run is
+// left out, and a run with no readable report is an error naming it. It
+// returns the summary note when every threshold is met, an error naming
+// every metric when not.
 func checkCoverage(runsettings string, th *Thresholds, jsonReports, coberturaReports []string) (string, error) {
-	var cov *coverage
-	var err error
-	switch {
-	case len(jsonReports) > 0:
-		cov, err = readJSONCoverage(jsonReports)
-	case len(coberturaReports) > 0:
-		cov, err = readCoverage(coberturaReports)
-	default:
+	type run struct{ json, cobertura string }
+	runs := map[string]*run{}
+	get := func(dir string) *run {
+		if runs[dir] == nil {
+			runs[dir] = &run{}
+		}
+		return runs[dir]
+	}
+	for _, p := range jsonReports {
+		get(filepath.Dir(p)).json = p
+	}
+	for _, p := range coberturaReports {
+		get(filepath.Dir(p)).cobertura = p
+	}
+	if len(runs) == 0 {
 		return "", fmt.Errorf("no coverage report to check the thresholds of %s against", runsettings)
 	}
-	if err != nil {
-		return "", err
+	cov := newCoverage()
+	for _, dir := range slices.Sorted(maps.Keys(runs)) {
+		r := runs[dir]
+		var problems []string
+		read := false
+		if r.json != "" {
+			if err := cov.addJSON(r.json); err != nil {
+				problems = append(problems, err.Error())
+			} else {
+				read = true
+			}
+		}
+		if !read && r.cobertura != "" {
+			if err := cov.addCobertura(r.cobertura); err != nil {
+				problems = append(problems, err.Error())
+			} else {
+				read = true
+			}
+		}
+		if !read {
+			return "", fmt.Errorf("no readable coverage report in run %s: %s", dir, strings.Join(problems, "; "))
+		}
 	}
 	checks := checkThresholds(cov, th)
 	parts := make([]string, len(checks))

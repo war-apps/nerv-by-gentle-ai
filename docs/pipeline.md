@@ -100,15 +100,20 @@ coverlet.core 6.0.4 directly):
   reports are written); the file itself is not touched. The JSON report
   lists every module, document, class, method, line hit count and each
   branch with its own hit count.
-- The metrics come from the JSON reports. Several reports (one per test
-  project) are merged as coverlet merges results: line hits added per
-  line and branch hits per branch, so a module in two reports is not
-  counted twice and two projects covering the two branches of one line
-  make 2/2.
-- Without a JSON report (only Cobertura), the Cobertura reports are used:
-  their packages are the modules, and a line's branches are only a count
-  (`50% (1/2)`), not which branches, so the best count of a line is kept;
-  two projects covering different branches of one line then count 1/2.
+- The report is chosen per test run (each test project's collector writes
+  into its own run directory): its JSON report, or, when that run has none
+  or it cannot be read, its Cobertura report. No run is left out; a run
+  with no readable report fails the step, naming it.
+- All runs are merged as coverlet merges results: line hits added per line
+  and branch hits per branch, so a module in two reports is not counted
+  twice and two projects covering the two branches of one line make 2/2.
+  A JSON module (`Calc.dll`) and a Cobertura package (`Calc`) are the same
+  module; methods match by class, name and signature.
+- A run read from Cobertura (the conservative fallback) contributes its
+  line hits and, per line, only a count of covered branches (`50% (1/2)`),
+  not which ones: the best count of a line is kept (and, when JSON runs
+  know that line's branches, used as a floor), so branches covered by
+  different projects can be undercounted, never overcounted.
 - The collector's `Include` / `Exclude` / `ExcludeByFile` /
   `ExcludeByAttribute` filters were already applied when it wrote the
   reports; nothing is filtered again.
