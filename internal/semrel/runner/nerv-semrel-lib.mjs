@@ -297,3 +297,38 @@ export function rewriteChangelogPlugins(plugins, changelog) {
   });
   return { plugins: out, applied };
 }
+
+// DIM_NOTES_OPTIONS are dim.comprobantes.api's commit-analyzer and
+// release-notes-generator options (its package.json "release").
+const DIM_NOTES_OPTIONS = () => ({
+  preset: "conventionalcommits",
+  parserOpts: { noteKeywords: ["BREAKING CHANGE", "BREAKING CHANGES", "BREAKING"] },
+});
+
+// defaultConfig is NERV's built-in semantic-release configuration, used when
+// a repository has none of its own: dim.comprobantes.api's package.json
+// "release" without its repository-specific @semantic-release/npm
+// (npmPublish false) and @semantic-release/exec (csproj bump, CI outputs)
+// entries, which nerv's presets and outputs replace; the changelog at the
+// root (a project's changelog is applied afterwards by
+// rewriteChangelogPlugins), committed by @semantic-release/git with its
+// default message (dim sets none). branches are {name, prerelease?,
+// channel?} (the pipeline: section's, or its defaults, sent by Go); a branch
+// with neither is written as its bare name. Fresh objects on every call.
+export function defaultConfig(branches) {
+  if (!Array.isArray(branches) || branches.length === 0) {
+    throw new Error("the built-in semantic-release configuration needs its branches");
+  }
+  return {
+    branches: branches.map(({ name, prerelease, channel }) =>
+      prerelease || channel ? { name, ...(prerelease ? { prerelease } : {}), ...(channel ? { channel } : {}) } : name,
+    ),
+    plugins: [
+      ["@semantic-release/commit-analyzer", DIM_NOTES_OPTIONS()],
+      ["@semantic-release/release-notes-generator", DIM_NOTES_OPTIONS()],
+      ["@semantic-release/changelog", { changelogFile: "CHANGELOG.md" }],
+      ["@semantic-release/git", { assets: ["CHANGELOG.md"] }],
+      "@semantic-release/github",
+    ],
+  };
+}

@@ -140,6 +140,16 @@ for `hotfix/*`. At least one and at most 3 release branches (without
 prerelease) are required; the first one is the main branch, the only one
 whose images get `latest`.
 
+These branches also feed NERV's built-in semantic-release configuration,
+used by `nerv version next`, `nerv ship` and the release step when the
+repository has no semantic-release configuration of its own; a repository
+with its own keeps its own branches (see
+[release-commands.md](release-commands.md#built-in-semantic-release-configuration)).
+A glob with a fixed prerelease id (`release/*` with `rc`) serves one
+matching branch at a time: with two `release/x` branches on origin the
+computation is refused (semantic-release requires one id per prerelease
+branch).
+
 ### `pipeline.registry`
 
 | Field | Default | Meaning |

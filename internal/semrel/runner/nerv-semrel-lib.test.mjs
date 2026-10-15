@@ -15,6 +15,7 @@ import {
   RESULT_MARKER,
   commitFileLister,
   commitScopes,
+  defaultConfig,
   failureResult,
   makeFilter,
   neededPackages,
@@ -356,4 +357,49 @@ test("rewriteChangelogPlugins without a changelog plugin changes nothing", () =>
   const r = rewriteChangelogPlugins(plugins, "api/CHANGELOG.md");
   assert.equal(r.applied, false);
   assert.deepEqual(r.plugins, plugins);
+});
+
+const DIM_NOTES = { preset: "conventionalcommits", parserOpts: { noteKeywords: ["BREAKING CHANGE", "BREAKING CHANGES", "BREAKING"] } };
+
+test("defaultConfig is dim's configuration with the given branches", () => {
+  const c = defaultConfig([
+    { name: "main" },
+    { name: "develop", prerelease: "alpha", channel: "alpha" },
+    { name: "release/*", prerelease: "rc", channel: "beta" },
+    { name: "hotfix/*", prerelease: "beta", channel: "beta" },
+  ]);
+  assert.deepEqual(c.branches, [
+    "main",
+    { name: "develop", prerelease: "alpha", channel: "alpha" },
+    { name: "release/*", prerelease: "rc", channel: "beta" },
+    { name: "hotfix/*", prerelease: "beta", channel: "beta" },
+  ]);
+  assert.deepEqual(c.plugins, [
+    ["@semantic-release/commit-analyzer", DIM_NOTES],
+    ["@semantic-release/release-notes-generator", DIM_NOTES],
+    ["@semantic-release/changelog", { changelogFile: "CHANGELOG.md" }],
+    ["@semantic-release/git", { assets: ["CHANGELOG.md"] }],
+    "@semantic-release/github",
+  ]);
+  // Every package it needs is bundled with semantic-release or pinned by NERV.
+  assert.deepEqual(neededPackages(c).sort(), [
+    "@semantic-release/changelog",
+    "@semantic-release/commit-analyzer",
+    "@semantic-release/git",
+    "@semantic-release/github",
+    "@semantic-release/release-notes-generator",
+    "conventional-changelog-conventionalcommits",
+  ]);
+});
+
+test("defaultConfig takes a pipeline section's branches as they are", () => {
+  const c = defaultConfig([
+    { name: "master" },
+    { name: "next", channel: "next" },
+    { name: "dev", prerelease: "dev", channel: "dev" },
+  ]);
+  assert.deepEqual(c.branches, ["master", { name: "next", channel: "next" }, { name: "dev", prerelease: "dev", channel: "dev" }]);
+  // Fresh objects each call: callers may rewrite the plugins.
+  assert.notEqual(defaultConfig([{ name: "main" }]).plugins[2], defaultConfig([{ name: "main" }]).plugins[2]);
+  assert.throws(() => defaultConfig([]), /branches/);
 });

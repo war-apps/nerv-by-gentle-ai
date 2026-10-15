@@ -15,6 +15,9 @@
 //     One semantic-release dry run in cwd (a worktree on the requested branch).
 //     commitFilesCache is a JSON file (commit hash -> files) shared by the
 //     projects of one NERV run.
+//   {"mode":"plan"} also returns configFile: the repository's configuration
+//   file (cwd-relative) or "" when it has none; run and release then get
+//   "useDefault": true and "branches" and use defaultConfig(branches).
 //   Both run and release take an optional "changelog": the project's
 //   changelog file, applied to the repository's @semantic-release/changelog
 //   and @semantic-release/git entries (rewriteChangelogPlugins); the result
@@ -89,6 +92,7 @@ import { pathToFileURL } from "node:url";
 import {
   NO_REMOTE_URL,
   commitFileLister,
+  defaultConfig,
   failureResult,
   finish,
   isPackage,
@@ -124,7 +128,13 @@ async function plan({ cacheDir, cwd }) {
   const cosmi = await m.load("cosmiconfig");
   const cosmiconfig = cosmi.cosmiconfig || cosmi.default.cosmiconfig;
   const importFrom = (await m.load("import-from-esm")).default;
-  const { config = {} } = (await cosmiconfig("release").search(cwd)) || {};
+  // semantic-release's own search (lib/get-config.js: cosmiconfig("release")
+  // in cwd only); nothing found means the built-in default is used.
+  const found = await cosmiconfig("release").search(cwd);
+  if (!found) {
+    return { ok: true, packages: neededPackages(defaultConfig([{ name: "main" }])).sort(), unresolved: [], configFile: "" };
+  }
+  const { config = {} } = found;
 
   const packages = new Set();
   const unresolved = [];
@@ -146,7 +156,7 @@ async function plan({ cacheDir, cwd }) {
   }
 
   neededPackages(options).forEach((p) => packages.add(p));
-  return { ok: true, packages: [...packages].sort(), unresolved };
+  return { ok: true, packages: [...packages].sort(), unresolved, configFile: path.relative(cwd, found.filepath) || found.filepath };
 }
 
 // loadKnownFiles reads the per-run cache of commit files (hash -> files)
@@ -166,7 +176,7 @@ function saveKnownFiles(file, known) {
 }
 
 async function run(req) {
-  const { cacheDir, cwd, repositoryUrl, tagFormat, filter, minReleaseType, commitFilesCache, expectedVersion, changelog } = req;
+  const { cacheDir, cwd, repositoryUrl, tagFormat, filter, minReleaseType, commitFilesCache, expectedVersion, changelog, useDefault, branches } = req;
   const real = req.mode === "release";
   const m = cacheModules(cacheDir);
   const semanticRelease = (await m.index()).default;
@@ -187,6 +197,9 @@ async function run(req) {
   // the clone's remote.origin.url, which git may rewrite to a URL holding
   // credentials).
   if (real) baseOptions.repositoryUrl = repositoryUrl;
+  // No configuration of the repository's own: the built-in one (dim's), as
+  // API options (merged over the empty repository configuration).
+  if (useDefault) Object.assign(baseOptions, defaultConfig(branches));
   // The repository's own steps, built exactly as semantic-release builds them.
   const context = { cwd, env, stdout: process.stderr, stderr: process.stderr };
   context.logger = getLogger(context);
