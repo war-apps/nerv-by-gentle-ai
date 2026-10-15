@@ -536,6 +536,17 @@ directly.
   deletions(-). Above the ~400-line heuristic: about 450 lines are tests
   and 120 docs; four work-unit commits.
 
+### P4 review
+
+- Native review of b41e0ba..2e84c5a (medium, user granted): approved and
+  acknowledged. Advisory: R3-outputs-write-after-release (WARNING: a failed
+  `release.json` write after the tag reports a bare failure, without saying
+  the release is on origin), R3-own-config-version-files-silent (WARNING: with
+  the repository's own config, version files its git assets do not list stay
+  out of the release commit silently), R3-failed-doc-claims-published (a
+  failed run's document reports the computed release as published),
+  R3-prefixwriter-error-redup (a failed write is retried and duplicated).
+
 ## Next step
 
 Review of P4; then P5 (`docker` step, reading release.json).
