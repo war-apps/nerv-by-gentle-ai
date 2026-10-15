@@ -46,12 +46,22 @@ tasks:
 release:                            # project scope only, never merged with the user file; see release-commands.md
   projects:
     - { name: api, path: . }
+pipeline:                           # project scope only, never merged with the user file; see pipeline.md
+  dotnet: { solution: App.slnx }
+  images:
+    - { name: ghcr.io/acme/app }
 ```
 
 `release:` configures the release commands (`nerv version next` and
 `nerv ship`, also `/nerv:version` and `/nerv:ship`): projects, dependencies,
 tag formats, presets, stages and hooks. Its full reference is
 [release-commands.md](release-commands.md#configuration-release).
+
+`pipeline:` configures the standalone Docker pipeline modelled on
+dim.comprobantes.api's CI/CD (validate, test, release, docker, sync and an
+optional deploy): the solution, branches, registry, images, sync and deploy
+data source. Its full reference is [pipeline.md](pipeline.md); the
+`nerv pipeline` commands that run it come in later releases.
 
 `models:` assigns a per-role `model` and `effort` override, with project
 overriding user key by key like every other section — each entry is an

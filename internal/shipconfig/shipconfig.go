@@ -22,6 +22,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/war-apps/nerv-by-gentle-ai/internal/shipconfig/yamlsection"
 	"gopkg.in/yaml.v3"
 )
 
@@ -278,10 +279,7 @@ func parse(data []byte) (*Release, error) {
 		}
 		problems = unknown
 		if err := node.Decode(&rel); err != nil {
-			msg := strings.TrimPrefix(err.Error(), "yaml: unmarshal errors:\n")
-			for _, l := range strings.Split(msg, "\n") {
-				problems = append(problems, "release: "+strings.TrimSpace(l))
-			}
+			problems = append(problems, yamlsection.DecodeProblems("release", err)...)
 			// A partially decoded section would produce misleading
 			// semantic errors; stop at the decoding problems.
 			return nil, &ValidationError{Problems: problems}

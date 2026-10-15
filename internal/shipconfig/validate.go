@@ -3,11 +3,12 @@ package shipconfig
 import (
 	"fmt"
 	"math"
-	"path"
 	"regexp"
 	"slices"
 	"strings"
 	"time"
+
+	"github.com/war-apps/nerv-by-gentle-ai/internal/shipconfig/yamlsection"
 )
 
 // Presets are the built-in technology presets.
@@ -48,7 +49,6 @@ var (
 	exactVersion  = regexp.MustCompile(`^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$`)
 	envNameRe     = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 	placeholderRe = regexp.MustCompile(`\$\{([^}]*)\}`)
-	driveRe       = regexp.MustCompile(`^[A-Za-z]:`)
 )
 
 // finalizePaths runs after validation: it rewrites every path as a clean
@@ -90,12 +90,7 @@ func (r *Release) finalizePaths() {
 }
 
 // normalize turns a user path into a clean forward-slash path.
-func normalize(p string) string {
-	if p == "" {
-		return ""
-	}
-	return path.Clean(strings.ReplaceAll(p, `\`, "/"))
-}
+func normalize(p string) string { return yamlsection.NormalizePath(p) }
 
 // validate returns one path-qualified message per problem.
 func (r *Release) validate() []string {
@@ -203,11 +198,8 @@ func (v *validator) addf(format string, args ...any) {
 // checkPath rejects absolute paths and paths escaping the repository root,
 // quoting the path as the user wrote it.
 func (v *validator) checkPath(at, raw string) {
-	switch p := normalize(raw); {
-	case strings.HasPrefix(p, "/") || driveRe.MatchString(p):
-		v.addf("%s: %q must be relative to the repository root", at, raw)
-	case p == ".." || strings.HasPrefix(p, "../"):
-		v.addf("%s: %q escapes the repository root", at, raw)
+	if problem := yamlsection.PathProblem(at, raw); problem != "" {
+		v.problems = append(v.problems, problem)
 	}
 }
 
