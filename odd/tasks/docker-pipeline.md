@@ -228,6 +228,17 @@ Branch created from fbe03dd.
   ~400-line heuristic: about 300 lines are tests and 80 docs; the engine
   and the CLI line are separate commits.
 
+### P2 review
+
+- Native review of 1c9ba15..b2c0412 (medium, user granted): approved and
+  acknowledged. Advisory: R3-release-default-path-untested (WARNING: the real
+  release path with the built-in default — UseDefault, Branches, and the
+  fixed-id glob check reading `refs/remotes/origin/` rather than the mirror's
+  heads — has no test), R3-default-project-changelog-unproved (a project
+  changelog together with the built-in default is not tested),
+  R3-glob-matcher-divergence (`path.Match` vs semantic-release's micromatch:
+  `**` and braces are not handled and match errors are ignored).
+
 ## Next step
 
 Review of P2, then its pull request; then P3 (`validate` and `test`
