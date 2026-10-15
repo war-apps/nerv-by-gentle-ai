@@ -336,3 +336,38 @@ func TestIntegration_ShipProjectRaisedByDependsOn(t *testing.T) {
 		t.Errorf("marker:\n%s", strings.Join(got, "\n"))
 	}
 }
+
+// The release: section is the user's local one: origin has none, the
+// working tree has it uncommitted, and its hooks run.
+func TestIntegration_ShipUsesTheLocalUncommittedSection(t *testing.T) {
+	requireShipToolchain(t)
+	shipEnv(t)
+	cache := t.TempDir()
+	marker := filepath.Join(t.TempDir(), "marker.log")
+	origin, work := newShipRepos(t)
+	work.write("package.json", shipReleaseConfig)
+	work.commit("chore: init", "a.txt")
+	work.git("tag", "v1.0.0")
+	work.commit("feat: add gadgets", "b.txt")
+	work.git("push", "-q", "origin", "main", "--tags")
+	// Not committed: only the working tree has it.
+	work.write(".nerv/nerv.yaml", "release:\n  projects:\n"+markerProject("widgets", ".", "", marker))
+	if status := work.git("status", "--porcelain"); !strings.Contains(status, ".nerv/") {
+		t.Fatalf("the section should be uncommitted: %q", status)
+	}
+
+	code, stdout, stderr := runShipCommand(t, cache, "--cwd", work.dir, "--yes", "--expect", "widgets=1.1.0")
+	if code != 0 {
+		t.Fatalf("ship: exit %d\nstdout %s\nstderr %s", code, stdout, stderr)
+	}
+	if origin.git("rev-parse", "v1.1.0^{commit}") != origin.git("rev-parse", "main") {
+		t.Errorf("tag v1.1.0 is not origin's main")
+	}
+	got := readMarker(t, marker)
+	if len(got) != 5 || !strings.HasPrefix(got[0], "build widgets 1.1.0 v1.1.0") || !strings.HasPrefix(got[4], "success widgets") {
+		t.Errorf("the local section's stages and hooks did not run:\n%s", strings.Join(got, "\n"))
+	}
+	if out, err := exec.Command("git", "-C", origin.dir, "cat-file", "-e", "main:.nerv/nerv.yaml").CombinedOutput(); err == nil {
+		t.Errorf("the local section reached origin: %s", out)
+	}
+}

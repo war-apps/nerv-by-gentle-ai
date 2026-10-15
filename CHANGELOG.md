@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.1.1] - 2026-10-15
+
+### Changed
+- release: `nerv ship` now uses your local `.nerv/nerv.yaml` `release:` section (committed or not), as `nerv version
+  next` does, instead of origin's copy; the code and the semantic-release configuration still come from origin's
+  branch. A path the section names that is not on origin's branch is refused before any version is computed.
+
 ## [4.1.0] - 2026-10-14
 
 ### Added

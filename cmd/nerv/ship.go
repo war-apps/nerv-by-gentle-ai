@@ -34,7 +34,8 @@ semantic-release for real with the repository's own configuration (release
 commit, CHANGELOG, tag, GitHub release), then the publish stage (docker,
 nuget, npm) and the publish and success hooks. Your repository is never
 modified, and only what origin has is released: a local branch ahead of or
-behind origin is refused.
+behind origin is refused. The release: section is your local
+.nerv/nerv.yaml, committed or not; the code is origin's.
 
 Flags:
   --cwd <dir>              A directory inside the repository (default ".")
@@ -65,6 +66,9 @@ when interrupted.
 // is the real one.
 type shipWorkspace interface {
 	Dir() string
+	// Config is the user's local release: section (nil when none), the one
+	// the release uses; the clone's copy is ignored.
+	Config() *shipconfig.Release
 	ArtifactsDir() string
 	NotesDir() string
 	OriginHead() string
@@ -342,6 +346,11 @@ func (s *shipRun) execute(ctx context.Context) ([]shipOutcome, error) {
 			s.branch, short(local), s.branch, short(head))
 	}
 
+	// Refuse a local section naming paths origin's branch lacks before
+	// semantic-release plans anything with it.
+	if err := checkPathsOnOrigin(ws.Config(), ws.Dir(), s.branch); err != nil {
+		return nil, err
+	}
 	// Every project is computed, even with --project: Compute returns only
 	// the requested project, and Release needs the dependencies' results to
 	// apply depends_on.
@@ -401,13 +410,7 @@ type shipItem struct {
 // release plans every releasing project, shows the plans, asks for
 // confirmation and ships them in order, stopping at the first failure.
 func (s *shipRun) release(ctx context.Context) ([]shipOutcome, error) {
-	rel, err := shipconfig.Load(s.ws.Dir())
-	if errors.Is(err, shipconfig.ErrNotConfigured) {
-		rel, err = nil, nil
-	}
-	if err != nil {
-		return nil, err
-	}
+	rel := s.ws.Config()
 	outcomes := make([]shipOutcome, len(s.results))
 	var items []shipItem
 	for i, r := range s.results {
@@ -462,6 +465,59 @@ func (s *shipRun) release(ctx context.Context) ([]shipOutcome, error) {
 	return outcomes, nil
 }
 
+// checkPathsOnOrigin refuses when a path the local release: section names
+// (project path, shared path without glob characters, dotnet project file
+// and solution, Dockerfile and docker context, stage and hook workdirs)
+// does not exist in the release clone: the configuration is the user's
+// local one, but the code is origin's branch.
+func checkPathsOnOrigin(rel *shipconfig.Release, clone, branch string) error {
+	if rel == nil {
+		return nil
+	}
+	var missing []string
+	check := func(project, field, path string) {
+		if path == "" || path == "." || strings.ContainsAny(path, "*?[{") {
+			return
+		}
+		// Joining is safe: shipconfig validation rejects absolute paths and
+		// paths escaping the repository root, and every path in the section
+		// is relative to that root (validate.go checkPath), so path stays
+		// inside the clone.
+		if _, err := os.Stat(filepath.Join(clone, filepath.FromSlash(path))); err != nil {
+			missing = append(missing, fmt.Sprintf("%q (project %s, %s)", path, project, field))
+		}
+	}
+	for _, p := range rel.Projects {
+		check(p.Name, "path", p.Path)
+		for _, sp := range p.SharedPaths {
+			check(p.Name, "shared_paths", sp)
+		}
+		if d := p.Dotnet; d != nil {
+			check(p.Name, "dotnet.project_file", d.ProjectFile)
+			check(p.Name, "dotnet.solution", d.Solution)
+		}
+		if d := p.Docker; d != nil {
+			for _, img := range d.Images {
+				check(p.Name, "docker.images.dockerfile", img.Dockerfile)
+				check(p.Name, "docker.images.context", img.Context)
+			}
+		}
+		for _, stage := range slices.Sorted(maps.Keys(p.Stages)) {
+			check(p.Name, "stages."+stage+".workdir", p.Stages[stage].Workdir)
+		}
+		for _, key := range slices.Sorted(maps.Keys(p.Hooks)) {
+			for _, c := range p.Hooks[key] {
+				check(p.Name, "hooks."+key+".workdir", c.Workdir)
+			}
+		}
+	}
+	if len(missing) == 0 {
+		return nil
+	}
+	return refuse("the release: section names paths that are not on origin's %s: %s (the configuration is your local one, the code is origin's branch: push them, or fix the section)",
+		branch, strings.Join(missing, "; "))
+}
+
 // projectConfig is the release: section's project, or, for a repository
 // without the section, the whole repository with no presets.
 func projectConfig(rel *shipconfig.Release, name string) (shipconfig.Project, error) {
@@ -470,7 +526,7 @@ func projectConfig(rel *shipconfig.Release, name string) (shipconfig.Project, er
 	}
 	p, ok := rel.Project(name)
 	if !ok {
-		return shipconfig.Project{}, fmt.Errorf("project %q is not in origin's release: section", name)
+		return shipconfig.Project{}, fmt.Errorf("project %q is not in the release: section", name)
 	}
 	return p, nil
 }
