@@ -208,6 +208,11 @@ func resetResults(repo, results string) error {
 	if rel, err := filepath.Rel(artifacts, results); err != nil || !filepath.IsLocal(rel) {
 		return fmt.Errorf("results directory %s is not inside %s", results, artifacts)
 	}
+	// Before creating anything: what exists of .nerv/artifacts (a symlinked
+	// .nerv or .nerv/artifacts included) must resolve inside the repository.
+	if err := checkAncestorInside(repo, artifacts); err != nil {
+		return err
+	}
 	if err := os.MkdirAll(artifacts, 0o755); err != nil {
 		return err
 	}
@@ -242,13 +247,7 @@ func checkRealInside(repo, artifacts, results string) error {
 	if !within(realRepo, realArtifacts, false) {
 		return fmt.Errorf("%s resolves to %s, outside the repository: refusing to empty anything there", artifacts, realArtifacts)
 	}
-	existing := results
-	for {
-		if _, err := os.Lstat(existing); err == nil {
-			break
-		}
-		existing = filepath.Dir(existing)
-	}
+	existing := deepestExisting(results)
 	realExisting, err := filepath.EvalSymlinks(existing)
 	if err != nil {
 		return err
@@ -257,6 +256,40 @@ func checkRealInside(repo, artifacts, results string) error {
 		return fmt.Errorf("%s resolves to %s, outside %s: refusing to empty it", existing, realExisting, realArtifacts)
 	}
 	return nil
+}
+
+// checkAncestorInside refuses when the deepest existing part of path,
+// symlinks resolved, is outside the repository (the repository itself is
+// fine: what is missing below it is created there).
+func checkAncestorInside(repo, path string) error {
+	realRepo, err := filepath.EvalSymlinks(repo)
+	if err != nil {
+		return err
+	}
+	existing := deepestExisting(path)
+	realExisting, err := filepath.EvalSymlinks(existing)
+	if err != nil {
+		return err
+	}
+	if !within(realRepo, realExisting, existing == repo) {
+		return fmt.Errorf("%s resolves to %s, outside the repository: refusing to create or empty anything there", existing, realExisting)
+	}
+	return nil
+}
+
+// deepestExisting is path or its deepest ancestor that exists (as a file,
+// directory or symlink).
+func deepestExisting(path string) string {
+	for {
+		if _, err := os.Lstat(path); err == nil {
+			return path
+		}
+		parent := filepath.Dir(path)
+		if parent == path {
+			return path
+		}
+		path = parent
+	}
 }
 
 // within reports whether path is inside dir (or equal to it when same is

@@ -221,3 +221,25 @@ func TestTest_ResultsBehindASymlinkOutsideTheArtifactsAreRefused(t *testing.T) {
 		t.Errorf("a file outside the repository was removed: %v", err)
 	}
 }
+
+func TestTest_SymlinkedNervOrArtifactsOutsideAreRefusedBeforeCreatingAnything(t *testing.T) {
+	for _, link := range []string{".nerv", filepath.Join(".nerv", "artifacts")} {
+		t.Run(link, func(t *testing.T) {
+			repo, outside := t.TempDir(), t.TempDir()
+			if err := os.MkdirAll(filepath.Dir(filepath.Join(repo, link)), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Symlink(outside, filepath.Join(repo, link)); err != nil {
+				t.Skipf("symlinks unavailable: %v", err)
+			}
+			f := &fakeSteps{}
+			r := Steps{Repo: repo, Config: config(nil), Run: f}.Test(context.Background())
+			if r.Status != StatusFailed || !strings.Contains(r.Error, "outside") || len(f.steps) != 0 {
+				t.Errorf("result %+v, ran %v", r, f.argvs())
+			}
+			if entries, _ := os.ReadDir(outside); len(entries) != 0 {
+				t.Errorf("created outside the repository: %v", entries)
+			}
+		})
+	}
+}
