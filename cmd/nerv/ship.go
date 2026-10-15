@@ -346,6 +346,11 @@ func (s *shipRun) execute(ctx context.Context) ([]shipOutcome, error) {
 			s.branch, short(local), s.branch, short(head))
 	}
 
+	// Refuse a local section naming paths origin's branch lacks before
+	// semantic-release plans anything with it.
+	if err := checkPathsOnOrigin(ws.Config(), ws.Dir(), s.branch); err != nil {
+		return nil, err
+	}
 	// Every project is computed, even with --project: Compute returns only
 	// the requested project, and Release needs the dependencies' results to
 	// apply depends_on.
@@ -406,9 +411,6 @@ type shipItem struct {
 // confirmation and ships them in order, stopping at the first failure.
 func (s *shipRun) release(ctx context.Context) ([]shipOutcome, error) {
 	rel := s.ws.Config()
-	if err := checkPathsOnOrigin(rel, s.ws.Dir(), s.branch); err != nil {
-		return nil, err
-	}
 	outcomes := make([]shipOutcome, len(s.results))
 	var items []shipItem
 	for i, r := range s.results {
@@ -477,6 +479,10 @@ func checkPathsOnOrigin(rel *shipconfig.Release, clone, branch string) error {
 		if path == "" || path == "." || strings.ContainsAny(path, "*?[{") {
 			return
 		}
+		// Joining is safe: shipconfig validation rejects absolute paths and
+		// paths escaping the repository root, and every path in the section
+		// is relative to that root (validate.go checkPath), so path stays
+		// inside the clone.
 		if _, err := os.Stat(filepath.Join(clone, filepath.FromSlash(path))); err != nil {
 			missing = append(missing, fmt.Sprintf("%q (project %s, %s)", path, project, field))
 		}

@@ -956,20 +956,60 @@ func TestShip_UsesTheLocalConfigurationNotOrigins(t *testing.T) {
 	}
 }
 
+// shipPathsYAML names one path per checked field; libs/**/gen is a glob.
+const shipPathsYAML = `release:
+  projects:
+    - name: api
+      path: api
+      shared_paths: [libs/common, "libs/**/gen"]
+      presets: [dotnet, docker]
+      dotnet:
+        project_file: api/Api.csproj
+        solution: Api.sln
+      docker:
+        images:
+          - name: ghcr.io/acme/api
+            dockerfile: api/Dockerfile
+            context: ctx
+      stages:
+        build: { run: "echo build", workdir: tools/build }
+      hooks:
+        prepare: [{ run: "echo prepare", workdir: tools/hooks }]
+`
+
 func TestShip_LocalPathsMissingOnOriginAreRefused(t *testing.T) {
-	yaml := strings.Replace(shipMonorepoYAML, `        build: { run: "echo build cli" }`, `        build: { run: "echo build cli", workdir: tools/cli }`, 1)
 	tests := []struct {
-		name, yaml, remove, want string
+		name   string
+		remove []string
+		want   []string
 	}{
-		{"project directory", shipMonorepoYAML, "web", `"web" (project web, path)`},
-		{"stage workdir", yaml, "", `"tools/cli" (project cli, stages.build.workdir)`},
+		{"every path on origin (the glob is not checked)", nil, nil},
+		{"project path", []string{"api"}, []string{`"api" (project api, path)`}},
+		{"shared path", []string{"libs/common"}, []string{`"libs/common" (project api, shared_paths)`}},
+		{"dotnet project file", []string{"api/Api.csproj"}, []string{`"api/Api.csproj" (project api, dotnet.project_file)`}},
+		{"dotnet solution", []string{"Api.sln"}, []string{`"Api.sln" (project api, dotnet.solution)`}},
+		{"dockerfile", []string{"api/Dockerfile"}, []string{`"api/Dockerfile" (project api, docker.images.dockerfile)`}},
+		{"docker context", []string{"ctx"}, []string{`"ctx" (project api, docker.images.context)`}},
+		{"stage workdir", []string{"tools/build"}, []string{`"tools/build" (project api, stages.build.workdir)`}},
+		{"hook workdir", []string{"tools/hooks"}, []string{`"tools/hooks" (project api, hooks.prepare.workdir)`}},
+		{"several, all listed", []string{"Api.sln", "tools/hooks"}, []string{`"Api.sln" (project api, dotnet.solution)`, `"tools/hooks" (project api, hooks.prepare.workdir)`}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			f := newShipFixture(t, tt.yaml)
-			f.monorepoResults()
-			if tt.remove != "" {
-				if err := os.RemoveAll(filepath.Join(f.ws.dir, tt.remove)); err != nil {
+			f := newShipFixture(t, shipPathsYAML)
+			f.ws.results = []semrel.ProjectResult{shipResult("api", "1.1.0", "v1.1.0")}
+			for _, d := range []string{"libs/common", "ctx", "tools/build", "tools/hooks"} {
+				if err := os.MkdirAll(filepath.Join(f.ws.dir, d), 0o755); err != nil {
+					t.Fatal(err)
+				}
+			}
+			for _, file := range []string{"api/Api.csproj", "Api.sln", "api/Dockerfile"} {
+				if err := os.WriteFile(filepath.Join(f.ws.dir, file), []byte(apiCsproj), 0o644); err != nil {
+					t.Fatal(err)
+				}
+			}
+			for _, r := range tt.remove {
+				if err := os.RemoveAll(filepath.Join(f.ws.dir, r)); err != nil {
 					t.Fatal(err)
 				}
 			}
@@ -978,10 +1018,25 @@ func TestShip_LocalPathsMissingOnOriginAreRefused(t *testing.T) {
 			if err := json.Unmarshal([]byte(stdout), &doc); err != nil {
 				t.Fatal(err)
 			}
-			if code != 1 || doc.Status != "refused" || !strings.Contains(doc.Error, tt.want) || !strings.Contains(doc.Error, "not on origin's main") {
+			if tt.want == nil {
+				if code != 0 || doc.Status != "dry-run" {
+					t.Errorf("exit %d, %+v\nstderr %s", code, doc, stderr)
+				}
+				return
+			}
+			if code != 1 || doc.Status != "refused" || !strings.Contains(doc.Error, "not on origin's main") {
 				t.Errorf("exit %d, %+v\nstderr %s", code, doc, stderr)
 			}
-			if want := []string{"open", "compute", "close"}; !slices.Equal(f.events, want) {
+			for _, w := range tt.want {
+				if !strings.Contains(doc.Error, w) {
+					t.Errorf("refusal lacks %s: %s", w, doc.Error)
+				}
+			}
+			if strings.Contains(doc.Error, "libs/**/gen") {
+				t.Errorf("the glob shared path was checked: %s", doc.Error)
+			}
+			// Refused before semantic-release plans anything.
+			if want := []string{"open", "close"}; !slices.Equal(f.events, want) {
 				t.Errorf("events %v, want %v", f.events, want)
 			}
 		})
