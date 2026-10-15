@@ -138,6 +138,17 @@ Branch created from fbe03dd.
 - Open: semantic-release behaviour of a glob `release/*` with a fixed
   prerelease id when several release branches exist (P2 to verify).
 
+### P1 review
+
+- Native review of fbe03dd..45c32a8 (medium, user granted): approved and
+  acknowledged. R3-001 (WARNING: the first release branch, used as the main
+  branch, could be a glob) and R3-002 (a solution with surrounding spaces
+  passed validation) fixed inline by the parent in `749fa64`; RED: both
+  new validation cases returned no error; GREEN after the fix.
+- Release branches keep dim's model: `release/*` uses prerelease id `rc`
+  (versions `X.Y.Z-rc.N`) and channel/image tag `beta`, as dim's
+  `release/rc` does today.
+
 ## Next step
 
 P2 — built-in default semantic-release configuration.
