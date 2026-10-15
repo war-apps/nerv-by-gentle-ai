@@ -434,6 +434,31 @@ All P3 review advisories addressed (user authorized). Route: delegated
   (`MkdirAll` on `.nerv/artifacts` runs before the real-path check, so a
   symlinked `.nerv` gets directories created outside).
 
+### P3 final pass
+
+Last bounded pass on the P3 follow-up review's findings (user authorized).
+Route: delegated (one writer). Test-first; `go test` exit codes captured
+directly.
+
+| Item | Fix | Evidence |
+|---|---|---|
+| R3-json-silently-drops-cobertura-only-projects | `checkCoverage` groups the reports by run directory (one per test project) and reads each run's JSON, or its Cobertura when it has none or it cannot be read, into one model (`addJSON` / `addCobertura` read a file whole, then `merge`); a run with no readable report fails naming it. JSON module `Calc.dll` = Cobertura package `Calc`; methods keyed by class + name and signature in both formats. Branches per line: the JSON's known branches, with a Cobertura count for the same line as a floor (capped at the line's branches); a Cobertura-only line adds its count (documented conservative fallback). | RED: `TestCheckCoverage_ChoosesTheReportPerRun` (the Cobertura-only run was dropped: no error at line 100%), `TestCheckCoverage_UnreadableRunIsAnError` (a raw JSON error instead of falling back / naming the run). GREEN: both, plus `TestCheckCoverage_SameModuleFromJSONAndCoberturaIsOneModule` (passed before only because the Cobertura run was ignored; now meaningful). |
+| R3-smoke-fallback-nil-deref | The smoke test stops with `t.Fatalf` on a `readCoverage` error and on a `ReadFile` error in the excluded-class loop. | Test-only; no RED (the bad path needs an unreadable report). Smoke passes. |
+| R3-mkdir-before-symlink-check | `checkAncestorInside` resolves the deepest existing part of `.nerv/artifacts` before `MkdirAll`; then the existing results check. | RED: `TestTest_SymlinkedNervOrArtifactsOutsideAreRefusedBeforeCreatingAnything/.nerv` (`artifacts/` created in the link's target). The `.nerv/artifacts` subtest already passed (refused before writing). GREEN: both refused, the outside directory stays empty. |
+
+- Docs: docs/pipeline.md (per-run report choice, module/method matching,
+  the conservative Cobertura fallback).
+- Checks: `go test -count=1 ./...` exit 0 (29 packages, smoke included,
+  24.8s alone); `go vet ./...`, `GOOS=windows go vet ./...` exit 0;
+  `gofmt -l .` empty.
+- Commits: `f81ac02` `fix(pipeline): choose the coverage report per test
+  run` (3 files changed, 275 insertions(+), 90 deletions(-)); `55f501d`
+  `fix(pipeline): refuse a symlinked .nerv outside the repository before
+  creating anything` (2 files, +62 -7); `0326131` `test(pipeline): stop the
+  smoke test on unreadable coverage reports` (1 file, +10 -3). Total `git
+  diff --shortstat a8af92a 0326131`: 6 files changed, 347 insertions(+),
+  100 deletions(-).
+
 ## Next step
 
 Review of P3 (with the coverage gate); then P4 (`release` step).
