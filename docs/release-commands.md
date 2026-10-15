@@ -61,8 +61,11 @@ you:
    kept as it is) and validates it with `nerv version next --offline`,
    showing each project's next version.
 
-It never commits, pushes or releases: commit and push `.nerv/nerv.yaml`
-yourself, then run `/nerv:ship`. `/nerv:release-setup --project <name>`
+It never commits, pushes or releases. `nerv version next` and `nerv ship`
+read your local `.nerv/nerv.yaml` as it is, committed or not (commit it for
+your team's sake; it is not required). A semantic-release configuration it
+creates must be committed and pushed: the release uses origin's. Then run
+`/nerv:ship`. `/nerv:release-setup --project <name>`
 adds or edits one project of an existing section. The examples below show
 the shapes it produces.
 
@@ -73,7 +76,7 @@ configured in its `package.json` `release` (branches main, `release/rc`
 with channel `rc`, develop with channel `alpha`), the API's `.csproj`
 receives the version, and one docker image is tagged with the version, the
 release channel and `latest` (only on releases of the default channel,
-main). Add to `.nerv/nerv.yaml`, commit and push it:
+main). Add to `.nerv/nerv.yaml`:
 
 ```yaml
 release:
@@ -160,9 +163,14 @@ configuration (`.releaserc*`, `release.config.*` or `package.json`
 projects a monorepo holds, how they depend on each other, and how each one
 is built and published.
 
-`nerv ship` plans the release from the `release:` section committed on
-origin (the release clone's `.nerv/nerv.yaml`); your local copy is only
-validated first. Commit and push changes to it before releasing.
+Both commands read the `release:` section from your local
+`.nerv/nerv.yaml` (the working-tree file, committed or not), never origin's
+copy. For `nerv ship` that is the only thing taken from your machine: the
+code, the semantic-release configuration and the branch content are
+origin's, in the release clone, whose own `.nerv/nerv.yaml` is ignored. The
+paths the section names are resolved inside the release clone; a path that
+is not on origin's branch (a project folder that exists only locally) is
+refused before any stage.
 
 ### Paths
 
@@ -517,9 +525,10 @@ only one that can run.
 ### Flow
 
 1. Resolve the repository and the branch (default: the current one), load
-   the `release:` section (a repository without one is a single project)
-   and refuse an invalid section or an unknown `--project` before anything
-   else.
+   the `release:` section from your local `.nerv/nerv.yaml` (committed or
+   not; a repository without one is a single project) and refuse an
+   invalid section or an unknown `--project` before anything else. This
+   section is used for the whole run; the clone's copy is ignored.
 2. Create the **release clone**: a fresh `git clone --shared` of your
    repository in a temporary directory (never a worktree of it), whose
    `origin` is your origin's address; origin's branches, tags and
@@ -534,7 +543,10 @@ only one that can run.
    next`, from the refs just read; origin is read once). Projects without a
    new release are reported and skipped. With `--expect`, refuse here
    unless the releasing projects and versions are exactly the expected
-   ones.
+   ones. Refuse also when a path the section names (project `path`, a
+   `shared_paths` entry without glob characters, `dotnet.project_file` /
+   `solution`, a Dockerfile or docker context, a stage or hook `workdir`)
+   does not exist on origin's branch.
 5. Print each releasing project's version, channel, tag and last release,
    and its plan ([Pipeline and presets](#pipeline-and-presets), secrets
    shown as `$<VARIABLE>`), then ask `Release <n> project(s)? [y/N]` on an
@@ -909,9 +921,9 @@ check) never prompts and is bounded:
   in it (`https://user:token@host/...`, `?access_token=...`) are hidden in
   every error. A relative local origin path is resolved against the
   repository.
-- Only origin is released: `nerv ship` never pushes your local commits,
-  refuses a local branch that differs from origin's, and plans from the
-  `release:` section committed on origin.
+- Only origin is released: `nerv ship` never pushes your local commits and
+  refuses a local branch that differs from origin's; it plans from your
+  local `release:` section, applied to origin's code.
 
 ### NuGet API key
 
@@ -961,6 +973,7 @@ Nothing has been tagged or published in any of these cases.
 | Message (abridged) | Cause | What to do |
 |---|---|---|
 | `your local <b> (...) is not origin/<b> (...)` | `nerv ship` releases what is on origin. | `git push` or `git pull`, then run again. |
+| `the release: section names paths that are not on origin's <b>: "<path>" (project <p>, <field>)` | The section is your local one; the path exists only locally (or not at all). | Push the code that adds it, or fix the section. |
 | `branch <b> is not on origin` / `has no origin remote` | Nothing on origin to release. | Push the branch (or add the remote). |
 | `the computed release is not the expected one (<project>: expected X, computed Y; ...)` | `--expect` no longer matches: origin moved since the dry run. | Run the dry run again, review the new plan, then release with its versions. |
 | `confirmation needed but stdin is not an interactive terminal` | No terminal for `[y/N]`. | `--yes` (after a `--dry-run`), or run it in a terminal. |
