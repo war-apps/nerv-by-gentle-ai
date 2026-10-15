@@ -7,15 +7,14 @@ image, plus the Docker deploy that dim runs with `/update-deploy`. Every step
 runs locally, one process per step, without GitHub Actions; any GitHub
 workflow in the repository is ignored.
 
-> **Status.** This page documents the configuration only. The commands
-> (`nerv pipeline validate|test|release|docker|sync|deploy` and
-> `nerv pipeline run`) come in later releases; until then the section is
-> read and validated but nothing runs it.
+> **Status.** `nerv pipeline validate` and `nerv pipeline test` are
+> available ([Running the steps](#running-the-steps)); `release`, `docker`,
+> `sync`, `deploy` and `nerv pipeline run` come in later releases.
 
 | Step | What it does (dim's job) |
 |---|---|
 | `validate` | `dotnet restore` and `dotnet format --verify-no-changes` (validate) |
-| `test` | `dotnet build -warnaserror`, `dotnet test` with coverage and the runsettings thresholds (test) |
+| `test` | `dotnet build -warnaserror`, `dotnet test` with coverage and the runsettings (test) |
 | `release` | semantic-release on origin's state: version, channel, tag (release) |
 | `docker` | build, tag and push every image (docker) |
 | `sync` | merge the released branch back into develop and main into `release/*` (sync-to-develop, sync-main-to-release) |
@@ -23,11 +22,78 @@ workflow in the repository is ignored.
 
 ## Contents
 
+- [Running the steps](#running-the-steps)
 - [Complete example](#complete-example)
 - [Deploy from Infisical](#deploy-from-infisical)
 - [Reference](#reference)
 - [Deploy data](#deploy-data)
 - [Validation](#validation)
+
+## Running the steps
+
+```
+nerv pipeline <step> [--cwd <dir>] [--json]
+```
+
+Each step reads the `pipeline:` section of your local `.nerv/nerv.yaml`
+(committed or not); without one it is refused (exit 1) pointing here.
+`validate` and `test` run in your **working tree**, as CI runs on a
+checkout: they check the code as it is, uncommitted changes included. Every
+command runs without a shell, with `DOTNET_NOLOGO=true`,
+`DOTNET_CLI_TELEMETRY_OPTOUT=true` (dim's workflow environment) and then
+`pipeline.dotnet.env` over them; its output is streamed to stderr prefixed
+`[pipeline:<step>] `. A step stops at the first failing command and names
+it. Ctrl-C stops the command and every process it started.
+
+### `nerv pipeline validate`
+
+dim's validate job:
+
+1. `dotnet restore <solution>`
+2. `dotnet format <solution> --verify-no-changes`
+
+### `nerv pipeline test`
+
+dim's test job:
+
+1. `dotnet restore <solution>`
+2. `dotnet build <solution> --configuration <configuration> --no-restore`,
+   plus `-warnaserror` unless `warnings_as_errors: false`
+3. `dotnet test <solution> --configuration <configuration> --no-build
+   --collect "XPlat Code Coverage"`, plus `--settings <runsettings>` when
+   set, `--logger "trx;LogFileName=test-results.trx"` and
+   `--results-directory <repo>/.nerv/artifacts/pipeline/test`
+
+The results directory is emptied at the start of every run; it holds
+`test-results.trx` and one `<run id>/coverage.cobertura.xml` per test
+project, listed in the result (also after a failure, as dim uploads them
+always). `.nerv/artifacts/` gets a `.gitignore` of `*`, so nothing there is
+committed and the repository's own `.gitignore` is not touched.
+
+**Coverage thresholds.** NERV does not check coverage itself: thresholds
+are whatever the runsettings and coverlet enforce, exactly as in dim's CI.
+Note that coverlet's **collector** (`XPlat Code Coverage`, the
+`coverlet.collector` package dim uses) ignores `<Threshold>` in the
+runsettings: verified with coverlet.collector 6.0.4, a project at 50% line
+coverage against `100,80,100` passes `dotnet test` with exit 0. `nerv
+pipeline test` warns when the runsettings declares a `<Threshold>`.
+coverlet documents thresholds for its MSBuild and console integrations
+(`coverlet.msbuild` with `/p:Threshold=...`), not for the collector.
+
+### Result
+
+stdout carries the result: `<step>: passed|failed|refused|interrupted`,
+each command with its exit code, the results directory and the coverage
+reports; with `--json`, one document:
+
+```json
+{"step":"test","status":"failed","commands":[{"argv":["dotnet","restore","App.slnx"],"exit":0},{"argv":["dotnet","build","App.slnx","--configuration","Release","--no-restore","-warnaserror"],"exit":1}],"artifacts":{"results_dir":"/repo/.nerv/artifacts/pipeline/test","trx":"/repo/.nerv/artifacts/pipeline/test/test-results.trx"},"error":"dotnet build: ..."}
+```
+
+`warnings` is added when there is one (the threshold note). Exit codes: `0`
+passed, `1` refused (no or invalid `pipeline:` section, not a git
+repository), `2` a command failed or a tool is missing, `128 + signal`
+interrupted.
 
 ## Complete example
 
@@ -115,7 +181,7 @@ The source column cites where each default comes from in dim's
 |---|---|---|
 | `solution` | required | The `.sln`/`.slnx` every dotnet command runs against. |
 | `configuration` | `Release` | Build configuration (ci-cd.yml: `--configuration Release`). |
-| `runsettings` | none | Passed to `dotnet test --settings`: the coverage collector and its thresholds. |
+| `runsettings` | none | Passed to `dotnet test --settings`: the coverage collector settings (its `<Threshold>` is not enforced by the collector, see [`nerv pipeline test`](#nerv-pipeline-test)). |
 | `warnings_as_errors` | `true` | Build with `-warnaserror` (ci-cd.yml, test job). |
 | `env` | none | Environment variables for every dotnet command; literal values, never secrets. |
 

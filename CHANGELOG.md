@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- pipeline: `nerv pipeline validate` and `nerv pipeline test` run dim.comprobantes.api's validate and test jobs
+  locally from the `pipeline:` section (dotnet restore, format check, build with `-warnaserror`, tests with coverage
+  and a trx logger), in the working tree, with streamed output and a `--json` result; test results go to the
+  git-ignored `.nerv/artifacts/pipeline/test`.
 - release: a built-in semantic-release configuration (dim.comprobantes.api's: `main`, `develop` alpha, `release/*`
   rc on beta, `hotfix/*` beta; conventionalcommits, changelog, git, github) for repositories without one of their
   own; a `pipeline:` section's `branches` replace its branches. `nerv version next` and `nerv ship` say which

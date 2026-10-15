@@ -111,6 +111,7 @@ isn't taking effect.
 | `nerv version` | Print the binary and plugin versions |
 | `nerv version next` | Compute the next release version with semantic-release |
 | `nerv ship` | Release the repository from origin: pipeline, semantic-release, publish |
+| `nerv pipeline <step>` | Run a step of the Docker pipeline (`validate`, `test`) |
 | `nerv configure` | Configure NERV non-interactively (or run the wizard) |
 | `nerv install` | Install NERV (plugin, cache, skills, Engram KB) |
 | `nerv uninstall` | Uninstall NERV |
@@ -189,6 +190,20 @@ nerv version next --branch develop --json
 
 ```
 nerv version next --offline --format env >> "$GITHUB_OUTPUT"
+```
+
+### nerv pipeline
+
+Runs one step of the Docker pipeline configured in the `pipeline:` section
+(a standalone copy of dim.comprobantes.api's CI/CD): `validate` (`dotnet
+restore`, `dotnet format --verify-no-changes`) and `test` (restore, build
+with `-warnaserror`, `dotnet test` with coverage and a trx logger, results
+in `.nerv/artifacts/pipeline/test`). Both run in your working tree. Details:
+[pipeline.md](pipeline.md#running-the-steps).
+
+```
+nerv pipeline validate
+nerv pipeline test --json
 ```
 
 ### nerv ship
