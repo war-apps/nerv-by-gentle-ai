@@ -169,8 +169,8 @@ Adjust branch names to the repository's (`master`, no `release/rc`) and
 add to the git `assets` every file the release commit must hold (the
 dotnet `project_file`, each project's CHANGELOG, `package.json` when
 `@semantic-release/npm` bumps it). Create it only on an explicit yes, and
-say it must be committed and pushed: `nerv ship` reads origin's committed
-configuration.
+say it must be committed and pushed: `nerv ship` uses the semantic-release
+configuration on origin's branch (only `.nerv/nerv.yaml` is read locally).
 
 ## 6. Write and validate
 
@@ -193,9 +193,10 @@ configuration.
 
 Tell the user, without doing any of it:
 
-1. Review, commit and push `.nerv/nerv.yaml` (and the semantic-release
-   configuration if step 5 created it): `nerv ship` plans from the
-   `release:` section committed on origin, not the local file.
+1. Review `.nerv/nerv.yaml`: `nerv ship` uses this local file as it is,
+   committed or not. Committing it is recommended so the team shares it,
+   but not required. If step 5 created a semantic-release configuration,
+   commit and push that: the release uses origin's.
 2. Then run `/nerv:ship` — it always rehearses with a dry run first and
    releases only after an explicit yes.
 

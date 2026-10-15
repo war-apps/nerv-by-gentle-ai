@@ -11,7 +11,9 @@ publish (docker, NuGet, npm) and hooks, per project in dependency order, in
 a throwaway clone. The user's repository is never modified.
 
 `nerv ship` releases **what is on origin**: the local branch must equal
-origin's (it never pushes the user's commits). `--branch <name>` picks the
+origin's (it never pushes the user's commits). Its `release:` section is
+the local `.nerv/nerv.yaml`, committed or not; a path it names that is not
+on origin's branch is refused. `--branch <name>` picks the
 branch (default: the current one); `--project <name>` releases only that
 project of the `release:` section.
 
@@ -45,7 +47,8 @@ Never add flags other than the ones written here.
 
 2. **On a refusal or failure, stop.** Exit 1 (`status` `refused`) is a
    refusal: the local branch is not origin's (push or pull first), branch
-   not on origin, no origin remote, an invalid `release:` section (every
+   not on origin, no origin remote, a path of the local `release:` section
+   not on origin's branch, an invalid `release:` section (every
    problem listed) or an unknown project. Exit 2 (`failed`) is a failed step
    or an environment problem (origin unreachable, git, node or npm missing).
    130, 143 or 129 means it was interrupted. Show `error` and the relevant

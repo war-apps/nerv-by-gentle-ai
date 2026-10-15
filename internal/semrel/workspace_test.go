@@ -9,6 +9,8 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/war-apps/nerv-by-gentle-ai/internal/shipconfig"
 )
 
 func TestReleaseURL(t *testing.T) {
@@ -306,8 +308,7 @@ func TestWorkspace_ReleaseIsARealRunGuardedByTheComputedVersion(t *testing.T) {
 		}
 		return respond(map[string]any{"ok": true, "released": true, "nextRelease": map[string]any{"version": "1.1.0", "gitTag": "web-v1.1.0", "gitHead": "def"}})
 	})
-	ws := openWorkspace(t, f, root)
-	writeConfig(t, ws.Dir(), `release:
+	writeConfig(t, root, `release:
   projects:
     - name: core
       path: core
@@ -319,6 +320,7 @@ func TestWorkspace_ReleaseIsARealRunGuardedByTheComputedVersion(t *testing.T) {
         - project: core
           bump: minor
 `)
+	ws := openWorkspace(t, f, root)
 	base := f.handle
 	f.handle = func(c Command) (Result, error) {
 		if isNodeScript(c) {
@@ -471,8 +473,8 @@ func TestWorkspace_ReleaseWarnsOnceWhenTheChangelogCannotApply(t *testing.T) {
 		return respond(map[string]any{"ok": true, "released": true, "changelogIgnored": true,
 			"nextRelease": map[string]any{"version": "1.1.0", "gitTag": "x"}})
 	})
+	writeConfig(t, root, "release:\n  projects:\n    - name: api\n      path: api\n    - name: web\n      path: web\n")
 	ws := openWorkspace(t, f, root)
-	writeConfig(t, ws.Dir(), "release:\n  projects:\n    - name: api\n      path: api\n    - name: web\n      path: web\n")
 	var out strings.Builder
 	for _, p := range []string{"api", "web"} {
 		if _, err := ws.Release(context.Background(), ReleaseRequest{Expected: ProjectResult{Project: p, NewReleasePublished: true, NewReleaseVersion: "1.1.0"}, Output: &out}); err != nil {
@@ -481,5 +483,71 @@ func TestWorkspace_ReleaseWarnsOnceWhenTheChangelogCannotApply(t *testing.T) {
 	}
 	if n := strings.Count(out.String(), "@semantic-release/changelog"); n != 1 {
 		t.Errorf("warning printed %d times, want once:\n%s", n, out.String())
+	}
+}
+
+func TestWorkspace_UsesTheUserRepositorysLocalConfiguration(t *testing.T) {
+	root := t.TempDir()
+	// The user's working tree (committed or not) declares api and web.
+	writeConfig(t, root, "release:\n  projects:\n    - name: api\n      path: api\n    - name: web\n      path: web\n")
+	var runs []runnerRequest
+	f := workspaceRunner(t, root, "https://github.com/acme/w.git", "abc", func(req runnerRequest) (Result, error) {
+		if req.Mode == "plan" {
+			return okPlan()
+		}
+		runs = append(runs, req)
+		return respond(map[string]any{"ok": true, "released": true, "nextRelease": map[string]any{"version": "1.1.0", "gitTag": "t"}})
+	})
+	base := f.handle
+	f.handle = func(c Command) (Result, error) {
+		if isGit(c, "rev-parse", "--show-toplevel") && c.Args[1] != root {
+			return Result{Stdout: []byte(c.Args[1] + "\n")}, nil
+		}
+		return base(c)
+	}
+	ws := openWorkspace(t, f, root)
+	// Origin's copy in the clone says something else; it must be ignored.
+	writeConfig(t, ws.Dir(), "release:\n  projects:\n    - name: other\n      path: .\n")
+
+	if rel := ws.Config(); rel == nil || len(rel.Projects) != 2 || rel.Projects[1].Name != "web" {
+		t.Fatalf("Config() = %+v, want the user's api and web", rel)
+	}
+	results, err := ws.Compute(context.Background(), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(results) != 2 || results[0].Project != "api" || results[1].Project != "web" {
+		t.Errorf("computed %+v", results)
+	}
+	if _, err := ws.Release(context.Background(), ReleaseRequest{Expected: results[1], Computed: results}); err != nil {
+		t.Fatalf("Release(web): %v", err)
+	}
+	last := runs[len(runs)-1]
+	if last.Mode != "release" || last.Filter == nil || !slices.Equal(last.Filter.Paths, []string{"web"}) {
+		t.Errorf("release request %+v", last)
+	}
+}
+
+func TestWorkspace_SectionlessUserRepositoryIgnoresTheClonesSection(t *testing.T) {
+	root := t.TempDir()
+	f := workspaceRunner(t, root, "https://github.com/acme/w.git", "abc", nil)
+	ws := openWorkspace(t, f, root)
+	writeConfig(t, ws.Dir(), "release:\n  projects:\n    - name: other\n      path: .\n")
+	if ws.Config() != nil {
+		t.Errorf("Config() = %+v, want nil: the user's repository has no release: section", ws.Config())
+	}
+}
+
+func TestNewWorkspace_InvalidLocalConfigurationStopsBeforeCloning(t *testing.T) {
+	root := t.TempDir()
+	writeConfig(t, root, "release:\n  projects:\n    - name: api\n")
+	f := workspaceRunner(t, root, "https://github.com/acme/w.git", "abc", nil)
+	_, err := (&Engine{Runner: f}).NewWorkspace(context.Background(), WorkspaceOptions{RepoRoot: root, Branch: "main", Env: []string{}})
+	var invalid *shipconfig.ValidationError
+	if !errors.As(err, &invalid) {
+		t.Fatalf("err = %v, want a ValidationError", err)
+	}
+	if c := f.find(func(c Command) bool { return isGit(c, "clone") }); len(c) != 0 {
+		t.Errorf("cloned despite an invalid configuration")
 	}
 }
