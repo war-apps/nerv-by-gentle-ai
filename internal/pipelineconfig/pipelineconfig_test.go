@@ -295,6 +295,13 @@ func TestLoad_ValidationErrors(t *testing.T) {
 			"pipeline.branches[5].prerelease: true is not supported; give a fixed id such as beta",
 			"pipeline.branches: at least one release branch (without prerelease) is required",
 		}},
+		{"main branch is a pattern", `pipeline:
+  dotnet: { solution: App.slnx }
+  images: [{ name: ghcr.io/acme/app }]
+  sync: { enabled: false }
+  branches: [{ name: "release/*" }, { name: develop, prerelease: alpha }]
+`, []string{`pipeline.branches[0].name: "release/*" is the main branch (the first release branch) and must be a branch name, not a pattern`}},
+		{"solution with surrounding spaces", strings.Replace(minimal, "App.slnx", `" App.slnx "`, 1), []string{`pipeline.dotnet.solution: " App.slnx " has leading or trailing spaces`}},
 		{"too many release branches", `pipeline:
   dotnet: { solution: App.slnx }
   images: [{ name: ghcr.io/acme/app }]

@@ -65,9 +65,12 @@ func (p *Pipeline) validate() []string {
 
 func (v *validator) checkDotnet(d Dotnet) {
 	const at = "pipeline.dotnet"
-	if strings.TrimSpace(d.Solution) == "" {
+	switch {
+	case strings.TrimSpace(d.Solution) == "":
 		v.addf("%s.solution: required", at)
-	} else {
+	case strings.TrimSpace(d.Solution) != d.Solution:
+		v.addf("%s.solution: %q has leading or trailing spaces", at, d.Solution)
+	default:
 		v.checkPath(at+".solution", d.Solution)
 	}
 	if d.Runsettings != "" {
@@ -110,6 +113,12 @@ func (v *validator) checkBranches(branches []Branch) {
 			v.addf("%s.channel: %q is not a valid channel (it is also an image tag: letters, digits, _, . and -)", at, b.Channel)
 		}
 		if b.Name != "" && !b.IsPrerelease() {
+			// The first release branch is the main branch (MainBranch): the
+			// latest tag and the sync step use it by name, so it cannot be a
+			// pattern.
+			if releases == 0 && strings.ContainsAny(b.Name, "*?[") {
+				v.addf("%s.name: %q is the main branch (the first release branch) and must be a branch name, not a pattern", at, b.Name)
+			}
 			releases++
 		}
 	}
