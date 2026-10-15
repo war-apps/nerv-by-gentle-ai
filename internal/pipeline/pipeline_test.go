@@ -101,6 +101,10 @@ func TestTest_Commands(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			f := &fakeSteps{}
 			repo := t.TempDir()
+			// A runsettings without a threshold: nothing to enforce.
+			if err := os.WriteFile(filepath.Join(repo, "coverlet.runsettings"), []byte("<RunSettings />"), 0o644); err != nil {
+				t.Fatal(err)
+			}
 			r := Steps{Repo: repo, Config: config(tt.mod), Run: f}.Test(context.Background())
 			results := filepath.Join(repo, ".nerv", "artifacts", "pipeline", "test")
 			for i := range tt.test {
@@ -190,22 +194,5 @@ func TestSteps_InterruptedOrUnstartable(t *testing.T) {
 	r := Steps{Repo: t.TempDir(), Config: config(nil), Run: f}.Validate(ctx)
 	if r.Status != StatusInterrupted || r.Commands[0].Exit != -1 {
 		t.Errorf("result %+v", r)
-	}
-}
-
-func TestTest_WarnsThatRunsettingsThresholdsAreNotEnforced(t *testing.T) {
-	repo := t.TempDir()
-	rs := `<RunSettings><DataCollectionRunSettings><DataCollectors><DataCollector friendlyName="XPlat code coverage"><Configuration><Threshold>100,80,100</Threshold></Configuration></DataCollector></DataCollectors></DataCollectionRunSettings></RunSettings>`
-	if err := os.WriteFile(filepath.Join(repo, "coverlet.runsettings"), []byte(rs), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	cfg := config(func(p *pipelineconfig.Pipeline) { p.Dotnet.Runsettings = "coverlet.runsettings" })
-	r := Steps{Repo: repo, Config: cfg, Run: &fakeSteps{}}.Test(context.Background())
-	if len(r.Warnings) != 1 || !strings.Contains(r.Warnings[0], "Threshold") || !strings.Contains(r.Warnings[0], "not enforced") {
-		t.Errorf("warnings %v", r.Warnings)
-	}
-	r = Steps{Repo: repo, Config: config(nil), Run: &fakeSteps{}}.Test(context.Background())
-	if len(r.Warnings) != 0 {
-		t.Errorf("warnings without runsettings: %v", r.Warnings)
 	}
 }

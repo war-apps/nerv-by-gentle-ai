@@ -27,7 +27,8 @@ Steps:
   validate   dotnet restore, then dotnet format --verify-no-changes
   test       dotnet restore, build (-warnaserror unless warnings_as_errors
              is false), dotnet test with coverlet's collector, the
-             runsettings and a trx logger; results in
+             runsettings and a trx logger, then the runsettings'
+             coverage thresholds; results in
              .nerv/artifacts/pipeline/test (git-ignored)
 
 validate and test run in your working tree, as CI runs on a checkout: they
@@ -138,9 +139,7 @@ func runPipelineStep(ctx context.Context, step, cwd string, stderr io.Writer, op
 	case "test":
 		res = steps.Test(ctx)
 	}
-	for _, w := range res.Warnings {
-		fmt.Fprintf(stderr, "nerv pipeline %s: warning: %s\n", step, w)
-	}
+
 	if res.Status != pipeline.StatusPassed {
 		fmt.Fprintf(stderr, "nerv pipeline %s: %s\n", step, res.Error)
 		return res, 2
@@ -174,6 +173,9 @@ func writePipelineResult(w io.Writer, asJSON bool, res pipeline.Result) error {
 			for _, c := range a.Coverage {
 				fmt.Fprintf(&b, "  coverage: %s\n", c)
 			}
+		}
+		for _, n := range res.Notes {
+			fmt.Fprintf(&b, "  %s\n", n)
 		}
 		if res.Error != "" {
 			fmt.Fprintf(&b, "  error: %s\n", res.Error)

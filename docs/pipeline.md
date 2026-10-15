@@ -14,7 +14,7 @@ workflow in the repository is ignored.
 | Step | What it does (dim's job) |
 |---|---|
 | `validate` | `dotnet restore` and `dotnet format --verify-no-changes` (validate) |
-| `test` | `dotnet build -warnaserror`, `dotnet test` with coverage and the runsettings (test) |
+| `test` | `dotnet build -warnaserror`, `dotnet test` with coverage and the runsettings, then the runsettings' coverage thresholds (test) |
 | `release` | semantic-release on origin's state: version, channel, tag (release) |
 | `docker` | build, tag and push every image (docker) |
 | `sync` | merge the released branch back into develop and main into `release/*` (sync-to-develop, sync-main-to-release) |
@@ -70,15 +70,37 @@ project, listed in the result (also after a failure, as dim uploads them
 always). `.nerv/artifacts/` gets a `.gitignore` of `*`, so nothing there is
 committed and the repository's own `.gitignore` is not touched.
 
-**Coverage thresholds.** NERV does not check coverage itself: thresholds
-are whatever the runsettings and coverlet enforce, exactly as in dim's CI.
-Note that coverlet's **collector** (`XPlat Code Coverage`, the
-`coverlet.collector` package dim uses) ignores `<Threshold>` in the
-runsettings: verified with coverlet.collector 6.0.4, a project at 50% line
-coverage against `100,80,100` passes `dotnet test` with exit 0. `nerv
-pipeline test` warns when the runsettings declares a `<Threshold>`.
-coverlet documents thresholds for its MSBuild and console integrations
-(`coverlet.msbuild` with `/p:Threshold=...`), not for the collector.
+**Coverage thresholds.** coverlet's **collector** (`XPlat Code Coverage`,
+the `coverlet.collector` package dim uses) writes the reports but ignores
+`<Threshold>` in the runsettings: verified with coverlet.collector 6.0.4, a
+project at 50% line coverage against `100,80,100` passes `dotnet test`
+with exit 0. So after `dotnet test` succeeds, `nerv pipeline test` enforces
+the thresholds itself, with coverlet's own semantics (verified by calling
+coverlet.core 6.0.4 directly):
+
+| Setting (collector `Configuration`) | Meaning |
+|---|---|
+| `Threshold` | Percentages, comma-separated, in the order of `ThresholdType`; a single value applies to every type. |
+| `ThresholdType` | Any of `line`, `branch`, `method` (default all three, in that order). |
+| `ThresholdStat` | `total` (all modules together, dim's), `average` (the mean of each module's percentage) or `minimum` (the lowest module's; coverlet's default). |
+
+- line: covered lines / lines of every method; branch: covered branches /
+  branches; method: methods with at least one covered line / methods; a
+  metric with nothing to cover counts as 100%.
+- Percentages are truncated to hundredths, never rounded up; a threshold
+  is missed when the percentage is lower than it.
+- Modules are the reports' packages. Several reports (one per test
+  project) are merged per line, as coverlet merges results, so a module in
+  two reports is not counted twice.
+- The collector's `Include` / `Exclude` / `ExcludeByFile` /
+  `ExcludeByAttribute` filters were already applied when it wrote the
+  reports; nothing is filtered again.
+- No runsettings, or no `Threshold` in it: no check. A missed threshold
+  fails the step (exit 2) naming each metric, e.g. `coverage below the
+  thresholds of coverlet.runsettings (total): line 50% < 100%, branch 100%
+  >= 80%, method 50% < 100%`; when met, the result carries a note such as
+  `coverage (total): line 100% >= 100%, branch 85.71% >= 80%, method 100%
+  >= 100%`.
 
 ### Result
 
@@ -90,7 +112,7 @@ reports; with `--json`, one document:
 {"step":"test","status":"failed","commands":[{"argv":["dotnet","restore","App.slnx"],"exit":0},{"argv":["dotnet","build","App.slnx","--configuration","Release","--no-restore","-warnaserror"],"exit":1}],"artifacts":{"results_dir":"/repo/.nerv/artifacts/pipeline/test","trx":"/repo/.nerv/artifacts/pipeline/test/test-results.trx"},"error":"dotnet build: ..."}
 ```
 
-`warnings` is added when there is one (the threshold note). Exit codes: `0`
+`notes` holds the coverage check when one ran. Exit codes: `0`
 passed, `1` refused (no or invalid `pipeline:` section, not a git
 repository), `2` a command failed or a tool is missing, `128 + signal`
 interrupted.
@@ -181,7 +203,7 @@ The source column cites where each default comes from in dim's
 |---|---|---|
 | `solution` | required | The `.sln`/`.slnx` every dotnet command runs against. |
 | `configuration` | `Release` | Build configuration (ci-cd.yml: `--configuration Release`). |
-| `runsettings` | none | Passed to `dotnet test --settings`: the coverage collector settings (its `<Threshold>` is not enforced by the collector, see [`nerv pipeline test`](#nerv-pipeline-test)). |
+| `runsettings` | none | Passed to `dotnet test --settings`: the coverage collector settings; its `<Threshold>` is enforced by nerv (see [`nerv pipeline test`](#nerv-pipeline-test)). |
 | `warnings_as_errors` | `true` | Build with `-warnaserror` (ci-cd.yml, test job). |
 | `env` | none | Environment variables for every dotnet command; literal values, never secrets. |
 

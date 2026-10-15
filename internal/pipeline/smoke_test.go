@@ -104,6 +104,9 @@ func TestSmoke_ValidateAndTest(t *testing.T) {
 	if r.Status != StatusPassed || len(r.Commands) != 3 || len(r.Artifacts.Coverage) != 1 {
 		t.Fatalf("test %+v\n%s", r, out.String())
 	}
+	if len(r.Notes) != 1 || r.Notes[0] != "coverage (total): line 100% >= 100%, branch 100% >= 80%, method 100% >= 100%" {
+		t.Errorf("coverage note %v", r.Notes)
+	}
 	if _, err := os.Stat(r.Artifacts.Trx); err != nil {
 		t.Errorf("trx: %v", err)
 	}
@@ -115,13 +118,15 @@ func TestSmoke_ValidateAndTest(t *testing.T) {
 		t.Logf("git init: %v %s", err, status)
 	}
 
-	// An uncovered method breaches the runsettings' 100% thresholds, yet
-	// coverlet's collector ignores <Threshold>: the step passes, warned.
+	// An uncovered method breaches the runsettings' 100% thresholds:
+	// dotnet test passes (coverlet's collector ignores <Threshold>), and
+	// nerv's coverage check fails the step.
 	write(t, root, "Calc/More.cs", "namespace Calc;\n\npublic static class More\n{\n    public static int Sub(int a, int b) => a - b;\n}\n")
 	out.Reset()
 	r = smokeSteps(root, cfg, &out).Test(ctx)
-	if r.Status != StatusPassed || len(r.Warnings) != 1 {
-		t.Errorf("uncovered method: %+v\n%s", r, out.String())
+	want := "coverage below the thresholds of coverlet.runsettings (total): line 50% < 100%, branch 100% >= 80%, method 50% < 100%"
+	if r.Status != StatusFailed || len(r.Commands) != 3 || r.Commands[2].Exit != 0 || r.Error != want {
+		t.Errorf("uncovered method: %+v\nwant error %q\n%s", r, want, out.String())
 	}
 	if data, err := os.ReadFile(r.Artifacts.Coverage[0]); err != nil || !strings.Contains(string(data), `line-rate="0.5"`) {
 		t.Errorf("coverage report: %v\n%.400s", err, data)

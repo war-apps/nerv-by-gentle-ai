@@ -18,7 +18,6 @@ import (
 	"maps"
 	"os"
 	"path/filepath"
-	"regexp"
 	"slices"
 	"strings"
 
@@ -79,8 +78,9 @@ type Result struct {
 	Status    string          `json:"status"`
 	Commands  []CommandResult `json:"commands"`
 	Artifacts Artifacts       `json:"artifacts"`
-	Warnings  []string        `json:"warnings,omitempty"`
-	Error     string          `json:"error,omitempty"`
+	// Notes say what was checked beyond the commands (the coverage gate).
+	Notes []string `json:"notes,omitempty"`
+	Error string   `json:"error,omitempty"`
 	// Err is the failure, for callers (not serialised).
 	Err error `json:"-"`
 }
@@ -111,9 +111,9 @@ func (s Steps) Validate(ctx context.Context) Result {
 // Test is dim's test job: restore, the single build (with -warnaserror
 // unless warnings_as_errors is false), then dotnet test --no-build with
 // coverlet's collector, the runsettings when set and a trx logger. The
-// results go to ResultsDir (dim uploads them as an artifact); the coverage
-// thresholds are whatever the runsettings and coverlet do: NERV does not
-// check them itself.
+// results go to ResultsDir (dim uploads them as an artifact). Then the
+// coverage thresholds of the runsettings are enforced on the reports
+// (checkCoverage): coverlet's collector ignores them.
 func (s Steps) Test(ctx context.Context) Result {
 	d := s.Config.Dotnet
 	r := &Result{Step: "test", Status: StatusPassed, Commands: []CommandResult{}}
@@ -123,9 +123,6 @@ func (s Steps) Test(ctx context.Context) Result {
 		return *r
 	}
 	r.Artifacts = Artifacts{ResultsDir: results, Trx: filepath.Join(results, TrxFile)}
-	if w := thresholdWarning(s.Repo, d.Runsettings); w != "" {
-		r.Warnings = append(r.Warnings, w)
-	}
 	build := []string{"dotnet", "build", d.Solution, "--configuration", d.Configuration, "--no-restore"}
 	if d.TreatWarningsAsErrors() {
 		build = append(build, "-warnaserror")
@@ -136,9 +133,18 @@ func (s Steps) Test(ctx context.Context) Result {
 	}
 	test = append(test, "--logger", "trx;LogFileName="+TrxFile, "--results-directory", results)
 	s.run(ctx, r, []string{"dotnet", "restore", d.Solution}, build, test)
-	// Reported even after a failure: a breached coverage threshold or a
-	// failing test still leaves the reports (dim uploads them always).
+	// Reported even after a failure: a failing test still leaves the
+	// reports (dim uploads them always).
 	r.Artifacts.Coverage = coverageReports(results)
+	if r.Status == StatusPassed && d.Runsettings != "" {
+		note, err := checkCoverage(s.Repo, d.Runsettings, r.Artifacts.Coverage)
+		switch {
+		case err != nil:
+			r.fail(err)
+		case note != "":
+			r.Notes = append(r.Notes, note)
+		}
+	}
 	return *r
 }
 
@@ -215,20 +221,5 @@ func coverageReports(results string) []string {
 	return out
 }
 
-var thresholdRe = regexp.MustCompile(`<Threshold>\s*[^<\s]`)
-
-// thresholdWarning says, when the runsettings declares a coverlet
-// <Threshold>, that it is not enforced: coverlet's collector ("XPlat Code
-// Coverage") ignores it (observed with coverlet.collector 6.0.4: 50% line
-// coverage against a 100% threshold, dotnet test exit 0), and NERV does
-// not check it either.
-func thresholdWarning(repo, runsettings string) string {
-	if runsettings == "" {
-		return ""
-	}
-	data, err := os.ReadFile(filepath.Join(repo, filepath.FromSlash(runsettings)))
-	if err != nil || !thresholdRe.Match(data) {
-		return ""
-	}
-	return fmt.Sprintf("%s declares a coverage <Threshold>, which is not enforced: coverlet's collector (XPlat Code Coverage) ignores it, and nerv does not check it", runsettings)
-}
+// repoPath is a repository-relative path (forward slashes) under repo.
+func repoPath(repo, rel string) string { return filepath.Join(repo, filepath.FromSlash(rel)) }
