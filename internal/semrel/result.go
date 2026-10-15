@@ -97,6 +97,9 @@ type runnerRequest struct {
 	// GitHubRelease includes @semantic-release/github in the built-in
 	// configuration (origin is on GitHub).
 	GitHubRelease bool `json:"githubRelease"`
+	// ExtraAssets are files the built-in configuration's git plugin commits
+	// with the changelog.
+	ExtraAssets []string `json:"extraAssets,omitempty"`
 }
 
 // commitFilter keeps the commits that touch Paths or carry one of Scopes.

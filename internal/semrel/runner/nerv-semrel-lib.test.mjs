@@ -412,3 +412,8 @@ test("defaultConfig leaves the GitHub plugin out for an origin not on GitHub", (
   assert.equal(off.length, 4);
   assert.ok(!off.includes("@semantic-release/github"));
 });
+
+test("defaultConfig commits extra assets with the changelog", () => {
+  const git = defaultConfig([{ name: "main" }], { assets: ["src/Api/Api.csproj", "CHANGELOG.md"] }).plugins[3];
+  assert.deepEqual(git, ["@semantic-release/git", { assets: ["CHANGELOG.md", "src/Api/Api.csproj"] }]);
+});

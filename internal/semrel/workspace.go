@@ -273,6 +273,11 @@ type ReleaseRequest struct {
 	Env []string
 	// Output receives semantic-release's log; nil discards it.
 	Output io.Writer
+	// ExtraAssets are repository-relative files the release commit must hold
+	// besides the changelog (version files written in the clone). Applied to
+	// the built-in configuration's @semantic-release/git only: a
+	// repository's own configuration lists its own assets.
+	ExtraAssets []string
 }
 
 // Release runs semantic-release for real in the clone for one project, with
@@ -346,6 +351,7 @@ func (w *Workspace) Release(ctx context.Context, req ReleaseRequest) (ProjectRes
 		UseDefault:       configFile == "",
 		Branches:         defaults,
 		GitHubRelease:    remoteIsGitHub(w.public, env),
+		ExtraAssets:      extraAssets(configFile, req.ExtraAssets),
 		CommitFilesCache: filepath.Join(w.root, "commit-files.json"),
 	}, req.Output)
 	if m := resp.VersionMismatch; m != nil {

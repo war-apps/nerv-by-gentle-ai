@@ -167,6 +167,15 @@ func (e *Engine) branchNames(ctx context.Context, dir string, env []string, pref
 	return names, nil
 }
 
+// extraAssets are the assets to add to the built-in configuration's git
+// plugin: none when the repository has its own configuration.
+func extraAssets(configFile string, assets []string) []string {
+	if configFile != "" || len(assets) == 0 {
+		return nil
+	}
+	return assets
+}
+
 // configSource sets where r's semantic-release configuration came from.
 func configSource(r *ProjectResult, configFile string) {
 	if configFile == "" {

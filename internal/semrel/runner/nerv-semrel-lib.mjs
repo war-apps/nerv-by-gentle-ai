@@ -316,8 +316,10 @@ const DIM_NOTES_OPTIONS = () => ({
 // channel?} (the pipeline: section's, or its defaults, sent by Go); a branch
 // with neither is written as its bare name. @semantic-release/github is
 // included only when github is true (origin on GitHub): elsewhere it fails
-// its checks (EINVALIDGITHUBURL). Fresh objects on every call.
-export function defaultConfig(branches, { github = true } = {}) {
+// its checks (EINVALIDGITHUBURL). assets are extra files the git plugin
+// commits with the changelog (nerv pipeline release's version files).
+// Fresh objects on every call.
+export function defaultConfig(branches, { github = true, assets = [] } = {}) {
   if (!Array.isArray(branches) || branches.length === 0) {
     throw new Error("the built-in semantic-release configuration needs its branches");
   }
@@ -329,7 +331,7 @@ export function defaultConfig(branches, { github = true } = {}) {
       ["@semantic-release/commit-analyzer", DIM_NOTES_OPTIONS()],
       ["@semantic-release/release-notes-generator", DIM_NOTES_OPTIONS()],
       ["@semantic-release/changelog", { changelogFile: "CHANGELOG.md" }],
-      ["@semantic-release/git", { assets: ["CHANGELOG.md"] }],
+      ["@semantic-release/git", { assets: ["CHANGELOG.md", ...assets.filter((a) => a !== "CHANGELOG.md")] }],
       ...(github ? ["@semantic-release/github"] : []),
     ],
   };

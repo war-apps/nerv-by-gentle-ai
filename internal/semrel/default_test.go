@@ -211,7 +211,7 @@ func TestWorkspaceRelease_BuiltInConfigurationRequest(t *testing.T) {
 				return base(c)
 			}
 			ws := openWorkspace(t, f, root)
-			r, err := ws.Release(context.Background(), ReleaseRequest{Expected: ProjectResult{Project: filepath.Base(root), NewReleasePublished: true, NewReleaseVersion: "1.1.0"}})
+			r, err := ws.Release(context.Background(), ReleaseRequest{Expected: ProjectResult{Project: filepath.Base(root), NewReleasePublished: true, NewReleaseVersion: "1.1.0"}, ExtraAssets: []string{"src/Api/Api.csproj"}})
 			if tt.wantErr != nil {
 				if !errors.Is(err, tt.wantErr) || len(runs) != 0 {
 					t.Fatalf("err = %v, runs %d", err, len(runs))
@@ -221,9 +221,28 @@ func TestWorkspaceRelease_BuiltInConfigurationRequest(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if len(runs) != 1 || !runs[0].UseDefault || runs[0].GitHubRelease != tt.wantGitHub || r.SemanticReleaseConfig != ConfigBuiltIn {
+			if len(runs) != 1 || !runs[0].UseDefault || runs[0].GitHubRelease != tt.wantGitHub || r.SemanticReleaseConfig != ConfigBuiltIn || !slices.Equal(runs[0].ExtraAssets, []string{"src/Api/Api.csproj"}) {
 				t.Errorf("runs %+v, result %+v", runs, r)
 			}
 		})
+	}
+}
+
+func TestWorkspaceRelease_ExtraAssetsOnlyForTheBuiltInConfiguration(t *testing.T) {
+	root := t.TempDir()
+	var runs []runnerRequest
+	f := workspaceRunner(t, root, "https://github.com/acme/w.git", "abc", func(req runnerRequest) (Result, error) {
+		if req.Mode == "plan" {
+			return respond(map[string]any{"ok": true, "packages": []string{}, "configFile": ".releaserc.json"})
+		}
+		runs = append(runs, req)
+		return respond(map[string]any{"ok": true, "released": true, "nextRelease": map[string]any{"version": "1.1.0", "gitTag": "v1.1.0"}})
+	})
+	ws := openWorkspace(t, f, root)
+	if _, err := ws.Release(context.Background(), ReleaseRequest{Expected: ProjectResult{Project: filepath.Base(root), NewReleasePublished: true, NewReleaseVersion: "1.1.0"}, ExtraAssets: []string{"a.csproj"}}); err != nil {
+		t.Fatal(err)
+	}
+	if len(runs) != 1 || runs[0].UseDefault || runs[0].ExtraAssets != nil {
+		t.Errorf("request %+v: the repository's own configuration keeps its own assets", runs)
 	}
 }
