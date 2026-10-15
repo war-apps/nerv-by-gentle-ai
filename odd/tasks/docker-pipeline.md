@@ -62,7 +62,7 @@ configurable with the data it needs; deploy option (Docker only for now).
 - [x] P1 — `pipeline:` configuration schema, validation and docs.
 - [x] P2 — built-in default semantic-release configuration (dim's, with
   `release/*`), used by the engine when the repository has none.
-- [ ] P3 — `validate` and `test` steps.
+- [x] P3 — `validate` and `test` steps.
 - [ ] P4 — `release` step (reuse the ship workspace and version guard).
 - [ ] P5 — `docker` step (tags, computed build args, login, push, retry).
 - [ ] P6 — `sync` step.
@@ -265,7 +265,66 @@ directly.
   deletions(-)). Total `git diff --shortstat f4c9b9d a409dcd`: 14 files
   changed, 287 insertions(+), 20 deletions(-).
 
+### P3
+
+- Route: delegated (one bounded writer; trigger: new package, CLI, docs).
+- `internal/pipeline` (new): `Steps{Repo, Config, Run}` with `Validate` and
+  `Test`, returning `Result{step, status, commands[{argv, exit}],
+  artifacts{results_dir, trx, coverage}, warnings, error}`. Commands are
+  `shiprun.Step` Exec steps (no shell, whole-tree kill), output prefix
+  `[pipeline:<step>] ` (Vars.Project `pipeline`), stop at the first
+  failure naming it (`dotnet build: ...`). `internal/shiprun`,
+  `internal/proc` and `internal/pipelineconfig` unchanged.
+- `cmd/nerv/pipeline.go`: `nerv pipeline <step> [--cwd] [--json]`, steps
+  `validate`, `test` (only the implemented ones are listed); seam
+  `options.PipelineSteps`; loads the local `pipeline:` section (none ->
+  refusal pointing to docs/pipeline.md; invalid -> refusal listing the
+  problems); exit 0 / 1 refused / 2 failed / 128 + signal; text or one
+  JSON document on every path past the flags (status `refused` added).
+- Decisions:
+  - Both steps run in the user's working tree (like CI on a checkout).
+  - Every dotnet command gets dim's workflow env `DOTNET_NOLOGO=true`,
+    `DOTNET_CLI_TELEMETRY_OPTOUT=true`, then `pipeline.dotnet.env` over it.
+  - Test results: `--results-directory <repo>/.nerv/artifacts/pipeline/test`
+    (dim passes none; a fixed place is needed to report them), emptied per
+    run; `.nerv/artifacts/.gitignore` = `*` so it is never committed without
+    touching the repository's `.gitignore` (smoke: `git status --porcelain
+    -- .nerv` empty). Coverage reports listed even after a failure.
+  - Flags follow the step (`nerv pipeline <step> [flags]`).
+- **Finding (verified, contradicts the brief's premise):**
+  `coverlet.collector` 6.0.4 (dim's package, `XPlat Code Coverage`) ignores
+  `<Threshold>` in the runsettings. Experiment (dotnet 10.0.112, classlib
+  with `Add` covered and `Sub` uncovered, runsettings `100,80,100`
+  line,branch,method, total): line-rate 0.5, `Sub` line-rate 0, `dotnet
+  test` exit 0, no threshold message. So dim's CI does not enforce its
+  coverage gate today. As instructed, NERV does not re-check; `nerv
+  pipeline test` warns when the runsettings declares a `<Threshold>`
+  ("not enforced"), and the smoke test asserts the real behaviour (an
+  uncovered method passes, warned) instead of the brief's expected
+  failure. Open decision for the user: enforce the runsettings thresholds
+  in NERV (read them and check the cobertura reports, line/branch/method),
+  or switch dim to `coverlet.msbuild`, or keep as is.
+- RED: `go test ./internal/pipeline/` -> build failed (`undefined: Steps`,
+  `StatusPassed`); `go test ./cmd/nerv/` -> build failed
+  (`opts.PipelineSteps undefined`). GREEN: both `ok`; one test fix (flags
+  after the step).
+- Smoke (`TestSmoke_ValidateAndTest`, real dotnet 10.0.112, skipped under
+  `-short` or without dotnet): generated classlib + xunit + slnx +
+  runsettings: validate passed in 4.83s; test passed in 5.04s with one
+  coverage report and the trx; artifacts git-ignored; an uncovered method
+  passes with the warning (coverage line-rate 0.5); a failing test fails
+  at `dotnet test` (exit 1); misformatted code fails at `dotnet format`.
+  Whole smoke 23.9s (22.2s in the full suite).
+- Checks: `go test -count=1 ./...` exit 0 (29 packages, smoke included);
+  `go vet ./...`, `GOOS=windows go vet ./...` exit 0; `gofmt -l .` empty.
+- Commits: `7adda17` `feat(pipeline): run dim's validate and test jobs` (3
+  files changed, 591 insertions(+)); `cd0d19a` `feat(cli): add nerv
+  pipeline validate and test` (6 files changed, 459 insertions(+), 6
+  deletions(-)). Total `git diff --shortstat 8ae0406 cd0d19a`: 9 files
+  changed, 1050 insertions(+), 6 deletions(-). Above the ~400-line
+  heuristic: about 500 lines are tests (unit, CLI, smoke) and 130 docs.
+
 ## Next step
 
-Review of P2, then its pull request; then P3 (`validate` and `test`
-steps).
+Review of P3 and the user's decision on coverage thresholds; then P4
+(`release` step).
