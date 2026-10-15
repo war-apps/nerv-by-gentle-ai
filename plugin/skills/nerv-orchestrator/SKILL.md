@@ -80,7 +80,7 @@ carries "Do NOT delegate" in its own file and has no Agent tool access.
   from the role catalogue (as `/nerv:configure` and `docs/configuration.md`
   show it), the action short, concrete and in English (phase step, task id,
   round) — e.g. `(opus) Melchior-Magi 1: security audit, round 2`,
-  `(opus) Shinji Ikari: Retrying dotnet format verification`. The action
+  `(sonnet) Shinji Ikari: Retrying dotnet format verification`. The action
   never contains `|` or `;`, the deliberation log's field delimiters. The full
   brief stays in the launch prompt.
 

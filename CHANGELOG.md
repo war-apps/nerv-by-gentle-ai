@@ -21,7 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - orchestrator: agent launch labels and deliberation log `launch` lines show the role's model, as
-  `({model}) {Display name}: {action}` (e.g. `(opus) Shinji Ikari: Retrying dotnet format verification`).
+  `({model}) {Display name}: {action}` (e.g. `(sonnet) Shinji Ikari: Retrying dotnet format verification`).
 
 ## [4.1.1] - 2026-10-15
 
