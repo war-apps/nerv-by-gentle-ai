@@ -60,14 +60,17 @@ dim's test job:
 2. `dotnet build <solution> --configuration <configuration> --no-restore`,
    plus `-warnaserror` unless `warnings_as_errors: false`
 3. `dotnet test <solution> --configuration <configuration> --no-build
-   --collect "XPlat Code Coverage"`, plus `--settings <runsettings>` when
+   --collect "XPlat Code Coverage"` (with `;Format=...,json` when a
+   threshold is checked, see below), plus `--settings <runsettings>` when
    set, `--logger "trx;LogFileName=test-results.trx"` and
    `--results-directory <repo>/.nerv/artifacts/pipeline/test`
 
-The results directory is emptied at the start of every run; it holds
-`test-results.trx` and one `<run id>/coverage.cobertura.xml` per test
-project, listed in the result (also after a failure, as dim uploads them
-always). `.nerv/artifacts/` gets a `.gitignore` of `*`, so nothing there is
+The results directory is emptied at the start of every run (after
+checking that, symlinks resolved, it is inside `.nerv/artifacts` of the
+repository); it holds `test-results.trx` and, per test project,
+`<run id>/coverage.cobertura.xml` (and `<run id>/coverage.json` when a
+threshold is checked), listed in the result as `coverage` and
+`coverage_json` (also after a failure, as dim uploads them always). `.nerv/artifacts/` gets a `.gitignore` of `*`, so nothing there is
 committed and the repository's own `.gitignore` is not touched.
 
 **Coverage thresholds.** coverlet's **collector** (`XPlat Code Coverage`,
@@ -89,9 +92,23 @@ coverlet.core 6.0.4 directly):
   metric with nothing to cover counts as 100%.
 - Percentages are truncated to hundredths, never rounded up; a threshold
   is missed when the percentage is lower than it.
-- Modules are the reports' packages. Several reports (one per test
-  project) are merged per line, as coverlet merges results, so a module in
-  two reports is not counted twice.
+- When a threshold is checked, the step asks the collector for its JSON
+  report as well, for this run only: `--collect "XPlat Code
+  Coverage;Format=<the runsettings' formats>,json"`. VSTest merges that
+  with the runsettings, so every other setting of your file still applies
+  (verified with the .NET 10 SDK: its `Exclude` is honoured and both
+  reports are written); the file itself is not touched. The JSON report
+  lists every module, document, class, method, line hit count and each
+  branch with its own hit count.
+- The metrics come from the JSON reports. Several reports (one per test
+  project) are merged as coverlet merges results: line hits added per
+  line and branch hits per branch, so a module in two reports is not
+  counted twice and two projects covering the two branches of one line
+  make 2/2.
+- Without a JSON report (only Cobertura), the Cobertura reports are used:
+  their packages are the modules, and a line's branches are only a count
+  (`50% (1/2)`), not which branches, so the best count of a line is kept;
+  two projects covering different branches of one line then count 1/2.
 - The collector's `Include` / `Exclude` / `ExcludeByFile` /
   `ExcludeByAttribute` filters were already applied when it wrote the
   reports; nothing is filtered again.

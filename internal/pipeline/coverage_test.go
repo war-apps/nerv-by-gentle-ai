@@ -2,8 +2,10 @@ package pipeline
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -293,5 +295,153 @@ func TestMeasure_NoModulesIsFullCoverage(t *testing.T) {
 		if got := cov.percent("line", stat); got != 10000 {
 			t.Errorf("%s: %d hundredths, want 10000 (nothing to cover)", stat, got)
 		}
+	}
+}
+
+// jsonReport is coverlet's JSON format: module -> document -> class ->
+// method -> {Lines, Branches}.
+func jsonReport(t *testing.T, v any) string {
+	t.Helper()
+	data, err := json.Marshal(v)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(data)
+}
+
+type jm = map[string]any
+
+func branch(line, offset, end, path, ordinal, hits int) jm {
+	return jm{"Line": line, "Offset": offset, "EndOffset": end, "Path": path, "Ordinal": ordinal, "Hits": hits}
+}
+
+func writeJSONReports(t *testing.T, reports ...string) []string {
+	t.Helper()
+	dir := t.TempDir()
+	var paths []string
+	for i, r := range reports {
+		p := filepath.Join(dir, string(rune('a'+i)), CoverageJSONFile)
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(r), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		paths = append(paths, p)
+	}
+	return paths
+}
+
+func TestMeasureJSON_TwoProjectsCoveringDifferentBranchesOfALine(t *testing.T) {
+	// Each test project covers one branch of Sign's ternary (line 4): coverlet
+	// merges per branch, 2/2.
+	sign := func(pos, neg int) string {
+		return jsonReport(t, jm{"Calc.dll": jm{"/src/Calc/Ops.cs": jm{"Calc.Ops": jm{
+			"System.Int32 Calc.Ops::Sign(System.Int32)": jm{
+				"Lines":    jm{"4": pos + neg},
+				"Branches": []jm{branch(4, 2, 4, 0, 0, neg), branch(4, 2, 6, 1, 1, pos)},
+			},
+		}}}})
+	}
+	one, err := readJSONCoverage(writeJSONReports(t, sign(1, 0)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := percentText(one.percent("branch", StatTotal)); got != "50" {
+		t.Errorf("one project: branch %s%%, want 50%%", got)
+	}
+	both, err := readJSONCoverage(writeJSONReports(t, sign(1, 0), sign(0, 1)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for metric, want := range map[string]string{"line": "100", "branch": "100", "method": "100"} {
+		if got := percentText(both.percent(metric, StatTotal)); got != want {
+			t.Errorf("merged %s %s%%, want %s%% (coverlet merges per branch)", metric, got, want)
+		}
+	}
+}
+
+func TestMeasureJSON_MatchesCoverlet(t *testing.T) {
+	// The probe model of TestMeasure_MatchesCoverlet in coverlet's JSON format.
+	a := jsonReport(t, jm{"A.dll": jm{"a.cs": jm{"A.C": jm{
+		"M1": jm{"Lines": jm{"1": 1, "2": 0}, "Branches": []jm{branch(1, 0, 1, 0, 0, 1), branch(1, 0, 2, 1, 1, 0)}},
+		"M2": jm{"Lines": jm{"3": 0}, "Branches": []jm{}},
+	}}}})
+	b := jsonReport(t, jm{"B.dll": jm{"b.cs": jm{"B.D": jm{"M3": jm{"Lines": jm{"10": 1}, "Branches": []jm{}}}}}})
+	cov, err := readJSONCoverage(writeJSONReports(t, a, b))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]map[string]string{
+		StatTotal:   {"line": "50", "branch": "50", "method": "66.66"},
+		StatAverage: {"line": "66.66", "branch": "75", "method": "75"},
+		StatMinimum: {"line": "33.33", "branch": "50", "method": "50"},
+	}
+	for stat, metrics := range want {
+		for metric, w := range metrics {
+			if got := percentText(cov.percent(metric, stat)); got != w {
+				t.Errorf("%s %s = %s%%, want %s%% (coverlet)", stat, metric, got, w)
+			}
+		}
+	}
+}
+
+func TestCollectArg(t *testing.T) {
+	tests := []struct {
+		name, settings, want string
+	}{
+		{"no threshold: plain collector", collector(`<Format>cobertura</Format>`), "XPlat Code Coverage"},
+		{"threshold, dim's cobertura", dimRunsettings, "XPlat Code Coverage;Format=cobertura,json"},
+		{"threshold, no format", collector(`<Threshold>90</Threshold>`), "XPlat Code Coverage;Format=cobertura,json"},
+		{"threshold, user formats kept", collector(`<Format>opencover, cobertura</Format><Threshold>90</Threshold>`), "XPlat Code Coverage;Format=opencover,cobertura,json"},
+		{"threshold, json already", collector(`<Format>json</Format><Threshold>90</Threshold>`), "XPlat Code Coverage;Format=json"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gate, err := readGate([]byte(tt.settings))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := gate.collectArg(); got != tt.want {
+				t.Errorf("collectArg = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestTest_PrefersTheJSONReports(t *testing.T) {
+	repo := t.TempDir()
+	if err := os.WriteFile(filepath.Join(repo, "coverlet.runsettings"), []byte(collector(`<Threshold>100</Threshold><ThresholdType>branch</ThresholdType><ThresholdStat>total</ThresholdStat>`)), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	results := ResultsDir(repo)
+	sign := func(pos, neg int) string {
+		return jsonReport(t, jm{"Calc.dll": jm{"/src/Ops.cs": jm{"Calc.Ops": jm{"Sign": jm{
+			"Lines": jm{"4": 1}, "Branches": []jm{branch(4, 2, 4, 0, 0, neg), branch(4, 2, 6, 1, 1, pos)},
+		}}}}})
+	}
+	f := &fakeSteps{}
+	run := &writingSteps{inner: f, write: func() {
+		// Cobertura says 1/2 per line in each project; the JSON knows which.
+		half := strings.Replace(reportA, `<method name="M2"`, `<method name="Mx"`, 1)
+		for i, j := range []string{sign(1, 0), sign(0, 1)} {
+			dir := filepath.Join(results, string(rune('a'+i)))
+			os.MkdirAll(dir, 0o755)
+			os.WriteFile(filepath.Join(dir, CoverageJSONFile), []byte(j), 0o644)
+			os.WriteFile(filepath.Join(dir, CoverageFile), []byte(half), 0o644)
+		}
+	}}
+	cfg := config(nil)
+	cfg.Dotnet.Runsettings = "coverlet.runsettings"
+	r := Steps{Repo: repo, Config: cfg, Run: run}.Test(context.Background())
+	if r.Status != StatusPassed || len(r.Notes) != 1 || r.Notes[0] != "coverage (total): branch 100% >= 100%" {
+		t.Fatalf("result %+v", r)
+	}
+	if len(r.Artifacts.CoverageJSON) != 2 || len(r.Artifacts.Coverage) != 2 {
+		t.Errorf("artifacts %+v", r.Artifacts)
+	}
+	last := f.steps[len(f.steps)-1].Exec
+	if !slices.Contains(last, "XPlat Code Coverage;Format=cobertura,json") {
+		t.Errorf("dotnet test argv %v: want the JSON format requested", last)
 	}
 }

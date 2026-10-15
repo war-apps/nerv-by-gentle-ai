@@ -1,8 +1,10 @@
 package pipeline
 
 import (
+	"encoding/json"
 	"encoding/xml"
 	"fmt"
+	"maps"
 	"os"
 	"regexp"
 	"slices"
@@ -28,12 +30,21 @@ import (
 //     lowest module's;
 //   - a threshold is missed when the percentage is lower than it.
 //
-// Modules are the reports' packages. The collector's Include/Exclude
-// filters were already applied when it wrote the reports, so nothing is
-// filtered again here. Several reports (one per test project) are merged
-// per line, as coverlet merges results (hits added, the best branch
-// coverage of a line kept), so a module present in two reports is not
-// counted twice.
+// The metrics come from coverlet's JSON report, which the test step asks
+// the collector for (in addition to the runsettings' own formats) whenever
+// a threshold is checked: it holds every module, document, class, method,
+// line hit count and each branch with its own hit count. Several reports
+// (one per test project) are merged as coverlet merges results: line hits
+// and branch hits added per line and per branch, so a module present in two
+// reports is not counted twice and two projects covering different
+// branches of one line make 2/2. The collector's Include/Exclude filters
+// were already applied when it wrote the reports, so nothing is filtered
+// again here.
+//
+// Without a JSON report (only Cobertura), the Cobertura reports are read
+// instead: their packages are the modules, and a line's branches are only
+// a count ("50% (1/2)"), not which branches, so the best count of a line
+// is kept; that can undercount branches covered by different projects.
 
 // ThresholdStat values.
 const (
@@ -76,73 +87,132 @@ func (t *Thresholds) String() string {
 
 type runSettings struct {
 	Collectors []struct {
-		FriendlyName string `xml:"friendlyName,attr"`
-		Config       struct {
-			Threshold     string `xml:"Threshold"`
-			ThresholdType string `xml:"ThresholdType"`
-			ThresholdStat string `xml:"ThresholdStat"`
-		} `xml:"Configuration"`
+		FriendlyName string          `xml:"friendlyName,attr"`
+		Config       collectorConfig `xml:"Configuration"`
 	} `xml:"DataCollectionRunSettings>DataCollectors>DataCollector"`
 }
 
-// parseThresholds reads the thresholds of coverlet's collector in a
-// runsettings file: Threshold (comma-separated percentages, in the order of
-// ThresholdType, default line,branch,method; a single value applies to every
-// type), ThresholdStat (total, average or minimum; default minimum, as
-// coverlet). nil when the file declares no threshold.
-func parseThresholds(data []byte) (*Thresholds, error) {
+type collectorConfig struct {
+	Format        string `xml:"Format"`
+	Threshold     string `xml:"Threshold"`
+	ThresholdType string `xml:"ThresholdType"`
+	ThresholdStat string `xml:"ThresholdStat"`
+}
+
+// collectorName is coverlet's collector, as --collect and the runsettings
+// name it.
+const collectorName = "XPlat Code Coverage"
+
+// gate is the coverage gate of a runsettings file: its thresholds (nil when
+// there is none to check) and the collector's report formats.
+type gate struct {
+	th      *Thresholds
+	formats []string
+}
+
+// readGate reads coverlet's collector configuration in a runsettings file.
+func readGate(data []byte) (*gate, error) {
 	var rs runSettings
 	if err := xml.Unmarshal(data, &rs); err != nil {
 		return nil, fmt.Errorf("runsettings: %w", err)
 	}
+	g := &gate{formats: []string{"cobertura"}}
 	for _, c := range rs.Collectors {
-		if !strings.EqualFold(strings.TrimSpace(c.FriendlyName), "XPlat code coverage") {
+		if !strings.EqualFold(strings.TrimSpace(c.FriendlyName), collectorName) {
 			continue
 		}
-		raw := strings.TrimSpace(c.Config.Threshold)
-		if raw == "" {
-			return nil, nil
-		}
-		types := coverageMetrics
-		if tt := strings.TrimSpace(c.Config.ThresholdType); tt != "" {
-			types = nil
-			for _, t := range strings.Split(tt, ",") {
-				t = strings.ToLower(strings.TrimSpace(t))
-				if !slices.Contains(coverageMetrics, t) {
-					return nil, fmt.Errorf("runsettings: unknown ThresholdType %q (want line, branch or method)", t)
+		if f := strings.TrimSpace(c.Config.Format); f != "" {
+			g.formats = nil
+			for _, part := range strings.Split(f, ",") {
+				if part = strings.ToLower(strings.TrimSpace(part)); part != "" && !slices.Contains(g.formats, part) {
+					g.formats = append(g.formats, part)
 				}
-				types = append(types, t)
 			}
 		}
-		values := strings.Split(raw, ",")
-		if len(values) != 1 && len(values) != len(types) {
-			return nil, fmt.Errorf("runsettings: Threshold has %d values for %d types (%s)", len(values), len(types), strings.Join(types, ","))
+		th, err := thresholdsOf(c.Config)
+		if err != nil {
+			return nil, err
 		}
-		th := &Thresholds{Stat: StatMinimum}
-		if s := strings.ToLower(strings.TrimSpace(c.Config.ThresholdStat)); s != "" {
-			if s != StatTotal && s != StatAverage && s != StatMinimum {
-				return nil, fmt.Errorf("runsettings: unknown ThresholdStat %q (want total, average or minimum)", s)
-			}
-			th.Stat = s
-		}
-		for i, typ := range types {
-			text := strings.TrimSpace(values[min(i, len(values)-1)])
-			v, err := strconv.ParseFloat(text, 64)
-			if err != nil || v < 0 || v > 100 {
-				return nil, fmt.Errorf("runsettings: Threshold %q is not a percentage (0 to 100)", text)
-			}
-			switch typ {
-			case "line":
-				th.Line = &v
-			case "branch":
-				th.Branch = &v
-			default:
-				th.Method = &v
-			}
-		}
-		return th, nil
+		g.th = th
+		break
 	}
-	return nil, nil
+	return g, nil
+}
+
+// collectArg is dotnet test's --collect value: the collector alone, or,
+// when a threshold is checked, the collector with its formats plus json,
+// which VSTest merges with the runsettings' configuration (verified with
+// the .NET 10 SDK: the file's Exclude still applies and both reports are
+// written; the "-- DataCollectionRunSettings...Format=..." override is
+// rejected together with --settings).
+func (g *gate) collectArg() string {
+	if g == nil || g.th == nil {
+		return collectorName
+	}
+	formats := g.formats
+	if !slices.Contains(formats, "json") {
+		formats = append(slices.Clone(formats), "json")
+	}
+	return collectorName + ";Format=" + strings.Join(formats, ",")
+}
+
+// parseThresholds reads the thresholds of coverlet's collector in a
+// runsettings file. nil when the file declares no threshold.
+func parseThresholds(data []byte) (*Thresholds, error) {
+	g, err := readGate(data)
+	if err != nil {
+		return nil, err
+	}
+	return g.th, nil
+}
+
+// thresholdsOf reads Threshold (comma-separated percentages, in the order
+// of ThresholdType, default line,branch,method; a single value applies to
+// every type) and ThresholdStat (total, average or minimum; default
+// minimum, as coverlet). nil when there is no threshold.
+func thresholdsOf(c collectorConfig) (*Thresholds, error) {
+	raw := strings.TrimSpace(c.Threshold)
+	if raw == "" {
+		return nil, nil
+	}
+	types := coverageMetrics
+	if tt := strings.TrimSpace(c.ThresholdType); tt != "" {
+		types = nil
+		for _, t := range strings.Split(tt, ",") {
+			t = strings.ToLower(strings.TrimSpace(t))
+			if !slices.Contains(coverageMetrics, t) {
+				return nil, fmt.Errorf("runsettings: unknown ThresholdType %q (want line, branch or method)", t)
+			}
+			types = append(types, t)
+		}
+	}
+	values := strings.Split(raw, ",")
+	if len(values) != 1 && len(values) != len(types) {
+		return nil, fmt.Errorf("runsettings: Threshold has %d values for %d types (%s)", len(values), len(types), strings.Join(types, ","))
+	}
+	th := &Thresholds{Stat: StatMinimum}
+	if s := strings.ToLower(strings.TrimSpace(c.ThresholdStat)); s != "" {
+		if s != StatTotal && s != StatAverage && s != StatMinimum {
+			return nil, fmt.Errorf("runsettings: unknown ThresholdStat %q (want total, average or minimum)", s)
+		}
+		th.Stat = s
+	}
+	for i, typ := range types {
+		text := strings.TrimSpace(values[min(i, len(values)-1)])
+		v, err := strconv.ParseFloat(text, 64)
+		if err != nil || v < 0 || v > 100 {
+			return nil, fmt.Errorf("runsettings: Threshold %q is not a percentage (0 to 100)", text)
+		}
+		switch typ {
+		case "line":
+			th.Line = &v
+		case "branch":
+			th.Branch = &v
+		default:
+			th.Method = &v
+		}
+	}
+	return th, nil
 }
 
 // coverage is the merged coverage of a run, per module.
@@ -156,8 +226,84 @@ type covModule struct {
 }
 
 type covMethod struct {
-	hits     map[int]int
-	branches map[int][2]int // line -> covered, total
+	hits map[int]int
+	// branchHits: hit count per branch (JSON reports).
+	branchHits map[branchKey]int
+	// branches: covered and total per line (Cobertura fallback).
+	branches map[int][2]int
+}
+
+// branchKey identifies one branch as coverlet does.
+type branchKey struct {
+	Line, Offset, EndOffset, Path int
+	Ordinal                       uint32
+}
+
+func newMethod() *covMethod {
+	return &covMethod{hits: map[int]int{}, branchHits: map[branchKey]int{}, branches: map[int][2]int{}}
+}
+
+// module returns the module name's entry, created in order.
+func (c *coverage) module(name string) *covModule {
+	mod := c.modules[name]
+	if mod == nil {
+		mod = &covModule{methods: map[string]*covMethod{}}
+		c.modules[name] = mod
+		c.order = append(c.order, name)
+	}
+	return mod
+}
+
+// jsonMethod is one method of coverlet's JSON report.
+type jsonMethod struct {
+	Lines    map[string]int `json:"Lines"`
+	Branches []struct {
+		Line, Offset, EndOffset, Path int
+		Ordinal                       uint32
+		Hits                          int
+	} `json:"Branches"`
+}
+
+// readJSONCoverage reads and merges coverlet's JSON reports (module ->
+// document -> class -> method), adding line and branch hits.
+func readJSONCoverage(paths []string) (*coverage, error) {
+	cov := &coverage{modules: map[string]*covModule{}}
+	for _, p := range paths {
+		data, err := os.ReadFile(p)
+		if err != nil {
+			return nil, err
+		}
+		var rep map[string]map[string]map[string]map[string]jsonMethod
+		if err := json.Unmarshal(data, &rep); err != nil {
+			return nil, fmt.Errorf("%s: %w", p, err)
+		}
+		for _, modName := range slices.Sorted(maps.Keys(rep)) {
+			mod := cov.module(modName)
+			for doc, classes := range rep[modName] {
+				for cls, methods := range classes {
+					for name, m := range methods {
+						key := doc + "\x00" + cls + "\x00" + name
+						meth := mod.methods[key]
+						if meth == nil {
+							meth = newMethod()
+							mod.methods[key] = meth
+						}
+						for line, hits := range m.Lines {
+							n, err := strconv.Atoi(line)
+							if err != nil {
+								return nil, fmt.Errorf("%s: line %q of %s", p, line, name)
+							}
+							meth.hits[n] += hits
+						}
+						for _, b := range m.Branches {
+							meth.branchHits[branchKey{b.Line, b.Offset, b.EndOffset, b.Path, b.Ordinal}] += b.Hits
+						}
+					}
+				}
+			}
+		}
+	}
+	return cov, nil
 }
 
 type coberturaReport struct {
@@ -184,7 +330,8 @@ type coberturaLn struct {
 
 var conditionRe = regexp.MustCompile(`\((\d+)/(\d+)\)`)
 
-// readCoverage reads and merges coverlet's Cobertura reports.
+// readCoverage reads and merges coverlet's Cobertura reports (the fallback
+// when there is no JSON report).
 func readCoverage(paths []string) (*coverage, error) {
 	cov := &coverage{modules: map[string]*covModule{}}
 	for _, p := range paths {
@@ -197,18 +344,13 @@ func readCoverage(paths []string) (*coverage, error) {
 			return nil, fmt.Errorf("%s: %w", p, err)
 		}
 		for _, pkg := range rep.Packages {
-			mod := cov.modules[pkg.Name]
-			if mod == nil {
-				mod = &covModule{methods: map[string]*covMethod{}}
-				cov.modules[pkg.Name] = mod
-				cov.order = append(cov.order, pkg.Name)
-			}
+			mod := cov.module(pkg.Name)
 			for _, cls := range pkg.Classes {
 				for _, m := range cls.Methods {
 					key := cls.Name + "\x00" + cls.Filename + "\x00" + m.Name + m.Signature
 					meth := mod.methods[key]
 					if meth == nil {
-						meth = &covMethod{hits: map[int]int{}, branches: map[int][2]int{}}
+						meth = newMethod()
 						mod.methods[key] = meth
 					}
 					for _, ln := range m.Lines {
@@ -250,6 +392,12 @@ func (m *covModule) counts(metric string) (covered, total int) {
 				}
 			}
 		case "branch":
+			for _, h := range meth.branchHits {
+				total++
+				if h > 0 {
+					covered++
+				}
+			}
 			for _, b := range meth.branches {
 				covered += b[0]
 				total += b[1]
@@ -334,22 +482,20 @@ func checkThresholds(cov *coverage, th *Thresholds) []MetricCheck {
 	return out
 }
 
-// checkCoverage enforces the runsettings thresholds on the run's reports:
-// it returns the summary note when they are met, an error naming every
-// metric when not, and ("", nil) when there is no threshold to check.
-func checkCoverage(repo, runsettings string, reports []string) (string, error) {
-	data, err := os.ReadFile(repoPath(repo, runsettings))
-	if err != nil {
-		return "", fmt.Errorf("reading %s: %w", runsettings, err)
-	}
-	th, err := parseThresholds(data)
-	if err != nil || th == nil {
-		return "", err
-	}
-	if len(reports) == 0 {
+// checkCoverage enforces th on the run's reports: the JSON reports when
+// there are any, else the Cobertura ones. It returns the summary note when
+// every threshold is met, an error naming every metric when not.
+func checkCoverage(runsettings string, th *Thresholds, jsonReports, coberturaReports []string) (string, error) {
+	var cov *coverage
+	var err error
+	switch {
+	case len(jsonReports) > 0:
+		cov, err = readJSONCoverage(jsonReports)
+	case len(coberturaReports) > 0:
+		cov, err = readCoverage(coberturaReports)
+	default:
 		return "", fmt.Errorf("no coverage report to check the thresholds of %s against", runsettings)
 	}
-	cov, err := readCoverage(reports)
 	if err != nil {
 		return "", err
 	}

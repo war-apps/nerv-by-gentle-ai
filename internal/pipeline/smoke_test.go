@@ -35,17 +35,25 @@ func smokeRepo(t *testing.T) (string, *pipelineconfig.Pipeline) {
 	}
 	tool("new", "classlib", "-n", "Calc", "-o", "Calc")
 	tool("new", "xunit", "-n", "Calc.Tests", "-o", "Calc.Tests")
+	tool("new", "xunit", "-n", "Calc.MoreTests", "-o", "Calc.MoreTests")
 	tool("new", "sln", "-n", "Smoke")
 	sln := "Smoke.slnx"
 	if _, err := os.Stat(filepath.Join(root, sln)); err != nil {
 		sln = "Smoke.sln"
 	}
-	tool("sln", sln, "add", "Calc/Calc.csproj", "Calc.Tests/Calc.Tests.csproj")
+	tool("sln", sln, "add", "Calc/Calc.csproj", "Calc.Tests/Calc.Tests.csproj", "Calc.MoreTests/Calc.MoreTests.csproj")
 	tool("add", "Calc.Tests/Calc.Tests.csproj", "reference", "Calc/Calc.csproj")
+	tool("add", "Calc.MoreTests/Calc.MoreTests.csproj", "reference", "Calc/Calc.csproj")
+	os.Remove(filepath.Join(root, "Calc.MoreTests", "UnitTest1.cs"))
 	os.Remove(filepath.Join(root, "Calc", "Class1.cs"))
 	os.Remove(filepath.Join(root, "Calc.Tests", "UnitTest1.cs"))
-	write(t, root, "Calc/Ops.cs", "namespace Calc;\n\npublic static class Ops\n{\n    public static int Add(int a, int b) => a + b;\n}\n")
-	write(t, root, "Calc.Tests/OpsTests.cs", "namespace Calc.Tests;\n\npublic class OpsTests\n{\n    [Fact]\n    public void Adds() => Assert.Equal(3, Calc.Ops.Add(1, 2));\n}\n")
+	// Sign has two branches; each test project covers one: only a
+	// per-branch merge of the two reports gives 2/2. Skipped is excluded by
+	// the runsettings: it counts only if the user's settings were lost.
+	write(t, root, "Calc/Ops.cs", "namespace Calc;\n\npublic static class Ops\n{\n    public static int Add(int a, int b) => a + b;\n\n    public static int Sign(int x) => x > 0 ? 1 : -1;\n}\n")
+	write(t, root, "Calc/Skipped.cs", "namespace Calc;\n\npublic static class Skipped\n{\n    public static int Mul(int a, int b) => a * b;\n}\n")
+	write(t, root, "Calc.Tests/OpsTests.cs", "namespace Calc.Tests;\n\npublic class OpsTests\n{\n    [Fact]\n    public void Adds() => Assert.Equal(3, Calc.Ops.Add(1, 2));\n\n    [Fact]\n    public void Positive() => Assert.Equal(1, Calc.Ops.Sign(5));\n}\n")
+	write(t, root, "Calc.MoreTests/SignTests.cs", "namespace Calc.MoreTests;\n\npublic class SignTests\n{\n    [Fact]\n    public void Negative() => Assert.Equal(-1, Calc.Ops.Sign(-5));\n}\n")
 	write(t, root, "coverlet.runsettings", `<?xml version="1.0" encoding="utf-8"?>
 <RunSettings>
   <DataCollectionRunSettings>
@@ -53,7 +61,8 @@ func smokeRepo(t *testing.T) (string, *pipelineconfig.Pipeline) {
       <DataCollector friendlyName="XPlat code coverage">
         <Configuration>
           <Format>cobertura</Format>
-          <Threshold>100,80,100</Threshold>
+          <Exclude>[*]Calc.Skipped</Exclude>
+          <Threshold>100,100,100</Threshold>
           <ThresholdType>line,branch,method</ThresholdType>
           <ThresholdStat>total</ThresholdStat>
         </Configuration>
@@ -101,11 +110,22 @@ func TestSmoke_ValidateAndTest(t *testing.T) {
 	start = time.Now()
 	r := smokeSteps(root, cfg, &out).Test(ctx)
 	t.Logf("test: %s in %s, coverage %v", r.Status, time.Since(start).Round(time.Millisecond), r.Artifacts.Coverage)
-	if r.Status != StatusPassed || len(r.Commands) != 3 || len(r.Artifacts.Coverage) != 1 {
+	if r.Status != StatusPassed || len(r.Commands) != 3 || len(r.Artifacts.Coverage) != 2 || len(r.Artifacts.CoverageJSON) != 2 {
 		t.Fatalf("test %+v\n%s", r, out.String())
 	}
-	if len(r.Notes) != 1 || r.Notes[0] != "coverage (total): line 100% >= 100%, branch 100% >= 80%, method 100% >= 100%" {
+	// Both projects' branches merged (each report alone has Sign at 1/2),
+	// and Skipped excluded by the user's runsettings.
+	if len(r.Notes) != 1 || r.Notes[0] != "coverage (total): line 100% >= 100%, branch 100% >= 100%, method 100% >= 100%" {
 		t.Errorf("coverage note %v", r.Notes)
+	}
+	for _, p := range r.Artifacts.CoverageJSON {
+		data, _ := os.ReadFile(p)
+		if strings.Contains(string(data), "Skipped") {
+			t.Errorf("%s holds the excluded class: the runsettings were not applied", p)
+		}
+	}
+	if fallback, err := readCoverage(r.Artifacts.Coverage); err != nil || percentText(fallback.percent("branch", StatTotal)) != "50" {
+		t.Errorf("Cobertura fallback: %v, branch %s%% (expected 50%%: it cannot tell which branches)", err, percentText(fallback.percent("branch", StatTotal)))
 	}
 	if _, err := os.Stat(r.Artifacts.Trx); err != nil {
 		t.Errorf("trx: %v", err)
@@ -124,12 +144,9 @@ func TestSmoke_ValidateAndTest(t *testing.T) {
 	write(t, root, "Calc/More.cs", "namespace Calc;\n\npublic static class More\n{\n    public static int Sub(int a, int b) => a - b;\n}\n")
 	out.Reset()
 	r = smokeSteps(root, cfg, &out).Test(ctx)
-	want := "coverage below the thresholds of coverlet.runsettings (total): line 50% < 100%, branch 100% >= 80%, method 50% < 100%"
+	want := "coverage below the thresholds of coverlet.runsettings (total): line 66.66% < 100%, branch 100% >= 100%, method 66.66% < 100%"
 	if r.Status != StatusFailed || len(r.Commands) != 3 || r.Commands[2].Exit != 0 || r.Error != want {
 		t.Errorf("uncovered method: %+v\nwant error %q\n%s", r, want, out.String())
-	}
-	if data, err := os.ReadFile(r.Artifacts.Coverage[0]); err != nil || !strings.Contains(string(data), `line-rate="0.5"`) {
-		t.Errorf("coverage report: %v\n%.400s", err, data)
 	}
 
 	// A failing test fails the step at dotnet test.

@@ -37,8 +37,13 @@ const (
 // logger dim's workflow configures).
 const TrxFile = "test-results.trx"
 
-// CoverageFile is the report coverlet's collector writes per test project.
-const CoverageFile = "coverage.cobertura.xml"
+// CoverageFile is the Cobertura report coverlet's collector writes per test
+// project; CoverageJSONFile its JSON report, requested when a coverage
+// threshold is checked.
+const (
+	CoverageFile     = "coverage.cobertura.xml"
+	CoverageJSONFile = "coverage.json"
+)
 
 // StepRunner runs one process step; *shiprun.Runner is one.
 type StepRunner interface {
@@ -70,6 +75,9 @@ type Artifacts struct {
 	Trx string `json:"trx,omitempty"`
 	// Coverage are the coverlet cobertura reports, one per test project.
 	Coverage []string `json:"coverage,omitempty"`
+	// CoverageJSON are coverlet's JSON reports, written when a coverage
+	// threshold is checked.
+	CoverageJSON []string `json:"coverage_json,omitempty"`
 }
 
 // Result is what a step did.
@@ -123,11 +131,23 @@ func (s Steps) Test(ctx context.Context) Result {
 		return *r
 	}
 	r.Artifacts = Artifacts{ResultsDir: results, Trx: filepath.Join(results, TrxFile)}
+	var g *gate
+	if d.Runsettings != "" {
+		data, err := os.ReadFile(repoPath(s.Repo, d.Runsettings))
+		if err != nil {
+			r.fail(fmt.Errorf("reading %s: %w", d.Runsettings, err))
+			return *r
+		}
+		if g, err = readGate(data); err != nil {
+			r.fail(err)
+			return *r
+		}
+	}
 	build := []string{"dotnet", "build", d.Solution, "--configuration", d.Configuration, "--no-restore"}
 	if d.TreatWarningsAsErrors() {
 		build = append(build, "-warnaserror")
 	}
-	test := []string{"dotnet", "test", d.Solution, "--configuration", d.Configuration, "--no-build", "--collect", "XPlat Code Coverage"}
+	test := []string{"dotnet", "test", d.Solution, "--configuration", d.Configuration, "--no-build", "--collect", g.collectArg()}
 	if d.Runsettings != "" {
 		test = append(test, "--settings", d.Runsettings)
 	}
@@ -135,13 +155,13 @@ func (s Steps) Test(ctx context.Context) Result {
 	s.run(ctx, r, []string{"dotnet", "restore", d.Solution}, build, test)
 	// Reported even after a failure: a failing test still leaves the
 	// reports (dim uploads them always).
-	r.Artifacts.Coverage = coverageReports(results)
-	if r.Status == StatusPassed && d.Runsettings != "" {
-		note, err := checkCoverage(s.Repo, d.Runsettings, r.Artifacts.Coverage)
-		switch {
-		case err != nil:
+	r.Artifacts.Coverage = reportsNamed(results, CoverageFile)
+	r.Artifacts.CoverageJSON = reportsNamed(results, CoverageJSONFile)
+	if r.Status == StatusPassed && g != nil && g.th != nil {
+		note, err := checkCoverage(d.Runsettings, g.th, r.Artifacts.CoverageJSON, r.Artifacts.Coverage)
+		if err != nil {
 			r.fail(err)
-		case note != "":
+		} else {
 			r.Notes = append(r.Notes, note)
 		}
 	}
@@ -252,10 +272,10 @@ func within(dir, path string, same bool) bool {
 	return filepath.IsLocal(rel)
 }
 
-// coverageReports lists <results>/<run>/coverage.cobertura.xml, one per test
-// project (the copies dotnet test attaches under the trx's In/ directory
-// are left out), sorted.
-func coverageReports(results string) []string {
+// reportsNamed lists <results>/<run>/<name>, one per test project (the
+// copies dotnet test attaches under the trx's In/ directory are left out),
+// sorted.
+func reportsNamed(results, name string) []string {
 	entries, err := os.ReadDir(results)
 	if err != nil {
 		return nil
@@ -265,7 +285,7 @@ func coverageReports(results string) []string {
 		if !e.IsDir() || strings.HasPrefix(e.Name(), "_") {
 			continue
 		}
-		p := filepath.Join(results, e.Name(), CoverageFile)
+		p := filepath.Join(results, e.Name(), name)
 		if info, err := os.Stat(p); err == nil && info.Mode().IsRegular() {
 			out = append(out, p)
 		}
