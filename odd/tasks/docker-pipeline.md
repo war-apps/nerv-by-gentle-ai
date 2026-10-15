@@ -239,6 +239,30 @@ Branch created from fbe03dd.
   R3-glob-matcher-divergence (`path.Match` vs semantic-release's micromatch:
   `**` and braces are not handled and match errors are ignored).
 
+### P2 follow-ups
+
+All three P2 review advisories addressed (user authorized). Route:
+delegated (one writer). Test-first; `go test` exit codes captured
+directly.
+
+| Item | Fix | Evidence |
+|---|---|---|
+| R3-release-default-path-untested | New end-to-end test found a real defect: with the built-in configuration, a real release on an origin outside GitHub stopped with `EINVALIDGITHUBURL; ENOGHTOKEN` (nothing tagged). `@semantic-release/github` is now included only when origin is on GitHub (`github.com`, or `GH_HOST`); `defaultConfig(branches, {github})`, request field `githubRelease`, `remoteIsGitHub`. The fixed-id check is one helper (`checkPrereleaseBranches`) for both paths: Compute reads the mirror's `refs/heads/` (set to origin's by `planHeads`), Release the clone's `refs/remotes/origin/` (fetched with prune); both are origin's branches as last fetched, so they did not differ — now one code path. | RED: `TestIntegration_ShipWithTheBuiltInConfiguration` (exit 2, the GitHub error); node and Go build/test failures for the new option and `remoteIsGitHub`. GREEN: `nerv ship --yes --json` on develop -> `v1.1.0-alpha.1` on origin's develop, head `chore(release): 1.1.0-alpha.1`, release commit holds only `CHANGELOG.md`, `semantic_release_config: default`; `TestIntegration_ReleasePathRefusesTwoReleaseBranches` (release/1.1 and release/1.2 on origin -> refused, origin tags unchanged); unit `TestWorkspaceRelease_BuiltInConfigurationRequest` (GitHub / other origin / two release branches), `TestRemoteIsGitHub`. |
+| R3-default-project-changelog-unproved | No code change needed: the changelog rewrite applies to the built-in plugin list (it rewrites the loaded options' plugins). | `TestIntegration_BuiltInConfigurationMonorepoChangelogs`: api and web, no repo config -> `api-v1.1.0` holds only `api/CHANGELOG.md`, `web-v1.0.1` only `web/CHANGELOG.md`. It could only run once the GitHub fix let real releases work on a local origin. |
+| R3-glob-matcher-divergence | `pipelineconfig` rejects `**`, `{`/`}` and extglobs (`@(`, `!(`, `+(`, `*(`, `?(`) in branch names: "uses glob syntax nerv does not support (only *, ? and [...] are)", path-qualified. `checkFixedPrereleaseGlobs` returns `path.Match` errors. Docs: supported syntax in docs/pipeline.md. | RED: 8 unsupported patterns loaded without error; GREEN; `release/*`, `release/v?`, `hotfix/[a-z]*` still load. `TestCheckFixedPrereleaseGlobs_InvalidPatternIsAnError`. |
+
+- Checks: `go test -count=1 ./...` exit 0 (28 packages); `go test -tags
+  semrel_integration -run Integration -count=1 ./internal/semrel/
+  ./cmd/nerv/` exit 0; node runner tests 19/19; `go vet ./...`,
+  `GOOS=windows go vet ./...`, `go vet -tags semrel_integration` exit 0;
+  `gofmt -l .` empty.
+- Commits: `e08ade1` `fix(pipelineconfig): reject branch glob syntax beyond
+  *, ? and classes` (3 files changed, 39 insertions(+), 1 deletion(-));
+  `a409dcd` `fix(semrel): release with the built-in configuration on
+  origins outside GitHub` (11 files changed, 248 insertions(+), 19
+  deletions(-)). Total `git diff --shortstat f4c9b9d a409dcd`: 14 files
+  changed, 287 insertions(+), 20 deletions(-).
+
 ## Next step
 
 Review of P2, then its pull request; then P3 (`validate` and `test`
