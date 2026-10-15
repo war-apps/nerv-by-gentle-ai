@@ -538,15 +538,15 @@ only one that can run.
 3. Refuse (exit 1) when your local branch is not exactly origin's (ahead:
    push first; behind: pull first): CI releases what origin has, and
    `nerv ship` never pushes your commits. A branch that is not on origin is
-   refused too.
+   refused too. Refuse also, before any version is computed, when a path
+   the section names (project `path`, a `shared_paths` entry without glob
+   characters, `dotnet.project_file` / `solution`, a Dockerfile or docker
+   context, a stage or hook `workdir`) does not exist on origin's branch.
 4. Compute every project's next version in the clone (as `nerv version
    next`, from the refs just read; origin is read once). Projects without a
    new release are reported and skipped. With `--expect`, refuse here
    unless the releasing projects and versions are exactly the expected
-   ones. Refuse also when a path the section names (project `path`, a
-   `shared_paths` entry without glob characters, `dotnet.project_file` /
-   `solution`, a Dockerfile or docker context, a stage or hook `workdir`)
-   does not exist on origin's branch.
+   ones.
 5. Print each releasing project's version, channel, tag and last release,
    and its plan ([Pipeline and presets](#pipeline-and-presets), secrets
    shown as `$<VARIABLE>`), then ask `Release <n> project(s)? [y/N]` on an
