@@ -198,7 +198,9 @@ Runs one step of the Docker pipeline configured in the `pipeline:` section
 (a standalone copy of dim.comprobantes.api's CI/CD): `validate` (`dotnet
 restore`, `dotnet format --verify-no-changes`) and `test` (restore, build
 with `-warnaserror`, `dotnet test` with coverage and a trx logger, results
-in `.nerv/artifacts/pipeline/test`). Both run in your working tree. Details:
+in `.nerv/artifacts/pipeline/test`, and the runsettings coverage thresholds
+enforced by nerv, since coverlet's collector ignores them). Both run in your
+working tree. Details:
 [pipeline.md](pipeline.md#running-the-steps).
 
 ```
