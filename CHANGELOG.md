@@ -19,6 +19,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   configuration was used (`semantic_release_config` in JSON). A fixed-id prerelease glob matching several branches
   on origin is refused with the branch names.
 
+### Changed
+- orchestrator: agent launch labels and deliberation log `launch` lines show the role's model, as
+  `({model}) {Display name}: {action}` (e.g. `(sonnet) Shinji Ikari: Retrying dotnet format verification`).
+
 ## [4.1.1] - 2026-10-15
 
 ### Changed

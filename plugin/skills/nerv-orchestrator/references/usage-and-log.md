@@ -32,7 +32,7 @@ once per Hyuga tracker op — Preflight, Maya's full-gate start, the issue
 gate, and Close. Phase 5 adds `resume` (`{from_step, took_over_from}`) and
 `lock_refused`, also defined in `nerv-artifacts.md`, logged by the
 Orchestrator lock and Resume protocols. A `launch` entry's payload opens with
-the launch's `{Display name}: {action}` label, the same text as its Agent
+the launch's `({model}) {Display name}: {action}` label, the same text as its Agent
 tool `description`.
 
 **Completeness rule.** The log is the run's only chronological record, so

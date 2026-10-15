@@ -70,13 +70,19 @@ carries "Do NOT delegate" in its own file and has no Agent tool access.
   never infers a decision, and never defaults one.
 - Every launch names the agent as `nerv:<role>` (e.g. `nerv:aoba`,
   `nerv:kaworu`), never the bare role name.
-- Every launch's Agent tool `description` reads `{Display name}: {action}`:
-  the display name from the role catalogue (as `/nerv:configure` and
-  `docs/configuration.md` show it), the action short, concrete and in English
-  (phase step, task id, round) — e.g. `Melchior-Magi 1: security audit, round 2`,
-  `Shinji Ikari: implement task 3.2`. The action never contains `|` or `;`,
-  the deliberation log's field delimiters. The full brief stays in the launch
-  prompt.
+- Every launch's Agent tool `description` reads `({model}) {Display name}: {action}`:
+  `{model}` is the role's effective model, which Ikari resolves once per run
+  before the first launch as the `model` field of the role's `models` row in
+  `nerv configure --print --json` (already resolved for `default` and
+  `gentle-ai:<phase>` rows; printed as-is, e.g. `opus` or a `claude-...` id);
+  if `nerv` is unavailable or the row is missing, the agent file's
+  frontmatter `model:` — never omit the parentheses. The display name comes
+  from the role catalogue (as `/nerv:configure` and `docs/configuration.md`
+  show it), the action short, concrete and in English (phase step, task id,
+  round) — e.g. `(opus) Melchior-Magi 1: security audit, round 2`,
+  `(sonnet) Shinji Ikari: Retrying dotnet format verification`. The action
+  never contains `|` or `;`, the deliberation log's field delimiters. The full
+  brief stays in the launch prompt.
 
 ## Orchestrator lock
 
