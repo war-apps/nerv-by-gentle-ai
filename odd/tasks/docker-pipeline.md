@@ -423,6 +423,17 @@ All P3 review advisories addressed (user authorized). Route: delegated
   table` (1 file, +7 -1). Total `git diff --shortstat d839d70 630956a`: 6
   files changed, 562 insertions(+), 114 deletions(-).
 
+### P3 follow-up review
+
+- Native review of d839d70..02fe5e1 (medium, user granted): approved and
+  acknowledged. Advisory: R3-json-silently-drops-cobertura-only-projects
+  (WARNING: once any JSON report exists, a test project that wrote only
+  Cobertura is left out of the gate), R3-smoke-fallback-nil-deref (WARNING,
+  test only: a failed readCoverage panics the smoke test and hides the
+  error; an unreadable JSON passes), R3-mkdir-before-symlink-check
+  (`MkdirAll` on `.nerv/artifacts` runs before the real-path check, so a
+  symlinked `.nerv` gets directories created outside).
+
 ## Next step
 
 Review of P3 (with the coverage gate); then P4 (`release` step).
