@@ -60,7 +60,7 @@ configurable with the data it needs; deploy option (Docker only for now).
 ## Tasks
 
 - [x] P1 — `pipeline:` configuration schema, validation and docs.
-- [ ] P2 — built-in default semantic-release configuration (dim's, with
+- [x] P2 — built-in default semantic-release configuration (dim's, with
   `release/*`), used by the engine when the repository has none.
 - [ ] P3 — `validate` and `test` steps.
 - [ ] P4 — `release` step (reuse the ship workspace and version guard).
@@ -152,6 +152,83 @@ Branch created from fbe03dd.
   (versions `X.Y.Z-rc.N`) and channel/image tag `beta`, as dim's
   `release/rc` does today.
 
+### P2
+
+- Route: delegated (one bounded writer; trigger: engine, node runner, CLI,
+  docs: 2+ non-trivial files).
+- Detection is semantic-release's own: the runner's plan mode returns the
+  `configFile` cosmiconfig("release") finds (cosmiconfig 9.0.2, strategy
+  `none`: 21 search places in the repository root only, package.json only
+  with a `release` key); "" means none. Not re-implemented in Go (the list
+  includes `.config/releaserc*` and `.ts` forms and a meta config).
+- Built-in configuration (`defaultConfig(branches)`, runner lib): dim's
+  package.json `release` (read-only) — commit-analyzer and
+  release-notes-generator with `conventionalcommits` and note keywords
+  `BREAKING CHANGE`, `BREAKING CHANGES`, `BREAKING`; changelog
+  `CHANGELOG.md` (project changelogs rewrite it as before); git with assets
+  the changelog and its default message (dim sets none); github. Left out:
+  dim's `@semantic-release/npm` (`npmPublish: false`) and
+  `@semantic-release/exec` (bump-csproj, set-release-outputs). Packages:
+  bundled + default pins only. Applied as API options (`branches`,
+  `plugins`) over the empty repository configuration.
+- Branches: Go always sends them: the local `pipeline:` section's
+  (`pipelineconfig.Load`, the user's working tree; in a Workspace the
+  user's top level), or `pipelineconfig.DefaultBranches()` when there is no
+  section — one source of truth. An invalid `pipeline:` section only fails
+  when the default is used. No pipelineconfig change was needed.
+- Item 3 evidence (semantic-release 24.2.3, local temp repo, dry run,
+  branches as the default): with `release/1.1` and `release/1.2` on origin,
+  a fixed `prerelease: rc` on `release/*` fails on either branch with
+  `EPRERELEASEBRANCHES` ("Each pre-release branch ... must have a unique
+  prerelease property"); with one release branch it computes `1.1.0-rc.1`;
+  a template id `rc-${name...}` works with two branches but yields
+  `1.1.0-rc-1-1.1`, breaking dim's `X.Y.Z-rc.N` versions and image tags.
+  Choice: keep dim's fixed `rc` and refuse first, before semantic-release,
+  when a fixed-id glob of the built-in branches matches more than one
+  branch on origin (`ErrFixedPrereleaseGlob`, naming them; Compute checks
+  the mirror's heads, Release the clone's `refs/remotes/origin/*`). A
+  repository with its own configuration keeps semantic-release's own error.
+- Source: `ProjectResult.SemanticReleaseConfig` (`repository` / `default`)
+  and `SemanticReleaseConfigFile`; `nerv version next` text line
+  `semantic-release config: repository (<file>)` / `built-in default
+  (dim)`, JSON fields; `nerv ship` stderr line and `--json` document field
+  `semantic_release_config`. The env format keeps the 12 action outputs.
+- RED: node `does not provide an export named 'defaultConfig'`; Go build
+  failures (`UseDefault`, `Branches`, `defaultBranch` undefined); CLI build
+  failure (`shipDocument.SemanticReleaseConfig`). One fixture correction
+  (a test `pipeline:` section without `develop` failed its sync
+  validation). `TestVersionNext_JSONSingleProjectIsAnObject` now expects
+  the new key (15).
+- GREEN: node 18/18; Go unit tests (default on no config, pipeline
+  branches replace the defaults, repository config kept with its file, the
+  fixed-id glob refused before semantic-release runs, the glob matcher
+  table); CLI source tests.
+- Integration (real semantic-release, local bare origin):
+  `TestIntegration_BuiltInDefaultWhenTheRepositoryHasNone` — no config:
+  develop `1.1.0-alpha.1` (alpha), `release/1.0` `1.0.1-rc.1` (beta, tag
+  `v1.0.1-rc.1`), source `default`; with `release/1.1` pushed too,
+  `release/1.0` is refused naming `release/1.0, release/1.1`.
+  `TestIntegration_ConfigDetectionForms` — package.json `release`,
+  `.releaserc`, `.releaserc.{json,yaml,yml,js,cjs,mjs}`,
+  `.config/releaserc.json`, `release.config.{js,cjs,mjs}` found;
+  package.json without `release` and an unrelated file: none.
+  `TestIntegration_SingleProjectPrerelease` now also asserts source
+  `repository` (`package.json`).
+- Checks: `go test -count=1 ./...` exit 0 (28 packages); `go test -tags
+  semrel_integration -run Integration -count=1 ./internal/semrel/
+  ./cmd/nerv/` exit 0; node runner tests 18/18; `go vet ./...`,
+  `GOOS=windows go vet ./...`, `go vet -tags semrel_integration` exit 0;
+  `gofmt -l .` empty.
+- Commits: `aebc254` `feat(semrel): use dim's semantic-release
+  configuration when a repository has none` (12 files changed, 601
+  insertions(+), 25 deletions(-)); `db3c048` `feat(cli): say which
+  semantic-release configuration was used` (4 files changed, 76
+  insertions(+), 5 deletions(-)). Total `git diff --shortstat 1c9ba15
+  db3c048`: 16 files changed, 677 insertions(+), 30 deletions(-). Above the
+  ~400-line heuristic: about 300 lines are tests and 80 docs; the engine
+  and the CLI line are separate commits.
+
 ## Next step
 
-P2 — built-in default semantic-release configuration.
+Review of P2, then its pull request; then P3 (`validate` and `test`
+steps).
