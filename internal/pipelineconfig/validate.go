@@ -91,6 +91,8 @@ func (v *validator) checkBranches(branches []Branch) {
 		switch {
 		case b.Name == "":
 			v.addf("%s.name: required", at)
+		case unsupportedGlob(b.Name):
+			v.addf("%s.name: %q uses glob syntax nerv does not support (only *, ? and [...] are)", at, b.Name)
 		case !validBranchPattern(b.Name):
 			v.addf("%s.name: %q is not a valid branch name or pattern", at, b.Name)
 		case seen[b.Name]:
@@ -140,6 +142,21 @@ func validBranchPattern(name string) bool {
 	}
 	_, err := path.Match(name, "")
 	return err == nil
+}
+
+// unsupportedGlob reports micromatch syntax (semantic-release's branch
+// matcher) beyond what NERV matches with path.Match: globstars, braces and
+// extglobs. Only *, ? and [...] mean the same in both.
+func unsupportedGlob(name string) bool {
+	if strings.Contains(name, "**") || strings.ContainsAny(name, "{}") {
+		return true
+	}
+	for _, ext := range []string{"@(", "!(", "+(", "*(", "?("} {
+		if strings.Contains(name, ext) {
+			return true
+		}
+	}
+	return false
 }
 
 func isPattern(name string) bool { return strings.ContainsAny(name, "*?[") }

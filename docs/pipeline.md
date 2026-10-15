@@ -123,7 +123,9 @@ The source column cites where each default comes from in dim's
 
 The semantic-release branches, in semantic-release order. Each entry has a
 `name` (a branch or a glob such as `release/*`, where `*` does not cross a
-`/`), an optional `prerelease` id and an optional `channel` (default: the
+`/`; only `*`, `?` and `[...]` are supported: `**`, braces such as
+`{a,b}` and extglobs such as `@(a|b)` are rejected, as NERV matches
+patterns itself before semantic-release does), an optional `prerelease` id and an optional `channel` (default: the
 prerelease id; empty on a release branch, meaning the default channel). The
 channel is also the moving image tag. When `branches` is omitted:
 

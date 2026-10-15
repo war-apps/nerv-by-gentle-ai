@@ -611,3 +611,22 @@ func TestDefaults_MatchDocs(t *testing.T) {
 		}
 	}
 }
+
+func TestLoad_BranchPatternsOnlySupportStarQuestionAndClasses(t *testing.T) {
+	for _, name := range []string{"release/**", "release/{a,b}", "release/}", "release/@(a|b)", "release/!(x)", "release/+(x)", "release/*(x)", "release/?(x)"} {
+		t.Run(name, func(t *testing.T) {
+			text := strings.Replace(minimal, "pipeline:\n", "pipeline:\n  branches:\n    - name: main\n    - name: develop\n      prerelease: alpha\n    - name: \""+name+"\"\n      prerelease: rc\n", 1)
+			_, err := pipelineconfig.Load(writeConfig(t, text))
+			want := `pipeline.branches[2].name: "` + name + `" uses glob syntax nerv does not support (only *, ? and [...] are)`
+			if err == nil || !strings.Contains(err.Error(), want) {
+				t.Errorf("err = %v, want %q", err, want)
+			}
+		})
+	}
+	for _, name := range []string{"release/*", "release/v?", "hotfix/[a-z]*"} {
+		text := strings.Replace(minimal, "pipeline:\n", "pipeline:\n  branches:\n    - name: main\n    - name: develop\n      prerelease: alpha\n    - name: \""+name+"\"\n      prerelease: rc\n", 1)
+		if _, err := pipelineconfig.Load(writeConfig(t, text)); err != nil {
+			t.Errorf("%s: %v", name, err)
+		}
+	}
+}
