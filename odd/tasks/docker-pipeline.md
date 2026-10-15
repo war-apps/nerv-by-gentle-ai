@@ -93,6 +93,9 @@ per task, merged into develop in order).
 
 - PR #105 (P1): `feat/pipeline-config` → develop. Merged f1a69de.
 - PR #106 (P2): `feat/pipeline-default-semrel` → develop. Merged 87cf385.
+- PR #107 (P3): `feat/pipeline-validate-test` → develop. Merged 33f14ac.
+- PR #108 (side request, launch labels show the model): merged 6220788.
+- P4 branch `feat/pipeline-release` from 6220788.
 - P3 branch `feat/pipeline-validate-test` from 87cf385.
 - P2 branch `feat/pipeline-default-semrel` from f1a69de.
 
