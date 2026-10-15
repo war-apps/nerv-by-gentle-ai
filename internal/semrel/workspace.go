@@ -53,7 +53,11 @@ type WorkspaceOptions struct {
 // the real URL, when it differs (it carries credentials), is written only
 // into the clone's own .git/config as url.<real>.insteadOf (owner-only file
 // in an owner-only temporary directory), so neither a command line nor an
-// environment ever holds it. Close removes everything.
+// environment ever holds it. The release: section is the user's local one
+// (their working tree's .nerv/nerv.yaml, committed or not, loaded once by
+// NewWorkspace), never the clone's copy: only the code and the
+// semantic-release configuration come from origin. Close removes
+// everything.
 type Workspace struct {
 	e       *Engine
 	root    string
@@ -67,6 +71,8 @@ type Workspace struct {
 	timeout time.Duration
 	// warnedChangelog: the ignored-changelog warning was printed.
 	warnedChangelog bool
+	// rel is the user's local release: section; nil when there is none.
+	rel *shipconfig.Release
 }
 
 // NewWorkspace creates a release clone with the default engine. See
@@ -99,6 +105,10 @@ func (e *Engine) NewWorkspace(ctx context.Context, opts WorkspaceOptions) (*Work
 		return nil, fmt.Errorf("not a git repository: %w", err)
 	}
 	top = filepath.Clean(top)
+	rel, err := loadRelease(top)
+	if err != nil {
+		return nil, err
+	}
 	remotes, err := e.git(ctx, top, env, "remote")
 	if err != nil {
 		return nil, fmt.Errorf("listing the repository's remotes: %w", err)
@@ -126,7 +136,7 @@ func (e *Engine) NewWorkspace(ctx context.Context, opts WorkspaceOptions) (*Work
 		return nil, err
 	}
 	w := &Workspace{e: e, root: root, dir: filepath.Join(root, filepath.Base(top)), branch: opts.Branch, env: wenv,
-		pushURL: pushURL, public: publicURL(raw), cache: opts.CacheDir, timeout: timeout}
+		pushURL: pushURL, public: publicURL(raw), cache: opts.CacheDir, timeout: timeout, rel: rel}
 	if err := w.init(ctx, top, env, resolved); err != nil {
 		os.RemoveAll(root)
 		return nil, err
@@ -194,15 +204,21 @@ func (w *Workspace) OriginHead() string { return w.head }
 // local origin.
 func (w *Workspace) PublicURL() string { return w.public }
 
+// Config is the release: section of the user's local .nerv/nerv.yaml (nil
+// when it has none), the one every step of the release uses; the clone's
+// copy is ignored.
+func (w *Workspace) Config() *shipconfig.Release { return w.rel }
+
 // Close removes the clone and every file the workspace wrote.
 func (w *Workspace) Close() error { return os.RemoveAll(w.root) }
 
 // Compute computes the next release of each project (only project, with its
-// dependencies, when not empty) from the clone, as Compute does. The clone
-// already holds origin's branches, tags and notes, so origin is not read
-// again.
+// dependencies, when not empty) from the clone, as Compute does, with the
+// user's local release: section (Config). The clone already holds origin's
+// branches, tags and notes, so origin is not read again.
 func (w *Workspace) Compute(ctx context.Context, project string) ([]ProjectResult, error) {
-	return w.e.Compute(ctx, Options{RepoRoot: w.dir, Branch: w.branch, Project: project, Env: w.env, CacheDir: w.cache, Offline: true})
+	return w.e.compute(ctx, Options{RepoRoot: w.dir, Branch: w.branch, Project: project, Env: w.env, CacheDir: w.cache, Offline: true},
+		func() (*shipconfig.Release, error) { return w.rel, nil })
 }
 
 // CheckPush checks, as semantic-release does before releasing, that git can
@@ -268,13 +284,7 @@ type ReleaseRequest struct {
 // ErrVersionMismatch too.
 func (w *Workspace) Release(ctx context.Context, req ReleaseRequest) (ProjectResult, error) {
 	e := w.e
-	rel, err := shipconfig.Load(w.dir)
-	if errors.Is(err, shipconfig.ErrNotConfigured) {
-		rel, err = nil, nil
-	}
-	if err != nil {
-		return ProjectResult{}, err
-	}
+	rel := w.rel
 	projects, err := planProjects(rel, filepath.Base(w.dir), "")
 	if err != nil {
 		return ProjectResult{}, err
@@ -286,7 +296,7 @@ func (w *Workspace) Release(ctx context.Context, req ReleaseRequest) (ProjectRes
 		}
 	}
 	if p == nil {
-		return ProjectResult{}, fmt.Errorf("project %q is not in the release clone's configuration", req.Expected.Project)
+		return ProjectResult{}, fmt.Errorf("project %q is not in the release: section", req.Expected.Project)
 	}
 	if !req.Expected.NewReleasePublished || req.Expected.NewReleaseVersion == "" {
 		return ProjectResult{}, fmt.Errorf("project %s: no computed release to make", p.Name)

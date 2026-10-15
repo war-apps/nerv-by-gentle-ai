@@ -16,6 +16,7 @@ import (
 
 	"github.com/war-apps/nerv-by-gentle-ai/internal/env/envtest"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/semrel"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/shipconfig"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/shipplan"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/shiprun"
 )
@@ -87,7 +88,18 @@ type fakeWorkspace struct {
 	closed        bool
 }
 
-func (w *fakeWorkspace) Dir() string          { return w.dir }
+func (w *fakeWorkspace) Dir() string { return w.dir }
+
+// Config is the user's local release: section, read from the fixture's
+// repository (never the clone), as semrel.Workspace.Config.
+func (w *fakeWorkspace) Config() *shipconfig.Release {
+	rel, err := shipconfig.Load(w.f.top)
+	if err != nil {
+		return nil
+	}
+	return rel
+}
+
 func (w *fakeWorkspace) ArtifactsDir() string { return filepath.Join(w.extra, "artifacts") }
 func (w *fakeWorkspace) NotesDir() string     { return filepath.Join(w.extra, "notes") }
 func (w *fakeWorkspace) OriginHead() string   { return w.head }
@@ -185,6 +197,15 @@ func newShipFixture(t *testing.T, nervYAML string) *shipFixture {
 		env: map[string]string{},
 	}
 	f.ws = &fakeWorkspace{f: f, dir: clone, extra: t.TempDir(), head: localHead, public: "https://github.com/acme/widgets.git", tags: map[string]bool{}}
+	// Origin's branch (the clone) has every project directory the local
+	// configuration names.
+	if rel, err := shipconfig.Load(top); err == nil {
+		for _, p := range rel.Projects {
+			if err := os.MkdirAll(filepath.Join(clone, filepath.FromSlash(p.Path)), 0o755); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
 	for _, d := range []string{f.ws.ArtifactsDir(), f.ws.NotesDir()} {
 		if err := os.MkdirAll(d, 0o755); err != nil {
 			t.Fatal(err)
@@ -916,5 +937,53 @@ func TestShip_ExpectSyntaxIsAUsageError(t *testing.T) {
 		if code != 2 || !strings.Contains(stderr, "--expect") || len(f.events) != 0 {
 			t.Errorf("%v: exit %d, events %v, stderr %q", bad, code, f.events, stderr)
 		}
+	}
+}
+
+func TestShip_UsesTheLocalConfigurationNotOrigins(t *testing.T) {
+	f := newShipFixture(t, shipMonorepoYAML)
+	f.monorepoResults()
+	// Origin's committed copy (in the clone) has other commands.
+	other := strings.ReplaceAll(shipMonorepoYAML, "echo build core", "echo origin build core")
+	if err := os.WriteFile(filepath.Join(f.ws.dir, ".nerv", "nerv.yaml"), []byte(other), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if code, _, stderr := f.run(t, "--yes"); code != 0 {
+		t.Fatalf("exit %d: %s", code, stderr)
+	}
+	if !slices.Contains(f.events, "core: echo build core") || slices.Contains(f.events, "core: echo origin build core") {
+		t.Errorf("events %v: want the local configuration's commands", f.events)
+	}
+}
+
+func TestShip_LocalPathsMissingOnOriginAreRefused(t *testing.T) {
+	yaml := strings.Replace(shipMonorepoYAML, `        build: { run: "echo build cli" }`, `        build: { run: "echo build cli", workdir: tools/cli }`, 1)
+	tests := []struct {
+		name, yaml, remove, want string
+	}{
+		{"project directory", shipMonorepoYAML, "web", `"web" (project web, path)`},
+		{"stage workdir", yaml, "", `"tools/cli" (project cli, stages.build.workdir)`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f := newShipFixture(t, tt.yaml)
+			f.monorepoResults()
+			if tt.remove != "" {
+				if err := os.RemoveAll(filepath.Join(f.ws.dir, tt.remove)); err != nil {
+					t.Fatal(err)
+				}
+			}
+			code, stdout, stderr := f.run(t, "--dry-run", "--json")
+			var doc shipDocument
+			if err := json.Unmarshal([]byte(stdout), &doc); err != nil {
+				t.Fatal(err)
+			}
+			if code != 1 || doc.Status != "refused" || !strings.Contains(doc.Error, tt.want) || !strings.Contains(doc.Error, "not on origin's main") {
+				t.Errorf("exit %d, %+v\nstderr %s", code, doc, stderr)
+			}
+			if want := []string{"open", "compute", "close"}; !slices.Equal(f.events, want) {
+				t.Errorf("events %v, want %v", f.events, want)
+			}
+		})
 	}
 }

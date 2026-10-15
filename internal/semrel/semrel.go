@@ -85,6 +85,23 @@ func (e *Engine) runner() Runner {
 // Compute returns the next release of each project on the branch, in
 // dependency order (only the requested project when opts.Project is set).
 func (e *Engine) Compute(ctx context.Context, opts Options) ([]ProjectResult, error) {
+	return e.compute(ctx, opts, nil)
+}
+
+// loadRelease loads the release: section of the .nerv/nerv.yaml in dir: nil
+// (no error) when there is none.
+func loadRelease(dir string) (*shipconfig.Release, error) {
+	rel, err := shipconfig.Load(dir)
+	if errors.Is(err, shipconfig.ErrNotConfigured) {
+		return nil, nil
+	}
+	return rel, err
+}
+
+// compute is Compute with the release: section given by config (nil loads
+// it from the repository's top level; a Workspace gives the user's local
+// section, never the clone's).
+func (e *Engine) compute(ctx context.Context, opts Options, config func() (*shipconfig.Release, error)) ([]ProjectResult, error) {
 	env := opts.Env
 	if env == nil {
 		env = os.Environ()
@@ -95,10 +112,10 @@ func (e *Engine) Compute(ctx context.Context, opts Options) ([]ProjectResult, er
 	}
 	top = filepath.Clean(top)
 
-	rel, err := shipconfig.Load(top)
-	if errors.Is(err, shipconfig.ErrNotConfigured) {
-		rel, err = nil, nil
+	if config == nil {
+		config = func() (*shipconfig.Release, error) { return loadRelease(top) }
 	}
+	rel, err := config()
 	if err != nil {
 		return nil, err
 	}
