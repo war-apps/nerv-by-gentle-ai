@@ -63,7 +63,7 @@ configurable with the data it needs; deploy option (Docker only for now).
 - [x] P2 — built-in default semantic-release configuration (dim's, with
   `release/*`), used by the engine when the repository has none.
 - [x] P3 — `validate` and `test` steps.
-- [ ] P4 — `release` step (reuse the ship workspace and version guard).
+- [x] P4 — `release` step (reuse the ship workspace and version guard).
 - [ ] P5 — `docker` step (tags, computed build args, login, push, retry).
 - [ ] P6 — `sync` step.
 - [ ] P7 — `deploy` step (env or Infisical; SSH; health and version check).
@@ -462,6 +462,80 @@ directly.
   diff --shortstat a8af92a 0326131`: 6 files changed, 347 insertions(+),
   100 deletions(-).
 
+### P4
+
+- Route: delegated (one bounded writer; trigger: config field, semrel
+  plumbing, outputs package, CLI, docs).
+- Sharing with `nerv ship` (decided): `nerv pipeline release` builds a
+  `shipRun` in a new release-only mode (`releaseOnly`, `versionFiles`,
+  `released`) and calls the same `execute`: release clone, local-vs-origin
+  check, version-file check on origin, Compute, `--expect`, listing,
+  confirmation, push check, GH token, `ws.Release` and the same failure
+  advice. In that mode the plan is empty (no stages, no hooks) and
+  `ship()` delegates to `releaseOnlyStep` (dry run stops there; version
+  files; release; a tagged failure gets advice without NERV's publish
+  stage). Ship's own code paths and texts are unchanged (all ship unit
+  and integration tests pass untouched). The shared messages say "nerv
+  ship"; the pipeline command renames them on its own stderr (a line
+  writer under the `[pipeline:release] ` PrefixWriter) and in its
+  document's `error`/`action`.
+- Version files: `pipeline.release.version_files` (pipelineconfig,
+  additive: validated, normalised, no duplicates) written in the clone
+  before semantic-release with shipplan's csproj writer (`<Version>` +
+  release link, or version only with a warning without a public origin),
+  as ship writes the dotnet preset's file. Ship relies on the
+  repository's own `@semantic-release/git` assets listing the file; the
+  built-in configuration now takes `extraAssets` (semrel
+  `ReleaseRequest.ExtraAssets` -> runner `defaultConfig(..., {assets})`),
+  so the release commit holds CHANGELOG + the version files; a
+  repository's own configuration keeps its own assets (documented, dim's
+  lists its csproj).
+- Outputs: `pipeline.ReleaseOutputs` (dim's published, version, channel,
+  git_tag + git_head, last_version, project, branch, config source, the
+  12 action outputs, error, action) written atomically to
+  `.nerv/artifacts/pipeline/release.json` after the same symlink checks
+  as the test results; `--json` prints the same document. Decisions: an
+  earlier release.json is removed at the start (a refused, failed or
+  interrupted run leaves none); `--dry-run` writes it with `dry_run: true`
+  (later dry runs see the would-be version); no new release is
+  `published: false`, exit 0; a `release:` section with several projects
+  is refused (one project per pipeline; `nerv ship` for monorepos); an
+  invalid `pipeline:` section is a refusal (exit 1).
+- RED: `go test ./internal/pipelineconfig/` (`p.Release undefined`), node
+  (`defaultConfig` without assets), `go test ./internal/semrel/`
+  (`unknown field ExtraAssets`), `go test ./internal/pipeline/`
+  (`undefined: ReleaseOutputs`), `go test ./cmd/nerv/` (the release step
+  did not exist: 6 test functions failed). GREEN: all; one refusal fixed
+  after GREEN (an invalid pipeline: section first exited 2).
+- Integration (`TestIntegration_PipelineReleaseWithTheBuiltInConfiguration`,
+  real semantic-release, local bare origin, no repo semantic-release
+  config, untracked local `pipeline:` with `version_files:
+  [src/Api/Api.csproj]`): `--dry-run` -> origin refs unchanged,
+  release.json `dry_run: true`, published, `1.1.0-alpha.1`, config
+  `default`; `--yes --json --expect widgets=1.1.0-alpha.1` -> tag
+  `v1.1.0-alpha.1` = origin's develop, release commit holds exactly
+  `CHANGELOG.md` and `src/Api/Api.csproj`, the csproj on origin has
+  `<Version>1.1.0-alpha.1</Version>`, the warning (no public address for
+  the link) is printed prefixed, release.json has the outputs and
+  `git_head` = origin's develop; after `git pull`, a second run ->
+  `published: false`, `last_version` `1.1.0-alpha.1`. 20.8s. The release
+  link itself is proven by the unit test (GitHub origin fake): a real
+  GitHub origin would also bring the GitHub plugin, not testable locally.
+- Checks: `go test -count=1 ./...` exit 0 (29 packages); `go test -tags
+  semrel_integration -run Integration -count=1 ./internal/semrel/
+  ./cmd/nerv/` exit 0; node runner tests 20/20; `go vet ./...`,
+  `GOOS=windows go vet ./...`, `go vet -tags semrel_integration` exit 0;
+  `gofmt -l .` empty.
+- Commits: `f8bf4fd` `feat(pipelineconfig): add the release step's version
+  files` (4 files changed, 49 insertions(+)); `0ef0a65` `feat(semrel):
+  commit extra assets with the built-in configuration's changelog` (7
+  files, +51 -7); `86aa2ce` `feat(pipeline): keep the release outputs for
+  the later steps` (2 files, +248); `f4ae06b` `feat(cli): add nerv
+  pipeline release` (8 files, +665 -13). Total `git diff --shortstat
+  b41e0ba f4ae06b`: 21 files changed, 1013 insertions(+), 20
+  deletions(-). Above the ~400-line heuristic: about 450 lines are tests
+  and 120 docs; four work-unit commits.
+
 ## Next step
 
-Review of P3 (with the coverage gate); then P4 (`release` step).
+Review of P4; then P5 (`docker` step, reading release.json).
