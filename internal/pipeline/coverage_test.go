@@ -282,3 +282,16 @@ func TestTest_EnforcesTheRunsettingsThresholds(t *testing.T) {
 		})
 	}
 }
+
+func TestMeasure_NoModulesIsFullCoverage(t *testing.T) {
+	empty := `<?xml version="1.0"?><coverage><packages /></coverage>`
+	cov, err := readCoverage(writeReports(t, empty))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, stat := range []string{StatTotal, StatAverage, StatMinimum} {
+		if got := cov.percent("line", stat); got != 10000 {
+			t.Errorf("%s: %d hundredths, want 10000 (nothing to cover)", stat, got)
+		}
+	}
+}

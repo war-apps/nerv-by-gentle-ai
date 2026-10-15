@@ -276,7 +276,8 @@ func hundredthsOf(covered, total int) int {
 // percent is metric's percentage in hundredths under stat.
 func (c *coverage) percent(metric, stat string) int {
 	if len(c.order) == 0 {
-		return 0
+		// No module: nothing to cover, 100% (the rule of an empty metric).
+		return 10000
 	}
 	var covered, total, sum int
 	lowest := 10000
