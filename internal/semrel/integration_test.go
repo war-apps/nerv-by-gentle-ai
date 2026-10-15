@@ -211,6 +211,9 @@ func TestIntegration_SingleProjectPrerelease(t *testing.T) {
 	if !dev.NewReleasePublished || dev.NewReleaseVersion != "1.2.0-alpha.2" || dev.NewReleaseChannel != "alpha" || dev.NewReleaseGitTag != "v1.2.0-alpha.2" {
 		t.Errorf("develop: %+v", dev)
 	}
+	if dev.SemanticReleaseConfig != ConfigRepository || dev.SemanticReleaseConfigFile != "package.json" {
+		t.Errorf("config source %q %q, want the repository's package.json", dev.SemanticReleaseConfig, dev.SemanticReleaseConfigFile)
+	}
 	if dev.NewReleaseMajorVersion != "1" || dev.NewReleaseMinorVersion != "2" || dev.NewReleasePatchVersion != "0" {
 		t.Errorf("develop version parts: %+v", dev)
 	}
@@ -612,5 +615,150 @@ func TestIntegration_SingleProjectKeepsTheConfiguredChangelog(t *testing.T) {
 	}
 	if files := origin.git("show", "--name-only", "--format=", "v1.1.0"); files != "docs/CHANGES.md" {
 		t.Errorf("release commit holds %q, want the configured docs/CHANGES.md only", files)
+	}
+}
+
+func TestIntegration_BuiltInDefaultWhenTheRepositoryHasNone(t *testing.T) {
+	requireToolchain(t)
+	r, _ := newOriginRepo(t)
+	r.commit("chore: init", "a.txt")
+	r.git("tag", "v1.0.0")
+	r.git("checkout", "-q", "-b", "develop")
+	r.commit("feat: add gadgets", "b.txt")
+	r.git("checkout", "-q", "-b", "release/1.0", "main")
+	r.commit("fix: repair widgets", "c.txt")
+	r.git("checkout", "-q", "main")
+	r.git("push", "-q", "origin", "main", "develop", "release/1.0", "--tags")
+
+	name := filepath.Base(r.dir)
+	dev := sole(t, compute(t, Options{RepoRoot: r.dir, Branch: "develop"}), name)
+	if dev.NewReleaseVersion != "1.1.0-alpha.1" || dev.NewReleaseChannel != "alpha" || dev.SemanticReleaseConfig != ConfigBuiltIn {
+		t.Errorf("develop: %+v", dev)
+	}
+	rc := sole(t, compute(t, Options{RepoRoot: r.dir, Branch: "release/1.0"}), name)
+	if rc.NewReleaseVersion != "1.0.1-rc.1" || rc.NewReleaseChannel != "beta" || rc.NewReleaseGitTag != "v1.0.1-rc.1" {
+		t.Errorf("release/1.0: %+v", rc)
+	}
+	t.Logf("default: develop -> %s (%s), release/1.0 -> %s (%s)", dev.NewReleaseVersion, dev.NewReleaseChannel, rc.NewReleaseVersion, rc.NewReleaseChannel)
+
+	// A second release branch on origin: the fixed id rc cannot serve both.
+	r.git("checkout", "-q", "-b", "release/1.1", "main")
+	r.commit("fix: another", "d.txt")
+	r.git("push", "-q", "origin", "release/1.1")
+	_, err := Compute(context.Background(), Options{RepoRoot: r.dir, Branch: "release/1.0", Env: testEnv(), CacheDir: integrationCache})
+	if !errors.Is(err, ErrFixedPrereleaseGlob) || !strings.Contains(err.Error(), "release/1.0, release/1.1") {
+		t.Errorf("two release branches: err = %v", err)
+	}
+}
+
+// TestIntegration_ConfigDetectionForms: semantic-release's own search
+// (through the runner's plan mode) finds every configuration form, and
+// reports none for a package.json without "release".
+func TestIntegration_ConfigDetectionForms(t *testing.T) {
+	requireToolchain(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+	defer cancel()
+	e := &Engine{}
+	env := testEnv()
+	cacheDir, specs, err := e.prepareNode(ctx, env, nil, []project{{Name: "x"}}, integrationCache)
+	if err != nil {
+		t.Fatal(err)
+	}
+	scriptDir := t.TempDir()
+	if err := writeRunner(scriptDir); err != nil {
+		t.Fatal(err)
+	}
+	script := filepath.Join(scriptDir, runnerMain)
+	jsonCfg := `{ "branches": ["main"] }`
+	tests := []struct{ file, content, want string }{
+		{"package.json", `{ "name": "x", "release": { "branches": ["main"] } }`, "package.json"},
+		{".releaserc", jsonCfg, ".releaserc"},
+		{".releaserc.json", jsonCfg, ".releaserc.json"},
+		{".releaserc.yaml", "branches: [main]\n", ".releaserc.yaml"},
+		{".releaserc.yml", "branches: [main]\n", ".releaserc.yml"},
+		{".releaserc.js", `module.exports = { branches: ["main"] };`, ".releaserc.js"},
+		{".releaserc.cjs", `module.exports = { branches: ["main"] };`, ".releaserc.cjs"},
+		{".releaserc.mjs", `export default { branches: ["main"] };`, ".releaserc.mjs"},
+		{".config/releaserc.json", jsonCfg, ".config/releaserc.json"},
+		{"release.config.js", `module.exports = { branches: ["main"] };`, "release.config.js"},
+		{"release.config.cjs", `module.exports = { branches: ["main"] };`, "release.config.cjs"},
+		{"release.config.mjs", `export default { branches: ["main"] };`, "release.config.mjs"},
+		{"package.json", `{ "name": "x" }`, ""},
+		{"README.md", "nothing\n", ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.file+" "+tt.want, func(t *testing.T) {
+			dir := t.TempDir()
+			p := filepath.Join(dir, filepath.FromSlash(tt.file))
+			if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(p, []byte(tt.content), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			got, err := e.checkPlan(ctx, script, dir, env, cacheDir, specs)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if filepath.ToSlash(got) != tt.want {
+				t.Errorf("config file %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+// The release path refuses a fixed-id glob matching several branches on
+// origin before semantic-release runs, as Compute does.
+func TestIntegration_ReleasePathRefusesTwoReleaseBranches(t *testing.T) {
+	requireToolchain(t)
+	r, origin := newOriginRepo(t)
+	r.commit("chore: init", "a.txt")
+	r.git("tag", "v1.0.0")
+	r.git("checkout", "-q", "-b", "release/1.1")
+	r.commit("fix: one", "b.txt")
+	r.git("checkout", "-q", "-b", "release/1.2", "main")
+	r.commit("fix: two", "c.txt")
+	r.git("push", "-q", "origin", "main", "release/1.1", "release/1.2", "--tags")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+	defer cancel()
+	ws, err := NewWorkspace(ctx, WorkspaceOptions{RepoRoot: r.dir, Branch: "release/1.1", Env: testEnv(), CacheDir: integrationCache})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ws.Close()
+	_, err = ws.Release(ctx, ReleaseRequest{Expected: ProjectResult{Project: filepath.Base(r.dir), NewReleasePublished: true, NewReleaseVersion: "1.0.1-rc.1"}})
+	if !errors.Is(err, ErrFixedPrereleaseGlob) || !strings.Contains(err.Error(), "release/1.1, release/1.2") {
+		t.Fatalf("err = %v", err)
+	}
+	if tags := origin.git("tag", "--list"); tags != "v1.0.0" {
+		t.Errorf("origin tags %q", tags)
+	}
+}
+
+// A monorepo without a semantic-release configuration: the built-in one,
+// with each project's changelog applied to its plugins.
+func TestIntegration_BuiltInConfigurationMonorepoChangelogs(t *testing.T) {
+	requireToolchain(t)
+	r, origin := newOriginRepo(t)
+	writeConfig(t, r.dir, "release:\n  projects:\n    - name: api\n      path: api\n      tag_format: \"api-v${version}\"\n    - name: web\n      path: web\n      tag_format: \"web-v${version}\"\n")
+	r.commit("chore: init", "api/a.txt", "web/a.txt")
+	r.git("tag", "api-v1.0.0")
+	r.git("tag", "web-v1.0.0")
+	r.commit("feat: api endpoint", "api/b.txt")
+	r.commit("fix: web layout", "web/b.txt")
+	r.git("push", "-q", "origin", "main", "--tags")
+
+	got := releaseAll(t, r)
+	if len(got) != 2 || got[0].NewReleaseGitTag != "api-v1.1.0" || got[1].NewReleaseGitTag != "web-v1.0.1" || got[0].SemanticReleaseConfig != ConfigBuiltIn {
+		t.Fatalf("released %+v", got)
+	}
+	for tag, want := range map[string]string{"api-v1.1.0": "api/CHANGELOG.md", "web-v1.0.1": "web/CHANGELOG.md"} {
+		if files := origin.git("show", "--name-only", "--format=", tag); files != want {
+			t.Errorf("release commit %s holds %q, want only %s", tag, files, want)
+		}
+	}
+	if cl := origin.git("show", "main:api/CHANGELOG.md"); !strings.Contains(cl, "api endpoint") {
+		t.Errorf("api/CHANGELOG.md:\n%s", cl)
 	}
 }

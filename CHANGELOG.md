@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- release: a built-in semantic-release configuration (dim.comprobantes.api's: `main`, `develop` alpha, `release/*`
+  rc on beta, `hotfix/*` beta; conventionalcommits, changelog, git, github) for repositories without one of their
+  own; a `pipeline:` section's `branches` replace its branches. `nerv version next` and `nerv ship` say which
+  configuration was used (`semantic_release_config` in JSON). A fixed-id prerelease glob matching several branches
+  on origin is refused with the branch names.
+
 ## [4.1.1] - 2026-10-15
 
 ### Changed

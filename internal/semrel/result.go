@@ -33,6 +33,13 @@ type ProjectResult struct {
 	LastReleaseVersion string `json:"last_release_version"`
 	LastReleaseGitHead string `json:"last_release_git_head"`
 	LastReleaseGitTag  string `json:"last_release_git_tag"`
+
+	// SemanticReleaseConfig is where the semantic-release configuration
+	// came from: ConfigRepository or ConfigBuiltIn.
+	SemanticReleaseConfig string `json:"semantic_release_config"`
+	// SemanticReleaseConfigFile is the repository's configuration file,
+	// repository-relative (empty for the built-in default).
+	SemanticReleaseConfigFile string `json:"semantic_release_config_file,omitempty"`
 }
 
 // Output is one named action output.
@@ -83,6 +90,13 @@ type runnerRequest struct {
 	// Changelog, when set, is the project's changelog file: the runner points
 	// the repository's @semantic-release/changelog and git entries at it.
 	Changelog string `json:"changelog,omitempty"`
+	// UseDefault: the repository has no semantic-release configuration; the
+	// runner uses its built-in one with Branches.
+	UseDefault bool            `json:"useDefault,omitempty"`
+	Branches   []defaultBranch `json:"branches,omitempty"`
+	// GitHubRelease includes @semantic-release/github in the built-in
+	// configuration (origin is on GitHub).
+	GitHubRelease bool `json:"githubRelease"`
 }
 
 // commitFilter keeps the commits that touch Paths or carry one of Scopes.
@@ -98,6 +112,9 @@ type runnerResponse struct {
 	// plan mode
 	Packages   []string `json:"packages"`
 	Unresolved []string `json:"unresolved"`
+	// ConfigFile is the repository's semantic-release configuration file,
+	// found as semantic-release finds it; empty when there is none.
+	ConfigFile string `json:"configFile"`
 	// run mode
 	Released    bool     `json:"released"`
 	NextRelease *release `json:"nextRelease"`

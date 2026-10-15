@@ -209,6 +209,55 @@ module) must be pinned in `extra_plugins`; otherwise the command fails and
 names it. An `extra_plugins` entry for one of the packages above replaces
 its version.
 
+### Built-in semantic-release configuration
+
+A repository with a semantic-release configuration of its own
+(`package.json` `release`, `.releaserc`, `.releaserc.{json,yaml,yml,js,cjs,mjs,ts}`,
+`.config/releaserc*`, `release.config.{js,cjs,mjs,ts}`, found in the
+repository root exactly as semantic-release finds it) keeps it, unchanged.
+A repository with **none** uses NERV's built-in configuration,
+dim.comprobantes.api's:
+
+- branches: `main`; `develop` (prerelease `alpha`, channel `alpha`);
+  `release/*` (prerelease `rc`, channel `beta`, widening dim's single
+  `release/rc`); `hotfix/*` (prerelease `beta`, channel `beta`). A
+  `pipeline:` section's `branches` replace these
+  ([pipeline.md](pipeline.md#pipelinebranches));
+- `@semantic-release/commit-analyzer` and
+  `@semantic-release/release-notes-generator` with the `conventionalcommits`
+  preset and note keywords `BREAKING CHANGE`, `BREAKING CHANGES`,
+  `BREAKING`;
+- `@semantic-release/changelog` (`CHANGELOG.md` at the root, or the
+  project's own changelog, see [The project's changelog](#the-projects-changelog));
+- `@semantic-release/git` committing the changelog (its default release
+  commit message, as dim);
+- `@semantic-release/github` (the GitHub release), only when origin is on
+  GitHub (`github.com`, or the GitHub Enterprise host in `GH_HOST`):
+  elsewhere it would fail its checks (`EINVALIDGITHUBURL`). A real release
+  needs `GH_TOKEN`; `nerv ship` reads it, see [Credentials](#credentials).
+
+dim's `@semantic-release/npm` (`npmPublish: false`) and
+`@semantic-release/exec` (`bump-csproj.sh`, `set-release-outputs.sh`) are
+left out: the dotnet preset writes the project file and NERV prints the
+release outputs itself. Every plugin it needs is bundled or pinned, so no
+`extra_plugins` are required.
+
+`nerv version next` (text: `semantic-release config: repository (<file>)`
+or `built-in default (dim)`; JSON: `semantic_release_config`
+`repository` / `default` and `semantic_release_config_file`) and `nerv ship`
+(stderr line; `--json` document field `semantic_release_config`) say which
+one was used.
+
+A prerelease glob with a fixed id (`release/*` with `rc`) serves one
+matching branch at a time: semantic-release 24 rejects two branches with
+the same prerelease id (`EPRERELEASEBRANCHES`, verified with two
+`release/x` branches on origin). With the built-in configuration NERV
+refuses that case first, naming the branches: keep one release branch at a
+time (merge or delete the others), or give each its own prerelease id in
+the `pipeline:` section's `branches`. The check reads origin's branches as
+`nerv ship` last fetched them, in both the version computation and the
+release.
+
 ### `release.projects[]`
 
 At least one project is required. A single-repo setup is one project with

@@ -1042,3 +1042,19 @@ func TestShip_LocalPathsMissingOnOriginAreRefused(t *testing.T) {
 		})
 	}
 }
+
+func TestShip_SaysWhereTheSemanticReleaseConfigCameFrom(t *testing.T) {
+	f := newShipFixture(t, shipMonorepoYAML)
+	f.monorepoResults()
+	for i := range f.ws.results {
+		f.ws.results[i].SemanticReleaseConfig = semrel.ConfigBuiltIn
+	}
+	code, stdout, stderr := f.run(t, "--dry-run", "--json")
+	var doc shipDocument
+	if err := json.Unmarshal([]byte(stdout), &doc); err != nil || code != 0 {
+		t.Fatalf("exit %d: %v %s", code, err, stdout)
+	}
+	if doc.SemanticReleaseConfig != semrel.ConfigBuiltIn || !strings.Contains(stderr, "semantic-release config: built-in default (dim)") {
+		t.Errorf("document %+v\nstderr %s", doc, stderr)
+	}
+}

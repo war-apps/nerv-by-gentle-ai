@@ -72,7 +72,7 @@ type Workspace struct {
 	// warnedChangelog: the ignored-changelog warning was printed.
 	warnedChangelog bool
 	// rel is the user's local release: section; nil when there is none.
-	rel *shipconfig.Release
+	local localConfig
 }
 
 // NewWorkspace creates a release clone with the default engine. See
@@ -105,7 +105,7 @@ func (e *Engine) NewWorkspace(ctx context.Context, opts WorkspaceOptions) (*Work
 		return nil, fmt.Errorf("not a git repository: %w", err)
 	}
 	top = filepath.Clean(top)
-	rel, err := loadRelease(top)
+	local, err := loadLocalConfig(top)
 	if err != nil {
 		return nil, err
 	}
@@ -136,7 +136,7 @@ func (e *Engine) NewWorkspace(ctx context.Context, opts WorkspaceOptions) (*Work
 		return nil, err
 	}
 	w := &Workspace{e: e, root: root, dir: filepath.Join(root, filepath.Base(top)), branch: opts.Branch, env: wenv,
-		pushURL: pushURL, public: publicURL(raw), cache: opts.CacheDir, timeout: timeout, rel: rel}
+		pushURL: pushURL, public: publicURL(raw), cache: opts.CacheDir, timeout: timeout, local: local}
 	if err := w.init(ctx, top, env, resolved); err != nil {
 		os.RemoveAll(root)
 		return nil, err
@@ -207,7 +207,7 @@ func (w *Workspace) PublicURL() string { return w.public }
 // Config is the release: section of the user's local .nerv/nerv.yaml (nil
 // when it has none), the one every step of the release uses; the clone's
 // copy is ignored.
-func (w *Workspace) Config() *shipconfig.Release { return w.rel }
+func (w *Workspace) Config() *shipconfig.Release { return w.local.rel }
 
 // Close removes the clone and every file the workspace wrote.
 func (w *Workspace) Close() error { return os.RemoveAll(w.root) }
@@ -218,7 +218,7 @@ func (w *Workspace) Close() error { return os.RemoveAll(w.root) }
 // branches, tags and notes, so origin is not read again.
 func (w *Workspace) Compute(ctx context.Context, project string) ([]ProjectResult, error) {
 	return w.e.compute(ctx, Options{RepoRoot: w.dir, Branch: w.branch, Project: project, Env: w.env, CacheDir: w.cache, Offline: true},
-		func() (*shipconfig.Release, error) { return w.rel, nil })
+		&w.local)
 }
 
 // CheckPush checks, as semantic-release does before releasing, that git can
@@ -284,7 +284,7 @@ type ReleaseRequest struct {
 // ErrVersionMismatch too.
 func (w *Workspace) Release(ctx context.Context, req ReleaseRequest) (ProjectResult, error) {
 	e := w.e
-	rel := w.rel
+	rel := w.local.rel
 	projects, err := planProjects(rel, filepath.Base(w.dir), "")
 	if err != nil {
 		return ProjectResult{}, err
@@ -315,8 +315,18 @@ func (w *Workspace) Release(ctx context.Context, req ReleaseRequest) (ProjectRes
 		return ProjectResult{}, err
 	}
 	script := filepath.Join(scriptDir, runnerMain)
-	if err := e.checkPlan(ctx, script, w.dir, env, cacheDir, specs); err != nil {
+	configFile, err := e.checkPlan(ctx, script, w.dir, env, cacheDir, specs)
+	if err != nil {
 		return ProjectResult{}, err
+	}
+	var defaults []defaultBranch
+	if configFile == "" {
+		if defaults, err = w.local.defaultBranches(); err != nil {
+			return ProjectResult{}, err
+		}
+		if err := e.checkPrereleaseBranches(ctx, w.dir, env, "refs/remotes/origin/", defaults); err != nil {
+			return ProjectResult{}, err
+		}
 	}
 	byName := map[string]ProjectResult{}
 	for _, r := range req.Computed {
@@ -333,6 +343,9 @@ func (w *Workspace) Release(ctx context.Context, req ReleaseRequest) (ProjectRes
 		MinReleaseType:   minReleaseType(p.DependsOn, byName),
 		ExpectedVersion:  expected,
 		Changelog:        p.Changelog,
+		UseDefault:       configFile == "",
+		Branches:         defaults,
+		GitHubRelease:    remoteIsGitHub(w.public, env),
 		CommitFilesCache: filepath.Join(w.root, "commit-files.json"),
 	}, req.Output)
 	if m := resp.VersionMismatch; m != nil {
@@ -347,6 +360,7 @@ func (w *Workspace) Release(ctx context.Context, req ReleaseRequest) (ProjectRes
 		fmt.Fprintf(req.Output, "nerv ship: warning: the release: section sets each project's changelog, but the semantic-release configuration has no @semantic-release/changelog plugin: no changelog is written (add the plugin, and @semantic-release/git to commit it)\n")
 	}
 	r := normalize(p.Name, w.branch, resp)
+	configSource(&r, configFile)
 	if !r.NewReleasePublished {
 		return r, fmt.Errorf("project %s: %w: computed %s, semantic-release released nothing (see its log); nothing was tagged", p.Name, ErrVersionMismatch, expected)
 	}

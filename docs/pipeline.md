@@ -123,7 +123,9 @@ The source column cites where each default comes from in dim's
 
 The semantic-release branches, in semantic-release order. Each entry has a
 `name` (a branch or a glob such as `release/*`, where `*` does not cross a
-`/`), an optional `prerelease` id and an optional `channel` (default: the
+`/`; only `*`, `?` and `[...]` are supported: `**`, braces such as
+`{a,b}` and extglobs such as `@(a|b)` are rejected, as NERV matches
+patterns itself before semantic-release does), an optional `prerelease` id and an optional `channel` (default: the
 prerelease id; empty on a release branch, meaning the default channel). The
 channel is also the moving image tag. When `branches` is omitted:
 
@@ -139,6 +141,16 @@ rejected: it breaks on branch names with a `/`, as ci-cd.yml itself warns
 for `hotfix/*`. At least one and at most 3 release branches (without
 prerelease) are required; the first one is the main branch, the only one
 whose images get `latest`.
+
+These branches also feed NERV's built-in semantic-release configuration,
+used by `nerv version next`, `nerv ship` and the release step when the
+repository has no semantic-release configuration of its own; a repository
+with its own keeps its own branches (see
+[release-commands.md](release-commands.md#built-in-semantic-release-configuration)).
+A glob with a fixed prerelease id (`release/*` with `rc`) serves one
+matching branch at a time: with two `release/x` branches on origin the
+computation is refused (semantic-release requires one id per prerelease
+branch).
 
 ### `pipeline.registry`
 

@@ -166,6 +166,9 @@ func runShip(args []string, stdout, stderr io.Writer, opts options) int {
 
 	outcomes, err := s.execute(ctx)
 	doc := shipDocument{Status: successStatus(outcomes, s.dryRun), Projects: outcomes}
+	if len(s.results) > 0 {
+		doc.SemanticReleaseConfig = s.results[0].SemanticReleaseConfig
+	}
 	code := 0
 	if err != nil {
 		code, doc.Status, doc.Error = classifyShipError(ctx, received(), stderr, err)
@@ -187,9 +190,13 @@ func runShip(args []string, stdout, stderr io.Writer, opts options) int {
 // refused, declined, failed, interrupted), its error, and each project's
 // outcome (empty when the run stopped before computing them).
 type shipDocument struct {
-	Status   string        `json:"status"`
-	Error    string        `json:"error,omitempty"`
-	Projects []shipOutcome `json:"projects"`
+	Status string `json:"status"`
+	Error  string `json:"error,omitempty"`
+	// SemanticReleaseConfig is where the semantic-release configuration came
+	// from: "repository" or "default" (the built-in one); empty before the
+	// versions are computed.
+	SemanticReleaseConfig string        `json:"semantic_release_config,omitempty"`
+	Projects              []shipOutcome `json:"projects"`
 }
 
 // successStatus is the status of a run that ended without an error.
@@ -538,6 +545,11 @@ func (s *shipRun) list(items []shipItem) {
 		what += " (dry run: nothing is released or published)"
 	}
 	fmt.Fprintf(s.stderr, "nerv ship: %s from origin/%s (%s)\n", what, s.branch, short(s.ws.OriginHead()))
+	if len(s.results) > 0 {
+		if src := configSourceText(s.results[0]); src != "" {
+			fmt.Fprintf(s.stderr, "nerv ship: semantic-release config: %s\n", src)
+		}
+	}
 	for _, r := range s.results {
 		if !r.NewReleasePublished {
 			fmt.Fprintf(s.stderr, "%s: no new release (last %s)\n", r.Project, orNone(r.LastReleaseVersion))
