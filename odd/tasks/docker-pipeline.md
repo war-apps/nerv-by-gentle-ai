@@ -92,6 +92,8 @@ per task, merged into develop in order).
 ## Progress
 
 - PR #105 (P1): `feat/pipeline-config` → develop. Merged f1a69de.
+- PR #106 (P2): `feat/pipeline-default-semrel` → develop. Merged 87cf385.
+- P3 branch `feat/pipeline-validate-test` from 87cf385.
 - P2 branch `feat/pipeline-default-semrel` from f1a69de.
 
 Branch created from fbe03dd.
