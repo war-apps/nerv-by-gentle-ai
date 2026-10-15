@@ -378,6 +378,20 @@ delegated (one writer). Test-first.
   thresholds` (8 files changed, 724 insertions(+), 66 deletions(-); about
   330 lines of tests and 50 of docs).
 
+### P3 review
+
+- Native review of 8ae0406..ff53bdc (high risk, 4 lenses, user granted):
+  approved and acknowledged. Advisory: R4-branch-merge-undercount /
+  R3-branch-merge-max / R2-merge-comment-misleading (WARNING: with several
+  test projects covering different branches of one line, the per-line merge
+  keeps max covered / max total — 1/2 instead of coverlet's 2/2 — because
+  Cobertura's condition-coverage has counts, not which branches; the
+  comment claims it matches coverlet), R1-symlinked-results-dir (the
+  results reset checks the path lexically only), R2-empty-coverage-zero (no
+  modules → 0% instead of the 100% rule), R2-tasklog-stale-commands-doc and
+  R2-tasklog-row-count (task log notes outdated / overstated: the coverlet
+  table test has 10 rows).
+
 ## Next step
 
 Review of P3 (with the coverage gate); then P4 (`release` step).
