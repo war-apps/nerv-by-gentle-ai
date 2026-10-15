@@ -194,22 +194,28 @@ func TestCheckThresholds_EachStatisticAsCoverlet(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Rows of the coverlet.core probe: thresholds -> types below.
+	// The 15 rows of the coverlet.core 6.0.4 probe (GetThresholdTypesBelowThreshold):
+	// thresholds -> types below.
 	tests := []struct {
 		stat                 string
 		line, branch, method float64
 		below                string
 	}{
 		{StatMinimum, 50, 50, 66.66, "line,method"},
+		{StatMinimum, 50.01, 50, 66.67, "line,method"},
 		{StatMinimum, 66.66, 0, 0, "line"},
 		{StatMinimum, 33.33, 0, 0, ""},
 		{StatMinimum, 33.34, 0, 0, "line"},
 		{StatAverage, 50, 50, 66.66, ""},
 		{StatAverage, 50.01, 50, 66.67, ""},
 		{StatAverage, 66.66, 0, 0, ""},
+		{StatAverage, 33.33, 0, 0, ""},
+		{StatAverage, 33.34, 0, 0, ""},
 		{StatTotal, 50, 50, 66.66, ""},
 		{StatTotal, 50.01, 50, 66.67, "line,method"},
 		{StatTotal, 66.66, 0, 0, "line"},
+		{StatTotal, 33.33, 0, 0, ""},
+		{StatTotal, 33.34, 0, 0, ""},
 	}
 	for _, tt := range tests {
 		th := &Thresholds{Line: ptr(tt.line), Branch: ptr(tt.branch), Method: ptr(tt.method), Stat: tt.stat}
