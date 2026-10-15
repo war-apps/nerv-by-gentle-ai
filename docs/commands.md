@@ -111,7 +111,7 @@ isn't taking effect.
 | `nerv version` | Print the binary and plugin versions |
 | `nerv version next` | Compute the next release version with semantic-release |
 | `nerv ship` | Release the repository from origin: pipeline, semantic-release, publish |
-| `nerv pipeline <step>` | Run a step of the Docker pipeline (`validate`, `test`) |
+| `nerv pipeline <step>` | Run a step of the Docker pipeline (`validate`, `test`, `release`) |
 | `nerv configure` | Configure NERV non-interactively (or run the wizard) |
 | `nerv install` | Install NERV (plugin, cache, skills, Engram KB) |
 | `nerv uninstall` | Uninstall NERV |
@@ -199,13 +199,16 @@ Runs one step of the Docker pipeline configured in the `pipeline:` section
 restore`, `dotnet format --verify-no-changes`) and `test` (restore, build
 with `-warnaserror`, `dotnet test` with coverage and a trx logger, results
 in `.nerv/artifacts/pipeline/test`, and the runsettings coverage thresholds
-enforced by nerv, since coverlet's collector ignores them). Both run in your
-working tree. Details:
+enforced by nerv, since coverlet's collector ignores them); both run in your
+working tree. `release` releases what is on origin as `nerv ship` does,
+without building or publishing (version files, release commit, tag;
+outputs in `.nerv/artifacts/pipeline/release.json`). Details:
 [pipeline.md](pipeline.md#running-the-steps).
 
 ```
 nerv pipeline validate
 nerv pipeline test --json
+nerv pipeline release --dry-run
 ```
 
 ### nerv ship

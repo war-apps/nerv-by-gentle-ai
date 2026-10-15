@@ -31,12 +31,27 @@ Steps:
              coverage thresholds; results in
              .nerv/artifacts/pipeline/test (git-ignored)
 
+  release    semantic-release on origin's state, as nerv ship releases it
+             but without building or publishing: version files
+             (pipeline.release.version_files), release commit, CHANGELOG,
+             tag, GitHub release; outputs in
+             .nerv/artifacts/pipeline/release.json
+
 validate and test run in your working tree, as CI runs on a checkout: they
-check the code as it is, uncommitted changes included.
+check the code as it is, uncommitted changes included. release releases
+what is on origin: your local branch must equal origin's.
 
 Flags:
   --cwd <dir>   A directory inside the repository (default ".")
   --json        Print the result as one JSON document
+
+release also takes:
+  --branch <name>               Branch to release (default: the current one)
+  --dry-run                     Compute the release only; never release
+  --yes                         Release without asking (required without a
+                                terminal)
+  --expect <project>=<version>  Release only this approved version
+  --fetch-timeout <dur>         Bound for each read of origin (default 60s)
 
 Progress goes to stderr (each command's output prefixed
 "[pipeline:<step>] "), the result to stdout. Exit codes: 0 passed, 1
@@ -46,7 +61,7 @@ interrupted.
 `
 
 // pipelineStepNames are the implemented steps, in pipeline order.
-var pipelineStepNames = []string{"validate", "test"}
+var pipelineStepNames = []string{"validate", "test", "release"}
 
 // pipelineRefused is the status of a step that did not start.
 const pipelineRefused = "refused"
@@ -60,6 +75,9 @@ func runPipeline(args []string, stdout, stderr io.Writer, opts options) int {
 		return 0
 	}
 	step := args[0]
+	if step == "release" {
+		return runPipelineRelease(args[1:], stdout, stderr, opts)
+	}
 	if !slices.Contains(pipelineStepNames, step) {
 		return pipelineUsageError(stderr, fmt.Sprintf("unknown step %q (want one of %s)", step, strings.Join(pipelineStepNames, ", ")))
 	}

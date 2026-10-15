@@ -7,15 +7,15 @@ image, plus the Docker deploy that dim runs with `/update-deploy`. Every step
 runs locally, one process per step, without GitHub Actions; any GitHub
 workflow in the repository is ignored.
 
-> **Status.** `nerv pipeline validate` and `nerv pipeline test` are
-> available ([Running the steps](#running-the-steps)); `release`, `docker`,
-> `sync`, `deploy` and `nerv pipeline run` come in later releases.
+> **Status.** `nerv pipeline validate`, `test` and `release` are
+> available ([Running the steps](#running-the-steps)); `docker`, `sync`,
+> `deploy` and `nerv pipeline run` come in later releases.
 
 | Step | What it does (dim's job) |
 |---|---|
 | `validate` | `dotnet restore` and `dotnet format --verify-no-changes` (validate) |
 | `test` | `dotnet build -warnaserror`, `dotnet test` with coverage and the runsettings, then the runsettings' coverage thresholds (test) |
-| `release` | semantic-release on origin's state: version, channel, tag (release) |
+| `release` | semantic-release on origin's state: version files, release commit, tag, outputs (release) |
 | `docker` | build, tag and push every image (docker) |
 | `sync` | merge the released branch back into develop and main into `release/*` (sync-to-develop, sync-main-to-release) |
 | `deploy` | update the containers of each environment over SSH and verify them (`/update-deploy`) |
@@ -123,6 +123,59 @@ coverlet.core 6.0.4 directly):
   >= 80%, method 50% < 100%`; when met, the result carries a note such as
   `coverage (total): line 100% >= 100%, branch 85.71% >= 80%, method 100%
   >= 100%`.
+
+### `nerv pipeline release`
+
+```
+nerv pipeline release [--cwd <dir>] [--branch <name>] [--dry-run] [--yes]
+                      [--expect <project>=<version>] [--fetch-timeout <dur>] [--json]
+```
+
+dim's release job. It releases **what is on origin** exactly as
+[`nerv ship`](release-commands.md#nerv-ship) does, sharing its code: a
+fresh release clone of origin's branch, your local branch must equal
+origin's, the push access is checked first, the repository's own
+semantic-release configuration or the
+[built-in one](release-commands.md#built-in-semantic-release-configuration)
+(whose branches come from `pipeline.branches`), the version guard,
+`--expect`, `--dry-run`, and the confirmation (`--yes` without a
+terminal). Unlike `nerv ship` it does not build, publish or run hooks: the
+docker step builds the images afterwards.
+
+1. Write each `pipeline.release.version_files` project file in the clone:
+   `<Version>` and `<PackageReleaseNotes>` = the release link
+   (`https://<host>/<owner>/<repo>/releases/tag/<tag>`, as dim's
+   `bump-csproj.sh`); without a public origin only `<Version>`, with a
+   warning.
+2. Run semantic-release: release commit (CHANGELOG and the version files),
+   tag, push, GitHub release when origin is on GitHub. With the built-in
+   configuration the version files are added to its `@semantic-release/git`
+   assets; a repository's own configuration must list them in its own
+   assets (as dim's lists its csproj).
+3. Write the outputs to `.nerv/artifacts/pipeline/release.json` (the
+   git-ignored artifacts directory, with the same symlink checks as the
+   test results) for the docker, sync and deploy steps.
+
+The step releases one project: a `release:` section with several projects
+is refused (use `nerv ship` for a monorepo). An earlier `release.json` is
+removed at the start, so a refused, failed or interrupted run leaves none.
+`--dry-run` computes only (nothing written in the clone, nothing pushed)
+and still writes `release.json`, with `"dry_run": true`, so a dry run of
+the later steps sees the version it would release. No new release is a
+success with `"published": false`.
+
+`release.json` (and `--json` on stdout) holds dim's release outputs
+(`set-release-outputs.sh`: published, version, channel, git tag) and
+semantic-release-action's 12 outputs:
+
+```json
+{"step":"release","status":"passed","dry_run":false,"published":true,"project":"api","branch":"develop","version":"1.1.0-alpha.1","channel":"alpha","git_tag":"v1.1.0-alpha.1","git_head":"5d0c...","last_version":"1.0.0","semantic_release_config":"default","version_files":["src/Api/Api.csproj"],"outputs":{"new_release_published":"true","new_release_version":"1.1.0-alpha.1","...":"..."}}
+```
+
+`status` is `passed`, `refused` (exit 1), `failed` (exit 2, with `error`
+and `action`: what is on origin and what to do, as `nerv ship` reports
+it) or `interrupted` (128 + signal). Every stderr line is prefixed
+`[pipeline:release] `, semantic-release's log included.
 
 ### Result
 
@@ -299,6 +352,12 @@ and the step fails at the end), with `[skip ci]` messages.
 | `enabled` | `true` | Run the sync step. |
 | `develop` | `develop` | The branch receiving the merges (ci-cd.yml: sync-to-develop); a single branch listed in `branches`. |
 | `release` | `release/*` | The release-candidate branches (ci-cd.yml: sync-main-to-release). |
+
+### `pipeline.release`
+
+| Field | Default | Meaning |
+|---|---|---|
+| `version_files` | `[]` | MSBuild project files (repository-relative) that `nerv pipeline release` versions in the release commit: `<Version>` and `<PackageReleaseNotes>` (the release link), as dim's `bump-csproj.sh` does for `src/Api/Dim.Comprobantes.Api.csproj`. Each must exist on origin's branch. |
 
 ### `pipeline.deploy` (optional)
 

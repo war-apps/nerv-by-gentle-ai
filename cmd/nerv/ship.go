@@ -128,6 +128,15 @@ type shipRun struct {
 	results  []semrel.ProjectResult
 	exec     shipplan.Executor
 	tokenEnv []string
+
+	// releaseOnly is nerv pipeline release: the same release (origin's
+	// state, checks, confirmation, semantic-release, version guard) without
+	// ship's build, publish or hooks; versionFiles are written instead of
+	// the dotnet preset's project file. released is what semantic-release
+	// released.
+	releaseOnly  bool
+	versionFiles []string
+	released     semrel.ProjectResult
 }
 
 func runShip(args []string, stdout, stderr io.Writer, opts options) int {
@@ -358,6 +367,9 @@ func (s *shipRun) execute(ctx context.Context) ([]shipOutcome, error) {
 	if err := checkPathsOnOrigin(ws.Config(), ws.Dir(), s.branch); err != nil {
 		return nil, err
 	}
+	if err := checkVersionFilesOnOrigin(s.versionFiles, ws.Dir(), s.branch); err != nil {
+		return nil, err
+	}
 	// Every project is computed, even with --project: Compute returns only
 	// the requested project, and Release needs the dependencies' results to
 	// apply depends_on.
@@ -431,12 +443,16 @@ func (s *shipRun) release(ctx context.Context) ([]shipOutcome, error) {
 		if err != nil {
 			return nil, err
 		}
-		plan, err := shipplan.Build(s.ws.Dir(), p, shipplan.Context{
+		pctx := shipplan.Context{
 			Version: r.NewReleaseVersion, Channel: r.NewReleaseChannel, Tag: r.NewReleaseGitTag, GitHead: r.NewReleaseGitHead,
 			DryRun: s.dryRun, ArtifactsDir: s.ws.ArtifactsDir(),
-		})
-		if err != nil {
-			return nil, refuse("project %s: %v", r.Project, err)
+		}
+		// A release-only run has no stages or hooks: an empty plan.
+		plan := &shipplan.Plan{Project: r.Project, Context: pctx}
+		if !s.releaseOnly {
+			if plan, err = shipplan.Build(s.ws.Dir(), p, pctx); err != nil {
+				return nil, refuse("project %s: %v", r.Project, err)
+			}
 		}
 		items = append(items, shipItem{result: r, project: p, plan: plan, outcome: o})
 	}
@@ -623,6 +639,9 @@ func (s *shipRun) githubTokenEnv(ctx context.Context) []string {
 // stops after the prepare hooks. The outcome records what happened and,
 // on failure, what the user must do.
 func (s *shipRun) ship(ctx context.Context, it shipItem) error {
+	if s.releaseOnly {
+		return s.releaseOnlyStep(ctx, it)
+	}
 	r, o := it.result, it.outcome
 	notes := filepath.Join(s.ws.NotesDir(), r.Project+".md")
 	if err := os.WriteFile(notes, []byte(r.NewReleaseNotes), 0o600); err != nil {
@@ -686,6 +705,70 @@ func (s *shipRun) ship(ctx context.Context, it shipItem) error {
 	}
 	o.Status = shipReleased
 	return nil
+}
+
+// releaseOnlyStep is nerv pipeline release's part of ship: the version
+// files, then semantic-release, nothing else. A dry run stops before
+// writing anything.
+func (s *shipRun) releaseOnlyStep(ctx context.Context, it shipItem) error {
+	r, o := it.result, it.outcome
+	if s.dryRun {
+		o.Status = shipDryRun
+		return nil
+	}
+	if err := s.writeVersionFiles(r); err != nil {
+		o.Action = "Nothing was tagged or released for " + r.Project + ". Fix the cause. " + s.rerunAdvice(ctx)
+		return err
+	}
+	vars := shiprun.Vars{Project: r.Project, Version: r.NewReleaseVersion, Tag: r.NewReleaseGitTag, Branch: s.branch}
+	released, err := s.ws.Release(ctx, semrel.ReleaseRequest{Expected: r, Computed: s.computed, Env: s.tokenEnv, Output: s.stderr, ExtraAssets: s.versionFiles})
+	if err != nil {
+		s.releaseFailed(ctx, it, vars, released, err)
+		if o.Tagged && !errors.Is(err, semrel.ErrVersionMismatch) {
+			o.Action = fmt.Sprintf("Tag %s is on origin, but semantic-release failed after tagging (its publish or success plugins, e.g. the GitHub release): finish those by hand. Do not run nerv ship again for this release: it would compute the next version.", r.NewReleaseGitTag)
+		}
+		return err
+	}
+	o.Tagged, o.Status = true, shipReleased
+	s.released = released
+	return nil
+}
+
+// writeVersionFiles writes <Version> and the release link into each version
+// file in the release clone, before semantic-release, so the release commit
+// holds them (with the built-in configuration through ExtraAssets; a
+// repository's own @semantic-release/git must list them).
+func (s *shipRun) writeVersionFiles(r semrel.ProjectResult) error {
+	link := semrel.ReleaseURL(s.ws.PublicURL(), r.NewReleaseGitTag)
+	for _, f := range s.versionFiles {
+		path := filepath.Join(s.ws.Dir(), filepath.FromSlash(f))
+		var err error
+		if link == "" {
+			fmt.Fprintf(s.stderr, "nerv ship: warning: origin has no public address to link the release to; %s keeps its <PackageReleaseNotes>\n", f)
+			err = shipplan.WriteCsprojVersion(path, r.NewReleaseVersion)
+		} else {
+			err = shipplan.WriteCsproj(path, r.NewReleaseVersion, link)
+		}
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// checkVersionFilesOnOrigin refuses version files that origin's branch does
+// not have.
+func checkVersionFilesOnOrigin(files []string, clone, branch string) error {
+	var missing []string
+	for _, f := range files {
+		if _, err := os.Stat(filepath.Join(clone, filepath.FromSlash(f))); err != nil {
+			missing = append(missing, fmt.Sprintf("%q", f))
+		}
+	}
+	if len(missing) == 0 {
+		return nil
+	}
+	return refuse("pipeline.release.version_files names files that are not on origin's %s: %s", branch, strings.Join(missing, ", "))
 }
 
 // writeProjectFile writes the dotnet preset's project file in the clone
