@@ -314,8 +314,10 @@ const DIM_NOTES_OPTIONS = () => ({
 // rewriteChangelogPlugins), committed by @semantic-release/git with its
 // default message (dim sets none). branches are {name, prerelease?,
 // channel?} (the pipeline: section's, or its defaults, sent by Go); a branch
-// with neither is written as its bare name. Fresh objects on every call.
-export function defaultConfig(branches) {
+// with neither is written as its bare name. @semantic-release/github is
+// included only when github is true (origin on GitHub): elsewhere it fails
+// its checks (EINVALIDGITHUBURL). Fresh objects on every call.
+export function defaultConfig(branches, { github = true } = {}) {
   if (!Array.isArray(branches) || branches.length === 0) {
     throw new Error("the built-in semantic-release configuration needs its branches");
   }
@@ -328,7 +330,7 @@ export function defaultConfig(branches) {
       ["@semantic-release/release-notes-generator", DIM_NOTES_OPTIONS()],
       ["@semantic-release/changelog", { changelogFile: "CHANGELOG.md" }],
       ["@semantic-release/git", { assets: ["CHANGELOG.md"] }],
-      "@semantic-release/github",
+      ...(github ? ["@semantic-release/github"] : []),
     ],
   };
 }

@@ -94,6 +94,9 @@ type runnerRequest struct {
 	// runner uses its built-in one with Branches.
 	UseDefault bool            `json:"useDefault,omitempty"`
 	Branches   []defaultBranch `json:"branches,omitempty"`
+	// GitHubRelease includes @semantic-release/github in the built-in
+	// configuration (origin is on GitHub).
+	GitHubRelease bool `json:"githubRelease"`
 }
 
 // commitFilter keeps the commits that touch Paths or carry one of Scopes.

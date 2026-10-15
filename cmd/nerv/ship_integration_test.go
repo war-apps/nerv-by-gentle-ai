@@ -371,3 +371,35 @@ func TestIntegration_ShipUsesTheLocalUncommittedSection(t *testing.T) {
 		t.Errorf("the local section reached origin: %s", out)
 	}
 }
+
+// A repository without a semantic-release configuration releases with the
+// built-in one (dim's): develop gets X.Y.Z-alpha.1, tagged on origin with a
+// CHANGELOG release commit.
+func TestIntegration_ShipWithTheBuiltInConfiguration(t *testing.T) {
+	requireShipToolchain(t)
+	shipEnv(t)
+	cache := t.TempDir()
+	origin, work := newShipRepos(t)
+	work.commit("chore: init", "a.txt")
+	work.git("tag", "v1.0.0")
+	work.git("checkout", "-q", "-b", "develop")
+	work.commit("feat: add gadgets", "b.txt")
+	work.git("push", "-q", "origin", "main", "develop", "--tags")
+
+	code, stdout, stderr := runShipCommand(t, cache, "--cwd", work.dir, "--yes", "--json")
+	if code != 0 {
+		t.Fatalf("ship: exit %d\nstdout %s\nstderr %s", code, stdout, stderr)
+	}
+	if !strings.Contains(stdout, `"semantic_release_config":"default"`) || !strings.Contains(stderr, "built-in default (dim)") {
+		t.Errorf("source not reported:\nstdout %s", stdout)
+	}
+	if origin.git("rev-parse", "v1.1.0-alpha.1^{commit}") != origin.git("rev-parse", "develop") {
+		t.Errorf("tag v1.1.0-alpha.1 is not origin's develop")
+	}
+	if msg := origin.git("log", "-1", "--format=%s", "develop"); !strings.HasPrefix(msg, "chore(release): 1.1.0-alpha.1") {
+		t.Errorf("origin's develop head: %q", msg)
+	}
+	if files := origin.git("show", "--name-only", "--format=", "v1.1.0-alpha.1"); files != "CHANGELOG.md" {
+		t.Errorf("release commit holds %q, want CHANGELOG.md", files)
+	}
+}

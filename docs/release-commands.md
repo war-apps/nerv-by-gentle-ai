@@ -231,8 +231,10 @@ dim.comprobantes.api's:
   project's own changelog, see [The project's changelog](#the-projects-changelog));
 - `@semantic-release/git` committing the changelog (its default release
   commit message, as dim);
-- `@semantic-release/github` (a real release needs `GH_TOKEN`; `nerv ship`
-  reads it, see [Credentials](#credentials)).
+- `@semantic-release/github` (the GitHub release), only when origin is on
+  GitHub (`github.com`, or the GitHub Enterprise host in `GH_HOST`):
+  elsewhere it would fail its checks (`EINVALIDGITHUBURL`). A real release
+  needs `GH_TOKEN`; `nerv ship` reads it, see [Credentials](#credentials).
 
 dim's `@semantic-release/npm` (`npmPublish: false`) and
 `@semantic-release/exec` (`bump-csproj.sh`, `set-release-outputs.sh`) are
@@ -252,7 +254,9 @@ the same prerelease id (`EPRERELEASEBRANCHES`, verified with two
 `release/x` branches on origin). With the built-in configuration NERV
 refuses that case first, naming the branches: keep one release branch at a
 time (merge or delete the others), or give each its own prerelease id in
-the `pipeline:` section's `branches`.
+the `pipeline:` section's `branches`. The check reads origin's branches as
+`nerv ship` last fetched them, in both the version computation and the
+release.
 
 ### `release.projects[]`
 

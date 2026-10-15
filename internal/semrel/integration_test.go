@@ -706,3 +706,59 @@ func TestIntegration_ConfigDetectionForms(t *testing.T) {
 		})
 	}
 }
+
+// The release path refuses a fixed-id glob matching several branches on
+// origin before semantic-release runs, as Compute does.
+func TestIntegration_ReleasePathRefusesTwoReleaseBranches(t *testing.T) {
+	requireToolchain(t)
+	r, origin := newOriginRepo(t)
+	r.commit("chore: init", "a.txt")
+	r.git("tag", "v1.0.0")
+	r.git("checkout", "-q", "-b", "release/1.1")
+	r.commit("fix: one", "b.txt")
+	r.git("checkout", "-q", "-b", "release/1.2", "main")
+	r.commit("fix: two", "c.txt")
+	r.git("push", "-q", "origin", "main", "release/1.1", "release/1.2", "--tags")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+	defer cancel()
+	ws, err := NewWorkspace(ctx, WorkspaceOptions{RepoRoot: r.dir, Branch: "release/1.1", Env: testEnv(), CacheDir: integrationCache})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ws.Close()
+	_, err = ws.Release(ctx, ReleaseRequest{Expected: ProjectResult{Project: filepath.Base(r.dir), NewReleasePublished: true, NewReleaseVersion: "1.0.1-rc.1"}})
+	if !errors.Is(err, ErrFixedPrereleaseGlob) || !strings.Contains(err.Error(), "release/1.1, release/1.2") {
+		t.Fatalf("err = %v", err)
+	}
+	if tags := origin.git("tag", "--list"); tags != "v1.0.0" {
+		t.Errorf("origin tags %q", tags)
+	}
+}
+
+// A monorepo without a semantic-release configuration: the built-in one,
+// with each project's changelog applied to its plugins.
+func TestIntegration_BuiltInConfigurationMonorepoChangelogs(t *testing.T) {
+	requireToolchain(t)
+	r, origin := newOriginRepo(t)
+	writeConfig(t, r.dir, "release:\n  projects:\n    - name: api\n      path: api\n      tag_format: \"api-v${version}\"\n    - name: web\n      path: web\n      tag_format: \"web-v${version}\"\n")
+	r.commit("chore: init", "api/a.txt", "web/a.txt")
+	r.git("tag", "api-v1.0.0")
+	r.git("tag", "web-v1.0.0")
+	r.commit("feat: api endpoint", "api/b.txt")
+	r.commit("fix: web layout", "web/b.txt")
+	r.git("push", "-q", "origin", "main", "--tags")
+
+	got := releaseAll(t, r)
+	if len(got) != 2 || got[0].NewReleaseGitTag != "api-v1.1.0" || got[1].NewReleaseGitTag != "web-v1.0.1" || got[0].SemanticReleaseConfig != ConfigBuiltIn {
+		t.Fatalf("released %+v", got)
+	}
+	for tag, want := range map[string]string{"api-v1.1.0": "api/CHANGELOG.md", "web-v1.0.1": "web/CHANGELOG.md"} {
+		if files := origin.git("show", "--name-only", "--format=", tag); files != want {
+			t.Errorf("release commit %s holds %q, want only %s", tag, files, want)
+		}
+	}
+	if cl := origin.git("show", "main:api/CHANGELOG.md"); !strings.Contains(cl, "api endpoint") {
+		t.Errorf("api/CHANGELOG.md:\n%s", cl)
+	}
+}

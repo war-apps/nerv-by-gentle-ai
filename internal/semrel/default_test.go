@@ -3,6 +3,7 @@ package semrel
 import (
 	"context"
 	"errors"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -139,6 +140,89 @@ func TestCheckFixedPrereleaseGlobs(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			if err := checkFixedPrereleaseGlobs(branches, tt.heads); (err != nil) != tt.bad {
 				t.Errorf("err = %v, want error %v", err, tt.bad)
+			}
+		})
+	}
+}
+
+func TestRemoteIsGitHub(t *testing.T) {
+	tests := []struct {
+		public, ghHost string
+		want           bool
+	}{
+		{"https://github.com/acme/w.git", "", true},
+		{"git@github.com:acme/w.git", "", true},
+		{"ssh://github.com:22/acme/w.git", "", true},
+		{"https://GitHub.com/acme/w", "", true},
+		{"https://git.acme.io/acme/w.git", "git.acme.io", true},
+		{"https://gitlab.com/acme/w.git", "", false},
+		{"https://github.com.evil.io/acme/w.git", "", false},
+		{"", "", false},
+	}
+	for _, tt := range tests {
+		env := []string{}
+		if tt.ghHost != "" {
+			env = append(env, "GH_HOST="+tt.ghHost)
+		}
+		if got := remoteIsGitHub(tt.public, env); got != tt.want {
+			t.Errorf("remoteIsGitHub(%q, GH_HOST=%q) = %v, want %v", tt.public, tt.ghHost, got, tt.want)
+		}
+	}
+}
+
+func TestCheckFixedPrereleaseGlobs_InvalidPatternIsAnError(t *testing.T) {
+	err := checkFixedPrereleaseGlobs([]defaultBranch{{Name: "release/[", Prerelease: "rc"}}, []string{"release/1"})
+	if err == nil || !strings.Contains(err.Error(), "release/[") {
+		t.Errorf("err = %v, want an invalid-pattern error", err)
+	}
+}
+
+func TestWorkspaceRelease_BuiltInConfigurationRequest(t *testing.T) {
+	tests := []struct {
+		name, origin string
+		heads        []string
+		wantGitHub   bool
+		wantErr      error
+	}{
+		{"github origin", "https://github.com/acme/w.git", []string{"main", "develop"}, true, nil},
+		{"other origin", "https://gitlab.com/acme/w.git", []string{"main", "develop"}, false, nil},
+		{"two release branches on origin", "https://github.com/acme/w.git", []string{"main", "release/1.1", "release/1.2"}, false, ErrFixedPrereleaseGlob},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			root := t.TempDir()
+			var runs []runnerRequest
+			f := workspaceRunner(t, root, tt.origin, "abc", func(req runnerRequest) (Result, error) {
+				if req.Mode == "plan" {
+					return respond(map[string]any{"ok": true, "packages": []string{}, "configFile": ""})
+				}
+				runs = append(runs, req)
+				return respond(map[string]any{"ok": true, "released": true, "nextRelease": map[string]any{"version": "1.1.0", "gitTag": "v1.1.0"}})
+			})
+			base := f.handle
+			f.handle = func(c Command) (Result, error) {
+				if isGit(c, "for-each-ref") {
+					var b strings.Builder
+					for _, h := range tt.heads {
+						b.WriteString("1111111111111111111111111111111111111111 refs/remotes/origin/" + h + "\n")
+					}
+					return Result{Stdout: []byte(b.String())}, nil
+				}
+				return base(c)
+			}
+			ws := openWorkspace(t, f, root)
+			r, err := ws.Release(context.Background(), ReleaseRequest{Expected: ProjectResult{Project: filepath.Base(root), NewReleasePublished: true, NewReleaseVersion: "1.1.0"}})
+			if tt.wantErr != nil {
+				if !errors.Is(err, tt.wantErr) || len(runs) != 0 {
+					t.Fatalf("err = %v, runs %d", err, len(runs))
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(runs) != 1 || !runs[0].UseDefault || runs[0].GitHubRelease != tt.wantGitHub || r.SemanticReleaseConfig != ConfigBuiltIn {
+				t.Errorf("runs %+v, result %+v", runs, r)
 			}
 		})
 	}

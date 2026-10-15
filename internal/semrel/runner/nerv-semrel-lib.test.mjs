@@ -403,3 +403,12 @@ test("defaultConfig takes a pipeline section's branches as they are", () => {
   assert.notEqual(defaultConfig([{ name: "main" }]).plugins[2], defaultConfig([{ name: "main" }]).plugins[2]);
   assert.throws(() => defaultConfig([]), /branches/);
 });
+
+test("defaultConfig leaves the GitHub plugin out for an origin not on GitHub", () => {
+  const branches = [{ name: "main" }];
+  assert.equal(defaultConfig(branches).plugins.at(-1), "@semantic-release/github");
+  assert.equal(defaultConfig(branches, { github: true }).plugins.at(-1), "@semantic-release/github");
+  const off = defaultConfig(branches, { github: false }).plugins;
+  assert.equal(off.length, 4);
+  assert.ok(!off.includes("@semantic-release/github"));
+});

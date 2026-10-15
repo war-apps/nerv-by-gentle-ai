@@ -184,11 +184,7 @@ func (e *Engine) compute(ctx context.Context, opts Options, local *localConfig) 
 			if defaults, err = local.defaultBranches(); err != nil {
 				return err
 			}
-			heads, err := e.branchNames(ctx, mirror, env, "refs/heads/")
-			if err != nil {
-				return err
-			}
-			if err := checkFixedPrereleaseGlobs(defaults, heads); err != nil {
+			if err := e.checkPrereleaseBranches(ctx, mirror, env, "refs/heads/", defaults); err != nil {
 				return err
 			}
 		}
@@ -203,6 +199,7 @@ func (e *Engine) compute(ctx context.Context, opts Options, local *localConfig) 
 				Changelog:      p.Changelog,
 				UseDefault:     configFile == "",
 				Branches:       defaults,
+				GitHubRelease:  remoteIsGitHub(remote.Public, env),
 			})
 			if err != nil {
 				return fmt.Errorf("project %s: %w", p.Name, err)

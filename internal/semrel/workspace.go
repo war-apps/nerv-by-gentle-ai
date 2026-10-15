@@ -324,11 +324,7 @@ func (w *Workspace) Release(ctx context.Context, req ReleaseRequest) (ProjectRes
 		if defaults, err = w.local.defaultBranches(); err != nil {
 			return ProjectResult{}, err
 		}
-		heads, err := e.branchNames(ctx, w.dir, env, "refs/remotes/origin/")
-		if err != nil {
-			return ProjectResult{}, err
-		}
-		if err := checkFixedPrereleaseGlobs(defaults, heads); err != nil {
+		if err := e.checkPrereleaseBranches(ctx, w.dir, env, "refs/remotes/origin/", defaults); err != nil {
 			return ProjectResult{}, err
 		}
 	}
@@ -349,6 +345,7 @@ func (w *Workspace) Release(ctx context.Context, req ReleaseRequest) (ProjectRes
 		Changelog:        p.Changelog,
 		UseDefault:       configFile == "",
 		Branches:         defaults,
+		GitHubRelease:    remoteIsGitHub(w.public, env),
 		CommitFilesCache: filepath.Join(w.root, "commit-files.json"),
 	}, req.Output)
 	if m := resp.VersionMismatch; m != nil {

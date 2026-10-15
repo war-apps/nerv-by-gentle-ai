@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/url"
 	"path"
 	"slices"
 	"strings"
@@ -92,7 +93,11 @@ func checkFixedPrereleaseGlobs(branches []defaultBranch, heads []string) error {
 		}
 		var matched []string
 		for _, h := range heads {
-			if ok, _ := path.Match(b.Name, h); ok {
+			ok, err := path.Match(b.Name, h)
+			if err != nil {
+				return fmt.Errorf("branch pattern %q: %w", b.Name, err)
+			}
+			if ok {
 				matched = append(matched, h)
 			}
 		}
@@ -103,6 +108,46 @@ func checkFixedPrereleaseGlobs(branches []defaultBranch, heads []string) error {
 		}
 	}
 	return nil
+}
+
+// checkPrereleaseBranches applies checkFixedPrereleaseGlobs to origin's
+// branch set as semantic-release sees it, read from dir under prefix: the
+// Compute mirror's refs/heads/ (set to origin's branches, see planHeads) or
+// a release clone's refs/remotes/origin/ (fetched from origin with prune);
+// both hold origin's branches as last read.
+func (e *Engine) checkPrereleaseBranches(ctx context.Context, dir string, env []string, prefix string, branches []defaultBranch) error {
+	heads, err := e.branchNames(ctx, dir, env, prefix)
+	if err != nil {
+		return err
+	}
+	return checkFixedPrereleaseGlobs(branches, heads)
+}
+
+// remoteIsGitHub reports whether public (a publicURL) is on GitHub:
+// github.com, or the GitHub Enterprise host named by GH_HOST in env.
+func remoteIsGitHub(public string, env []string) bool {
+	host := ""
+	switch {
+	case urlSchemeRe.MatchString(public):
+		if u, err := url.Parse(public); err == nil {
+			host = u.Hostname()
+		}
+	case scpLikeRe.MatchString(public):
+		h, _, _ := strings.Cut(public, ":")
+		if i := strings.LastIndex(h, "@"); i >= 0 {
+			h = h[i+1:]
+		}
+		host = h
+	}
+	host = strings.ToLower(host)
+	if host == "" {
+		return false
+	}
+	if host == "github.com" {
+		return true
+	}
+	gh, _ := lookupEnv(env, "GH_HOST")
+	return gh != "" && host == strings.ToLower(gh)
 }
 
 // branchNames lists the branch names under prefix (refs/heads/ or
