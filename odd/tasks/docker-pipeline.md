@@ -337,8 +337,10 @@ delegated (one writer). Test-first.
   modules, `average` = floored mean of module percentages (line 66.66,
   branch 75, method 75), `minimum` = lowest module (line 33.33); a
   threshold is missed when `actual < threshold`. The full
-  GetThresholdTypesBelowThreshold table (15 rows) is replayed by
-  `TestCheckThresholds_EachStatisticAsCoverlet`.
+  GetThresholdTypesBelowThreshold table has 15 rows; at `17368a6` the
+  test replayed 10 of them (corrected in the P3 follow-ups: `630956a` adds
+  the other 5, so `TestCheckThresholds_EachStatisticAsCoverlet` now
+  replays all 15).
 - `internal/pipeline/coverage.go`: `parseThresholds` (the collector named
   "XPlat code coverage"; `Threshold` comma list in `ThresholdType` order,
   default `line,branch,method`, one value for all; `ThresholdStat` default
@@ -370,8 +372,8 @@ delegated (one writer). Test-first.
   `coverage below the thresholds of coverlet.runsettings (total): line 50%
   < 100%, branch 100% >= 80%, method 50% < 100%` (dotnet test itself exit
   0); a failing test and misformatted code fail as before. 21.8s.
-- Not updated: docs/commands.md still describes `test` without the
-  thresholds (not in this pass's allowed surfaces).
+- docs/commands.md: not updated in `17368a6` (outside that pass's
+  surfaces); the parent updated it in `ff53bdc`.
 - Checks: `go test -count=1 ./...` exit 0 (29 packages, smoke included);
   `go vet ./...`, `GOOS=windows go vet ./...` exit 0; `gofmt -l .` empty.
 - Commit: `17368a6` `feat(pipeline): enforce the runsettings coverage
@@ -391,6 +393,35 @@ delegated (one writer). Test-first.
   modules → 0% instead of the 100% rule), R2-tasklog-stale-commands-doc and
   R2-tasklog-row-count (task log notes outdated / overstated: the coverlet
   table test has 10 rows).
+
+### P3 follow-ups
+
+All P3 review advisories addressed (user authorized). Route: delegated
+(one writer). Test-first; `go test` exit codes captured directly.
+
+| Item | Fix | Evidence |
+|---|---|---|
+| R4-branch-merge-undercount, R3-branch-merge-max, R2-merge-comment-misleading | The gate now reads coverlet's JSON reports, requested for the run only with `--collect "XPlat Code Coverage;Format=<the runsettings' formats>,json"` when a threshold is checked; metrics merged per line and per branch (branch key Line/Offset/EndOffset/Path/Ordinal, hits added), as coverlet merges; Cobertura stays the artifact and the fallback, documented as unable to tell which branches (the misleading comment rewritten). Mechanism verified with the .NET 10 SDK before coding: the `-- DataCollectionRunSettings.DataCollector.Configuration.Format=json,cobertura` override combined with `--settings` is rejected by VSTest ("unexpected XML element DataCollector"); `--collect "XPlat Code Coverage;Format=json,cobertura"` with `--settings` writes both reports and keeps the file's `Exclude` (a control run without the file includes the excluded class). The runsettings' own formats are kept (json added). | RED: build failure (`CoverageJSONFile`, `readJSONCoverage`, `readGate` undefined). GREEN: `TestMeasureJSON_TwoProjectsCoveringDifferentBranchesOfALine` (one project 50%, two merged 100% line/branch/method), `TestMeasureJSON_MatchesCoverlet` (the probe model in JSON: same 9 values as coverlet), `TestCollectArg` (5 cases incl. user formats), `TestTest_PrefersTheJSONReports`. Smoke: two test projects each covering one branch of `Sign` -> `coverage (total): line 100% >= 100%, branch 100% >= 100%, method 100% >= 100%`; the Cobertura fallback on the same run gives branch 50%; the JSON holds no `Skipped` (excluded by the runsettings). No coverlet.core cross-check of the merge itself (optional; not done). |
+| R1-symlinked-results-dir | `resetResults` resolves symlinks of the repository, `.nerv/artifacts` and the deepest existing part of the results path, and refuses when the real path leaves `.nerv/artifacts` (or that leaves the repository) before removing anything. | RED: `TestTest_ResultsBehindASymlinkOutsideTheArtifactsAreRefused` — the old code emptied the symlink target (`keep.txt` outside the repository deleted). GREEN: refused, nothing run, the file kept. |
+| R2-empty-coverage-zero | No module -> 100% under every statistic, with a comment. | RED: `TestMeasure_NoModulesIsFullCoverage` (0 hundredths). GREEN. |
+| R2-tasklog-stale-commands-doc, R2-tasklog-row-count | The two notes above corrected; the table test extended to the full 15 rows instead of shrinking the claim. | `TestCheckThresholds_EachStatisticAsCoverlet` has 15 rows, passes. |
+
+- A stale smoke assertion (`line-rate="0.5"` in whichever Cobertura report
+  sorted first) was removed: with two test projects the order depends on
+  the run ids; the coverage error message asserts the merged numbers
+  (`line 66.66% < 100%, branch 100% >= 100%, method 66.66% < 100%`). The
+  smoke test then passed twice in a row and in the full suite.
+- Smoke timings: validate 4.95s, test 3.70s, whole smoke ~25s.
+- Checks: `go test -count=1 ./...` exit 0 (29 packages, smoke included);
+  `go vet ./...`, `GOOS=windows go vet ./...` exit 0; `gofmt -l .` empty.
+- Commits: `f1761a4` `fix(pipeline): never empty a results directory
+  linked outside the repository` (2 files changed, 79 insertions(+), 1
+  deletion(-)); `e817714` `fix(pipeline): count a run without coverage
+  modules as full coverage` (2 files, +15 -1); `4f68fd8` `fix(pipeline):
+  merge branch coverage per branch from coverlet's JSON reports` (5 files,
+  +461 -111); `630956a` `test(pipeline): replay coverlet's whole threshold
+  table` (1 file, +7 -1). Total `git diff --shortstat d839d70 630956a`: 6
+  files changed, 562 insertions(+), 114 deletions(-).
 
 ## Next step
 
