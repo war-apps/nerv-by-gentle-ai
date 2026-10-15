@@ -49,6 +49,17 @@ type Pipeline struct {
 	Sync Sync `yaml:"sync"`
 	// Deploy configures the deploy step; nil (absent) means no deploy.
 	Deploy *Deploy `yaml:"deploy"`
+	// Release configures the release step.
+	Release Release `yaml:"release"`
+}
+
+// Release configures the release step (dim's release job).
+type Release struct {
+	// VersionFiles are MSBuild project files (repository-relative) that get
+	// <Version> and <PackageReleaseNotes> (the release link) written before
+	// semantic-release, so the release commit holds them (dim's
+	// scripts/bump-csproj.sh on src/Api/Dim.Comprobantes.Api.csproj).
+	VersionFiles []string `yaml:"version_files"`
 }
 
 // Dotnet configures the dotnet commands of the validate and test steps.

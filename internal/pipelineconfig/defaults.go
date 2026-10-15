@@ -195,6 +195,9 @@ func (p *Pipeline) applyDefaults() {
 func (p *Pipeline) finalizePaths() {
 	p.Dotnet.Solution = normalize(p.Dotnet.Solution)
 	p.Dotnet.Runsettings = normalize(p.Dotnet.Runsettings)
+	for i := range p.Release.VersionFiles {
+		p.Release.VersionFiles[i] = normalize(p.Release.VersionFiles[i])
+	}
 	for i := range p.Images {
 		p.Images[i].Dockerfile = normalize(p.Images[i].Dockerfile)
 		p.Images[i].Context = normalize(p.Images[i].Context)
