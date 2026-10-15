@@ -62,7 +62,7 @@ configurable with the data it needs; deploy option (Docker only for now).
 - [x] P1 — `pipeline:` configuration schema, validation and docs.
 - [x] P2 — built-in default semantic-release configuration (dim's, with
   `release/*`), used by the engine when the repository has none.
-- [ ] P3 — `validate` and `test` steps.
+- [x] P3 — `validate` and `test` steps.
 - [ ] P4 — `release` step (reuse the ship workspace and version guard).
 - [ ] P5 — `docker` step (tags, computed build args, login, push, retry).
 - [ ] P6 — `sync` step.
@@ -92,6 +92,8 @@ per task, merged into develop in order).
 ## Progress
 
 - PR #105 (P1): `feat/pipeline-config` → develop. Merged f1a69de.
+- PR #106 (P2): `feat/pipeline-default-semrel` → develop. Merged 87cf385.
+- P3 branch `feat/pipeline-validate-test` from 87cf385.
 - P2 branch `feat/pipeline-default-semrel` from f1a69de.
 
 Branch created from fbe03dd.
@@ -263,7 +265,200 @@ directly.
   deletions(-)). Total `git diff --shortstat f4c9b9d a409dcd`: 14 files
   changed, 287 insertions(+), 20 deletions(-).
 
+### P3
+
+- Route: delegated (one bounded writer; trigger: new package, CLI, docs).
+- `internal/pipeline` (new): `Steps{Repo, Config, Run}` with `Validate` and
+  `Test`, returning `Result{step, status, commands[{argv, exit}],
+  artifacts{results_dir, trx, coverage}, warnings, error}`. Commands are
+  `shiprun.Step` Exec steps (no shell, whole-tree kill), output prefix
+  `[pipeline:<step>] ` (Vars.Project `pipeline`), stop at the first
+  failure naming it (`dotnet build: ...`). `internal/shiprun`,
+  `internal/proc` and `internal/pipelineconfig` unchanged.
+- `cmd/nerv/pipeline.go`: `nerv pipeline <step> [--cwd] [--json]`, steps
+  `validate`, `test` (only the implemented ones are listed); seam
+  `options.PipelineSteps`; loads the local `pipeline:` section (none ->
+  refusal pointing to docs/pipeline.md; invalid -> refusal listing the
+  problems); exit 0 / 1 refused / 2 failed / 128 + signal; text or one
+  JSON document on every path past the flags (status `refused` added).
+- Decisions:
+  - Both steps run in the user's working tree (like CI on a checkout).
+  - Every dotnet command gets dim's workflow env `DOTNET_NOLOGO=true`,
+    `DOTNET_CLI_TELEMETRY_OPTOUT=true`, then `pipeline.dotnet.env` over it.
+  - Test results: `--results-directory <repo>/.nerv/artifacts/pipeline/test`
+    (dim passes none; a fixed place is needed to report them), emptied per
+    run; `.nerv/artifacts/.gitignore` = `*` so it is never committed without
+    touching the repository's `.gitignore` (smoke: `git status --porcelain
+    -- .nerv` empty). Coverage reports listed even after a failure.
+  - Flags follow the step (`nerv pipeline <step> [flags]`).
+- **Finding (verified, contradicts the brief's premise):**
+  `coverlet.collector` 6.0.4 (dim's package, `XPlat Code Coverage`) ignores
+  `<Threshold>` in the runsettings. Experiment (dotnet 10.0.112, classlib
+  with `Add` covered and `Sub` uncovered, runsettings `100,80,100`
+  line,branch,method, total): line-rate 0.5, `Sub` line-rate 0, `dotnet
+  test` exit 0, no threshold message. So dim's CI does not enforce its
+  coverage gate today. As instructed, NERV does not re-check; `nerv
+  pipeline test` warns when the runsettings declares a `<Threshold>`
+  ("not enforced"), and the smoke test asserts the real behaviour (an
+  uncovered method passes, warned) instead of the brief's expected
+  failure. Open decision for the user: enforce the runsettings thresholds
+  in NERV (read them and check the cobertura reports, line/branch/method),
+  or switch dim to `coverlet.msbuild`, or keep as is.
+- RED: `go test ./internal/pipeline/` -> build failed (`undefined: Steps`,
+  `StatusPassed`); `go test ./cmd/nerv/` -> build failed
+  (`opts.PipelineSteps undefined`). GREEN: both `ok`; one test fix (flags
+  after the step).
+- Smoke (`TestSmoke_ValidateAndTest`, real dotnet 10.0.112, skipped under
+  `-short` or without dotnet): generated classlib + xunit + slnx +
+  runsettings: validate passed in 4.83s; test passed in 5.04s with one
+  coverage report and the trx; artifacts git-ignored; an uncovered method
+  passes with the warning (coverage line-rate 0.5); a failing test fails
+  at `dotnet test` (exit 1); misformatted code fails at `dotnet format`.
+  Whole smoke 23.9s (22.2s in the full suite).
+- Checks: `go test -count=1 ./...` exit 0 (29 packages, smoke included);
+  `go vet ./...`, `GOOS=windows go vet ./...` exit 0; `gofmt -l .` empty.
+- Commits: `7adda17` `feat(pipeline): run dim's validate and test jobs` (3
+  files changed, 591 insertions(+)); `cd0d19a` `feat(cli): add nerv
+  pipeline validate and test` (6 files changed, 459 insertions(+), 6
+  deletions(-)). Total `git diff --shortstat 8ae0406 cd0d19a`: 9 files
+  changed, 1050 insertions(+), 6 deletions(-). Above the ~400-line
+  heuristic: about 500 lines are tests (unit, CLI, smoke) and 130 docs.
+
+### P3 coverage gate
+
+User decision (2026-10-15): enforce the coverage threshold in nerv. Route:
+delegated (one writer). Test-first.
+
+- Semantics verified, not assumed: a throwaway console app called
+  coverlet.core 6.0.4 (the assembly shipped in coverlet.collector 6.0.4)
+  through reflection on a two-module model. Observed: percentages floored
+  to hundredths (2/3 -> 66.66); nothing to cover -> 100%; method covered
+  when any of its lines was hit; branch = covered/total; `total` over all
+  modules, `average` = floored mean of module percentages (line 66.66,
+  branch 75, method 75), `minimum` = lowest module (line 33.33); a
+  threshold is missed when `actual < threshold`. The full
+  GetThresholdTypesBelowThreshold table has 15 rows; at `17368a6` the
+  test replayed 10 of them (corrected in the P3 follow-ups: `630956a` adds
+  the other 5, so `TestCheckThresholds_EachStatisticAsCoverlet` now
+  replays all 15).
+- `internal/pipeline/coverage.go`: `parseThresholds` (the collector named
+  "XPlat code coverage"; `Threshold` comma list in `ThresholdType` order,
+  default `line,branch,method`, one value for all; `ThresholdStat` default
+  `minimum` as coverlet; errors for non-numbers, out of 0-100, count
+  mismatch, unknown type or statistic, malformed XML); `readCoverage`
+  (Cobertura packages = modules; method lines; `condition-coverage
+  "x% (c/t)"` for branches); `checkThresholds`; `checkCoverage` (note or
+  error). Runs after `dotnet test` succeeds when a runsettings is set; no
+  runsettings or no `Threshold` -> no check; the P3 warning was removed
+  (`Result.Warnings` replaced by `Result.Notes`).
+- Decisions:
+  - Several reports are merged per line (hits added, best branch
+    coverage of a line kept), as coverlet merges results, instead of
+    summing each report's covered/valid totals as the brief proposed:
+    summing would count a module present in two test projects' reports
+    twice. Tested by `TestMeasure_ReportsAreMergedPerLine`.
+  - The collector's Include/Exclude filters are already applied in the
+    reports; nothing is re-filtered (documented).
+  - shipplan's coverage formatter was not reused: it formats line coverage
+    of summed reports only; the gate formats hundredths with the same
+    integer truncation (`percentText`, `hundredthsOf`).
+  - Messages use `>=` / `<`.
+- RED: build failure (`undefined: Thresholds`, `StatTotal`, ...). GREEN
+  after the implementation; one existing test fixed (it named a runsettings
+  file it never created, which the check now reads).
+- Smoke (real dotnet 10.0.112): validate passed in 4.71s; test passed in
+  3.33s with the note `coverage (total): line 100% >= 100%, branch 100%
+  >= 80%, method 100% >= 100%`; the uncovered method now fails:
+  `coverage below the thresholds of coverlet.runsettings (total): line 50%
+  < 100%, branch 100% >= 80%, method 50% < 100%` (dotnet test itself exit
+  0); a failing test and misformatted code fail as before. 21.8s.
+- docs/commands.md: not updated in `17368a6` (outside that pass's
+  surfaces); the parent updated it in `ff53bdc`.
+- Checks: `go test -count=1 ./...` exit 0 (29 packages, smoke included);
+  `go vet ./...`, `GOOS=windows go vet ./...` exit 0; `gofmt -l .` empty.
+- Commit: `17368a6` `feat(pipeline): enforce the runsettings coverage
+  thresholds` (8 files changed, 724 insertions(+), 66 deletions(-); about
+  330 lines of tests and 50 of docs).
+
+### P3 review
+
+- Native review of 8ae0406..ff53bdc (high risk, 4 lenses, user granted):
+  approved and acknowledged. Advisory: R4-branch-merge-undercount /
+  R3-branch-merge-max / R2-merge-comment-misleading (WARNING: with several
+  test projects covering different branches of one line, the per-line merge
+  keeps max covered / max total — 1/2 instead of coverlet's 2/2 — because
+  Cobertura's condition-coverage has counts, not which branches; the
+  comment claims it matches coverlet), R1-symlinked-results-dir (the
+  results reset checks the path lexically only), R2-empty-coverage-zero (no
+  modules → 0% instead of the 100% rule), R2-tasklog-stale-commands-doc and
+  R2-tasklog-row-count (task log notes outdated / overstated: the coverlet
+  table test has 10 rows).
+
+### P3 follow-ups
+
+All P3 review advisories addressed (user authorized). Route: delegated
+(one writer). Test-first; `go test` exit codes captured directly.
+
+| Item | Fix | Evidence |
+|---|---|---|
+| R4-branch-merge-undercount, R3-branch-merge-max, R2-merge-comment-misleading | The gate now reads coverlet's JSON reports, requested for the run only with `--collect "XPlat Code Coverage;Format=<the runsettings' formats>,json"` when a threshold is checked; metrics merged per line and per branch (branch key Line/Offset/EndOffset/Path/Ordinal, hits added), as coverlet merges; Cobertura stays the artifact and the fallback, documented as unable to tell which branches (the misleading comment rewritten). Mechanism verified with the .NET 10 SDK before coding: the `-- DataCollectionRunSettings.DataCollector.Configuration.Format=json,cobertura` override combined with `--settings` is rejected by VSTest ("unexpected XML element DataCollector"); `--collect "XPlat Code Coverage;Format=json,cobertura"` with `--settings` writes both reports and keeps the file's `Exclude` (a control run without the file includes the excluded class). The runsettings' own formats are kept (json added). | RED: build failure (`CoverageJSONFile`, `readJSONCoverage`, `readGate` undefined). GREEN: `TestMeasureJSON_TwoProjectsCoveringDifferentBranchesOfALine` (one project 50%, two merged 100% line/branch/method), `TestMeasureJSON_MatchesCoverlet` (the probe model in JSON: same 9 values as coverlet), `TestCollectArg` (5 cases incl. user formats), `TestTest_PrefersTheJSONReports`. Smoke: two test projects each covering one branch of `Sign` -> `coverage (total): line 100% >= 100%, branch 100% >= 100%, method 100% >= 100%`; the Cobertura fallback on the same run gives branch 50%; the JSON holds no `Skipped` (excluded by the runsettings). No coverlet.core cross-check of the merge itself (optional; not done). |
+| R1-symlinked-results-dir | `resetResults` resolves symlinks of the repository, `.nerv/artifacts` and the deepest existing part of the results path, and refuses when the real path leaves `.nerv/artifacts` (or that leaves the repository) before removing anything. | RED: `TestTest_ResultsBehindASymlinkOutsideTheArtifactsAreRefused` — the old code emptied the symlink target (`keep.txt` outside the repository deleted). GREEN: refused, nothing run, the file kept. |
+| R2-empty-coverage-zero | No module -> 100% under every statistic, with a comment. | RED: `TestMeasure_NoModulesIsFullCoverage` (0 hundredths). GREEN. |
+| R2-tasklog-stale-commands-doc, R2-tasklog-row-count | The two notes above corrected; the table test extended to the full 15 rows instead of shrinking the claim. | `TestCheckThresholds_EachStatisticAsCoverlet` has 15 rows, passes. |
+
+- A stale smoke assertion (`line-rate="0.5"` in whichever Cobertura report
+  sorted first) was removed: with two test projects the order depends on
+  the run ids; the coverage error message asserts the merged numbers
+  (`line 66.66% < 100%, branch 100% >= 100%, method 66.66% < 100%`). The
+  smoke test then passed twice in a row and in the full suite.
+- Smoke timings: validate 4.95s, test 3.70s, whole smoke ~25s.
+- Checks: `go test -count=1 ./...` exit 0 (29 packages, smoke included);
+  `go vet ./...`, `GOOS=windows go vet ./...` exit 0; `gofmt -l .` empty.
+- Commits: `f1761a4` `fix(pipeline): never empty a results directory
+  linked outside the repository` (2 files changed, 79 insertions(+), 1
+  deletion(-)); `e817714` `fix(pipeline): count a run without coverage
+  modules as full coverage` (2 files, +15 -1); `4f68fd8` `fix(pipeline):
+  merge branch coverage per branch from coverlet's JSON reports` (5 files,
+  +461 -111); `630956a` `test(pipeline): replay coverlet's whole threshold
+  table` (1 file, +7 -1). Total `git diff --shortstat d839d70 630956a`: 6
+  files changed, 562 insertions(+), 114 deletions(-).
+
+### P3 follow-up review
+
+- Native review of d839d70..02fe5e1 (medium, user granted): approved and
+  acknowledged. Advisory: R3-json-silently-drops-cobertura-only-projects
+  (WARNING: once any JSON report exists, a test project that wrote only
+  Cobertura is left out of the gate), R3-smoke-fallback-nil-deref (WARNING,
+  test only: a failed readCoverage panics the smoke test and hides the
+  error; an unreadable JSON passes), R3-mkdir-before-symlink-check
+  (`MkdirAll` on `.nerv/artifacts` runs before the real-path check, so a
+  symlinked `.nerv` gets directories created outside).
+
+### P3 final pass
+
+Last bounded pass on the P3 follow-up review's findings (user authorized).
+Route: delegated (one writer). Test-first; `go test` exit codes captured
+directly.
+
+| Item | Fix | Evidence |
+|---|---|---|
+| R3-json-silently-drops-cobertura-only-projects | `checkCoverage` groups the reports by run directory (one per test project) and reads each run's JSON, or its Cobertura when it has none or it cannot be read, into one model (`addJSON` / `addCobertura` read a file whole, then `merge`); a run with no readable report fails naming it. JSON module `Calc.dll` = Cobertura package `Calc`; methods keyed by class + name and signature in both formats. Branches per line: the JSON's known branches, with a Cobertura count for the same line as a floor (capped at the line's branches); a Cobertura-only line adds its count (documented conservative fallback). | RED: `TestCheckCoverage_ChoosesTheReportPerRun` (the Cobertura-only run was dropped: no error at line 100%), `TestCheckCoverage_UnreadableRunIsAnError` (a raw JSON error instead of falling back / naming the run). GREEN: both, plus `TestCheckCoverage_SameModuleFromJSONAndCoberturaIsOneModule` (passed before only because the Cobertura run was ignored; now meaningful). |
+| R3-smoke-fallback-nil-deref | The smoke test stops with `t.Fatalf` on a `readCoverage` error and on a `ReadFile` error in the excluded-class loop. | Test-only; no RED (the bad path needs an unreadable report). Smoke passes. |
+| R3-mkdir-before-symlink-check | `checkAncestorInside` resolves the deepest existing part of `.nerv/artifacts` before `MkdirAll`; then the existing results check. | RED: `TestTest_SymlinkedNervOrArtifactsOutsideAreRefusedBeforeCreatingAnything/.nerv` (`artifacts/` created in the link's target). The `.nerv/artifacts` subtest already passed (refused before writing). GREEN: both refused, the outside directory stays empty. |
+
+- Docs: docs/pipeline.md (per-run report choice, module/method matching,
+  the conservative Cobertura fallback).
+- Checks: `go test -count=1 ./...` exit 0 (29 packages, smoke included,
+  24.8s alone); `go vet ./...`, `GOOS=windows go vet ./...` exit 0;
+  `gofmt -l .` empty.
+- Commits: `f81ac02` `fix(pipeline): choose the coverage report per test
+  run` (3 files changed, 275 insertions(+), 90 deletions(-)); `55f501d`
+  `fix(pipeline): refuse a symlinked .nerv outside the repository before
+  creating anything` (2 files, +62 -7); `0326131` `test(pipeline): stop the
+  smoke test on unreadable coverage reports` (1 file, +10 -3). Total `git
+  diff --shortstat a8af92a 0326131`: 6 files changed, 347 insertions(+),
+  100 deletions(-).
+
 ## Next step
 
-Review of P2, then its pull request; then P3 (`validate` and `test`
-steps).
+Review of P3 (with the coverage gate); then P4 (`release` step).

@@ -13,6 +13,7 @@ import (
 
 	nerv "github.com/war-apps/nerv-by-gentle-ai"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/env"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/pipeline"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/semrel"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/shipplan"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/version"
@@ -26,6 +27,8 @@ Commands:
                        (see "nerv version next --help")
   ship [flags]         Release the repository from origin: pipeline,
                        semantic-release, publish (see "nerv ship --help")
+  pipeline <step>      Run a step of the Docker pipeline: validate, test
+                       (see "nerv pipeline --help")
   configure [flags]    Configure NERV (non-interactive; see "nerv configure --help")
   install [flags]      Install NERV (see "nerv install --help")
   uninstall [flags]    Uninstall NERV (see "nerv uninstall --help")
@@ -96,6 +99,10 @@ type options struct {
 	// has no GH_TOKEN or GITHUB_TOKEN; tests inject a fixed one so no real
 	// credential is read. Nil means `gh auth token` through Runner.
 	GitHubToken func(context.Context) string
+	// PipelineSteps returns the runner of nerv pipeline's commands for the
+	// repository at repoRoot, streaming to output; tests inject a recorder.
+	// Nil means a shiprun.Runner.
+	PipelineSteps func(repoRoot string, output io.Writer) pipeline.StepRunner
 }
 
 func defaultOptions() options {
@@ -143,6 +150,8 @@ func run(args []string, stdout, stderr io.Writer, opts options) int {
 		return runSpecCompose(args[1:], stdout, stderr)
 	case "ship":
 		return runShip(args[1:], stdout, stderr, opts)
+	case "pipeline":
+		return runPipeline(args[1:], stdout, stderr, opts)
 	case "release":
 		return runRelease(args[1:], stdout, stderr, opts)
 	default:
