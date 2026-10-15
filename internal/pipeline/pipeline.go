@@ -180,11 +180,19 @@ func (r *Result) fail(err error) {
 }
 
 // resetResults empties the results directory and makes .nerv/artifacts
-// ignore itself.
+// ignore itself. Paths are checked after resolving symlinks: a
+// .nerv/artifacts (or anything below it) linked outside the repository is
+// refused before anything is removed.
 func resetResults(repo, results string) error {
 	artifacts := filepath.Join(repo, ".nerv", "artifacts")
 	if rel, err := filepath.Rel(artifacts, results); err != nil || !filepath.IsLocal(rel) {
 		return fmt.Errorf("results directory %s is not inside %s", results, artifacts)
+	}
+	if err := os.MkdirAll(artifacts, 0o755); err != nil {
+		return err
+	}
+	if err := checkRealInside(repo, artifacts, results); err != nil {
+		return err
 	}
 	if err := os.RemoveAll(results); err != nil {
 		return fmt.Errorf("emptying %s: %w", results, err)
@@ -197,6 +205,51 @@ func resetResults(repo, results string) error {
 		return os.WriteFile(ignore, []byte("*\n"), 0o644)
 	}
 	return nil
+}
+
+// checkRealInside refuses when, symlinks resolved, artifacts is not inside
+// the repository or results (or its deepest existing ancestor) is not
+// inside artifacts.
+func checkRealInside(repo, artifacts, results string) error {
+	realRepo, err := filepath.EvalSymlinks(repo)
+	if err != nil {
+		return err
+	}
+	realArtifacts, err := filepath.EvalSymlinks(artifacts)
+	if err != nil {
+		return err
+	}
+	if !within(realRepo, realArtifacts, false) {
+		return fmt.Errorf("%s resolves to %s, outside the repository: refusing to empty anything there", artifacts, realArtifacts)
+	}
+	existing := results
+	for {
+		if _, err := os.Lstat(existing); err == nil {
+			break
+		}
+		existing = filepath.Dir(existing)
+	}
+	realExisting, err := filepath.EvalSymlinks(existing)
+	if err != nil {
+		return err
+	}
+	if !within(realArtifacts, realExisting, existing == artifacts) {
+		return fmt.Errorf("%s resolves to %s, outside %s: refusing to empty it", existing, realExisting, realArtifacts)
+	}
+	return nil
+}
+
+// within reports whether path is inside dir (or equal to it when same is
+// allowed).
+func within(dir, path string, same bool) bool {
+	rel, err := filepath.Rel(dir, path)
+	if err != nil {
+		return false
+	}
+	if rel == "." {
+		return same
+	}
+	return filepath.IsLocal(rel)
 }
 
 // coverageReports lists <results>/<run>/coverage.cobertura.xml, one per test

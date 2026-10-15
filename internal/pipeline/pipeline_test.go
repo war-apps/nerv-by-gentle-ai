@@ -196,3 +196,28 @@ func TestSteps_InterruptedOrUnstartable(t *testing.T) {
 		t.Errorf("result %+v", r)
 	}
 }
+
+func TestTest_ResultsBehindASymlinkOutsideTheArtifactsAreRefused(t *testing.T) {
+	repo, outside := t.TempDir(), t.TempDir()
+	keep := filepath.Join(outside, "test", "keep.txt")
+	if err := os.MkdirAll(filepath.Dir(keep), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(keep, []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(repo, ".nerv", "artifacts"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, filepath.Join(repo, ".nerv", "artifacts", "pipeline")); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	f := &fakeSteps{}
+	r := Steps{Repo: repo, Config: config(nil), Run: f}.Test(context.Background())
+	if r.Status != StatusFailed || !strings.Contains(r.Error, "outside") || len(f.steps) != 0 {
+		t.Errorf("result %+v, ran %v", r, f.argvs())
+	}
+	if _, err := os.Stat(keep); err != nil {
+		t.Errorf("a file outside the repository was removed: %v", err)
+	}
+}
