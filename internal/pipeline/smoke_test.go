@@ -119,13 +119,20 @@ func TestSmoke_ValidateAndTest(t *testing.T) {
 		t.Errorf("coverage note %v", r.Notes)
 	}
 	for _, p := range r.Artifacts.CoverageJSON {
-		data, _ := os.ReadFile(p)
+		data, err := os.ReadFile(p)
+		if err != nil {
+			t.Fatalf("reading %s: %v", p, err)
+		}
 		if strings.Contains(string(data), "Skipped") {
 			t.Errorf("%s holds the excluded class: the runsettings were not applied", p)
 		}
 	}
-	if fallback, err := readCoverage(r.Artifacts.Coverage); err != nil || percentText(fallback.percent("branch", StatTotal)) != "50" {
-		t.Errorf("Cobertura fallback: %v, branch %s%% (expected 50%%: it cannot tell which branches)", err, percentText(fallback.percent("branch", StatTotal)))
+	fallback, err := readCoverage(r.Artifacts.Coverage)
+	if err != nil {
+		t.Fatalf("reading the Cobertura reports: %v", err)
+	}
+	if got := percentText(fallback.percent("branch", StatTotal)); got != "50" {
+		t.Errorf("Cobertura fallback: branch %s%%, want 50%% (it cannot tell which branches)", got)
 	}
 	if _, err := os.Stat(r.Artifacts.Trx); err != nil {
 		t.Errorf("trx: %v", err)
