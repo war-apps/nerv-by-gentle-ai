@@ -324,7 +324,60 @@ directly.
   changed, 1050 insertions(+), 6 deletions(-). Above the ~400-line
   heuristic: about 500 lines are tests (unit, CLI, smoke) and 130 docs.
 
+### P3 coverage gate
+
+User decision (2026-10-15): enforce the coverage threshold in nerv. Route:
+delegated (one writer). Test-first.
+
+- Semantics verified, not assumed: a throwaway console app called
+  coverlet.core 6.0.4 (the assembly shipped in coverlet.collector 6.0.4)
+  through reflection on a two-module model. Observed: percentages floored
+  to hundredths (2/3 -> 66.66); nothing to cover -> 100%; method covered
+  when any of its lines was hit; branch = covered/total; `total` over all
+  modules, `average` = floored mean of module percentages (line 66.66,
+  branch 75, method 75), `minimum` = lowest module (line 33.33); a
+  threshold is missed when `actual < threshold`. The full
+  GetThresholdTypesBelowThreshold table (15 rows) is replayed by
+  `TestCheckThresholds_EachStatisticAsCoverlet`.
+- `internal/pipeline/coverage.go`: `parseThresholds` (the collector named
+  "XPlat code coverage"; `Threshold` comma list in `ThresholdType` order,
+  default `line,branch,method`, one value for all; `ThresholdStat` default
+  `minimum` as coverlet; errors for non-numbers, out of 0-100, count
+  mismatch, unknown type or statistic, malformed XML); `readCoverage`
+  (Cobertura packages = modules; method lines; `condition-coverage
+  "x% (c/t)"` for branches); `checkThresholds`; `checkCoverage` (note or
+  error). Runs after `dotnet test` succeeds when a runsettings is set; no
+  runsettings or no `Threshold` -> no check; the P3 warning was removed
+  (`Result.Warnings` replaced by `Result.Notes`).
+- Decisions:
+  - Several reports are merged per line (hits added, best branch
+    coverage of a line kept), as coverlet merges results, instead of
+    summing each report's covered/valid totals as the brief proposed:
+    summing would count a module present in two test projects' reports
+    twice. Tested by `TestMeasure_ReportsAreMergedPerLine`.
+  - The collector's Include/Exclude filters are already applied in the
+    reports; nothing is re-filtered (documented).
+  - shipplan's coverage formatter was not reused: it formats line coverage
+    of summed reports only; the gate formats hundredths with the same
+    integer truncation (`percentText`, `hundredthsOf`).
+  - Messages use `>=` / `<`.
+- RED: build failure (`undefined: Thresholds`, `StatTotal`, ...). GREEN
+  after the implementation; one existing test fixed (it named a runsettings
+  file it never created, which the check now reads).
+- Smoke (real dotnet 10.0.112): validate passed in 4.71s; test passed in
+  3.33s with the note `coverage (total): line 100% >= 100%, branch 100%
+  >= 80%, method 100% >= 100%`; the uncovered method now fails:
+  `coverage below the thresholds of coverlet.runsettings (total): line 50%
+  < 100%, branch 100% >= 80%, method 50% < 100%` (dotnet test itself exit
+  0); a failing test and misformatted code fail as before. 21.8s.
+- Not updated: docs/commands.md still describes `test` without the
+  thresholds (not in this pass's allowed surfaces).
+- Checks: `go test -count=1 ./...` exit 0 (29 packages, smoke included);
+  `go vet ./...`, `GOOS=windows go vet ./...` exit 0; `gofmt -l .` empty.
+- Commit: `17368a6` `feat(pipeline): enforce the runsettings coverage
+  thresholds` (8 files changed, 724 insertions(+), 66 deletions(-); about
+  330 lines of tests and 50 of docs).
+
 ## Next step
 
-Review of P3 and the user's decision on coverage thresholds; then P4
-(`release` step).
+Review of P3 (with the coverage gate); then P4 (`release` step).
