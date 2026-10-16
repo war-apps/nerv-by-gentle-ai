@@ -156,6 +156,10 @@ func (d Docker) image(ctx context.Context, img pipelineconfig.Image, main bool) 
 		res.Status, res.Error = "failed", err.Error()
 		return res
 	}
+	if len(res.Refs) == 0 {
+		// Never build an untagged image or report it pushed.
+		return fail(fmt.Errorf("no tag selected for %s on %s (tags %v; channel %q)", img.Name, rel.Branch, img.Tags, rel.Channel))
+	}
 	attempts := 1
 	if len(img.ComputedArgs) > 0 {
 		attempts = 2

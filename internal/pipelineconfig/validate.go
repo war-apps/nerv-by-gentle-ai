@@ -229,6 +229,9 @@ func (v *validator) checkImages(images []Image, host string) {
 				v.addf("%s.tags[%d]: unknown tag %q (want %s)", at, j, tag, list(shipconfig.DockerTags))
 			}
 		}
+		if len(img.Tags) > 0 && !slices.Contains(img.Tags, "version") {
+			v.addf("%s.tags: must include version (every release has a version tag; channel and latest are not always produced)", at)
+		}
 		for _, key := range sortedKeys(img.BuildArgs) {
 			if !envNameRe.MatchString(key) {
 				v.addf("%s.build_args.%s: not a valid build argument name", at, key)

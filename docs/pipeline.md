@@ -399,7 +399,7 @@ branch).
 | `platform` | `linux/amd64` | `--platform`, comma separated for several (ci-cd.yml: `platforms`). |
 | `build_args` | none | `--build-arg` values; they may use `${version}`, `${channel}` and `${tag}` and no other placeholder. |
 | `computed_args` | none | Build arguments computed at build time: `run` (required) and `shell` (`node`, `pwsh` or `bash`; default `bash`). The value is the command's trimmed output. When an image has any, a failed build is retried once with them computed again (ci-cd.yml: the login-broker retry). |
-| `tags` | `version`, `channel`, `latest` | `version` is the release version; `channel` is applied except on the default channel; `latest` only on the main branch (ci-cd.yml, Compute Docker tags). |
+| `tags` | `version`, `channel`, `latest` | `version` is the release version; `channel` is applied except on the default channel; `latest` only on the main branch (ci-cd.yml, Compute Docker tags). Must include `version`: channel and latest are not produced on every release (main has no channel), and an image is never built without a tag (one that would be fails the step). |
 | `required` | `true` | A failure of this image fails the step. In dim both images are required: the broker's `continue-on-error` only lets its retry run, and a failed retry still fails the job. |
 
 The images also receive the labels `org.opencontainers.image.version`,

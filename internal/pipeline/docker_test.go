@@ -287,3 +287,19 @@ func TestSafeEnv(t *testing.T) {
 		t.Errorf("SafeEnv = %v, want %v", got, want)
 	}
 }
+
+func TestDocker_AnImageWithNoTagsFailsWithoutBuilding(t *testing.T) {
+	f := &fakeDocker{}
+	d := dockerStep(f, &fakeArgs{values: []string{"1"}}, release("main", "1.4.0", "", "v1.4.0"))
+	d.Config.Images[0].Tags = []string{"channel"} // main has no channel
+	r := d.Run(context.Background())
+	img := r.Images[0]
+	if r.Status != StatusFailed || img.Status != "failed" || !strings.Contains(img.Error, "no tag") || img.Attempts != 0 {
+		t.Errorf("result %+v, image %+v", r, img)
+	}
+	for _, b := range f.argvs("build") {
+		if b[4] == "docker/Dockerfile" {
+			t.Errorf("built an image without a tag: %q", b)
+		}
+	}
+}
