@@ -2,6 +2,7 @@ package nerv
 
 import (
 	"io/fs"
+	"os"
 	"regexp"
 	"strings"
 	"testing"
@@ -124,12 +125,37 @@ func TestLightPipeline_LaunchesOneBoundedWriter(t *testing.T) {
 	}
 }
 
-// DIRECT is the only tier where Ikari edits source itself, and it still
-// relays the commit validation to the user before committing.
-func TestDirectPipeline_IkariEditsInlineAndUserValidatesCommit(t *testing.T) {
+// DIRECT is the only tier where Ikari edits source itself. The test pins its
+// real rules: the classification thresholds in the core, no agent besides
+// Hyuga and Maya, Maya only on a high or unassessable tier with RDD off or
+// unknown, user validation before the commit, and the ratchet to LIGHT.
+func TestDirectPipeline_PinsItsRoutingRules(t *testing.T) {
+	const corePath = "skills/nerv-orchestrator/SKILL.md"
+	assertContainsAll(t, corePath, normalizeSpace(readPluginText(t, corePath)),
+		"The change is **DIRECT** (direct inline) when no FULL criterion holds",
+		"at most 3 calls and approximately 10k tokens",
+		"one mechanical, already-understood file",
+		"needing no research and no unresolved design decision",
+	)
+
 	const path = "skills/nerv-orchestrator/references/pipeline-direct.md"
 	direct := readPluginText(t, path)
-	assertContainsAll(t, path, direct, "Ikari", "user validates before commit", "RDD hook", "ratchet")
+	assertContainsAll(t, path, normalizeSpace(direct),
+		"No NERV agent is launched except `nerv:hyuga`",
+		"`nerv:maya` only when",
+		"RDD off or unknown",
+		"`high`, a failed assessment or an unrecognized verb launches `nerv:maya`",
+		"**user validates before commit**",
+		"**Ratchet to LIGHT.**",
+		"loads `pipeline-light.md`",
+		"RDD hook",
+	)
+	for _, role := range []string{"shinji", "asuka", "rei", "toji", "kaworu", "ritsuko", "aoba", "misato",
+		"balthasar", "melchior", "casper", "fuyutsuki", "kaji", "gendo"} {
+		if strings.Contains(direct, "nerv:"+role) {
+			t.Errorf("%s launches nerv:%s; DIRECT launches only nerv:hyuga and nerv:maya", path, role)
+		}
+	}
 }
 
 // Every domain pilot documents the LIGHT solo mode in which it writes its
@@ -157,4 +183,134 @@ func TestSharedContracts_KnowTheDirectTier(t *testing.T) {
 	assertContainsAll(t, artifacts, readPluginText(t, artifacts), "# direct | light | full")
 	const tasks = "skills/nerv-tasks/SKILL.md"
 	assertContainsAll(t, tasks, readPluginText(t, tasks), "when the work unit's verification starts")
+}
+
+func normalizeSpace(s string) string {
+	return strings.Join(strings.Fields(s), " ")
+}
+
+var pilotDisplayNames = map[string]string{"shinji": "Shinji", "asuka": "Asuka", "rei": "Rei", "toji": "Toji"}
+
+// soloBlock returns a pilot's MODE: solo section with its own name and
+// pronoun replaced, so the four copies can be compared for drift.
+func soloBlock(t *testing.T, pilot string) string {
+	t.Helper()
+	path := "agents/" + pilot + ".md"
+	text := readPluginText(t, path)
+	const heading = "### MODE: solo (LIGHT path)"
+	start := strings.Index(text, heading)
+	if start < 0 {
+		t.Fatalf("%s has no %q section", path, heading)
+	}
+	rest := text[start+len(heading):]
+	if end := strings.Index(rest, "\n### "); end >= 0 {
+		rest = rest[:end]
+	}
+	block := strings.ReplaceAll(rest, pilotDisplayNames[pilot], "{pilot}")
+	block = regexp.MustCompile(`\b(his|her)\b`).ReplaceAllString(block, "{their}")
+	return normalizeSpace(block)
+}
+
+// The MODE: solo contract is copied into each pilot (agents read only their
+// own file), so the four copies must stay identical modulo name and pronoun.
+func TestPilots_SoloModeBlocksAreIdentical(t *testing.T) {
+	want := soloBlock(t, "shinji")
+	for _, pilot := range []string{"asuka", "rei", "toji"} {
+		if got := soloBlock(t, pilot); got != want {
+			t.Errorf("agents/%s.md MODE: solo drifted from agents/shinji.md:\n got: %s\nwant: %s", pilot, got, want)
+		}
+	}
+}
+
+// A pilot that says it never commits names Ikari as the committer in solo
+// mode, with the same wording in every pilot.
+func TestPilots_NeverCommitsNamesIkariInSoloMode(t *testing.T) {
+	for _, pilot := range []string{"asuka", "rei", "toji"} {
+		path := "agents/" + pilot + ".md"
+		assertContainsAll(t, path, normalizeSpace(readPluginText(t, path)),
+			"return `next_recommended: aoba-commit` (`ikari-commit` in `MODE: solo`) so Aoba (Ikari in `MODE: solo`) can show the diff")
+	}
+}
+
+// Maya never hands a LIGHT or DIRECT commit to Aoba: Ikari commits there, and
+// her DIRECT-path launch has its own envelope.
+func TestMaya_ReducedGateHandsTheCommitToIkari(t *testing.T) {
+	const path = "agents/maya.md"
+	maya := readPluginText(t, path)
+	if strings.Contains(maya, "aoba-commit") {
+		t.Errorf("%s still returns aoba-commit; Ikari commits in DIRECT and LIGHT", path)
+	}
+	assertContainsAll(t, path, normalizeSpace(maya),
+		"### MODE: reduced (DIRECT and LIGHT paths)",
+		"`next_recommended`: `ikari-commit`",
+		"In the DIRECT path",
+	)
+}
+
+func TestKaworu_InputsHaveNoStaleAlternative(t *testing.T) {
+	const path = "agents/kaworu.md"
+	if strings.Contains(readPluginText(t, path), "When neither resolves") {
+		t.Errorf("%s still says \"When neither resolves\" after LIGHT stopped launching Kaworu", path)
+	}
+}
+
+// Resume rebuilds DIRECT and LIGHT runs, whose work unit stays uncommitted
+// in the tree until Ikari commits it, without ever discarding the tree.
+func TestResume_RebuildsDirectAndLightState(t *testing.T) {
+	const path = "skills/nerv-orchestrator/references/resume.md"
+	assertContainsAll(t, path, normalizeSpace(readPluginText(t, path)),
+		"`path: direct`",
+		"`path: light`",
+		"uncommitted",
+		"`commit_recorded`",
+		"Never discard",
+		"blocking prompt",
+	)
+}
+
+func TestIntegrationDoc_VerificationGateNamesUnknown(t *testing.T) {
+	data, err := os.ReadFile("docs/integration.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	doc := normalizeSpace(string(data))
+	assertContainsAll(t, "docs/integration.md", doc,
+		"Maya only when RDD is off or unknown and the native assessment is high or unassessable")
+	if strings.Contains(doc, "Maya only when RDD is off and") {
+		t.Errorf("docs/integration.md says \"RDD is off\" without \"or unknown\"")
+	}
+}
+
+var graderPatternRe = regexp.MustCompile(`(?m)^pattern: "(.*)"$`)
+
+// The classification graders require an explicit "Classification: <TIER>"
+// line, so an option list or "not DIRECT" never passes, and every case asks
+// for that exact line.
+func TestClassificationGraders_RequireAnExplicitLine(t *testing.T) {
+	for _, tier := range []string{"DIRECT", "LIGHT", "FULL"} {
+		lower := strings.ToLower(tier)
+		dir := "evals/classification-" + lower
+		grader := readPluginText(t, dir+"/graders/classifies-"+lower+".md")
+		m := graderPatternRe.FindStringSubmatch(grader)
+		if m == nil {
+			t.Errorf("%s grader has no pattern line", dir)
+			continue
+		}
+		re, err := regexp.Compile(strings.ReplaceAll(m[1], `\\`, `\`))
+		if err != nil {
+			t.Errorf("%s grader pattern does not compile: %v", dir, err)
+			continue
+		}
+		for _, ok := range []string{"Classification: " + tier, "**Classification:** " + tier + "\nPath: x", "Some text.\nClassification: `" + tier + "`"} {
+			if !re.MatchString(ok) {
+				t.Errorf("%s grader does not match %q", dir, ok)
+			}
+		}
+		for _, bad := range []string{"print the classification (DIRECT, LIGHT or FULL)", "Classification: not " + tier, "this is " + tier, "Classification: " + tier + "ISH"} {
+			if re.MatchString(bad) {
+				t.Errorf("%s grader wrongly matches %q", dir, bad)
+			}
+		}
+		assertContainsAll(t, dir+"/case.yaml", readPluginText(t, dir+"/case.yaml"), "`Classification: <TIER>`")
+	}
 }

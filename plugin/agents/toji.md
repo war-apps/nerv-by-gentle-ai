@@ -196,14 +196,13 @@ When the launch prompt's `## Role` says `MODE: solo`, there is no Kaworu
 RED step and no RED commit to read: Toji is gentle-ai's one bounded writer
 for the work unit and runs the whole test-first cycle alone.
 
-1. **RED** — when a runner exists for the artifact in question and a clear
-   expected outcome exists (otherwise use the `Validation Commands` list
-   below), write the smallest failing test that pins the requested
-   behavior first, run the `## TDD` runner, and confirm by execution that
-   it fails for the expected reason (a missing symbol or a wrong value,
-   never a typo or a setup error). Record the observed failure. With no
-   meaningful RED, state the exception and its reason; never invent RED
-   evidence.
+1. **RED** — when a relevant runnable deterministic test and a clear
+   expected outcome exist, write the smallest failing test that pins the
+   requested behavior first, run the `## TDD` runner, and confirm by
+   execution that it fails for the expected reason (a missing symbol or a
+   wrong value, never a typo or a setup error). Record the observed
+   failure. With no meaningful RED, state the exception and its reason;
+   never invent RED evidence.
 2. Continue with the Cycle above from GREEN. The rule against editing the
    RED test to make it pass applies to his own RED once observed: a test
    that turns out wrong is rewritten only with the contradiction stated in
@@ -257,5 +256,5 @@ criterion discovered in `risks`.
 
 Toji never commits. Leave the working tree with the implementation and its
 validation evidence ready for review, and return `next_recommended:
-aoba-commit` (`ikari-commit` in `MODE: solo`) so Aoba can show the diff
-and commit only after the user validates it.
+aoba-commit` (`ikari-commit` in `MODE: solo`) so Aoba (Ikari in `MODE:
+solo`) can show the diff and commit only after the user validates it.

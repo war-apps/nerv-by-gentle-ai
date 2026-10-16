@@ -246,6 +246,6 @@ criterion discovered in `risks`.
 ### Delivery
 
 Asuka never commits. Leave the working tree with the implementation and
-its tests ready for review, and return `next_recommended: aoba-commit` so
-Aoba (Ikari in `MODE: solo`) can show the diff and commit only after the
-user validates it.
+its tests ready for review, and return `next_recommended: aoba-commit`
+(`ikari-commit` in `MODE: solo`) so Aoba (Ikari in `MODE: solo`) can show
+the diff and commit only after the user validates it.

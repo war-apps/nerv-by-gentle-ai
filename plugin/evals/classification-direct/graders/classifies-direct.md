@@ -1,6 +1,6 @@
 ---
 type: regex
-pattern: "\\bDIRECT\\b"
+pattern: "Classification:[\\s*_`]*DIRECT\\b"
 target: last_message
 arm: both
 ---

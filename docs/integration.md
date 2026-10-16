@@ -154,7 +154,7 @@ value or small known bug in one already-understood file. Ikari edits it
 itself (the only tier where it may), runs the focused check, shows the
 commit for the user to validate, and runs the RDD hook. No agent is
 launched except Hyuga for a requested tracker task, and Maya only when RDD
-is off and the native assessment is high or unassessable.
+is off or unknown and the native assessment is high or unassessable.
 
 ### LIGHT pipeline
 

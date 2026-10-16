@@ -20,8 +20,9 @@ execution:
     strategy: single-pr.
 
     Do not implement anything: run only the NERV preflight and
-    classification, then stop and print the classification (DIRECT,
-    LIGHT or FULL), the path, and the agents you would launch next (or
+    classification, then stop. Print the classification on its own line
+    exactly as `Classification: <TIER>` (TIER is DIRECT, LIGHT or FULL),
+    then the path, and the agents you would launch next (or
     say that none would be launched). Ask nothing.
 
     Request: fix the typo "recieve" (it should be "receive") in

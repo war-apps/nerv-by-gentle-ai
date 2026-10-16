@@ -11,7 +11,7 @@ an independent verifier.
 | 2. Classify | Ikari | `classification` event: DIRECT plus the route declaration (calls and evidence used, the one file, why it is mechanical, which triggers did not fire); worktree/branch created by Ikari when requested | none |
 | 3. RED (when applicable) | Ikari | strict TDD and a behavior change with a relevant runnable deterministic test: write or adjust the one pinning assertion (the allowed mechanical second-file edit), run it, observe it fail for the expected reason | none |
 | 4. Edit | Ikari | the one mechanical file, nothing else | none |
-| 5. Focused check | Ikari; Hyuga (d) `moveStage(testing)` with a tracker task | run the focused test/lint/build for the touched file (GREEN when step 3 ran) and record `<command>: <observed result>`; passive docs get a structural readback; see Verification below | a failure is fixed inline once within the budget, otherwise ratchet |
+| 5. Focused check | Ikari; Hyuga (d) `moveStage(testing)` with a tracker task | run the focused test/lint/build for the touched file (GREEN when step 3 ran) and log `<command>: <observed result>` as an `envelope` entry with actor `ikari` (step 3's RED likewise); passive docs get a structural readback; see Verification below | a failure is fixed inline once within the budget, otherwise ratchet |
 | 6. Work-unit commit | Ikari | shows the diff and the conventional commit message with `commit_ref`, then commits | **user validates before commit** |
 | 7. RDD hook | native engine (via Ikari) | `references/rdd-relay.md` | per RDD relay |
 | 8. Run summary | Ikari | `nerv/run-summary.md` per its schema in `nerv-artifacts.md` (usage rows only for agents actually launched) | none |
