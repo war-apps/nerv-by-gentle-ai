@@ -73,6 +73,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `({model}) {Display name}: {action}` (e.g. `(sonnet) Shinji Ikari: Retrying dotnet format verification`).
 
 ### Fixed
+- pipeline: the dotnet commands of `nerv pipeline validate` and `test` no longer inherit the registry token, the
+  `NERV_DEPLOY_*` data or the GitHub tokens; the release, docker and sync clones' git and semantic-release lose the
+  registry and deploy secrets too.
+- pipeline: `nerv pipeline release` refuses a computed release whose tag is already on origin (stale or missing
+  semantic-release notes), dry run or not; semantic-release errors are reported with their details, secrets hidden.
+- pipeline: a failed `nerv pipeline docker` names each failed image with the docker error and the build's last
+  output lines in its result (and in `run.json`); `nerv pipeline sync` no longer clones origin for a release that
+  syncs nothing.
 - dotnet: every dotnet command nerv runs (the `dotnet` ship preset and `nerv pipeline validate`/`test`) runs
   without build servers: `MSBUILDDISABLENODEREUSE=1`, `UseSharedCompilation=false`,
   `DOTNET_CLI_USE_MSBUILD_SERVER=0`, and `--disable-build-servers` on restore, build, test and pack when the
