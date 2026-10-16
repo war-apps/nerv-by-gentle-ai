@@ -59,8 +59,10 @@ type WorkspaceOptions struct {
 // semantic-release configuration come from origin. Close removes
 // everything.
 type Workspace struct {
-	e       *Engine
-	root    string
+	e    *Engine
+	root string
+	// top is the user's repository (read for the commit identity).
+	top     string
 	dir     string
 	branch  string
 	env     []string
@@ -135,7 +137,7 @@ func (e *Engine) NewWorkspace(ctx context.Context, opts WorkspaceOptions) (*Work
 	if err != nil {
 		return nil, err
 	}
-	w := &Workspace{e: e, root: root, dir: filepath.Join(root, filepath.Base(top)), branch: opts.Branch, env: wenv,
+	w := &Workspace{e: e, root: root, top: top, dir: filepath.Join(root, filepath.Base(top)), branch: opts.Branch, env: wenv,
 		pushURL: pushURL, public: publicURL(raw), cache: opts.CacheDir, timeout: timeout, local: local}
 	if err := w.init(ctx, top, env, resolved); err != nil {
 		os.RemoveAll(root)
