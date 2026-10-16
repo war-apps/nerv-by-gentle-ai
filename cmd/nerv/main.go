@@ -103,6 +103,9 @@ type options struct {
 	// repository at repoRoot, streaming to output; tests inject a recorder.
 	// Nil means a shiprun.Runner.
 	PipelineSteps func(repoRoot string, output io.Writer) pipeline.StepRunner
+	// WriteReleaseOutputs writes nerv pipeline release's release.json; tests
+	// inject a failure. Nil means pipeline.WriteReleaseOutputs.
+	WriteReleaseOutputs func(repo string, o pipeline.ReleaseOutputs) (string, error)
 }
 
 func defaultOptions() options {

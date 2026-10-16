@@ -43,9 +43,20 @@ type ReleaseOutputs struct {
 	VersionFiles []string `json:"version_files,omitempty"`
 	// Outputs are semantic-release-action's 12 outputs.
 	Outputs map[string]string `json:"outputs,omitempty"`
-	Error   string            `json:"error,omitempty"`
+	// Computed is the release computed before semantic-release ran, when
+	// the run did not release it (a failure); Published and the release
+	// fields above only describe what was actually released.
+	Computed *ComputedRelease `json:"computed,omitempty"`
+	Error    string           `json:"error,omitempty"`
 	// Action is what to do after a failure.
 	Action string `json:"action,omitempty"`
+}
+
+// ComputedRelease is a release computed but not (or not known to be) made.
+type ComputedRelease struct {
+	Version string `json:"version"`
+	Channel string `json:"channel"`
+	GitTag  string `json:"git_tag"`
 }
 
 // ReleaseOutputsPath is <repo>/.nerv/artifacts/pipeline/release.json.

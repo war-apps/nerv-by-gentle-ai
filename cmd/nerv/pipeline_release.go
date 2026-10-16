@@ -82,9 +82,13 @@ func runPipelineRelease(args []string, stdout, stderr io.Writer, opts options) i
 		}
 	} else {
 		doc.Status = pipeline.StatusPassed
-		if path, werr := pipeline.WriteReleaseOutputs(top, doc); werr != nil {
-			fmt.Fprintf(prefixed, "%s: writing the outputs: %v\n", pipelineReleaseName, werr)
-			code, doc.Status, doc.Error = 2, pipeline.StatusFailed, werr.Error()
+		write := opts.WriteReleaseOutputs
+		if write == nil {
+			write = pipeline.WriteReleaseOutputs
+		}
+		if path, werr := write(top, doc); werr != nil {
+			code = 2
+			outputsWriteFailed(prefixed, &doc, werr)
 		} else {
 			fmt.Fprintf(prefixed, "%s: outputs in %s\n", pipelineReleaseName, path)
 		}
@@ -125,7 +129,27 @@ func (s *shipRun) prepareRelease(ctx context.Context) (string, error) {
 	return top, nil
 }
 
-// fillReleaseOutputs copies the computed and released values into doc.
+// outputsWriteFailed reports a release.json that could not be written. In
+// a real run the release is already on origin: the document says what was
+// released, the later steps' need for release.json, and the recovery (the
+// exact content, printed on one line, saved by hand), never a rerun.
+func outputsWriteFailed(stderr io.Writer, doc *pipeline.ReleaseOutputs, werr error) {
+	want := *doc
+	content, _ := json.Marshal(want)
+	doc.Status, doc.Error = pipeline.StatusFailed, "writing "+pipeline.ReleaseOutputsFile+": "+werr.Error()
+	fmt.Fprintf(stderr, "%s: %s\n", pipelineReleaseName, doc.Error)
+	if doc.DryRun || !doc.Published {
+		doc.Action = "Nothing was released. Fix the cause and run the step again."
+	} else {
+		doc.Action = fmt.Sprintf("The release is on origin: version %s, tag %s, commit %s. The docker, sync and deploy steps read %s, which could not be written. Fix the cause, then save the line printed after %q on stderr as that file. Do not run nerv pipeline release again for this release: it would compute the next version.",
+			doc.Version, doc.GitTag, doc.GitHead, ".nerv/artifacts/pipeline/"+pipeline.ReleaseOutputsFile, "release.json should hold: ")
+	}
+	fmt.Fprintf(stderr, "%s: release.json should hold: %s\n", pipelineReleaseName, content)
+}
+
+// fillReleaseOutputs copies the released (or, in a dry run, the computed)
+// values into doc; a failed real run keeps the computation under Computed
+// and reports nothing as published.
 func fillReleaseOutputs(doc *pipeline.ReleaseOutputs, s *shipRun, outcomes []shipOutcome) {
 	if len(s.results) == 0 {
 		return
@@ -133,6 +157,10 @@ func fillReleaseOutputs(doc *pipeline.ReleaseOutputs, s *shipRun, outcomes []shi
 	r := s.results[0]
 	if s.released.NewReleasePublished {
 		r = s.released
+	} else if !s.dryRun && r.NewReleasePublished {
+		// Computed but not released (refused, failed or interrupted).
+		doc.Computed = &pipeline.ComputedRelease{Version: r.NewReleaseVersion, Channel: r.NewReleaseChannel, GitTag: r.NewReleaseGitTag}
+		r.NewReleasePublished = false
 	}
 	doc.Project, doc.Branch, doc.LastVersion = r.Project, r.Branch, r.LastReleaseVersion
 	doc.SemanticReleaseConfig = s.results[0].SemanticReleaseConfig

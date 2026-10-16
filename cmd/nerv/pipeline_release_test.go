@@ -188,6 +188,10 @@ func TestPipelineRelease_FailureLeavesNoOutputs(t *testing.T) {
 	if code != 2 || doc.Status != "failed" || doc.Action == "" || strings.Contains(doc.Action, "nerv ship") {
 		t.Errorf("exit %d, %+v", code, doc)
 	}
+	// Nothing was released: the document says so, the computation is kept apart.
+	if doc.Published || doc.Version != "" || doc.GitTag != "" || doc.Computed == nil || doc.Computed.Version != "1.1.0-alpha.1" || doc.Computed.GitTag != "v1.1.0-alpha.1" {
+		t.Errorf("failed document claims a release: %+v (computed %+v)", doc, doc.Computed)
+	}
 	if _, ok := readOutputs(t, f.top); ok {
 		t.Error("a stale release.json survived a failed release")
 	}
@@ -199,5 +203,41 @@ func TestPipelineRelease_Usage(t *testing.T) {
 		if code, _, stderr := f.runPipeline(t, args...); code != 2 || !strings.Contains(stderr, "Usage: nerv pipeline") {
 			t.Errorf("%v: exit %d %q", args, code, stderr)
 		}
+	}
+}
+
+func TestPipelineRelease_OutputsWriteFailureAfterTheRelease(t *testing.T) {
+	f := newPipelineReleaseFixture(t, pipelineReleaseYAML)
+	opts := f.options(t)
+	opts.WriteReleaseOutputs = func(string, pipeline.ReleaseOutputs) (string, error) {
+		return "", errors.New("no space left on device")
+	}
+	var out, errOut bytes.Buffer
+	code := run([]string{"pipeline", "release", "--yes", "--json"}, &out, &errOut, opts)
+	var doc pipeline.ReleaseOutputs
+	if err := json.Unmarshal(out.Bytes(), &doc); err != nil {
+		t.Fatalf("stdout %q: %v", out.String(), err)
+	}
+	if code != 2 || doc.Status != "failed" || !doc.Published || doc.Version != "1.1.0-alpha.1" || doc.GitHead != "release-commit-repo" {
+		t.Errorf("exit %d, %+v", code, doc)
+	}
+	for _, want := range []string{"is on origin", "1.1.0-alpha.1", "v1.1.0-alpha.1", "release-commit-repo", "release.json", "no space left on device", "do not run nerv pipeline release again"} {
+		if !strings.Contains(strings.ToLower(doc.Action+" "+doc.Error), strings.ToLower(want)) {
+			t.Errorf("action/error lacks %q:\n%s\n%s", want, doc.Error, doc.Action)
+		}
+	}
+	// The exact release.json content is printed so it can be saved by hand.
+	var saved pipeline.ReleaseOutputs
+	marker := "release.json should hold: "
+	i := strings.Index(errOut.String(), marker)
+	if i < 0 {
+		t.Fatalf("stderr lacks the document:\n%s", errOut.String())
+	}
+	line, _, _ := strings.Cut(errOut.String()[i+len(marker):], "\n")
+	if err := json.Unmarshal([]byte(line), &saved); err != nil || saved.Status != "passed" || saved.GitTag != "v1.1.0-alpha.1" {
+		t.Errorf("printed document %q: %v %+v", line, err, saved)
+	}
+	if len(f.ws.requests) != 1 {
+		t.Errorf("released %d times", len(f.ws.requests))
 	}
 }
