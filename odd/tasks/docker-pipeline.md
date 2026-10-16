@@ -65,7 +65,7 @@ configurable with the data it needs; deploy option (Docker only for now).
 - [x] P3 — `validate` and `test` steps.
 - [x] P4 — `release` step (reuse the ship workspace and version guard).
 - [x] P5 — `docker` step (tags, computed build args, login, push, retry).
-- [ ] P6 — `sync` step.
+- [x] P6 — `sync` step.
 - [ ] P7 — `deploy` step (env or Infisical; SSH; health and version check).
 - [ ] P8 — `nerv pipeline run`, `/nerv:pipeline`, guide, CHANGELOG.
 
@@ -690,6 +690,91 @@ All three P5 review advisories fixed (user authorized). Route: delegated
   +36 -1). Total `git diff --shortstat 2262fd7 7fa336f`: 8 files changed,
   148 insertions(+), 7 deletions(-).
 
+### P6
+
+- Route: delegated (one bounded writer; trigger: additive semrel helpers,
+  new step in internal/pipeline, CLI, docs).
+- `internal/semrel` (additive, `merge.go`; `Workspace` keeps the user's
+  top level): `UseCommitIdentity` (copies `user.name`/`user.email` as the
+  user's repository resolves them into the clone, returns `git var
+  GIT_COMMITTER_IDENT` without the timestamp), `Branches(pattern)`
+  (origin's branches via for-each-ref, filtered with `path.Match`),
+  `Merge` (checkout -B at origin's target, `merge --no-ff --no-edit -m`;
+  up to date via `merge-base --is-ancestor`; a conflict is detected by
+  MERGE_HEAD, its paths read, then `merge --abort`), `PreviewMerge`
+  (`merge-tree --write-tree --name-only`, exit 1 = conflict), `PushBranch`
+  (never forced); `ErrBranchNotOnOrigin`.
+- `internal/pipeline/sync.go`: `Sync.Targets` (main or a
+  `sync.release` match -> develop; main -> every origin `sync.release`
+  branch in name order, main/develop excluded; anything else -> nothing),
+  `Sync.Run` (per target pushed / up-to-date / conflict / failed, dry
+  run would-merge / would-conflict / up-to-date; continues after a
+  conflict or failure; failed at the end naming the branches, with the
+  manual-merge action), `sync.json` (`WriteSyncResult`,
+  `RemoveSyncResult`), `ReadDockerResult` (shared `readArtifactJSON` with
+  release.json).
+- `cmd/nerv/pipeline_sync.go`: `nerv pipeline sync [--cwd] [--dry-run]
+  [--yes] [--fetch-timeout] [--json]`; seam `OpenSyncWorkspace`. Flow:
+  section, stale sync.json removed, `sync.enabled: false` -> nothing (exit
+  0), release.json missing / not passed -> refusal, `published: false` ->
+  nothing, dry-run release.json -> only `--dry-run`, docker.json for the
+  same version not passed -> refusal, clone of origin's released branch,
+  targets (none -> nothing), identity printed, every merge listed, push
+  check and confirmation (real run only), merges.
+- Decisions: the commits use the user's identity, copied from the user's
+  repository (an `includeIf` for its path would not match the clone);
+  sync.json is written for every run that reached the merges or found
+  nothing to do, failed merges included, never for a refusal; a dry run
+  with predicted conflicts passes (exit 0), only a failed preview fails
+  it; a develop conflict is recorded like a release/* one and the
+  release branches still sync (dim's two jobs are independent);
+  docker.json for another version means the docker step did not run for
+  this release (ignored, noted).
+- Open point for the parent: `nerv pipeline docker` writes docker.json
+  only when it passed and removes an earlier one at its start, so after a
+  failed docker run there is no docker.json and sync proceeds as if docker
+  had been skipped; the "docker failed -> refuse" check only fires for a
+  docker.json that records a failure. Mirroring dim fully needs docker to
+  write its failed result too (not changed here).
+- RED: `go vet -tags semrel_integration ./internal/semrel/`
+  (`ws.UseCommitIdentity undefined`), `go vet ./internal/pipeline/`
+  (`undefined: Sync`), `go vet ./cmd/nerv/` with only the new test file
+  on the previous commit (`opts.OpenSyncWorkspace undefined`). GREEN:
+  all; unit tests for targets per released branch (main, release/a,
+  develop, hotfix/x, configured names), conflict abort-and-continue,
+  per-branch failures (missing target, rejected push keeps the commit),
+  dry run, interruption, artifacts; CLI tests for main/release flows,
+  nothing-to-sync cases, conflict exit 2, dry run, refusals (no section,
+  no release.json, failed release, dry-run release, failed docker, no
+  terminal, declined, push denied), confirmation, docker.json for another
+  version.
+- Integration (semrel_integration tag, real git, local bare origin):
+  `TestIntegration_WorkspaceMergesBranchesAndPushes` (0.49s) and
+  `TestIntegration_PipelineSyncMergesBackAfterAMainRelease` (0.78s): main
+  with a `chore(release): 1.1.0 [skip ci]` commit and tag, develop,
+  release/a and a conflicting release/b; `--dry-run` -> exit 0, origin
+  refs unchanged, would-merge / would-merge / would-conflict; `--yes` ->
+  exit 2, develop and release/a pushed with "chore(sync): merge main into
+  <branch> [skip ci]", author `Sync User <sync@example.com>` from the
+  repository's local config (GIT_* identity variables unset), two parents
+  including main's release commit, release/b untouched and reported
+  `conflict (CHANGELOG.md)`, main unchanged, sync.json written; a second
+  run -> up-to-date, up-to-date, conflict. The release itself is simulated
+  (commit, tag, release.json written by the test): semantic-release is
+  proven by P4.
+- Checks: `go test -count=1 ./...` exit 0 (29 packages); `go test -tags
+  semrel_integration -run Integration -count=1 ./internal/semrel/
+  ./cmd/nerv/` exit 0; `go vet ./...`, `GOOS=windows go vet ./...`, `go
+  vet -tags semrel_integration ./...` exit 0; `gofmt -l .` empty.
+- Commits: `50a1b63` `feat(semrel): merge and push origin's branches in a
+  release clone` (3 files, +307 -3); `ce7cadf` `feat(pipeline): merge the
+  released branch back as dim's sync jobs` (3 files, +487 -9); `8e5f7ac`
+  `feat(cli): add nerv pipeline sync` (5 files, +749 -1); `46c4d81`
+  `docs(pipeline): document nerv pipeline sync` (3 files, +67 -4). Total
+  `git diff --shortstat 587a256 46c4d81`: 14 files changed, 1610
+  insertions(+), 17 deletions(-). Above the ~400-line heuristic: about
+  830 lines are tests and 70 docs.
+
 ## Next step
 
-Review of P5; then P6 (`sync` step).
+Review of P6; then P7 (`deploy` step).
