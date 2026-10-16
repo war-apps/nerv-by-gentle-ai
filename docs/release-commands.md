@@ -723,12 +723,12 @@ commands run in the project's `path`.
 
 | Preset | Stage | Step | Command |
 |---|---|---|---|
-| `dotnet` | restore | `dotnet:restore` | `dotnet restore <target>` |
+| `dotnet` | restore | `dotnet:restore` | `dotnet restore <target> --disable-build-servers` |
 | | lint | `dotnet:lint` | `dotnet format <target> --verify-no-changes` |
-| | build | `dotnet:build` | `dotnet build <target> -c <cfg> --no-restore -p:Version=<version>` |
-| | test | `dotnet:test` | `dotnet test <target> -c <cfg> --no-build`, plus `--collect "XPlat Code Coverage" --results-directory <artifacts>/coverage` when `coverage_threshold` > 0 |
+| | build | `dotnet:build` | `dotnet build <target> -c <cfg> --no-restore --disable-build-servers -p:Version=<version>` |
+| | test | `dotnet:test` | `dotnet test <target> -c <cfg> --no-build --disable-build-servers`, plus `--collect "XPlat Code Coverage" --results-directory <artifacts>/coverage` when `coverage_threshold` > 0 |
 | | coverage | `dotnet:coverage` | only when `coverage_threshold` > 0: the coverage check below (in NERV, no process) |
-| | package | `dotnet:pack` | only with the `nuget` preset: `dotnet pack <project_file> -c <cfg> --no-build -p:Version=<version> -o <artifacts>/nuget` |
+| | package | `dotnet:pack` | only with the `nuget` preset: `dotnet pack <project_file> -c <cfg> --no-build --disable-build-servers -p:Version=<version> -o <artifacts>/nuget` |
 | `node` | restore | `node:restore` | `npm ci`; `pnpm install --frozen-lockfile`; `yarn install --frozen-lockfile` (Yarn 1) or `yarn install --immutable` (Yarn 2+, detected by `packageManager: "yarn@2…"` or later in `package.json`, or a `.yarnrc.yml` in the project or repository root) |
 | | lint, build, test | `node:<script>` | `<package_manager> run <script>`, only for the scripts `lint`, `build`, `test` that `package.json` defines |
 | `docker` | package | `docker:build <name>` | per image: `docker build -f <dockerfile> -t <name>:<tag>... --build-arg K=V... --label org.opencontainers.image.version=<version> [--label org.opencontainers.image.revision=<commit>] <context>` (build args sorted by name, placeholders replaced) |
@@ -743,6 +743,19 @@ coverage). Its CI also builds with `-warnaserror` and tests with
 flags go in a stage override, e.g.
 `stages: { build: { run: "dotnet build X.slnx -c Release --no-restore -warnaserror -p:Version=$NERV_RELEASE_VERSION" } }`.
 
+- Every dotnet preset command runs without build servers: it receives
+  `MSBUILDDISABLENODEREUSE=1`, `UseSharedCompilation=false` and
+  `DOTNET_CLI_USE_MSBUILD_SERVER=0`, and restore, build, test and pack
+  also get `--disable-build-servers` when the SDK accepts it (7.0.100 or
+  later). nerv runs `dotnet --version` once per run in the directory the
+  commands run in (so `global.json` decides); with an older SDK the flag is
+  left out, and when the version cannot be detected it is left out with a
+  note in the step's output. `dotnet format` rejects the flag, so it gets
+  only the variables. Reused MSBuild nodes and compiler servers
+  make dotnet die mid-release on shared hosts ("Internal CLR error
+  (0x80131506)"). A stage override's `run:` is never rewritten: it runs as
+  written, so a repository that overrode every stage only for this (as
+  dim.comprobantes.api did) can drop those overrides.
 - The node preset never writes the package version: semantic-release's
   `@semantic-release/npm` plugin (or the repository's own configuration)
   does. Enable the `npm` preset only when that plugin does not publish

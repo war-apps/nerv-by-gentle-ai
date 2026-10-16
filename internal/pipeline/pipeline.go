@@ -23,6 +23,7 @@ import (
 
 	"github.com/war-apps/nerv-by-gentle-ai/internal/pipelineconfig"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/shipconfig"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/shipplan"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/shiprun"
 )
 
@@ -93,9 +94,14 @@ type Result struct {
 	Err error `json:"-"`
 }
 
-// dotnetDefaultEnv is dim's workflow environment for every dotnet command;
-// pipeline.dotnet.env overrides it.
-var dotnetDefaultEnv = map[string]string{"DOTNET_NOLOGO": "true", "DOTNET_CLI_TELEMETRY_OPTOUT": "true"}
+// dotnetDefaultEnv is the environment of every dotnet command: dim's
+// workflow environment plus shipplan's no-build-server defaults;
+// pipeline.dotnet.env overrides any of them.
+func dotnetDefaultEnv() map[string]string {
+	env := shipplan.DotnetBuildServerEnv()
+	env["DOTNET_NOLOGO"], env["DOTNET_CLI_TELEMETRY_OPTOUT"] = "true", "true"
+	return env
+}
 
 // ResultsDir is where the test step writes its trx and coverage reports:
 // <repo>/.nerv/artifacts/pipeline/test, emptied at the start of every run.
@@ -111,7 +117,7 @@ func (s Steps) Validate(ctx context.Context) Result {
 	sln := s.Config.Dotnet.Solution
 	r := &Result{Step: "validate", Status: StatusPassed, Commands: []CommandResult{}}
 	s.run(ctx, r,
-		[]string{"dotnet", "restore", sln},
+		[]string{"dotnet", "restore", sln, shipplan.DisableBuildServers},
 		[]string{"dotnet", "format", sln, "--verify-no-changes"})
 	return *r
 }
@@ -143,16 +149,16 @@ func (s Steps) Test(ctx context.Context) Result {
 			return *r
 		}
 	}
-	build := []string{"dotnet", "build", d.Solution, "--configuration", d.Configuration, "--no-restore"}
+	build := []string{"dotnet", "build", d.Solution, "--configuration", d.Configuration, "--no-restore", shipplan.DisableBuildServers}
 	if d.TreatWarningsAsErrors() {
 		build = append(build, "-warnaserror")
 	}
-	test := []string{"dotnet", "test", d.Solution, "--configuration", d.Configuration, "--no-build", "--collect", g.collectArg()}
+	test := []string{"dotnet", "test", d.Solution, "--configuration", d.Configuration, "--no-build", shipplan.DisableBuildServers, "--collect", g.collectArg()}
 	if d.Runsettings != "" {
 		test = append(test, "--settings", d.Runsettings)
 	}
 	test = append(test, "--logger", "trx;LogFileName="+TrxFile, "--results-directory", results)
-	s.run(ctx, r, []string{"dotnet", "restore", d.Solution}, build, test)
+	s.run(ctx, r, []string{"dotnet", "restore", d.Solution, shipplan.DisableBuildServers}, build, test)
 	// Reported even after a failure: a failing test still leaves the
 	// reports (dim uploads them always).
 	r.Artifacts.Coverage = reportsNamed(results, CoverageFile)
@@ -171,11 +177,19 @@ func (s Steps) Test(ctx context.Context) Result {
 // run runs each command in order, stopping at the first failure, and
 // records it in r.
 func (s Steps) run(ctx context.Context, r *Result, cmds ...[]string) {
-	env := maps.Clone(dotnetDefaultEnv)
+	env := dotnetDefaultEnv()
 	maps.Copy(env, s.Config.Dotnet.Env)
+	vars := shiprun.Vars{Project: "pipeline"}
+	probe := shipplan.NewBuildServersProbe(s.Run)
 	for _, argv := range cmds {
 		step := shiprun.Step{Name: r.Step, Stage: r.Step, Command: shipconfig.Command{Env: env}, Exec: argv}
-		err := s.Run.Run(ctx, step, shiprun.Vars{Project: "pipeline"})
+		var note string
+		step.Exec, note = probe.Argv(ctx, step, vars)
+		if note != "" {
+			r.Notes = append(r.Notes, note)
+		}
+		argv = step.Exec
+		err := s.Run.Run(ctx, step, vars)
 		cr := CommandResult{Argv: argv, Exit: 0}
 		if err != nil {
 			cr.Exit = -1
