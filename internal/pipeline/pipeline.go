@@ -92,7 +92,7 @@ type Result struct {
 	// Coverage is the test step's coverage gate: mode, thresholds checked
 	// and measured values.
 	Coverage *CoverageResult `json:"coverage,omitempty"`
-	Error string   `json:"error,omitempty"`
+	Error    string          `json:"error,omitempty"`
 	// Err is the failure, for callers (not serialised).
 	Err error `json:"-"`
 }
