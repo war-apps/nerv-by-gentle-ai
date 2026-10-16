@@ -663,6 +663,30 @@ All four P4 review advisories fixed (user authorized). Route: delegated
   their environment; the unit test only passes because the test process has
   no such variable).
 
+### P5 follow-ups
+
+All three P5 review advisories fixed (user authorized). Route: delegated
+(one writer). Test-first; `go test` exit codes captured directly.
+
+| Item | Fix | Evidence |
+|---|---|---|
+| R3-token-env-assertion-vacuous (security) | `pipeline.SafeEnv` removes `registry.username_env`, `registry.token_env` (case-insensitive) and every `NERV_DEPLOY_*` variable from the environment of every docker child (login, build, push) and of the computed-argument scripts (shiprun `Environ`); PATH, HOME, DOCKER_CONFIG, DOCKER_HOST and proxies are kept; the token reaches docker only on login's stdin. | RED: `TestDocker_ChildrenNeverInheritTheRegistrySecrets` (t.Setenv of `GHCR_USER`, `GHCR_TOKEN`, `NERV_DEPLOY_PRODUCTION_DOCKER_SSH_KEY`): every login/build/push command had them in its environment. GREEN, plus `TestSafeEnv` (`NERV_DEPLOYMENT` kept: only the `NERV_DEPLOY_` prefix goes). |
+| R3-checkout-tag-error-collapse | `CheckoutTag` maps only rev-parse `--verify --quiet`'s exit 1 without output to `ErrTagNotOnOrigin` (refusal); any other failure is returned with its cause (exit 2). Verified with real git: a missing tag exits 1 printing nothing; an unusable directory exits 128. | RED: `broken` (exit 128) and `slow` (deadline) both became "the tag is not on origin". GREEN: their causes are kept, the missing tag is still the refusal. |
+| R3-empty-tag-selection | An image whose selection gives no tag fails (`no tag selected for ...`, attempts 0) without building or pushing; `pipelineconfig` requires `version` in `pipeline.images[].tags` (the only tag every release produces). Docs: the tags row. | RED: the image was reported `pushed` with no tags; `tags: [channel, latest]` loaded. GREEN: both. |
+
+- Checks: `go test -count=1 ./...` exit 0 (29 packages); `go test -tags
+  semrel_integration -run Integration -count=1 ./internal/semrel/
+  ./cmd/nerv/` exit 0, the docker test run (not skipped): exit 0 in
+  468ms, passed; `go vet ./...`, `GOOS=windows go vet ./...`, `go vet
+  -tags semrel_integration` exit 0; `gofmt -l .` empty; no registry
+  container left.
+- Commits: `9f65611` `fix(pipeline): keep the registry token out of
+  docker's environment` (4 files, +80 -3); `2c2111c` `fix(semrel): tell a
+  missing release tag from a failing git` (2 files, +32 -3); `7fa336f`
+  `fix(pipeline): never build or report an image without a tag` (5 files,
+  +36 -1). Total `git diff --shortstat 2262fd7 7fa336f`: 8 files changed,
+  148 insertions(+), 7 deletions(-).
+
 ## Next step
 
 Review of P5; then P6 (`sync` step).
