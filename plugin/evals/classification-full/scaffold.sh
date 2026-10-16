@@ -2,7 +2,7 @@
 # Seeds an activated repo with one backend source file. The requested
 # change (in the case prompt) also touches a new CI workflow file, so two
 # pilot domains are touched (backend + ci-cd/infra) and SKILL.md's
-# "Classification: LIGHT vs FULL" rules resolve unambiguously to FULL.
+# "Classification: DIRECT, LIGHT or FULL" rules resolve unambiguously to FULL.
 # Runs only under `claude plugin eval --scaffold`.
 set -euo pipefail
 
