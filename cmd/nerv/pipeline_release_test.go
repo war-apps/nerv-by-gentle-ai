@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"slices"
@@ -294,5 +295,32 @@ func TestPipelineRelease_RefusesAComputedTagAlreadyOnOrigin(t *testing.T) {
 				t.Error("a refused release left release.json")
 			}
 		})
+	}
+}
+
+func TestPipelineRelease_PrepareWrapsTheOpenerOnce(t *testing.T) {
+	f := newPipelineReleaseFixture(t, pipelineReleaseYAML)
+	opts := f.options(t)
+	s := &shipRun{opts: opts, stdout: io.Discard, stderr: io.Discard, releaseOnly: true, expect: expectations{}, cwd: "."}
+	for i := 0; i < 2; i++ {
+		if _, err := s.prepareRelease(context.Background(), opts.OpenShipWorkspace); err != nil {
+			t.Fatal(err)
+		}
+	}
+	ws, err := s.opts.OpenShipWorkspace(context.Background(), semrel.WorkspaceOptions{RepoRoot: f.top, Branch: "main"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ws.Compute(context.Background(), ""); err != nil {
+		t.Fatal(err)
+	}
+	var checks int
+	for _, e := range f.events {
+		if strings.HasPrefix(e, "tag? ") {
+			checks++
+		}
+	}
+	if len(f.opened) != 1 || checks != 1 {
+		t.Errorf("opened %d times, %d tag checks (events %v): want one wrapper", len(f.opened), checks, f.events)
 	}
 }

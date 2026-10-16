@@ -68,7 +68,7 @@ func runPipelineRelease(args []string, stdout, stderr io.Writer, opts options) i
 
 	doc := pipeline.ReleaseOutputs{Step: "release", DryRun: s.dryRun, Channel: ""}
 	code := 0
-	top, err := s.prepareRelease(ctx)
+	top, err := s.prepareRelease(ctx, opts.OpenShipWorkspace)
 	if err == nil {
 		var outcomes []shipOutcome
 		outcomes, err = s.execute(ctx)
@@ -107,7 +107,11 @@ func runPipelineRelease(args []string, stdout, stderr io.Writer, opts options) i
 // version files, refuses a release: section with several projects (this
 // step releases one), and removes an earlier release.json so a failed run
 // never leaves stale outputs. It returns the repository's top level.
-func (s *shipRun) prepareRelease(ctx context.Context) (string, error) {
+//
+// base is the caller's workspace opener (nil: semrel.NewWorkspace), never
+// s.opts' current one: the release opener is built from it, so preparing
+// again does not wrap it twice.
+func (s *shipRun) prepareRelease(ctx context.Context, base func(context.Context, semrel.WorkspaceOptions) (shipWorkspace, error)) (string, error) {
 	top, err := gitTopLevel(ctx, s.opts.Runner, s.cwd)
 	if err != nil {
 		return "", err
@@ -126,13 +130,12 @@ func (s *shipRun) prepareRelease(ctx context.Context) (string, error) {
 	s.versionFiles = cfg.Release.VersionFiles
 	// git and semantic-release in the release clone never get the registry
 	// or deploy secrets (GitHub tokens stay: the github plugin needs them).
-	open := s.opts.OpenShipWorkspace
 	s.opts.OpenShipWorkspace = func(ctx context.Context, o semrel.WorkspaceOptions) (shipWorkspace, error) {
 		o.Env = pipeline.SafeEnv(os.Environ(), cfg.Registry)
 		var ws shipWorkspace
 		var err error
-		if open != nil {
-			ws, err = open(ctx, o)
+		if base != nil {
+			ws, err = base(ctx, o)
 		} else {
 			ws, err = semrel.NewWorkspace(ctx, o)
 		}
