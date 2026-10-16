@@ -106,3 +106,39 @@ func TestPrefixWriter_DropsTheLineThatFailed(t *testing.T) {
 		t.Errorf("output %q: the failed line must not be written again", got)
 	}
 }
+
+func TestReadReleaseOutputs(t *testing.T) {
+	repo := t.TempDir()
+	if _, err := ReadReleaseOutputs(repo); !errors.Is(err, ErrNoReleaseOutputs) {
+		t.Errorf("missing: err = %v", err)
+	}
+	if _, err := WriteReleaseOutputs(repo, ReleaseOutputs{Step: "release", Status: StatusPassed, Version: "1.2.0"}); err != nil {
+		t.Fatal(err)
+	}
+	o, err := ReadReleaseOutputs(repo)
+	if err != nil || o.Version != "1.2.0" {
+		t.Errorf("read %+v %v", o, err)
+	}
+	os.WriteFile(ReleaseOutputsPath(repo), []byte("{broken"), 0o644)
+	if _, err := ReadReleaseOutputs(repo); err == nil || errors.Is(err, ErrNoReleaseOutputs) {
+		t.Errorf("broken: err = %v", err)
+	}
+}
+
+func TestDockerResult_WrittenAndRemoved(t *testing.T) {
+	repo := t.TempDir()
+	path, err := WriteDockerResult(repo, DockerResult{Step: "docker", Status: StatusPassed, Images: []ImageResult{{Name: "ghcr.io/acme/api", Refs: []string{"ghcr.io/acme/api:1.0.0"}}}})
+	if err != nil || path != filepath.Join(repo, ".nerv", "artifacts", "pipeline", "docker.json") {
+		t.Fatalf("path %s %v", path, err)
+	}
+	data, _ := os.ReadFile(path)
+	if !strings.Contains(string(data), `"ghcr.io/acme/api:1.0.0"`) {
+		t.Errorf("docker.json %s", data)
+	}
+	if err := RemoveDockerResult(repo); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Errorf("not removed")
+	}
+}

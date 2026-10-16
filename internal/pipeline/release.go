@@ -68,15 +68,68 @@ func ReleaseOutputsPath(repo string) string {
 // atomically), after the same checks as the test results: nothing is
 // created through a symlink leading outside the repository.
 func WriteReleaseOutputs(repo string, o ReleaseOutputs) (string, error) {
+	return writeArtifactJSON(repo, ReleaseOutputsPath(repo), o)
+}
+
+// ErrNoReleaseOutputs is wrapped by ReadReleaseOutputs when there is no
+// release.json (the release step has not run, or its last run failed).
+var ErrNoReleaseOutputs = errors.New("no release outputs")
+
+// ReadReleaseOutputs reads release.json, after the artifacts' symlink
+// checks.
+func ReadReleaseOutputs(repo string) (ReleaseOutputs, error) {
+	var o ReleaseOutputs
 	path := ReleaseOutputsPath(repo)
+	artifacts := filepath.Join(repo, ".nerv", "artifacts")
+	if err := checkAncestorInside(repo, artifacts); err != nil {
+		return o, err
+	}
+	if _, err := os.Lstat(artifacts); err == nil {
+		if err := checkRealInside(repo, artifacts, path); err != nil {
+			return o, err
+		}
+	}
+	data, err := os.ReadFile(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return o, fmt.Errorf("%s: %w", path, ErrNoReleaseOutputs)
+	}
+	if err != nil {
+		return o, err
+	}
+	if err := json.Unmarshal(data, &o); err != nil {
+		return o, fmt.Errorf("%s: %w", path, err)
+	}
+	return o, nil
+}
+
+// DockerResultFile is the docker step's result, for the deploy step.
+const DockerResultFile = "docker.json"
+
+// DockerResultPath is <repo>/.nerv/artifacts/pipeline/docker.json.
+func DockerResultPath(repo string) string {
+	return filepath.Join(repo, ".nerv", "artifacts", "pipeline", DockerResultFile)
+}
+
+// WriteDockerResult writes docker.json as WriteReleaseOutputs writes
+// release.json.
+func WriteDockerResult(repo string, r DockerResult) (string, error) {
+	return writeArtifactJSON(repo, DockerResultPath(repo), r)
+}
+
+// RemoveDockerResult removes an earlier docker.json.
+func RemoveDockerResult(repo string) error { return removeArtifact(repo, DockerResultPath(repo)) }
+
+// writeArtifactJSON writes v as indented JSON to path under the artifacts,
+// atomically, after the symlink checks.
+func writeArtifactJSON(repo, path string, v any) (string, error) {
 	if err := prepareArtifact(repo, path); err != nil {
 		return "", err
 	}
-	data, err := json.MarshalIndent(o, "", "  ")
+	data, err := json.MarshalIndent(v, "", "  ")
 	if err != nil {
 		return "", err
 	}
-	tmp, err := os.CreateTemp(filepath.Dir(path), ".release-*.json")
+	tmp, err := os.CreateTemp(filepath.Dir(path), ".artifact-*.json")
 	if err != nil {
 		return "", err
 	}
@@ -96,8 +149,10 @@ func WriteReleaseOutputs(repo string, o ReleaseOutputs) (string, error) {
 
 // RemoveReleaseOutputs removes an earlier release.json, so a failed or
 // interrupted release never leaves stale outputs for the later steps.
-func RemoveReleaseOutputs(repo string) error {
-	path := ReleaseOutputsPath(repo)
+func RemoveReleaseOutputs(repo string) error { return removeArtifact(repo, ReleaseOutputsPath(repo)) }
+
+// removeArtifact removes path under the artifacts after the symlink checks.
+func removeArtifact(repo, path string) error {
 	artifacts := filepath.Join(repo, ".nerv", "artifacts")
 	if err := checkAncestorInside(repo, artifacts); err != nil {
 		return err
