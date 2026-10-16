@@ -1068,6 +1068,26 @@ All three P5 review advisories fixed (user authorized). Route: delegated
 | 8 | sync cloned origin for a release that syncs nothing | `Sync.Syncs()` from release.json's branch before the clone | RED: `TestPipelineSync_NoCloneWhenTheReleasedBranchSyncsNothing` (develop, hotfix/x opened a clone). GREEN. `8427705` (3 files, +30 -2) |
 | 9 | Getting started called nerv's default branches dim's | the guide says they are nerv's, that dim uses `release/rc` and `hotfix/*` with `prerelease: true` (refused by nerv), and shows the explicit `branches:` dim needs | Structural; doc examples still load. `d14a764` (1 file, +46 -9; also documents 1, 3, 4, 5, 8), CHANGELOG `a7db034` |
 
+- Review follow-ups (native review approved), test-first:
+  - The docker failure cause with the real runner:
+    `TestDocker_AFailedBuildReportsItsCauseWithTheRealRunner` runs a fake
+    `docker` script through `proc.ExecRunner` that writes to stdout and
+    stderr and exits 1: the step error carries the image, the stdout line
+    and both stderr lines, and the stderr is streamed. It passed as
+    written: with the same writer for both streams the process gets one
+    pipe and `Result.Stdout` holds the combined tail, so no fix was needed.
+    `6563925` (1 file, +48).
+  - `prepareRelease` built its opener from `s.opts` (wrapping twice when
+    called twice): it now takes the caller's original opener. RED:
+    `TestPipelineRelease_PrepareWrapsTheOpenerOnce` saw two tag checks for
+    one Compute. GREEN. `3c53ff0` (2 files, +36 -5).
+  - Flake hunt: `go test -count=10 -v ./internal/pipeline/` exit 0 in
+    316s (510 passing test results, 0 failing, the dotnet smoke test
+    passed 10 of 10) and `go test -race -count=1 -v ./internal/pipeline/`
+    exit 0 in 32s: no flaky test found. The only test with an outside
+    dependency is the dotnet smoke test, which can die of this host's CLR
+    0x80131506 crash (seen during the acceptance run); the reviewer's
+    lost `FAIL` could not be reproduced.
 - Open: 2 (the coverage gate fails dim as-is) needs a user decision:
   keep enforcing `<Threshold>`, or add a report-only mode matching dim's
   CI. Noted only: 6 (the release dry run computes without running the
