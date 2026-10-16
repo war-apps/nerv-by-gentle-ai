@@ -547,6 +547,32 @@ directly.
   failed run's document reports the computed release as published),
   R3-prefixwriter-error-redup (a failed write is retried and duplicated).
 
+### P4 follow-ups
+
+All four P4 review advisories fixed (user authorized). Route: delegated
+(one writer). Test-first; `go test` exit codes captured directly.
+
+| Item | Fix | Evidence |
+|---|---|---|
+| R3-outputs-write-after-release | A failed release.json write (seam `options.WriteReleaseOutputs`) fails the step (exit 2) with `error` naming the write failure and an `action` saying the release is on origin (version, tag, commit), that docker/sync/deploy read release.json, and how to recover: the exact content (status passed) is printed on one stderr line after `release.json should hold: ` to save by hand; never a rerun ("Do not run nerv pipeline release again for this release"). | RED: build failure (`opts.WriteReleaseOutputs undefined`). GREEN: `TestPipelineRelease_OutputsWriteFailureAfterTheRelease` (exit 2, published true with version/tag/commit, the printed line parses back to a `passed` document with the tag, one release only). |
+| R3-own-config-version-files-silent | The runner's plan mode returns `gitPlugin` / `gitAssets` of the repository's own configuration (`gitAssets(plugins)`: the plugin's default assets when unset, none for `false`, object paths); Compute carries them on `ProjectResult` (`json:"-"`, so `version next` output is unchanged); `nerv pipeline release` refuses after Compute, before listing, confirmation or any release (dry run included) when the config has no `@semantic-release/git` or `semrel.AssetsCover` (globby-style: `*`, `?`, `**`, `[...]`, `{a,b}`, leading `./`, `!` exclusions) leaves a version file out, naming the files and the fix. `ProjectResult` is no longer comparable with `==`: two tests switched to `reflect.DeepEqual`. | RED: node `gitAssets` export missing; Go build failures (`AssetsCover`, `GitPlugin`, `GitAssets`). GREEN: node 21/21, `TestAssetsCover` (10 cases), `TestCompute_ReportsTheRepositorysGitAssets`, `TestPipelineRelease_RepositoryConfigMustCommitTheVersionFiles` (covered by a glob proceeds; not in the assets and no git plugin refused, dry run and real, nothing released). Integration `TestIntegration_PipelineReleaseRepositoryConfigAssets` (real semantic-release, own package.json config): assets `CHANGELOG.md` only -> refused naming `src/Api/Api.csproj` and `package.json`, origin tags unchanged; assets with `src/**/*.csproj` -> `v1.1.0` released, the release commit holds `CHANGELOG.md` and `src/Api/Api.csproj`. |
+| R3-failed-doc-claims-published | `published` and the release fields describe only what was released; a real run that computed but did not release reports `published: false` and `computed {version, channel, git_tag}`; a dry run keeps reporting the computation as before. | RED: build failure (`doc.Computed undefined`). GREEN: `TestPipelineRelease_FailureLeavesNoOutputs` extended (published false, no version/tag, computed `1.1.0-alpha.1` / `v1.1.0-alpha.1`). |
+| R3-prefixwriter-error-redup | `PrefixWriter` consumes a line before writing it: a failed write returns its error and the line is not written again. | RED: `TestPrefixWriter_DropsTheLineThatFailed` got `> lost` written after the failure. GREEN. |
+
+- Docs: docs/pipeline.md (the own-config assets check, `computed`, the
+  write-failure recovery), committed with the assets fix in `a4175da`.
+- Checks: `go test -count=1 ./...` exit 0 (29 packages); `go test -tags
+  semrel_integration -run Integration -count=1 ./internal/semrel/
+  ./cmd/nerv/` exit 0; node runner tests 21/21; `go vet ./...`,
+  `GOOS=windows go vet ./...`, `go vet -tags semrel_integration` exit 0;
+  `gofmt -l .` empty.
+- Commits: `8a8f1a5` `fix(pipeline): drop a prefixed line whose write
+  failed` (2 files); `397b2ae` `fix(cli): report a release.json write
+  failure and only what was released` (4 files, +87 -5); `a4175da`
+  `fix(cli): refuse version files the repository's release commit would
+  not hold` (15 files, +302 -17). Total `git diff --shortstat 4a16bf4
+  a4175da`: 19 files changed, 425 insertions(+), 25 deletions(-).
+
 ## Next step
 
 Review of P4; then P5 (`docker` step, reading release.json).
