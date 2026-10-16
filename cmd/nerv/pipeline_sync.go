@@ -8,6 +8,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"os"
 	"strings"
 	"time"
 
@@ -170,7 +171,7 @@ func (s syncRun) run(ctx context.Context) (pipeline.SyncResult, string, error) {
 		}
 	}
 	fmt.Fprintf(s.out, "nerv pipeline sync: reading origin's branches into a sync clone\n")
-	ws, err := open(ctx, semrel.WorkspaceOptions{RepoRoot: top, Branch: rel.Branch, FetchTimeout: s.timeout})
+	ws, err := open(ctx, semrel.WorkspaceOptions{RepoRoot: top, Branch: rel.Branch, FetchTimeout: s.timeout, Env: pipeline.SafeEnv(os.Environ(), cfg.Registry)})
 	if errors.Is(err, semrel.ErrNoOrigin) {
 		return res, top, refuse("the repository has no origin remote")
 	}

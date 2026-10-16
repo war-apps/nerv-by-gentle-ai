@@ -72,6 +72,21 @@ func SafeEnv(env []string, r pipelineconfig.Registry) []string {
 	return out
 }
 
+// gitHubTokens are the GitHub tokens semantic-release and gh read; the
+// dotnet steps never need them.
+var gitHubTokens = []string{"GH_TOKEN", "GITHUB_TOKEN", "GH_ENTERPRISE_TOKEN", "GITHUB_ENTERPRISE_TOKEN"}
+
+// BuildEnv is SafeEnv without the GitHub tokens too: the environment of
+// the validate and test steps' dotnet commands, which build and run the
+// repository's own code and tests.
+func BuildEnv(env []string, r pipelineconfig.Registry) []string {
+	out := SafeEnv(env, r)
+	return slices.DeleteFunc(out, func(kv string) bool {
+		name, _, _ := strings.Cut(kv, "=")
+		return slices.ContainsFunc(gitHubTokens, func(t string) bool { return strings.EqualFold(t, name) })
+	})
+}
+
 // ImageResult is what happened to one image.
 type ImageResult struct {
 	Name     string   `json:"name"`

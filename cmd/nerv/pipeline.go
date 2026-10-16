@@ -8,6 +8,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"os"
 	"slices"
 	"strings"
 
@@ -207,8 +208,10 @@ func runPipelineStep(ctx context.Context, step, cwd string, stderr io.Writer, op
 	}
 	newSteps := opts.PipelineSteps
 	if newSteps == nil {
+		// dotnet builds and runs the repository's code: it never gets the
+		// registry, deploy or GitHub secrets.
 		newSteps = func(root string, out io.Writer) pipeline.StepRunner {
-			return &shiprun.Runner{RepoRoot: root, Output: out}
+			return &shiprun.Runner{RepoRoot: root, Output: out, Environ: func() []string { return pipeline.BuildEnv(os.Environ(), cfg.Registry) }}
 		}
 	}
 	steps := pipeline.Steps{Repo: top, Config: cfg, Run: newSteps(top, stderr)}

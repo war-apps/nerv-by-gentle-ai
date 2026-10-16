@@ -8,6 +8,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"os"
 	"strings"
 
 	"github.com/war-apps/nerv-by-gentle-ai/internal/pipeline"
@@ -123,6 +124,16 @@ func (s *shipRun) prepareRelease(ctx context.Context) (string, error) {
 		return "", refuse("the release: section declares %d projects; nerv pipeline release releases one project (use nerv ship for a monorepo)", len(rel.Projects))
 	}
 	s.versionFiles = cfg.Release.VersionFiles
+	// git and semantic-release in the release clone never get the registry
+	// or deploy secrets (GitHub tokens stay: the github plugin needs them).
+	open := s.opts.OpenShipWorkspace
+	s.opts.OpenShipWorkspace = func(ctx context.Context, o semrel.WorkspaceOptions) (shipWorkspace, error) {
+		o.Env = pipeline.SafeEnv(os.Environ(), cfg.Registry)
+		if open != nil {
+			return open(ctx, o)
+		}
+		return semrel.NewWorkspace(ctx, o)
+	}
 	if err := pipeline.RemoveReleaseOutputs(top); err != nil {
 		return "", err
 	}
