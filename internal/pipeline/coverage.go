@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"encoding/xml"
 	"fmt"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/pipelineconfig"
 	"maps"
 	"os"
 	"path/filepath"
@@ -62,6 +63,138 @@ var coverageMetrics = []string{"line", "branch", "method"}
 type Thresholds struct {
 	Line, Branch, Method *float64
 	Stat                 string
+	// source says where each metric's threshold comes from (runsettings
+	// when absent).
+	source map[string]string
+}
+
+// Threshold sources.
+const (
+	SourceRunsettings = "runsettings"
+	SourceConfig      = "nerv.yaml"
+)
+
+func (t *Thresholds) sourceOf(metric string) string {
+	if s := t.source[metric]; s != "" {
+		return s
+	}
+	return SourceRunsettings
+}
+
+// origin names where the thresholds come from, for messages: the
+// runsettings file, nerv.yaml or both.
+func (t *Thresholds) origin(runsettings string) string {
+	file, conf := false, false
+	for _, m := range coverageMetrics {
+		if t.required(m) == nil {
+			continue
+		}
+		if t.sourceOf(m) == SourceConfig {
+			conf = true
+		} else {
+			file = true
+		}
+	}
+	switch {
+	case file && conf:
+		return runsettings + " and " + SourceConfig
+	case conf:
+		return SourceConfig
+	}
+	return runsettings
+}
+
+// CoverageResult is the test step's coverage gate as run.
+type CoverageResult struct {
+	// Mode is pipeline.dotnet.coverage.mode: enforce, report or off.
+	Mode string `json:"mode"`
+	// Stat is coverlet's ThresholdStat applied (empty when nothing was
+	// checked).
+	Stat string `json:"stat,omitempty"`
+	// Checks are the thresholds checked, with the measured values and each
+	// threshold's source.
+	Checks []MetricCheck `json:"checks,omitempty"`
+	// Met: every checked threshold met (true when none was checked).
+	Met bool `json:"met"`
+}
+
+// effectiveGate returns the gate the test step runs: g's report formats
+// and the runsettings' thresholds (g may be nil), overridden key by key by
+// c.Thresholds; no thresholds with mode off. nil when nothing is
+// configured at all.
+func effectiveGate(g *gate, c pipelineconfig.Coverage, mode string) *gate {
+	out := &gate{formats: []string{"cobertura"}}
+	if g != nil {
+		out.formats = g.formats
+	}
+	if mode == "off" {
+		if g == nil {
+			return nil
+		}
+		return out
+	}
+	var th *Thresholds
+	if g != nil && g.th != nil {
+		cp := *g.th
+		th = &cp
+	}
+	if o := c.Thresholds; o != nil {
+		if th == nil {
+			th = &Thresholds{Stat: StatMinimum}
+		}
+		th.source = map[string]string{}
+		for _, m := range []struct {
+			name string
+			v    *float64
+			dst  **float64
+		}{{"line", o.Line, &th.Line}, {"branch", o.Branch, &th.Branch}, {"method", o.Method, &th.Method}} {
+			if m.v != nil {
+				v := *m.v
+				*m.dst = &v
+				th.source[m.name] = SourceConfig
+			}
+		}
+		if o.Stat != "" {
+			th.Stat = o.Stat
+		}
+	}
+	out.th = th
+	if g == nil && th == nil {
+		return nil
+	}
+	return out
+}
+
+// gateCoverage checks th on the step's reports as mode says: enforce fails
+// the step below a threshold (or without a report), report records and
+// warns, and r.Coverage holds the checks either way.
+func gateCoverage(r *Result, runsettings, mode string, th *Thresholds) {
+	checks, err := measureCoverage(runsettings, th, r.Artifacts.CoverageJSON, r.Artifacts.Coverage)
+	enforce := mode != "report"
+	if err != nil {
+		r.Coverage.Met = false
+		if enforce {
+			r.fail(err)
+		} else {
+			r.Notes = append(r.Notes, "warning: "+err.Error()+", not enforced (coverage.mode report)")
+		}
+		return
+	}
+	r.Coverage.Stat, r.Coverage.Checks = th.Stat, checks
+	parts := make([]string, len(checks))
+	for i, c := range checks {
+		parts[i] = c.String()
+		r.Coverage.Met = r.Coverage.Met && c.Met
+	}
+	summary := strings.Join(parts, ", ")
+	switch {
+	case r.Coverage.Met:
+		r.Notes = append(r.Notes, fmt.Sprintf("coverage (%s): %s", th.Stat, summary))
+	case enforce:
+		r.fail(fmt.Errorf("coverage below the thresholds of %s (%s): %s", th.origin(runsettings), th.Stat, summary))
+	default:
+		r.Notes = append(r.Notes, fmt.Sprintf("warning: coverage below the thresholds of %s (%s), not enforced (coverage.mode report): %s", th.origin(runsettings), th.Stat, summary))
+	}
 }
 
 func (t *Thresholds) required(metric string) *float64 {
@@ -539,7 +672,9 @@ type MetricCheck struct {
 	Type     string  `json:"type"`
 	Actual   string  `json:"actual"`
 	Required float64 `json:"required"`
-	Met      bool    `json:"met"`
+	// Source is where the threshold comes from: runsettings or nerv.yaml.
+	Source string `json:"source"`
+	Met    bool   `json:"met"`
 }
 
 func (m MetricCheck) String() string {
@@ -560,7 +695,7 @@ func checkThresholds(cov *coverage, th *Thresholds) []MetricCheck {
 			continue
 		}
 		h := cov.percent(metric, th.Stat)
-		out = append(out, MetricCheck{Type: metric, Actual: percentText(h), Required: *req, Met: !(float64(h)/100 < *req)})
+		out = append(out, MetricCheck{Type: metric, Actual: percentText(h), Required: *req, Source: th.sourceOf(metric), Met: !(float64(h)/100 < *req)})
 	}
 	return out
 }
@@ -572,6 +707,25 @@ func checkThresholds(cov *coverage, th *Thresholds) []MetricCheck {
 // returns the summary note when every threshold is met, an error naming
 // every metric when not.
 func checkCoverage(runsettings string, th *Thresholds, jsonReports, coberturaReports []string) (string, error) {
+	checks, err := measureCoverage(runsettings, th, jsonReports, coberturaReports)
+	if err != nil {
+		return "", err
+	}
+	parts := make([]string, len(checks))
+	met := true
+	for i, c := range checks {
+		parts[i] = c.String()
+		met = met && c.Met
+	}
+	if !met {
+		return "", fmt.Errorf("coverage below the thresholds of %s (%s): %s", th.origin(runsettings), th.Stat, strings.Join(parts, ", "))
+	}
+	return fmt.Sprintf("coverage (%s): %s", th.Stat, strings.Join(parts, ", ")), nil
+}
+
+// measureCoverage reads the run's reports (see checkCoverage) and compares
+// them with every set threshold.
+func measureCoverage(runsettings string, th *Thresholds, jsonReports, coberturaReports []string) ([]MetricCheck, error) {
 	type run struct{ json, cobertura string }
 	runs := map[string]*run{}
 	get := func(dir string) *run {
@@ -587,7 +741,7 @@ func checkCoverage(runsettings string, th *Thresholds, jsonReports, coberturaRep
 		get(filepath.Dir(p)).cobertura = p
 	}
 	if len(runs) == 0 {
-		return "", fmt.Errorf("no coverage report to check the thresholds of %s against", runsettings)
+		return nil, fmt.Errorf("no coverage report to check the thresholds of %s against", runsettings)
 	}
 	cov := newCoverage()
 	for _, dir := range slices.Sorted(maps.Keys(runs)) {
@@ -609,18 +763,8 @@ func checkCoverage(runsettings string, th *Thresholds, jsonReports, coberturaRep
 			}
 		}
 		if !read {
-			return "", fmt.Errorf("no readable coverage report in run %s: %s", dir, strings.Join(problems, "; "))
+			return nil, fmt.Errorf("no readable coverage report in run %s: %s", dir, strings.Join(problems, "; "))
 		}
 	}
-	checks := checkThresholds(cov, th)
-	parts := make([]string, len(checks))
-	met := true
-	for i, c := range checks {
-		parts[i] = c.String()
-		met = met && c.Met
-	}
-	if !met {
-		return "", fmt.Errorf("coverage below the thresholds of %s (%s): %s", runsettings, th.Stat, strings.Join(parts, ", "))
-	}
-	return fmt.Sprintf("coverage (%s): %s", th.Stat, strings.Join(parts, ", ")), nil
+	return checkThresholds(cov, th), nil
 }

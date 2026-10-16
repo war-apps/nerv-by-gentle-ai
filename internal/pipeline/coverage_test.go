@@ -3,6 +3,8 @@ package pipeline
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/pipelineconfig"
 	"os"
 	"path/filepath"
 	"slices"
@@ -516,5 +518,113 @@ func TestCheckCoverage_UnreadableRunIsAnError(t *testing.T) {
 	_, err := checkCoverage("x.runsettings", &Thresholds{Line: ptr(100), Stat: StatTotal}, jsons, cobs)
 	if err == nil || !strings.Contains(err.Error(), "no readable coverage report in run") || !strings.Contains(err.Error(), filepath.Dir(cobs[0])) {
 		t.Errorf("err = %v, want the unreadable run named", err)
+	}
+}
+
+// runTest runs the test step with settings (none when empty) and reports
+// written by dotnet test, and the coverage block mod.
+func runTest(t *testing.T, settings string, reports []string, mod func(*pipelineconfig.Coverage)) (Result, *fakeSteps) {
+	t.Helper()
+	repo := t.TempDir()
+	cfg := config(nil)
+	if settings != "" {
+		if err := os.WriteFile(filepath.Join(repo, "coverlet.runsettings"), []byte(settings), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		cfg.Dotnet.Runsettings = "coverlet.runsettings"
+	}
+	cfg.Dotnet.Coverage.Mode = "enforce"
+	if mod != nil {
+		mod(&cfg.Dotnet.Coverage)
+	}
+	results := ResultsDir(repo)
+	f := &fakeSteps{}
+	run := &writingSteps{inner: f, write: func() {
+		for i, r := range reports {
+			p := filepath.Join(results, string(rune('a'+i)), CoverageFile)
+			os.MkdirAll(filepath.Dir(p), 0o755)
+			os.WriteFile(p, []byte(r), 0o644)
+		}
+	}}
+	return Steps{Repo: repo, Config: cfg, Run: run}.Test(context.Background()), f
+}
+
+func checksOf(c *CoverageResult) []string {
+	var out []string
+	for _, m := range c.Checks {
+		out = append(out, fmt.Sprintf("%s %s/%v %s %v", m.Type, m.Actual, m.Required, m.Source, m.Met))
+	}
+	return out
+}
+
+func TestTest_CoverageEnforceRecordsTheChecks(t *testing.T) {
+	r, _ := runTest(t, dimRunsettings, []string{reportA, reportB}, nil)
+	if r.Status != StatusFailed || r.Coverage == nil || r.Coverage.Mode != "enforce" || r.Coverage.Stat != "total" || r.Coverage.Met {
+		t.Fatalf("result %+v coverage %+v", r, r.Coverage)
+	}
+	want := []string{"line 50/100 runsettings false", "branch 50/80 runsettings false", "method 66.66/100 runsettings false"}
+	if got := checksOf(r.Coverage); !slices.Equal(got, want) {
+		t.Errorf("checks %q, want %q", got, want)
+	}
+}
+
+func TestTest_CoverageReportWarnsAndPasses(t *testing.T) {
+	r, _ := runTest(t, dimRunsettings, []string{reportA, reportB}, func(c *pipelineconfig.Coverage) { c.Mode = "report" })
+	if r.Status != StatusPassed || r.Error != "" || r.Coverage == nil || r.Coverage.Mode != "report" || r.Coverage.Met || len(r.Coverage.Checks) != 3 {
+		t.Fatalf("result %+v coverage %+v", r, r.Coverage)
+	}
+	if len(r.Notes) != 1 || !strings.HasPrefix(r.Notes[0], "warning: coverage below the thresholds of coverlet.runsettings (total), not enforced (coverage.mode report): line 50% < 100%") {
+		t.Errorf("notes %q", r.Notes)
+	}
+}
+
+func TestTest_CoverageReportWithoutReportsWarnsAndPasses(t *testing.T) {
+	r, _ := runTest(t, dimRunsettings, nil, func(c *pipelineconfig.Coverage) { c.Mode = "report" })
+	if r.Status != StatusPassed || len(r.Notes) != 1 || !strings.Contains(r.Notes[0], "warning: no coverage report") {
+		t.Errorf("result %+v", r)
+	}
+}
+
+func TestTest_CoverageOffEvaluatesNothing(t *testing.T) {
+	r, f := runTest(t, dimRunsettings, nil, func(c *pipelineconfig.Coverage) { c.Mode = "off" })
+	if r.Status != StatusPassed || len(r.Notes) != 0 || r.Coverage == nil || r.Coverage.Mode != "off" || len(r.Coverage.Checks) != 0 {
+		t.Fatalf("result %+v coverage %+v", r, r.Coverage)
+	}
+	last := f.steps[len(f.steps)-1].Exec
+	if !slices.Contains(last, "XPlat Code Coverage") || slices.ContainsFunc(last, func(a string) bool { return strings.Contains(a, "json") }) {
+		t.Errorf("dotnet test %q: no json report needed with mode off", last)
+	}
+}
+
+func TestTest_CoverageThresholdsOverrideTheRunsettings(t *testing.T) {
+	r, _ := runTest(t, dimRunsettings, []string{reportA, reportB}, func(c *pipelineconfig.Coverage) {
+		c.Thresholds = &pipelineconfig.CoverageThresholds{Line: ptr(50), Branch: ptr(50)}
+	})
+	want := []string{"line 50/50 nerv.yaml true", "branch 50/50 nerv.yaml true", "method 66.66/100 runsettings false"}
+	if r.Status != StatusFailed || !slices.Equal(checksOf(r.Coverage), want) || !strings.Contains(r.Error, "coverage below the thresholds of coverlet.runsettings and nerv.yaml (total)") {
+		t.Errorf("status %s error %q checks %q", r.Status, r.Error, checksOf(r.Coverage))
+	}
+}
+
+func TestTest_CoverageThresholdsWithoutRunsettings(t *testing.T) {
+	r, f := runTest(t, "", []string{reportA, reportB}, func(c *pipelineconfig.Coverage) {
+		c.Thresholds = &pipelineconfig.CoverageThresholds{Line: ptr(50), Stat: "total"}
+	})
+	if r.Status != StatusPassed || r.Coverage == nil || r.Coverage.Stat != "total" || !slices.Equal(checksOf(r.Coverage), []string{"line 50/50 nerv.yaml true"}) || !r.Coverage.Met {
+		t.Fatalf("result %+v coverage %+v", r, r.Coverage)
+	}
+	if len(r.Notes) != 1 || r.Notes[0] != "coverage (total): line 50% >= 50%" {
+		t.Errorf("notes %q", r.Notes)
+	}
+	last := f.steps[len(f.steps)-1].Exec
+	if !slices.Contains(last, "XPlat Code Coverage;Format=cobertura,json") {
+		t.Errorf("dotnet test %q: the thresholds need the json report", last)
+	}
+	// The stat defaults to coverlet's minimum when neither sets it.
+	r2, _ := runTest(t, "", []string{reportA, reportB}, func(c *pipelineconfig.Coverage) {
+		c.Thresholds = &pipelineconfig.CoverageThresholds{Line: ptr(10)}
+	})
+	if r2.Coverage == nil || r2.Coverage.Stat != "minimum" {
+		t.Errorf("default stat: %+v", r2.Coverage)
 	}
 }
