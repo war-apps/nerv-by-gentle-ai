@@ -146,7 +146,9 @@ func (d Docker) Run(ctx context.Context) DockerResult {
 		res := d.image(ctx, img, main)
 		r.Images = append(r.Images, res)
 		if res.Status == "failed" && res.Required {
-			failed = append(failed, img.Name)
+			// The cause goes with the name: docker.json is not written on a
+			// failure, so the step's document is the only record of it.
+			failed = append(failed, img.Name+": "+res.Error)
 		}
 		if ctx.Err() != nil {
 			r.Status, r.Error = StatusInterrupted, ctx.Err().Error()
@@ -154,7 +156,7 @@ func (d Docker) Run(ctx context.Context) DockerResult {
 		}
 	}
 	if len(failed) > 0 {
-		r.Status, r.Error = StatusFailed, "required image(s) failed: "+strings.Join(failed, ", ")
+		r.Status, r.Error = StatusFailed, "required image(s) failed: "+strings.Join(failed, "; ")
 	}
 	return r
 }
@@ -276,5 +278,25 @@ func (d Docker) docker(ctx context.Context, stdin []byte, args ...string) ([]byt
 	// registry's or the deploy's secrets in its environment.
 	env = SafeEnv(env, d.Config.Registry)
 	res, err := d.Proc.Run(ctx, proc.Command{Name: "docker", Args: args, Dir: d.Dir, Env: env, Stdin: stdin, Stdout: d.Output, Stderr: d.Output})
+	if err != nil {
+		if tail := lastOutputLines(res.Stdout, 10); tail != "" {
+			err = fmt.Errorf("%w\nlast output:\n%s", err, tail)
+		}
+	}
 	return res.Stdout, err
+}
+
+// lastOutputLines returns the last n non-empty lines of a command's
+// (combined) output.
+func lastOutputLines(out []byte, n int) string {
+	var lines []string
+	for _, l := range strings.Split(string(out), "\n") {
+		if l = strings.TrimRight(l, "\r "); strings.TrimSpace(l) != "" {
+			lines = append(lines, l)
+		}
+	}
+	if len(lines) > n {
+		lines = lines[len(lines)-n:]
+	}
+	return strings.Join(lines, "\n")
 }

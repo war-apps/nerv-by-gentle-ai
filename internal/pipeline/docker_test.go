@@ -303,3 +303,33 @@ func TestDocker_AnImageWithNoTagsFailsWithoutBuilding(t *testing.T) {
 		}
 	}
 }
+
+func TestDocker_AFailedBuildReportsItsCause(t *testing.T) {
+	f := &fakeDocker{
+		out: func(c proc.Command) string {
+			if c.Args[0] == "build" {
+				return "#13 4.571 restoring\n#13 5.774 error NU1903: Package 'Pkcs' 9.0.4 has a known high severity vulnerability\nERROR: failed to solve: dotnet restore did not complete successfully: exit code: 1\n"
+			}
+			return ""
+		},
+		fail: func(c proc.Command) error {
+			if c.Args[0] == "build" {
+				return errors.New("exit status 1")
+			}
+			return nil
+		},
+	}
+	r := dockerStep(f, &fakeArgs{values: []string{"130.0"}}, release("main", "2.9.0", "", "v2.9.0")).Run(context.Background())
+	if r.Status != StatusFailed {
+		t.Fatalf("status %s", r.Status)
+	}
+	name := dockerConfig().Images[0].Name
+	for _, want := range []string{name, "build " + name, "exit status 1", "error NU1903", "failed to solve"} {
+		if !strings.Contains(r.Error, want) {
+			t.Errorf("error %q lacks %q", r.Error, want)
+		}
+	}
+	if !strings.Contains(r.Images[0].Error, "error NU1903") {
+		t.Errorf("image error %q lacks the build's last lines", r.Images[0].Error)
+	}
+}
