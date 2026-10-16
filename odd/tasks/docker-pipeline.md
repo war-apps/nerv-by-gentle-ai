@@ -730,12 +730,20 @@ All three P5 review advisories fixed (user authorized). Route: delegated
   release branches still sync (dim's two jobs are independent);
   docker.json for another version means the docker step did not run for
   this release (ignored, noted).
-- Open point for the parent: `nerv pipeline docker` writes docker.json
-  only when it passed and removes an earlier one at its start, so after a
-  failed docker run there is no docker.json and sync proceeds as if docker
-  had been skipped; the "docker failed -> refuse" check only fires for a
-  docker.json that records a failure. Mirroring dim fully needs docker to
-  write its failed result too (not changed here).
+- Decision (user, 2026-10-16): a failed or refused `nerv pipeline docker`
+  never touches docker.json. Docker no longer removes an earlier one at its
+  start and still writes it only on success, so a run that does not pass
+  leaves the file byte-identical. Sync is unchanged: after a failed docker
+  run it reads whatever docker.json an earlier run left (another version
+  is ignored; an earlier success for the same version lets sync proceed),
+  so docker must be rerun until it passes before syncing (documented in
+  the docker and sync sections of docs/pipeline.md). RED:
+  `TestPipelineDocker_FailureOrRefusalKeepsTheEarlierDockerJSON` (build
+  failure exit 2, refusal without release.json exit 1, refusal with the
+  tag not on origin exit 1): docker.json was gone in all three. GREEN
+  after the change; `TestPipelineDocker_FailureLeavesNoDockerJSON` (which
+  asserted the delete) is replaced by it, and the unused
+  `RemoveDockerResult` is removed.
 - RED: `go vet -tags semrel_integration ./internal/semrel/`
   (`ws.UseCommitIdentity undefined`), `go vet ./internal/pipeline/`
   (`undefined: Sync`), `go vet ./cmd/nerv/` with only the new test file
@@ -773,7 +781,9 @@ All three P5 review advisories fixed (user authorized). Route: delegated
   `docs(pipeline): document nerv pipeline sync` (3 files, +67 -4). Total
   `git diff --shortstat 587a256 46c4d81`: 14 files changed, 1610
   insertions(+), 17 deletions(-). Above the ~400-line heuristic: about
-  830 lines are tests and 70 docs.
+  830 lines are tests and 70 docs. Follow-up (docker.json kept on
+  failure): `22f329f` `fix(pipeline): keep docker.json when the docker
+  step fails` (4 files, +45 -33), plus the docs/odd commit recording it.
 
 ## Next step
 

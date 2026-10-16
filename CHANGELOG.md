@@ -18,7 +18,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   clone of origin at the release tag, it builds every `pipeline.images` entry (build and computed arguments, OCI
   labels, `--platform`), tags it with the version, the channel and `latest` on main, pushes it after a
   `docker login` that receives the token on stdin only, retries a failed build once with recomputed arguments,
-  and writes `.nerv/artifacts/pipeline/docker.json`; `--dry-run` builds without logging in or pushing.
+  and writes `.nerv/artifacts/pipeline/docker.json` when it passes (a failed or refused run leaves an earlier one
+  untouched); `--dry-run` builds without logging in or pushing.
 - pipeline: `nerv pipeline release` runs dim.comprobantes.api's release job: it releases what is on origin as
   `nerv ship` does (same checks, configuration, version guard, `--expect`, `--dry-run`), without building or
   publishing, versions `pipeline.release.version_files` (`<Version>` and the release link) in the release commit,

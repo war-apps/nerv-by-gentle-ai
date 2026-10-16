@@ -248,8 +248,11 @@ dim's docker job, over `pipeline.images` in order:
    every image is tried, and the step fails when a required one failed.
 6. Write `.nerv/artifacts/pipeline/docker.json` (per image: name, tags,
    refs, digest, status `built` / `pushed` / `failed`, attempts,
-   required, error) for the deploy step; an earlier one is removed at the
-   start. `--json` prints the same document. Every stderr line is
+   required, error) for the deploy and sync steps, only when the step
+   passes. A failed or refused run never touches `docker.json`: an
+   earlier one stays exactly as it was (it may be from another version,
+   or an earlier success of this one; see `nerv pipeline sync`). `--json`
+   prints the same document. Every stderr line is
    prefixed `[pipeline:docker] `.
 
 ### `nerv pipeline sync`
@@ -267,7 +270,11 @@ dim's sync-to-develop and sync-main-to-release jobs:
    When `docker.json` exists for the same version and its status is not
    `passed`, the sync is refused, as dim syncs only when docker did not
    fail; no `docker.json` (the docker step skipped) or one for another
-   version does not stop it.
+   version does not stop it. A failed docker run leaves `docker.json` as
+   it was, so after one, sync reads whatever an earlier run left: one for
+   another version is ignored, and an earlier success for the same
+   version lets sync proceed. Rerun `nerv pipeline docker` until it passes
+   before syncing.
 2. In a fresh clone of origin (the same safe origin handling as `nerv
    ship`: no credential on a command line or in an environment), the
    targets depend on the released branch (`release.json`'s `branch`):
