@@ -3,7 +3,7 @@ name: classification-light
 description: >-
   J1 preflight/classification slice: a single-domain, non-critical-path,
   one-line request must classify LIGHT per SKILL.md's "Classification:
-  LIGHT vs FULL" rules, without the session starting to implement
+  DIRECT, LIGHT or FULL" rules, without the session starting to implement
   anything.
 tags: [nerv, classification, j1]
 runs: 1
@@ -19,8 +19,9 @@ execution:
     strategy: single-pr.
 
     Do not implement anything: run only the NERV preflight and
-    classification, then stop and print the classification (LIGHT or
-    FULL), the path, and the agents you would launch next. Ask nothing.
+    classification, then stop. Print the classification on its own line
+    exactly as `Classification: <TIER>` (TIER is DIRECT, LIGHT or FULL),
+    then the path, and the agents you would launch next. Ask nothing.
 
     Request: add a `farewell(name)` function to `src/greeter.py` that
     returns `"Goodbye, {name}!"`. Follow the NERV orchestrator protocol

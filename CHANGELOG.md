@@ -61,6 +61,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   on origin is refused with the branch names.
 
 ### Changed
+- orchestrator: Ikari now routes every request through three tiers that mirror gentle-ai's Work Routing Ladder.
+  DIRECT (direct inline) covers one mechanical, already-understood file: Ikari edits it, runs the focused check and
+  commits it after you validate. LIGHT (delegated direct) launches an explorer only when the mapping trigger fires,
+  one domain pilot in `MODE: solo` that writes and observes its own failing test, and Maya only when gentle-ai's
+  Delegated Verification Gate asks for an independent verifier; Ikari commits (after your validation) and writes the
+  run summary. FULL is unchanged. The delegation triggers use gentle-ai's current thresholds, the classification
+  event records the route declaration, the ratchet runs DIRECT → LIGHT → FULL, and `state.yaml` accepts
+  `path: direct`. New `classification-direct` eval case.
 - orchestrator: agent launch labels and deliberation log `launch` lines show the role's model, as
   `({model}) {Display name}: {action}` (e.g. `(sonnet) Shinji Ikari: Retrying dotnet format verification`).
 

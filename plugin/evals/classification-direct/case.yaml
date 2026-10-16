@@ -1,0 +1,38 @@
+schema_version: "1.1"
+name: classification-direct
+description: >-
+  J1 preflight/classification slice: a one-word typo fix in one
+  documentation file must classify DIRECT per SKILL.md's "Classification:
+  DIRECT, LIGHT or FULL" rules (gentle-ai's direct-inline route), without
+  the session starting to implement anything.
+tags: [nerv, classification, j1]
+runs: 1
+expected_outcome: >-
+  The session states classification DIRECT, says Ikari would make the
+  edit inline without launching a pilot, and stops without editing any
+  file.
+
+execution:
+  prompt: |
+    Context you already have, so preflight stays silent: task ref: none;
+    work in place on the current branch `main` (no worktree); branch:
+    main; base: main; pace: fast-forward; artifact store: openspec; PR
+    strategy: single-pr.
+
+    Do not implement anything: run only the NERV preflight and
+    classification, then stop. Print the classification on its own line
+    exactly as `Classification: <TIER>` (TIER is DIRECT, LIGHT or FULL),
+    then the path, and the agents you would launch next (or
+    say that none would be launched). Ask nothing.
+
+    Request: fix the typo "recieve" (it should be "receive") in
+    `README.md`. Follow the NERV orchestrator protocol injected in this
+    session.
+
+    Answer in English.
+  max_turns: 8
+  timeout_seconds: 120
+  allowed_tools: [Read, Glob, Grep, Skill]
+
+context:
+  scaffold_script: scaffold.sh

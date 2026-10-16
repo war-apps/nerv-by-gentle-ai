@@ -26,7 +26,8 @@ which lives at `openspec/changes/{change}/state.yaml` and carries the
   (`tasks.provider: none`, or the user chose to work without one at
   Preflight).
 - `closed_at` is `null` until the change closes, then set once by Ikari at
-  Close (LIGHT's Close step or FULL's step 19), the same write that deletes
+  Close (DIRECT's or LIGHT's Close step, or FULL's step 19), the same
+  write that deletes
   `nerv/.orchestrator.lock`.
 - The merged `nerv.yaml`'s `models` section (per-role `model`/`effort`,
   resolved as described in `nerv-orchestrator/SKILL.md`'s Configuration
@@ -36,7 +37,7 @@ which lives at `openspec/changes/{change}/state.yaml` and carries the
 ```yaml
 dependsOn: []
 nerv:
-  path: light                     # light | full
+  path: light                     # direct | light | full
   classification_reason: "single domain, no critical path, under budget"
   task_ref: "TW-49132010"         # or null when no task
   created_at: "2026-09-24T14:03:00Z"
@@ -76,8 +77,9 @@ after every envelope; deleted at close or on an explicit stop.
 
 ## exploration-light.md (Ritsuko)
 
-- Purpose: LIGHT-path micro-intel — enough to pick a pilot and scope Maya's
-  reduced gate, not a full exploration document.
+- Purpose: LIGHT-path micro-intel — enough to pick a pilot and scope the
+  verification, not a full exploration document; written only when the
+  mapping trigger fired.
 - Author: Ritsuko (LIGHT micro-intel dispatch).
 - Location: `nerv/exploration-light.md`.
 - Engram key: `nerv/{change}/exploration-light`.
@@ -162,11 +164,12 @@ exactly one Misato ruling (also `MODE: ruling`, no unfreeze unless the
 ruling names one) before any user escalation, per the Bounded loops
 table.
 
-## run-summary.md (Aoba)
+## run-summary.md (Aoba or Ikari)
 
 - Purpose: close-out narrative, usage accounting, RDD receipts, commit and
   PR-slice record for the change.
-- Author: Aoba.
+- Author: Aoba in FULL; Ikari itself in DIRECT and LIGHT (the Agents table
+  then lists only the agents actually launched, possibly none).
 - Location: `nerv/run-summary.md`.
 - Engram key: `nerv/{change}/run-summary`.
 
@@ -286,7 +289,7 @@ and resume read them in place — and are authored by NERV roles:
     exists before the change proceeds to criticality.
   - `tasks.md` tasks carry stable ids (`T1`, `T2`, ...), a `pilot:
     rei|shinji|asuka|toji` field, and a `depends_on: []` field, each per
-    task. A task ratcheted in from a LIGHT-path diff additionally carries
+    task. A task ratcheted in from a DIRECT- or LIGHT-path diff additionally carries
     `status: implemented-pre-plan` alongside its `id`/`pilot`/
     `depends_on` fields, and MAGI votes on it exactly like any other task
     — there is no free pass for pre-plan work.
@@ -737,7 +740,7 @@ The audit-and-closure stage adds these event types to
 - `issue_gate_decision` — the user's issue-gate decision (approved /
   edited / residual-accepted).
 - `fix_routed` — an approved issue was routed to its owning pilot's
-  LIGHT work-unit cycle (payload: `issue_id`, `owner`).
+  FULL work-unit cycle (payload: `issue_id`, `owner`).
 - `reaudit` — a new audit round started over the fix-delta patch (payload:
   round number).
 - `residual_accepted` — the user accepted the residual at the re-audit

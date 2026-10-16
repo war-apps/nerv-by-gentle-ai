@@ -115,35 +115,71 @@ unchanged: `skill-registry refresh`, the whole RDD lifecycle, the `jd`
 judgment agents, the delivery and skill-resolution skills listed in
 `plugin/skills-manifest.json`, and the persistence and lossless-prompt
 contracts. It supersedes exactly one thing — gentle-ai's ODD
-Implementation Routing — with its own LIGHT/FULL classification and
+Implementation Routing — with its own DIRECT/LIGHT/FULL classification and
 pipelines, only in repos carrying the `.nerv/nerv.yaml` marker. gentle-ai
 4.x retired SDD/OpenSpec, so the SDD phases are gone; Nerv by Gentle-AI owns
 the `openspec/` layout, `strict_tdd` (written by `/nerv:init`) and
 `nerv spec-compose`, and its own roles (Misato, Ritsuko, the MAGI, the
 pilots) author the change artifacts.
 
+### Routing tiers
+
+Ikari classifies every request once, before the first agent launch, into
+one of three tiers. DIRECT and LIGHT mirror gentle-ai's Work Routing Ladder
+(direct inline and delegated direct) with the same thresholds — an inline
+evidence budget of one parallel batch (at most 3 calls, about 10k tokens),
+one read-only explorer past about 5 sequential lookups, one bounded writer
+for 2+ non-trivial files — and FULL is NERV's governed pipeline. FULL is
+checked first (2+ pilot domains, a critical path, a new skill/script/command,
+a large or multi-unit diff), then DIRECT; anything else is LIGHT. Size or
+file count alone never picks between DIRECT and LIGHT. The classification
+event in the deliberation log is the route declaration (tier plus trigger
+evidence), and the ratchet only goes up: DIRECT → LIGHT → FULL.
+
+### DIRECT pipeline
+
+```mermaid
+flowchart LR
+    A["Preflight"] --> B["Classify: DIRECT"]
+    B --> C["Ikari: RED when a runnable test applies"]
+    C --> D["Ikari edits the one mechanical file"]
+    D --> E["Ikari focused check"]
+    E --> F["Ikari commit — user validates"]
+    F --> G["RDD hook"]
+    G --> H["Run summary + close (Ikari)"]
+```
+
+DIRECT is gentle-ai's direct-inline route: a typo, rename, comment, config
+value or small known bug in one already-understood file. Ikari edits it
+itself (the only tier where it may), runs the focused check, shows the
+commit for the user to validate, and runs the RDD hook. No agent is
+launched except Hyuga for a requested tracker task, and Maya only when RDD
+is off or unknown and the native assessment is high or unassessable.
+
 ### LIGHT pipeline
 
 ```mermaid
 flowchart LR
     A["Preflight"] --> B["Classify: LIGHT"]
-    B --> C["nerv:ritsuko intel-light"]
-    C --> D["nerv:kaworu RED"]
-    D --> E["nerv:aoba commit — user validates"]
-    E --> F["pilot GREEN/TRIANGULATE/REFACTOR"]
-    F --> G["nerv:maya reduced gate"]
-    G --> H["nerv:aoba commit — user validates"]
-    H --> I["RDD hook"]
-    I --> J["Run summary"]
-    J --> K["Close"]
+    B --> C["nerv:ritsuko intel-light (only when the mapping trigger fires)"]
+    C --> D["pilot MODE: solo — own RED, GREEN, REFACTOR, verification"]
+    D --> E["Verification gate: spot check; nerv:maya only when required"]
+    E --> F["Ikari commit — user validates"]
+    F --> G["RDD hook"]
+    G --> H["Run summary + close (Ikari)"]
 ```
 
-LIGHT is the small-change path: after preflight and classification, an
-optional Ritsuko micro-intel primes the work, Kaworu writes the failing RED
-test, a domain-matched pilot makes it pass, Maya runs a reduced gate scoped
-to the touched files only, and Aoba commits twice — once for RED, once
-after the gate — each commit validated by the user before it happens. The
-RDD hook, run summary, and close steps are shared with FULL.
+LIGHT is gentle-ai's delegated-direct route with the fewest agents: an
+optional Ritsuko explorer (at most ~2k tokens), one domain-matched pilot in
+`MODE: solo` that writes and observes its own failing test before making it
+pass and reports the named verification commands, then gentle-ai's
+Delegated Verification Gate — with RDD on, the pilot's report is of record
+and the native review is the independent check; with RDD off or unknown,
+the native risk tier decides (passive: readback; medium: self-verification,
+plus Maya for a small-model pilot; high: Maya as independent verifier).
+Ikari always re-runs one reported command, then commits once the user
+validates. Ikari writes the run summary; Aoba is launched only for PR
+preparation, slicing or archiving.
 
 ### FULL pipeline
 
@@ -180,13 +216,14 @@ flowchart TB
     T --> U["Close (hyuga tracker close)"]
 ```
 
-FULL adds MAGI governance on top of the same LIGHT primitives (RED/GREEN/
-REFACTOR, Aoba commits, RDD hook). Ritsuko produces intel and a spec/test
+FULL adds MAGI governance on top of the shared primitives (RED/GREEN/
+REFACTOR, user-validated commits, RDD hook) and keeps its own work-unit
+cycle: Kaworu RED, Aoba commit, pilot GREEN, Aoba commit. Ritsuko produces intel and a spec/test
 plan gated by a user corner-case interview; Misato's plan goes through
 criticality, a blind parallel MAGI vote (with a capped revise loop on
 rejection), and Fuyutsuki's governance veto before a single whole-plan user
 approval gate. Hyuga's waves then drive per-task implementation cycles
-identical to LIGHT's, and Maya runs the full a-d gate. The audit stage then
+through that cycle, and Maya runs the full a-d gate. The audit stage then
 freezes the patch, runs four blind passes, compiles them through Kaji (with
 Fuyutsuki's read-only refute mode on inferential severe items), ranks the issues for a user gate,
 routes approved fixes through the work-unit cycle with a re-audit over the
@@ -257,7 +294,7 @@ authority to anyone it launches.
 |---|---|---|---|---|---|
 | `fuyutsuki` | Governance veto over new skills/scripts/commands; curates the deliberation log; in a read-only refute mode (no writes, no `mem_save`, no new findings), attacks the round's inferential BLOCKER/CRITICAL audit findings with concrete counter-evidence | FULL plan step, after the MAGI vote; end of every run; Phase 3, only when Kaji's refuter batch is non-empty | `nerv/veto-ruling.md`; curated `## Summary` in `nerv/deliberation-log.md`; corroborated/refuted/inconclusive verdicts, folded by Kaji into `nerv/audit-report.md`'s `### Refuted` | sonnet / medium | Read, Write, Glob, Grep, Engram search/save |
 | `misato` | Operations director — authors `proposal.md`/`design.md`/`tasks.md`, revises exactly what the MAGI vote rejects, rules on deviations and test-vs-implementation disputes | FULL plan step; after a rejected MAGI vote or a veto; on demand for a ruling | `proposal.md`, `design.md`, `tasks.md`; ruling entries | fable / high | Read, Write, Glob, Grep, Engram search/save |
-| `ritsuko` | Chief scientist — codebase/history intel, test planning with a corner-case interview, end-of-run docs | LIGHT micro-intel; FULL intel and spec/test-plan steps; end-of-run documentation | `exploration-light.md`/`exploration.md`, `specs/{domain}/spec.md`, `nerv/test-plan.md`, doc deltas | opus / high | Read, Glob, Grep, WebFetch, WebSearch, Engram search/save |
+| `ritsuko` | Chief scientist — codebase/history intel, test planning with a corner-case interview, end-of-run docs | LIGHT micro-intel when the mapping trigger fires; FULL intel and spec/test-plan steps; end-of-run documentation | `exploration-light.md`/`exploration.md`, `specs/{domain}/spec.md`, `nerv/test-plan.md`, doc deltas | opus / high | Read, Glob, Grep, WebFetch, WebSearch, Engram search/save |
 | `balthasar` | MAGI vote (VOTE mode): software-principles lens — SOLID, KISS, YAGNI, DRY, patterns; also an AUDIT-mode pass in Phase 3 that applies the same lens to the delivered change, plus a readability lens (misleading names, unexplained constants, complexity, intention, review size and context) | FULL blind MAGI vote round, per task; Phase 3 audit round | VOTE/AUDIT JSON, merged by Ikari into `nerv/votes.md`/`nerv/audit-report.md` | sonnet / medium | Read, Glob, Grep, Engram search |
 | `melchior` | MAGI vote (VOTE mode): structure/security lens — architecture, dead code, duplication, security; the deliberately strongest MAGI model; also an AUDIT-mode pass in Phase 3 that adds security across every layer (injection, authz, secrets, data exposure, unsafe defaults, dependencies, crypto, infra hardening) | same | same | fable / high | Read, Glob, Grep, Engram search |
 | `casper` | MAGI vote (VOTE mode): process lens — docs, comments, scope, commit hygiene, plan consistency; its AUDIT-mode pass also checks plan conformance and TDD commit order, always at full scope | same | same | sonnet / medium | Read, Glob, Grep, Engram search |
@@ -265,27 +302,28 @@ authority to anyone it launches.
 | `shinji` | Pilot — owns the backend and its security | GREEN/REFACTOR after Kaworu's RED, on backend work units | source and tests in the working tree, TDD evidence | sonnet / medium | Read, Edit, Write, Glob, Grep, Bash, Engram search |
 | `asuka` | Pilot — owns the frontend: UI, state, accessibility, and client-side security | GREEN/REFACTOR after Kaworu's RED, on frontend work units | source and tests in the working tree, TDD evidence | sonnet / medium | Read, Edit, Write, Glob, Grep, Bash, Engram search |
 | `toji` | Pilot — owns infrastructure: CI/CD, Docker, Kubernetes, and infra security | GREEN/REFACTOR after Kaworu's RED, on infra work units (validation commands substitute for RED/GREEN where no runner exists) | source, manifests and pipelines in the working tree, TDD evidence or a validation-commands report | sonnet / medium | Read, Edit, Write, Glob, Grep, Bash, Engram search |
-| `kaworu` | Pilot — writes the failing RED test first for every work unit, before any pilot's GREEN step; never a domain owner | before every GREEN step, in both LIGHT and FULL | the RED test file; RED row of the TDD Cycle Evidence table | sonnet / medium | Read, Edit, Write, Glob, Grep, Bash, Engram search |
-| `maya` | Quality gate — runs tests/lint/build, reproduces the TDD evidence pilots reported, routes failures to whoever owns them | LIGHT reduced gate; FULL baseline (phase 0) and full a-d gate (phase 2) | `nerv/maya-report.md` | sonnet / medium | Read, Bash, Glob, Grep, Write, Engram search/save |
+| `kaworu` | Pilot — writes the failing RED test first for every work unit, before any pilot's GREEN step; never a domain owner | before every GREEN step in FULL (LIGHT pilots write their own RED in `MODE: solo`) | the RED test file; RED row of the TDD Cycle Evidence table | sonnet / medium | Read, Edit, Write, Glob, Grep, Bash, Engram search |
+| `maya` | Quality gate — runs tests/lint/build, reproduces the TDD evidence pilots reported, routes failures to whoever owns them | LIGHT or DIRECT reduced gate when the verification gate requires an independent verifier; FULL baseline (phase 0) and full a-d gate (phase 2) | `nerv/maya-report.md` | sonnet / medium | Read, Bash, Glob, Grep, Write, Engram search/save |
 | `kaji` | Audit compiler — merges and dedupes the four audit passes, prepares the refuter batch, carries unresolved items across re-audit rounds | Phase 3, once per audit round, after the four passes return | `nerv/audit-report.md` | opus / high | Read, Glob, Grep, Write, Engram search/save |
 | `gendo` | Audit pass — implemented tests versus Ritsuko's test plan (missing cases, weakened or tautological assertions, untested acceptance criteria), reliability beyond the plan (invalid inputs, failure paths, contracts, boundaries, regressions, determinism), implementation correctness and edge cases, and resilience and performance: fallbacks and graceful degradation, retry/backoff safety, timeouts and cancellation, rollback or fix-forward safety, latency/load/resource use and SLO risk, performance regressions (N+1, unbounded loops or allocations, blocking I/O on hot paths, missing pagination, accidental quadratic work), observability of failures; keeps full scope regardless of the RDD switch | Phase 3, one of four parallel blind passes | JSON findings, merged by Kaji into `nerv/audit-report.md` | sonnet / medium | Read, Glob, Grep, Engram search |
 | `hyuga` | Plan and issue operations — four dispatches: `criticality`, `waves`, `wave-report`, `ranking`, plus the provider-agnostic task-tracker dispatch | criticality before the MAGI vote; waves after plan approval; wave-report during implementation; ranking after the refuter; tracker at preflight, Maya's full-gate start, the issue gate, and close | `nerv/criticality.md`, `nerv/waves.md`, `nerv/issue-ranking.md`; tracker op result inline | sonnet / medium | Read, Write, Glob, Grep, Bash, Engram search/save, Teamwork MCP |
-| `aoba` | Git operations and run telemetry — organizes user-validated commits, freezes audit patches, archives closed changes, writes the run summary | after every user-validated work unit; patch freeze before each audit round; archive and run summary at close | conventional commits, `nerv/audit/diff-round-N.patch`, the archived change folder, `nerv/run-summary.md` | sonnet / low | Bash, Read, Glob, Grep, Write, Engram search/save |
+| `aoba` | Git operations and run telemetry — organizes user-validated commits, freezes audit patches, archives closed changes, writes the run summary | in FULL: after every user-validated work unit, patch freeze before each audit round, archive and run summary at close; in DIRECT/LIGHT only for PR preparation, slicing or archiving | conventional commits, `nerv/audit/diff-round-N.patch`, the archived change folder, `nerv/run-summary.md` | sonnet / low | Bash, Read, Glob, Grep, Write, Engram search/save |
 
 **How a run flows.** Every request is classified once, before the first
-agent launch: LIGHT for a small, single-domain change, FULL for anything
+agent launch: DIRECT for one mechanical, already-understood file, LIGHT
+for a single-domain change that needs a delegated writer, FULL for anything
 touching two or more pilot domains, a critical path, a new
-skill/script/command, or a large diff. LIGHT runs one RED/GREEN/REFACTOR
-cycle — Kaworu's failing test, a domain-matched pilot, Aoba's
-user-validated commits, and a reduced Maya gate — shown in the "LIGHT
-pipeline" diagram above. FULL adds Ritsuko's spec and
+skill/script/command, or a large diff. DIRECT is Ikari's own inline edit;
+LIGHT runs one pilot in `MODE: solo` under gentle-ai's Delegated
+Verification Gate — both shown in their diagrams above, both with
+Ikari's user-validated commit. FULL adds Ritsuko's spec and
 corner-case interview, Misato's plan, a blind per-task MAGI vote,
 Fuyutsuki's governance veto, a whole-plan approval gate, Hyuga's
 dependency waves, Maya's full a-d gate, and a four-pass, Kaji-compiled
 audit behind a ranked user issue gate, shown in the "FULL pipeline"
-diagram above. Both pipelines share the same RED/GREEN/REFACTOR
-primitive, the same Aoba commit-and-validate step, and the same native
-RDD review relay after every commit, detailed in "RDD per commit" above.
+diagram above. Every tier shares the same user validation before each
+commit and the same native RDD review relay after it, detailed in "RDD
+per commit" above.
 
 ## Operations
 
@@ -298,16 +336,17 @@ behaves like plain gentle-ai; with it, SessionStart prints an activation
 header that has the session invoke the Nerv by Gentle-AI orchestrator skill,
 and the session becomes Ikari.
 
-**LIGHT vs. FULL.** Ikari classifies each request LIGHT (one pilot domain,
-no new skills/scripts/commands) or FULL (multiple domains, a critical path,
-or governance-relevant surface); LIGHT runs a single RED/GREEN/REFACTOR
-cycle under a reduced Maya gate, while FULL adds Ritsuko's spec/test-plan,
+**DIRECT, LIGHT or FULL.** Ikari classifies each request DIRECT (one
+mechanical file, done inline by Ikari), LIGHT (one pilot domain, one
+pilot in `MODE: solo` under gentle-ai's verification gate) or FULL
+(multiple domains, a critical path, or governance-relevant surface); FULL
+adds Ritsuko's spec/test-plan,
 a blind MAGI vote per task, Fuyutsuki's governance veto, a plan-approval
 gate, wave-based implementation, and Kaji's four-pass audit before close.
 
 **Gates a human will see.** The grouped preflight question (task,
 worktree, branch, base) when no task/timer is active; a commit-validation
-stop before every Aoba commit; the corner-case questions relayed as one
+stop before every commit (Ikari's in DIRECT/LIGHT, Aoba's in FULL); the corner-case questions relayed as one
 grouped prompt in FULL; the whole-plan approval HARD gate in FULL; the
 ranked issue gate after an audit; and the RDD consent envelope after a
 commit when review is due. Every one of these is a Lossless Blocking

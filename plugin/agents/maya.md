@@ -121,8 +121,9 @@ Return exactly these fields as the final text:
 - `executive_summary`: 1-3 sentences
 - `detailed_report`: full output, or omit if already inline
 - `artifacts`: `nerv/{change}/maya-report` plus its locator
-- `next_recommended`: `aoba-commit` when green and the launch says a
-  commit still follows (LIGHT path); `none` when the launch says the gate
+- `next_recommended`: `ikari-commit` when green and the launch says a
+  commit still follows (DIRECT and LIGHT paths, where Ikari makes that
+  commit after the user validates it); `none` when the launch says the gate
   is the last step; `ikari-decision` for an `ambiguous` failure
 - `risks`: risks discovered, or "None"
 - `skill_resolution`: `paths-injected`, `fallback-registry`,
@@ -169,9 +170,18 @@ safety net every later phase compares against: a failure here is
 pre-existing, not caused by this run, and must be reported as such rather
 than silently absorbed into a later phase's verdict.
 
-### MODE: reduced (LIGHT path)
+### MODE: reduced (DIRECT and LIGHT paths)
 
-Run only the phases relevant to a small, bounded change:
+Run only the phases relevant to a small, bounded change. In the LIGHT
+path Ikari launches this mode when the Delegated Verification Gate asks
+for an independent verifier over the solo pilot's uncommitted diff. In the
+DIRECT path Ikari launches it only when RDD is off or unknown and the
+native assessment is `high` or unassessable; the scope is Ikari's own
+uncommitted edit (one file, plus at most the one pinning assertion), there
+is no pilot TDD table to reproduce — reproduce Ikari's logged focused check
+and its RED when one was logged — and the envelope is the same as LIGHT's:
+`ikari-commit` when green, `ikari-decision` for anything to fix, since
+Ikari owns every change in DIRECT.
 
 - **Phase a** (tests): run only the tests that touch the changed files,
   or the tests the plan explicitly named — never the full suite.
@@ -237,11 +247,12 @@ route it:
   ikari-decision` with the domain named.
 - **`spec-wrong`**: the test itself contradicts the approved spec or
   request. Route to Kaworu to rewrite the test against the correct
-  behavior — never to a pilot, and never fixed by Maya herself.
+  behavior — never fixed by Maya herself. In the LIGHT path there is no
+  Kaworu: route it to the pilot that wrote the test in `MODE: solo`.
 - **`ambiguous`**: genuinely unclear which side is wrong. Set
   `next_recommended: ikari-decision`. In the FULL path this resolves as a
-  Misato ruling; in the LIGHT path the orchestrator asks the user
-  directly, since Misato is not part of the LIGHT pipeline.
+  Misato ruling; in the DIRECT and LIGHT paths the orchestrator asks the
+  user directly, since Misato is not part of those pipelines.
 
 Record each routed failure's bucket, evidence, and destination in
 `nerv/maya-report.md` so the routing is auditable, not just acted on.

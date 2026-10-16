@@ -210,7 +210,8 @@ invent it. Never hand-edit either file after generating it.
 `artifacts.commit` (from the merged `nerv.yaml`: `with-change` | `at-close`
 | `never`) decides whether the change folder is tracked in git. `with-change`
 is handled per work-unit commit (see Commit rules above) and needs no
-Archive-time action. At close (LIGHT's Close step or FULL's step 19), when
+Archive-time action. At close (DIRECT's or LIGHT's Close step, when Ikari
+launches Aoba to archive, or FULL's step 19), when
 the resolved value is `at-close`, commit `openspec/changes/{change}/`
 (including `nerv/`, excluding `.orchestrator.lock` — already excluded via
 `.git/info/exclude`) as one commit, `docs: nerv artifacts for {change}`,
@@ -242,7 +243,7 @@ mechanically:
 
 ### Run summary
 
-Write `nerv/run-summary.md` (persisted per the artifact-persistence rules
+In FULL (in DIRECT and LIGHT Ikari writes it itself), write `nerv/run-summary.md` (persisted per the artifact-persistence rules
 above) covering:
 
 - Work done: a short narrative of what the run accomplished.

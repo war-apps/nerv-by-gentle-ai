@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Seeds an activated repo with one tiny single-domain source file, so the
-# NERV classification rules (SKILL.md "Classification: LIGHT vs FULL")
+# NERV classification rules (SKILL.md "Classification: DIRECT, LIGHT or FULL")
 # resolve unambiguously to LIGHT: one pilot domain (backend), no
-# critical_paths entry, no skill/script/command, a trivial diff. Runs only
+# critical_paths entry, no skill/script/command, but a new function
+# that needs its own test, so it is not DIRECT's one mechanical file. Runs only
 # under `claude plugin eval --scaffold`.
 set -euo pipefail
 

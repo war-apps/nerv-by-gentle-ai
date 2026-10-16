@@ -45,7 +45,7 @@ Setup: branch `feature/subtract` in the scratch repo, `Calculator` has only
 > you up front so preflight stays silent: task ref: none; work in place on
 > the current branch feature/subtract (no worktree); pace: fast-forward;
 > artifact store: openspec; PR strategy: single-pr; the user pre-validates
-> every commit Aoba shows in this run (commit without asking); change name:
+> every commit shown in this run (commit without asking); change name:
 > subtract-method.
 > Request: add a `Subtract(int a, int b)` method to `Calculator` in
 > src/Calc/Calculator.cs that returns a - b, with a unit test in
@@ -55,30 +55,43 @@ Setup: branch `feature/subtract` in the scratch repo, `Calculator` has only
 Expected, in order:
 
 1. Classification `LIGHT` recorded in `nerv/deliberation-log.md`; no gate
-   asked (everything was pre-answered).
+   asked (everything was pre-answered). The `classification` event
+   carries the route declaration: LIGHT because the change is new
+   behavior with its own test (two non-trivial files), with the
+   evidence-budget and mapping triggers stated.
 2. `openspec/changes/subtract-method/state.yaml` with `dependsOn: []` and the
    `nerv` block (`path: light`).
-3. `nerv:ritsuko` launched in `MODE: intel-light`; `nerv/exploration-light.md`
+3. `nerv:ritsuko` (`MODE: intel-light`) is launched only when the mapping
+   trigger fired; in this two-file scratch repo it normally is not, and the
+   route declaration says so. When it runs, `nerv/exploration-light.md`
    names `src/Calc/Calculator.cs`, the xUnit project, runner `dotnet test`,
    suggested pilot `shinji`.
-4. `nerv:kaworu` writes `Subtract` test only; `dotnet test` fails with a
-   compile error on the missing symbol (honest RED in C#); envelope
-   `next_recommended: aoba-commit`.
-5. `nerv:aoba` commits the RED (`test:` conventional commit, one file).
-6. `nerv:shinji` adds `Subtract`, `dotnet test` green, TRIANGULATE second
-   case, evidence table rows RED/GREEN/TRIANGULATE/REFACTOR in its envelope;
-   never edits the RED test.
-7. `nerv:maya` in `MODE: reduced` writes `nerv/maya-report.md`: phase a
-   (touched tests) pass, phase d build pass, lint
-   `no-lint-build-configured` stated explicitly, TDD evidence reproduced
-   (RED commit inspected, GREEN re-run).
-8. `nerv:aoba` commits the implementation (`feat:`), then writes
-   `nerv/run-summary.md` with an agents table filled from the usage the
-   orchestrator collected (never estimated), the two commits and no PR
-   slices.
-9. `git log --oneline` shows the RED commit before the GREEN commit.
-10. `openspec/changes/subtract-method/` holds the gentle-ai-owned files
-    with the `nerv/` folder present, and `/nerv:status` lists the change.
+4. `nerv:shinji` in `MODE: solo` writes the `Subtract` test first;
+   `dotnet test` fails with a compile error on the missing symbol (honest
+   RED in C#), then adds `Subtract`, `dotnet test` green, TRIANGULATE
+   second case; evidence table rows RED ("✅ Written (Shinji)")/GREEN/
+   TRIANGULATE/REFACTOR and one `<command>: <observed result>` per
+   verification command in its envelope; `next_recommended: ikari-commit`.
+5. Verification gate: Ikari re-runs one reported command (spot check).
+   `nerv:maya` (`MODE: reduced`) runs only when the gate requires an
+   independent verifier (RDD off/unknown with a `high` or unassessable
+   tier, or a small-model pilot on `medium`); with RDD on, the native
+   review after the commit is the independent check.
+6. Ikari commits the work unit itself (`feat:`, test and implementation
+   together) after the pre-validation; no AI attribution trailer.
+7. Ikari writes `nerv/run-summary.md` with an agents table filled from the
+   usage collected (never estimated; Shinji, plus Ritsuko or Maya only if
+   launched), the commit and no PR slices. No `nerv:kaworu` or `nerv:aoba`
+   launch appears in the log.
+8. `openspec/changes/subtract-method/` holds the gentle-ai-owned files
+   with the `nerv/` folder present, and `/nerv:status` lists the change.
+
+DIRECT variant: the request "fix the typo `Retuns` in the XML doc comment
+of `Add`" classifies DIRECT (`path: direct`): Ikari edits the one file,
+runs the focused build/test itself, shows the commit for validation and
+commits it, runs the RDD hook and writes the run summary — no agent
+launched (the `classification-direct` eval case covers the
+classification slice).
 
 Interactive variant: same request without the pre-answered context. Expected
 extra gates: the grouped preflight question (task, worktree, branch, base),
@@ -301,8 +314,8 @@ Expected, in order:
 7. Issue gate: Ikari relays the ranked list as one blocking prompt; the
    harness pre-approves the NOW set exactly as ranked (`decision:
    approved-as-ranked` in `issue-ranking.md`'s `## Gate decision`).
-8. Fix routing: the owning pilot fixes the NOW issue through the LIGHT
-   work-unit cycle — `nerv:kaworu` writes a RED test named `DivideByZero`
+8. Fix routing: the owning pilot fixes the NOW issue through FULL's
+   own work-unit cycle — `nerv:kaworu` writes a RED test named `DivideByZero`
    (asserting the documented guard behavior, e.g. a thrown
    `DivideByZeroException` or a caller-visible error), `nerv:aoba` commits
    the RED test, the pilot adds the guard, `nerv:aoba` commits the fix,
@@ -418,7 +431,8 @@ Expected, in order:
    `task_ref: "TW-{id}"`.
 4. Second run (same session, same task): preflight is **silent** — the
    timer is active and `tasks.provider` resolves, so no question is asked.
-5. Maya's full gate start (FULL) or reduced gate (LIGHT) triggers
+5. Maya's full gate start (FULL), or the work unit's verification start
+   (DIRECT and LIGHT), triggers
    `nerv:hyuga` `DISPATCH: tracker` (`moveStage`, stage `testing`) — the
    task moves to `TESTING` in Teamwork.
 6. Close: `nerv:hyuga` `DISPATCH: tracker` (`close`) produces exactly one

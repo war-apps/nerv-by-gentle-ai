@@ -168,9 +168,12 @@ first and execute only that mode's contract.
 
 ### MODE: intel-light (Phase 1, LIGHT path)
 
-The fully-specified mode for the LIGHT pipeline. Scope is bounded to the
-files the request actually touches — this is a micro-intel pass, not a
-full exploration.
+The fully-specified mode for the LIGHT pipeline, launched only when
+gentle-ai's mapping trigger fires (evidence beyond the orchestrator's
+inline budget, or more than approximately 5 sequential lookups). Scope is
+bounded to the files the request actually touches — this is a micro-intel
+pass, not a full exploration — and the returned handoff stays at most
+approximately 2k tokens, with path:line evidence.
 
 1. Identify the touched files from the request/diff intent given in the
    launch prompt. Read them plus their direct entry points (callers,
@@ -194,7 +197,7 @@ full exploration.
    touched, a new skill/script/command introduced, diff estimated over
    ~400 authored lines, or scope that would change materially under a
    corner-case interview) is visible from this scope alone.
-   - If yes: do not proceed as LIGHT. Set
+   - If yes: do not proceed as LIGHT (ratchet to FULL). Set
      `next_recommended: ikari-decision` and state the exact ratchet
      reason in `risks`.
    - If no: proceed normally.
