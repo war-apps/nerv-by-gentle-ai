@@ -61,8 +61,11 @@ type WorkspaceOptions struct {
 type Workspace struct {
 	e    *Engine
 	root string
-	// top is the user's repository (read for the commit identity).
+	// top is the user's repository and userEnv the user's environment (as
+	// given, without the prompt-free settings), read for the commit
+	// identity.
 	top     string
+	userEnv []string
 	dir     string
 	branch  string
 	env     []string
@@ -137,7 +140,7 @@ func (e *Engine) NewWorkspace(ctx context.Context, opts WorkspaceOptions) (*Work
 	if err != nil {
 		return nil, err
 	}
-	w := &Workspace{e: e, root: root, top: top, dir: filepath.Join(root, filepath.Base(top)), branch: opts.Branch, env: wenv,
+	w := &Workspace{e: e, root: root, top: top, userEnv: env, dir: filepath.Join(root, filepath.Base(top)), branch: opts.Branch, env: wenv,
 		pushURL: pushURL, public: publicURL(raw), cache: opts.CacheDir, timeout: timeout, local: local}
 	if err := w.init(ctx, top, env, resolved); err != nil {
 		os.RemoveAll(root)

@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path"
 	"path/filepath"
@@ -325,6 +326,9 @@ func TestPipelineSync_Refusals(t *testing.T) {
 
 		{name: "no terminal", code: 1, want: "pass --yes"},
 		{name: "declined", setup: func(f *syncFixture) { f.terminal, f.stdin = true, "n\n" }, code: 1, want: "cancelled"},
+		{name: "no commit identity", setup: func(f *syncFixture) {
+			f.ws.identErr = fmt.Errorf("%w for /repo: set user.name and user.email", semrel.ErrNoCommitIdentity)
+		}, code: 1, want: "no git commit identity is configured"},
 		{name: "push denied", args: []string{"--yes"}, setup: func(f *syncFixture) { f.ws.pushErr = semrel.ErrPushDenied }, code: 2, want: "cannot push"},
 	}
 	for _, tt := range tests {

@@ -13,6 +13,11 @@ import (
 // no such branch.
 var ErrBranchNotOnOrigin = errors.New("the branch is not on origin")
 
+// ErrNoCommitIdentity is wrapped by UseCommitIdentity when the user's
+// repository has no commit identity configured (user.name and user.email,
+// or the GIT_AUTHOR_*/GIT_COMMITTER_* variables): nothing is guessed.
+var ErrNoCommitIdentity = errors.New("no git commit identity is configured")
+
 // MergeResult is the outcome of merging origin's source branch into a
 // target branch (nerv pipeline sync).
 type MergeResult struct {
@@ -27,27 +32,33 @@ type MergeResult struct {
 	Commit string
 }
 
-// UseCommitIdentity copies user.name and user.email, as the user's
-// repository resolves them (its own configuration, the global one and any
-// includeIf for it, which would not match the clone's temporary path), into
-// the clone's configuration, so the merges of nerv pipeline sync are the
-// user's commits. It returns the committer identity git will use
-// ("Name <email>"); the GIT_COMMITTER_* variables still win, as in any git
-// command.
+// UseCommitIdentity makes the merges of nerv pipeline sync the user's
+// commits. It resolves the identity in the user's repository with the
+// user's environment, as git does there (its own configuration, the global
+// one and any includeIf for its path, which would not match the clone's
+// temporary path; GIT_AUTHOR_*/GIT_COMMITTER_* win), without guessing one
+// from the system account (user.useConfigOnly): none configured wraps
+// ErrNoCommitIdentity. It copies user.name and user.email into the clone's
+// configuration and returns the committer ("Name <email>").
 func (w *Workspace) UseCommitIdentity(ctx context.Context) (string, error) {
+	var ident string
+	for _, v := range []string{"GIT_AUTHOR_IDENT", "GIT_COMMITTER_IDENT"} {
+		out, err := w.e.git(ctx, w.top, w.userEnv, "-c", "user.useConfigOnly=true", "var", v)
+		if err != nil {
+			return "", fmt.Errorf("%w for %s: set user.name and user.email (git config --global user.name \"Your Name\"; git config --global user.email you@example.com): %w", ErrNoCommitIdentity, w.top, err)
+		}
+		ident = out
+	}
 	for _, key := range []string{"user.name", "user.email"} {
-		// git config --get exits 1 when the key is not set: nothing to copy.
-		v, _ := w.e.git(ctx, w.top, w.env, "config", "--get", key)
+		// git config --get exits 1 when the key is not set (the identity
+		// then comes from the environment): nothing to copy.
+		v, _ := w.e.git(ctx, w.top, w.userEnv, "config", "--get", key)
 		if v == "" {
 			continue
 		}
 		if _, err := w.e.git(ctx, w.dir, w.env, "config", key, v); err != nil {
 			return "", fmt.Errorf("setting the clone's %s: %w", key, err)
 		}
-	}
-	ident, err := w.e.git(ctx, w.dir, w.env, "var", "GIT_COMMITTER_IDENT")
-	if err != nil {
-		return "", fmt.Errorf("reading the commit identity: %w", err)
 	}
 	// "Name <email> 1792156082 -0300": drop the timestamp.
 	if i := strings.LastIndex(ident, ">"); i >= 0 {
@@ -87,7 +98,9 @@ func (w *Workspace) Merge(ctx context.Context, target, source, message string) (
 	if _, err := w.e.git(ctx, w.dir, w.env, "checkout", "--quiet", "--force", "--no-track", "-B", target, "refs/remotes/origin/"+target); err != nil {
 		return MergeResult{}, fmt.Errorf("checking out origin's %s: %w", target, err)
 	}
-	_, merr := w.e.git(ctx, w.dir, w.env, "merge", "--quiet", "--no-ff", "--no-edit", "-m", message, "refs/remotes/origin/"+source)
+	// user.useConfigOnly: never a guessed identity (UseCommitIdentity set
+	// the user's).
+	_, merr := w.e.git(ctx, w.dir, w.env, "-c", "user.useConfigOnly=true", "merge", "--quiet", "--no-ff", "--no-edit", "-m", message, "refs/remotes/origin/"+source)
 	if merr == nil {
 		commit, err := w.e.git(ctx, w.dir, w.env, "rev-parse", "HEAD")
 		if err != nil {

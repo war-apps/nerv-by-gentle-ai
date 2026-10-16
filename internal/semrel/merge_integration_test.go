@@ -5,7 +5,9 @@ package semrel
 import (
 	"context"
 	"errors"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -115,4 +117,79 @@ func syncEnv() []string {
 	return slices.DeleteFunc(testEnv(), func(kv string) bool {
 		return strings.HasPrefix(kv, "GIT_AUTHOR_") || strings.HasPrefix(kv, "GIT_COMMITTER_")
 	})
+}
+
+// TestIntegration_CommitIdentityFromTheUsersConfiguration: the identity is
+// resolved in the user's repository with the user's environment, so a
+// global-only identity and one from an includeIf for the repository's path
+// both reach the clone's merge commits; with none configured anywhere the
+// workspace refuses with ErrNoCommitIdentity instead of guessing one.
+func TestIntegration_CommitIdentityFromTheUsersConfiguration(t *testing.T) {
+	if testing.Short() {
+		t.Skip("integration test")
+	}
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not available")
+	}
+	write := func(path, content string) {
+		t.Helper()
+		if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, tt := range []struct {
+		name   string
+		global func(top, dir string) string // the global config's content
+		want   string
+	}{
+		{"global only", func(_, _ string) string {
+			return "[user]\n\tname = Global User\n\temail = global@example.com\n"
+		}, "Global User <global@example.com>"},
+		{"includeIf for the repository", func(top, dir string) string {
+			inc := filepath.Join(dir, "work.gitconfig")
+			write(inc, "[user]\n\tname = Work User\n\temail = work@example.com\n")
+			return "[includeIf \"gitdir:" + top + "/\"]\n\tpath = " + inc + "\n"
+		}, "Work User <work@example.com>"},
+		{"none", func(_, _ string) string { return "" }, ""},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			r, origin := newOriginRepo(t)
+			r.commit("feat: base", "app.txt")
+			r.git("branch", "develop")
+			r.commit("chore(release): 1.0.0 [skip ci]", "app.txt")
+			r.git("push", "-q", "origin", "main", "develop")
+			dir := t.TempDir()
+			global := filepath.Join(dir, "global.gitconfig")
+			write(global, tt.global(r.dir, dir))
+			env := slices.DeleteFunc(syncEnv(), func(kv string) bool { return strings.HasPrefix(kv, "GIT_CONFIG_GLOBAL=") })
+			env = append(env, "GIT_CONFIG_GLOBAL="+global)
+
+			ctx := context.Background()
+			ws, err := NewWorkspace(ctx, WorkspaceOptions{RepoRoot: r.dir, Branch: "main", Env: env})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer ws.Close()
+			ident, err := ws.UseCommitIdentity(ctx)
+			if tt.want == "" {
+				if !errors.Is(err, ErrNoCommitIdentity) {
+					t.Fatalf("UseCommitIdentity = %q, %v; want ErrNoCommitIdentity", ident, err)
+				}
+				return
+			}
+			if err != nil || ident != tt.want {
+				t.Fatalf("UseCommitIdentity = %q, %v; want %q", ident, err, tt.want)
+			}
+			m, err := ws.Merge(ctx, "develop", "main", "chore(sync): merge main into develop [skip ci]")
+			if err != nil || m.Commit == "" {
+				t.Fatalf("Merge = %+v, %v", m, err)
+			}
+			if err := ws.PushBranch(ctx, "develop"); err != nil {
+				t.Fatal(err)
+			}
+			if got := origin.git("log", "-1", "--format=%an <%ae>|%cn <%ce>", "develop"); got != tt.want+"|"+tt.want {
+				t.Errorf("merge commit author|committer %q, want %q", got, tt.want)
+			}
+		})
+	}
 }

@@ -189,6 +189,9 @@ func (s syncRun) run(ctx context.Context) (pipeline.SyncResult, string, error) {
 		return res, top, nil
 	}
 	ident, err := ws.UseCommitIdentity(ctx)
+	if errors.Is(err, semrel.ErrNoCommitIdentity) {
+		return res, top, &refusal.Error{Err: err}
+	}
 	if err != nil {
 		return res, top, err
 	}
