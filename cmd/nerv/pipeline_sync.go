@@ -164,6 +164,13 @@ func (s syncRun) run(ctx context.Context) (pipeline.SyncResult, string, error) {
 		return res, top, err
 	}
 
+	// Only main and the release branches sync back: decide before reading
+	// origin.
+	if !(pipeline.Sync{Config: cfg, Release: rel}).Syncs() {
+		res.Status = pipeline.StatusPassed
+		fmt.Fprintf(s.out, "nerv pipeline sync: a release on %s merges into nothing: nothing to sync (only %s and %s sync back)\n", rel.Branch, cfg.MainBranch(), cfg.Sync.Release)
+		return res, top, nil
+	}
 	open := s.opts.OpenSyncWorkspace
 	if open == nil {
 		open = func(ctx context.Context, o semrel.WorkspaceOptions) (syncWorkspace, error) {
