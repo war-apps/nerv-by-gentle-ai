@@ -57,6 +57,11 @@ Steps:
              released version; data from environment variables or
              Infisical; result in .nerv/artifacts/pipeline/deploy.json
 
+  run        every step above in this order, each as its own command
+             (its records, checks and confirmations), stopping at the
+             first one that does not pass (the rest not run); summary in
+             .nerv/artifacts/pipeline/run.json, exit = the failing step's
+
 validate and test run in your working tree, as CI runs on a checkout: they
 check the code as it is, uncommitted changes included. release releases
 what is on origin: your local branch must equal origin's.
@@ -92,6 +97,13 @@ deploy also takes:
   --dry-run       Read the data and list the deploys; no SSH connection
   --yes           Deploy without asking (required without a terminal)
 
+run also takes:
+  --dry-run       Pass --dry-run to release, docker, sync and deploy
+  --yes           Pass --yes to release, sync and deploy (required
+                  without a terminal)
+  --from <step>   Start at this step
+  --only <step>   Run only this step
+
 Progress goes to stderr (each command's output prefixed
 "[pipeline:<step>] "), the result to stdout. Exit codes: 0 passed, 1
 refused (no or invalid pipeline: section, not a git repository), 2 a
@@ -123,6 +135,8 @@ func runPipeline(args []string, stdout, stderr io.Writer, opts options) int {
 		return runPipelineSync(args[1:], stdout, stderr, opts)
 	case "deploy":
 		return runPipelineDeploy(args[1:], stdout, stderr, opts)
+	case "run":
+		return runPipelineRun(args[1:], stdout, stderr, opts)
 	}
 	if !slices.Contains(pipelineStepNames, step) {
 		return pipelineUsageError(stderr, fmt.Sprintf("unknown step %q (want one of %s)", step, strings.Join(pipelineStepNames, ", ")))
