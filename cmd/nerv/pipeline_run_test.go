@@ -210,3 +210,19 @@ func TestPipelineRun_RealStepsStopAtTheFirstRefusal(t *testing.T) {
 		t.Errorf("error %q", r.Error)
 	}
 }
+
+func TestPipelineRun_ExpectGoesToTheReleaseStep(t *testing.T) {
+	f := newRunFixture(t)
+	if code, _, stderr := f.run(t, "--yes", "--expect", "api=1.4.0", "--expect", "api2=2.0.0"); code != 0 {
+		t.Fatalf("exit %d\n%s", code, stderr)
+	}
+	for _, c := range f.calls {
+		has := slices.Contains(c.args, "--expect")
+		if want := c.step == "release"; has != want {
+			t.Errorf("%s args %q", c.step, c.args)
+		}
+		if c.step == "release" && !slices.Equal(c.args[len(c.args)-4:], []string{"--expect", "api=1.4.0", "--expect", "api2=2.0.0"}) {
+			t.Errorf("release args %q", c.args)
+		}
+	}
+}

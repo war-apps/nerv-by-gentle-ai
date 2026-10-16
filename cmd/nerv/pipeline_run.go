@@ -36,6 +36,8 @@ func runPipelineRun(args []string, stdout, stderr io.Writer, opts options) int {
 	jsonOut := fs.Bool("json", false, "")
 	from := fs.String("from", "", "")
 	only := fs.String("only", "", "")
+	var expect expectList
+	fs.Var(&expect, "expect", "")
 	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			fmt.Fprint(stdout, pipelineUsage)
@@ -83,6 +85,12 @@ func runPipelineRun(args []string, stdout, stderr io.Writer, opts options) int {
 			stepArgs = append(stepArgs, "--dry-run")
 		} else if f.yes && *yes {
 			stepArgs = append(stepArgs, "--yes")
+		}
+		if name == "release" {
+			// The release step refuses anything but the approved versions.
+			for _, e := range expect {
+				stepArgs = append(stepArgs, "--expect", e)
+			}
 		}
 		fmt.Fprintf(out, "%s\n", name)
 		out.Flush()
@@ -179,3 +187,9 @@ func writeRunResult(w io.Writer, asJSON bool, r pipeline.RunResult) error {
 	_, err := w.Write(b.Bytes())
 	return err
 }
+
+// expectList collects repeated --expect values for the release step.
+type expectList []string
+
+func (e *expectList) String() string     { return strings.Join(*e, ",") }
+func (e *expectList) Set(v string) error { *e = append(*e, v); return nil }

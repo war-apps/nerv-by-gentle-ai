@@ -103,6 +103,8 @@ run also takes:
                   without a terminal)
   --from <step>   Start at this step
   --only <step>   Run only this step
+  --expect <project>=<version>  Passed to release: release only this
+                  approved version
 
 Progress goes to stderr (each command's output prefixed
 "[pipeline:<step>] "), the result to stdout. Exit codes: 0 passed, 1
