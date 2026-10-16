@@ -940,6 +940,22 @@ All three P5 review advisories fixed (user authorized). Route: delegated
   deletions(-). Above the ~400-line heuristic: about 1150 lines are tests
   and 100 docs; seven work-unit commits.
 
+### P7 review
+
+- Native review (4 lenses) approved; six advisories fixed (user
+  authorized), test-first. Commit `a2ca665` `fix(deploy): validate ssh
+  destinations and bound every remote call` (16 files, +236 -27), plus
+  the docs/odd commit recording it.
+
+| Item | Fix | Evidence |
+|---|---|---|
+| Risk: ssh destination positional, a `-o...` user or host became an option | `checkDestination` (user `[A-Za-z0-9._][A-Za-z0-9._-]*`, host a hostname or `net.ParseIP`) in `NewTarget` (refusal via `ErrIncompleteData`) and again in `SSH.Run` before any process; user with `-l`, host after `--`; `UserKnownHostsFile="<path>"` quoted (verified with `ssh -G`); key_file/known_hosts with a leading -, quotes or control characters refused in `SSH.Run` and in pipelineconfig. | RED: `TestSSH_RefusesUnsafeDestinations`: every unsafe user/host (`-oProxyCommand=...`, spaces, `@`, `;`, NUL, newline, empty) was run; argv test expected `-l`/`--`. GREEN; valid hosts (IPv4, IPv6, hostnames) still accepted; pipelineconfig `unsafe ssh paths` case. |
+| Resilience: only ConnectTimeout, a dead link hangs | `ServerAliveInterval=15`, `ServerAliveCountMax=3`; `Runner.call` bounds each health check and the label read by `verify.timeout` and the compose pull/up by the new `pipeline.deploy.update_timeout` (default `15m`), reporting "timed out after <limit>". | RED: `TestRunner_HungCallsAreCutOff` (a call blocking until its context ends) never returned (`go test -timeout 20s`: "test timed out"). GREEN: compose script, health check and label read each cut off after 50ms. |
+| Readability: deploy refused through sync's sentinel | `ErrMissingEvidence`, shared by `CheckSyncEvidence` and `CheckDeployEvidence` (renamed, behaviour unchanged). | Existing sync and deploy refusal tests green. |
+| sshpass exit codes undocumented | Comment: 5 and 6 are sshpass's, 255 ssh's. | Structural. |
+| Dead `res.Reason` reset in `Runner.Run` | Removed (`Deploy` returns a fresh result). | Run tests green. |
+| Reliability: vacuous ssh-env assertion | The deploy data and `GHCR_TOKEN`/`GHCR_USER` are set in the process environment (`t.Setenv`); ssh's environment must lack them, keep `PATH` and `NERV_DEPLOYMENT`, and hold `SSHPASS` exactly once. | RED by temporarily building ssh's environment from `os.Environ()` unfiltered: the test reported every `NERV_DEPLOY_*` (incl. `..._DOCKER_SSH_PASS`). GREEN with `SafeEnv` restored. |
+
 ## Next step
 
-Review of P7; then P8 (`nerv pipeline run`, `/nerv:pipeline`, guide).
+P8 (`nerv pipeline run`, `/nerv:pipeline`, guide).

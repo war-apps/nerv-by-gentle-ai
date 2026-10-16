@@ -385,7 +385,9 @@ dim's `/update-deploy` (update-deploy.sh) for the release just made, over
    - `branches`: the environments whose `branches` match the released
      branch (`release.json`'s `branch`).
 
-   A deployed environment needs `DOCKER_SSH_HOST`, `DOCKER_SSH_USER`,
+   `DOCKER_SSH_USER` must be letters, digits, `.`, `_` and `-` (not
+   starting with `-`, no `@`) and `DOCKER_SSH_HOST` a hostname or an IP
+   address; anything else refuses the step. A deployed environment needs `DOCKER_SSH_HOST`, `DOCKER_SSH_USER`,
    `DOCKER_COMPOSE_PATH`, `DOCKER_COMPOSE_SCRIPT`,
    `DOCKER_CONTAINER_NAME`, `DOCKER_CONTAINER_VARIANT` and, with `ssh.auth:
    password`, `DOCKER_SSH_PASS`; a missing one refuses the step, naming
@@ -398,7 +400,10 @@ dim's `/update-deploy` (update-deploy.sh) for the release just made, over
    terminal). `--dry-run` stops here: no SSH connection is made.
 5. For each selected environment, one at a time, in the configured order:
    - over SSH (`StrictHostKeyChecking=yes` against `ssh.known_hosts`,
-     `ConnectTimeout`, `ssh.port`): `cd <DOCKER_COMPOSE_PATH> &&
+     `ConnectTimeout`, `ServerAliveInterval=15` and `ServerAliveCountMax=3`
+     so a dead link fails in about 45s, `ssh.port`; the user given with
+     `-l` and the host after `--`, so no value can be read as an ssh
+     option): the compose script, bounded by `update_timeout`, `cd <DOCKER_COMPOSE_PATH> &&
      <script> pull --container <c> && <script> up --container <c>`, every
      value quoted for the remote shell, the script's output streamed. With
      `ssh.auth: password` ssh runs under `sshpass -e`: the password
@@ -407,7 +412,8 @@ dim's `/update-deploy` (update-deploy.sh) for the release just made, over
      uses `ssh.key_file` in batch mode. No child process (ssh, sshpass,
      infisical) gets the registry secrets or any `NERV_DEPLOY_*`
      variable;
-   - verify: `docker ps` until the container is `(healthy)`
+   - verify (each check bounded by `verify.timeout`, so a hung call is cut
+     off): `docker ps` until the container is `(healthy)`
      (`verify.healthy`; without it, `Up` is enough) within
      `verify.timeout`, failing at once when it is `(unhealthy)` or not
      running; then its `verify.version_label` must be the released version

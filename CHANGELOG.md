@@ -12,7 +12,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `pipeline.deploy` environment from `NERV_DEPLOY_<ENVIRONMENT>_<KEY>` variables or from Infisical (update-deploy's
   layout), deploys those whose `DOCKER_IMAGE_VERSION` points at the release (`selection: target`, the default) or
   whose `branches` match the released branch (`selection: branches`), runs the host's compose script (`pull`, then
-  `up`) over SSH with strict host keys (password through `sshpass -e` only, or a key), and verifies the container
+  `up`, bounded by `pipeline.deploy.update_timeout`) over SSH with strict host keys, keepalives and validated user
+  and host (password through `sshpass -e` only, or a key), and verifies the container
   is healthy and carries the released version label; it stops at the first failure, requires this release's
   passing `docker.json`, asks before deploying (`--yes`), lists the deploys without connecting with `--dry-run`, and
   writes `.nerv/artifacts/pipeline/deploy.json`.
