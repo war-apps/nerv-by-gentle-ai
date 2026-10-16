@@ -63,6 +63,14 @@ behavior.
   (`docs/integration.md`, `bench/journeys.md`, `bench/README.md`,
   `CHANGELOG.md`). Route: inline.
 
+- [x] T5 - Native 4-lens review findings: resume rebuilds DIRECT/LIGHT
+  state (T2 had listed resume but not changed it — corrected here), Maya's
+  `ikari-commit` and DIRECT envelope, Toji solo/commit wording, Kaworu's
+  stale input, docs "off or unknown", explicit `Classification: <TIER>`
+  graders and prompts, solo-block drift test (option b: identical-block
+  test, since agents read only their own file), stronger DIRECT test.
+  Route: inline.
+
 ## Acceptance criteria
 
 - `go test -count=1 ./...`, `go vet ./...`, `gofmt -l .` clean.
@@ -100,6 +108,19 @@ See task checkboxes and the evidence below.
   - T3 `cc078cf` feat(agents): let a LIGHT pilot run its own test-first cycle
   - T4 `082c646` test(evals): add a DIRECT classification case
   - T4 `79fcdd4` docs: describe the DIRECT, LIGHT and FULL routing tiers
+- T5 RED (`go test -count=1 .`, exit 1): 7 new tests failed — solo blocks
+  drift (Toji), never-commits wording (Asuka/Rei/Toji), Maya `aoba-commit`
+  and no DIRECT envelope, Kaworu "When neither resolves", resume without
+  `path: direct`/`path: light`/never-discard, docs "RDD is off", graders
+  matching option lists and "not TIER". The strengthened DIRECT test passed
+  at once (the rules were already written); it pins them, it was not RED.
+- T5 GREEN: `go test -count=1 ./...` exit 0, `go vet ./...` exit 0,
+  `gofmt -l .` empty; grader patterns checked with PyYAML + Python `re`.
+- T5 commit: `7bbdaf8` fix: address the routing-tiers review findings.
+- Incident: before T5, four committed eval files were found altered in the
+  working tree by something outside this writer (light `case.yaml` and
+  `scaffold.sh` all NUL bytes, full reverted to pre-branch text, mtime
+  12:33:37); restored from HEAD with `git checkout --` on those exact paths.
 - RDD: not run by this writer (no review assess/consent relay from a
   subagent); the parent owns the native review decision per commit.
 
