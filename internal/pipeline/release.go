@@ -123,9 +123,6 @@ func WriteDockerResult(repo string, r DockerResult) (string, error) {
 	return writeArtifactJSON(repo, DockerResultPath(repo), r)
 }
 
-// RemoveDockerResult removes an earlier docker.json.
-func RemoveDockerResult(repo string) error { return removeArtifact(repo, DockerResultPath(repo)) }
-
 // writeArtifactJSON writes v as indented JSON to path under the artifacts,
 // atomically, after the symlink checks.
 func writeArtifactJSON(repo, path string, v any) (string, error) {

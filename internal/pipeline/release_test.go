@@ -125,7 +125,7 @@ func TestReadReleaseOutputs(t *testing.T) {
 	}
 }
 
-func TestDockerResult_WrittenAndRemoved(t *testing.T) {
+func TestDockerResult_Written(t *testing.T) {
 	repo := t.TempDir()
 	path, err := WriteDockerResult(repo, DockerResult{Step: "docker", Status: StatusPassed, Images: []ImageResult{{Name: "ghcr.io/acme/api", Refs: []string{"ghcr.io/acme/api:1.0.0"}}}})
 	if err != nil || path != filepath.Join(repo, ".nerv", "artifacts", "pipeline", "docker.json") {
@@ -134,11 +134,5 @@ func TestDockerResult_WrittenAndRemoved(t *testing.T) {
 	data, _ := os.ReadFile(path)
 	if !strings.Contains(string(data), `"ghcr.io/acme/api:1.0.0"`) {
 		t.Errorf("docker.json %s", data)
-	}
-	if err := RemoveDockerResult(repo); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := os.Stat(path); !os.IsNotExist(err) {
-		t.Errorf("not removed")
 	}
 }
