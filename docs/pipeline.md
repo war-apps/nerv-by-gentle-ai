@@ -7,9 +7,11 @@ image, plus the Docker deploy that dim runs with `/update-deploy`. Every step
 runs locally, one process per step, without GitHub Actions; any GitHub
 workflow in the repository is ignored.
 
-> **Status.** `nerv pipeline validate`, `test`, `release`, `docker`,
-> `sync` and `deploy` are available ([Running the steps](#running-the-steps));
-> `nerv pipeline run` comes in a later release.
+Every step is available on its own (`nerv pipeline <step>`, see
+[Running the steps](#running-the-steps)), `nerv pipeline run` runs them all
+in order ([`nerv pipeline run`](#nerv-pipeline-run)), and the
+`/nerv:pipeline` Claude Code command drives the run with a dry run first
+([Getting started](#getting-started)).
 
 | Step | What it does (dim's job) |
 |---|---|
@@ -22,12 +24,83 @@ workflow in the repository is ignored.
 
 ## Contents
 
+- [Getting started](#getting-started)
 - [Running the steps](#running-the-steps)
 - [Complete example](#complete-example)
 - [Deploy from Infisical](#deploy-from-infisical)
 - [Reference](#reference)
 - [Deploy data](#deploy-data)
 - [Validation](#validation)
+
+## Getting started
+
+From a repository like dim.comprobantes.api (a .NET solution, a Dockerfile,
+semantic-release-style commits) to a deployed release, end to end:
+
+1. **Install nerv** (`curl -fsSL
+   https://raw.githubusercontent.com/war-apps/nerv-by-gentle-ai/main/scripts/install.sh
+   | bash`) and make sure the tools the steps call are on PATH: `git`,
+   `dotnet`, `node`/`npm` (semantic-release), `docker`, `ssh` (and
+   `sshpass` for password auth), `infisical` when the deploy data comes
+   from Infisical.
+2. **Write the `pipeline:` section** of the local `.nerv/nerv.yaml`
+   (committed or not; nerv reads your working tree's copy). The smallest
+   useful one, for dim.comprobantes.api:
+
+   ```yaml
+   pipeline:
+     dotnet:
+       solution: Dim.Comprobantes.slnx
+       runsettings: coverlet.runsettings
+     images:
+       - name: ghcr.io/dirm-s-a/dim.comprobantes.api
+         dockerfile: docker/Dockerfile
+         build_args: { APP_VERSION: "${version}" }
+     release:
+       version_files: [src/Dim.Comprobantes.Api/Dim.Comprobantes.Api.csproj]
+     deploy:
+       source: infisical
+       infisical:
+         project_id: 5d9af001-6928-47cb-81ce-0789904385b7
+         app_path: /comprobantes-api
+         domain: https://infisical.dim.com.ar
+       ssh:
+         known_hosts: ~/.config/update-deploy/known_hosts
+   ```
+
+   The branches default to dim's (`main`, `develop` alpha, `release/*` rc
+   on beta, `hotfix/*` beta), the registry to `ghcr.io` with `GHCR_USER` /
+   `GHCR_TOKEN`, the semantic-release configuration to the built-in one
+   when the repository has none. Every field is in the
+   [Reference](#reference); the [Complete example](#complete-example)
+   shows the rest (a second image with a computed build argument, deploy
+   from environment variables).
+3. **Check the section** with a step that changes nothing:
+   `nerv pipeline validate` (an invalid section is refused with every
+   problem listed).
+4. **Prepare the credentials** the irreversible steps use, never written
+   in `nerv.yaml`: `GHCR_USER` / `GHCR_TOKEN` for the image push (or
+   `nerv pipeline docker --no-login` with docker's own login), your git
+   credentials for the release and the merge-backs (ssh keys or `gh auth
+   setup-git`), `infisical login` (or the `NERV_DEPLOY_*` variables), and
+   the Docker hosts' keys pinned in the known_hosts file.
+5. **Rehearse**: `nerv pipeline run --dry-run` runs validate and test in
+   your working tree, computes the release on origin's state, builds the
+   images without pushing them, previews the merge-backs and lists the
+   deploys without connecting to any host. Read the records it leaves in
+   `.nerv/artifacts/pipeline/` (`release.json`, `docker.json`,
+   `sync.json`, `deploy.json`, `run.json`).
+6. **Run it**: `nerv pipeline run` asks before releasing, merging back and
+   deploying (`--yes` skips the questions and is required without a
+   terminal; `--expect <project>=<version>` releases only the version you
+   approved). The first step that does not pass stops the run; the later
+   ones are reported `not-run`, and `nerv pipeline run --from <step>`
+   continues from there once the cause is fixed.
+
+In Claude Code, `/nerv:pipeline` does steps 5 and 6 for you: it always
+rehearses first, shows the version, images, merge-backs and deploys, and
+runs the real pipeline only after your explicit yes, bound to the approved
+version. It never runs a deploy or a push without that yes.
 
 ## Running the steps
 
@@ -431,6 +504,34 @@ dim's `/update-deploy` (update-deploy.sh) for the release just made, over
    deploy. A refusal or a failure before it never touches an earlier
    `deploy.json`. `--json` prints the same document. Every stderr line is
    prefixed `[pipeline:deploy] `.
+
+### `nerv pipeline run`
+
+```
+nerv pipeline run [--cwd <dir>] [--dry-run] [--yes] [--expect <project>=<version>] [--from <step> | --only <step>] [--json]
+```
+
+Every step in dim's order, validate → test → release → docker → sync →
+deploy, each through its own command (`nerv pipeline <step> --cwd <top>
+--json`): its own records, checks and confirmations apply exactly as when
+it runs alone (sync still requires this release's passing test and docker
+records, deploy the docker one).
+
+- `--dry-run` goes to release, docker, sync and deploy (validate and test
+  always run for real: they only check the working tree); `--yes` to
+  release, sync and deploy (docker asks nothing: its push follows the
+  release you confirmed); `--expect` to release only.
+- `--from <step>` starts at that step; `--only <step>` runs that step
+  alone.
+- The first step that does not pass (exit not 0: refused, failed or
+  interrupted) stops the run: the later steps are `not-run`, and the run's
+  exit is that step's. A step with nothing to do (no new release, sync or
+  deploy disabled) passes, and the run goes on.
+- Every stderr line keeps its step's prefix (`[pipeline:<step>] `); the
+  run's own lines are prefixed `[pipeline:run] `. `.nerv/artifacts/pipeline/run.json`
+  (and `--json` on stdout) holds `status`, `dry_run`, `error` (the failing
+  step's, prefixed with its name) and, per step, `step`, `status`
+  (`passed`, `refused`, `failed`, `interrupted`, `not-run`) and `exit`.
 
 ### Result
 
