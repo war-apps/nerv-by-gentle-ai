@@ -4,8 +4,9 @@ Every Agent tool result carries the launch's usage (tokens, tool uses,
 duration). After each launch Ikari records one row
 `{agent, model, tokens_total, duration_s}` from that result —
 `tokens_total` because the Agent tool reports one combined usage figure per
-launch, not separate input/output counts. The accumulated table is handed
-to Aoba in the run-summary launch; Aoba never estimates figures, and Ikari
+launch, not separate input/output counts. The accumulated table feeds the run
+summary (written by Ikari in DIRECT and LIGHT, handed to Aoba in FULL's
+run-summary launch); figures are never estimated, and Ikari
 never omits a launch, including retries and failed ones (mark them in the
 row). `model` in this row is the REPORTED model from the Agent result, kept
 as-is — it is not the resolved model from the Mandatory model gate, though
@@ -18,7 +19,8 @@ Ikari's own mechanical write, never delegated) as
 `{ts, phase, actor, event_type, payload_ref}`. Event types used in Phase 1:
 `preflight_answer`, `classification`, `ratchet`, `launch`, `envelope`,
 `gate_relayed`, `gate_decision`, `commit_recorded`, `rdd_assess`,
-`rdd_receipt`, `stop`. FULL adds the Phase 2 event types listed in
+`rdd_receipt`, `stop`. The `classification` payload carries the route
+declaration (tier plus trigger evidence, see SKILL.md Classification). FULL adds the Phase 2 event types listed in
 `nerv-artifacts.md` (`corner_case_relayed`, `corner_case_answer`,
 `vote_cast`, `escalation_criticality`, `vote_result`, `veto_evaluated`,
 `plan_gate_relayed`, `plan_gate_decision`, `wave_plan`, `wave_report`,
@@ -28,8 +30,9 @@ also defined in `nerv-artifacts.md`: `patch_frozen`, `audit_pass`,
 `issue_gate_decision`, `fix_routed`, `reaudit`, `residual_accepted`,
 `docs_written`, `archived`, `log_curated`. Phase 4 adds `tracker_event`
 (payload `{op, taskRef, result}`, defined in `nerv-artifacts.md`), logged
-once per Hyuga tracker op — Preflight, Maya's full-gate start, the issue
-gate, and Close. Phase 5 adds `resume` (`{from_step, took_over_from}`) and
+once per Hyuga tracker op — Preflight, the testing move (Maya's full-gate
+start in FULL, the work unit's verification start in DIRECT and LIGHT),
+the issue gate, and Close. Phase 5 adds `resume` (`{from_step, took_over_from}`) and
 `lock_refused`, also defined in `nerv-artifacts.md`, logged by the
 Orchestrator lock and Resume protocols. A `launch` entry's payload opens with
 the launch's `({model}) {Display name}: {action}` label, the same text as its Agent

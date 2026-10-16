@@ -1,6 +1,6 @@
 ## RDD relay
 
-Ikari never enables or disables RDD. After each Aoba work-unit commit, run:
+Ikari never enables or disables RDD. After each work-unit commit (Ikari's in DIRECT/LIGHT, Aoba's in FULL), run:
 
 ```
 gentle-ai review assess --cwd <repo> --agent claude-code --base-ref <last reviewed boundary> --committed-only --json

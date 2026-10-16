@@ -70,3 +70,73 @@ func TestOrchestratorSkillCoreStaysWithinSkillGuidance(t *testing.T) {
 		}
 	}
 }
+
+func readPluginText(t *testing.T, path string) string {
+	t.Helper()
+	data, err := fs.ReadFile(PluginFS(), path)
+	if err != nil {
+		t.Fatalf("reading %s: %v", path, err)
+	}
+	return string(data)
+}
+
+func assertContainsAll(t *testing.T, path, text string, wants ...string) {
+	t.Helper()
+	for _, want := range wants {
+		if !strings.Contains(text, want) {
+			t.Errorf("%s does not contain %q", path, want)
+		}
+	}
+}
+
+// The orchestrator routes every request through three tiers that mirror
+// gentle-ai's Work Routing Ladder: DIRECT (direct inline), LIGHT (delegated
+// direct) and FULL (NERV's own governed pipeline), with a one-way ratchet
+// and a route declaration logged per run (odd/tasks/orchestrator-routing-tiers.md).
+func TestOrchestrator_ClassifiesThreeRoutingTiers(t *testing.T) {
+	const path = "skills/nerv-orchestrator/SKILL.md"
+	core := readPluginText(t, path)
+	assertContainsAll(t, path, core,
+		"## Classification: DIRECT, LIGHT or FULL",
+		"references/pipeline-direct.md",
+		"DIRECT → LIGHT → FULL",
+		"route declaration",
+		"one parallel batch",
+		"approximately 10k tokens",
+		"more than approximately 5 sequential lookups",
+	)
+	if strings.Contains(core, "4-file mapping") || strings.Contains(core, "20-call backstop") {
+		t.Errorf("%s still carries the retired 4-file/20-call delegation triggers", path)
+	}
+}
+
+// LIGHT launches one bounded writer that runs its own test-first cycle;
+// Kaworu's separate RED step belongs to FULL only, and Maya is launched only
+// when the Delegated Verification Gate asks for an independent verifier.
+func TestLightPipeline_LaunchesOneBoundedWriter(t *testing.T) {
+	const path = "skills/nerv-orchestrator/references/pipeline-light.md"
+	light := readPluginText(t, path)
+	assertContainsAll(t, path, light, "MODE: solo", "Delegated Verification Gate", "spot check", "user validates before commit")
+	for _, line := range strings.Split(light, "\n") {
+		if strings.HasPrefix(line, "|") && strings.Contains(line, "Kaworu") {
+			t.Errorf("%s still has a Kaworu step row: %s", path, line)
+		}
+	}
+}
+
+// DIRECT is the only tier where Ikari edits source itself, and it still
+// relays the commit validation to the user before committing.
+func TestDirectPipeline_IkariEditsInlineAndUserValidatesCommit(t *testing.T) {
+	const path = "skills/nerv-orchestrator/references/pipeline-direct.md"
+	direct := readPluginText(t, path)
+	assertContainsAll(t, path, direct, "Ikari", "user validates before commit", "RDD hook", "ratchet")
+}
+
+// FULL's fix routing names its own work-unit cycle instead of borrowing the
+// LIGHT one, so changing LIGHT never changes FULL.
+func TestFullPipeline_FixRoutingSpellsOutItsOwnCycle(t *testing.T) {
+	const path = "skills/nerv-orchestrator/references/pipeline-full.md"
+	if strings.Contains(readPluginText(t, path), "LIGHT work-unit cycle") {
+		t.Errorf("%s still routes fixes through the LIGHT work-unit cycle", path)
+	}
+}

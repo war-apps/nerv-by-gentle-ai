@@ -19,3 +19,9 @@ Maya's full-gate start, the issue gate, and Close in both pipelines.
 Phase 5 hardening ships the orchestrator lock (concurrency guard, heartbeat
 staleness), safe resume, close-time `tasks.md`/`state.yaml` bookkeeping, the
 `artifacts.commit` policy, and RDD's untracked-path recovery path.
+Routing tiers (after Phase 5) mirror gentle-ai's Work Routing Ladder:
+DIRECT (Ikari inline, one mechanical file), LIGHT (an explorer only when
+the mapping trigger fires, one pilot in `MODE: solo`, Maya only when the
+Delegated Verification Gate asks for her) and FULL (unchanged), with the
+one-way ratchet DIRECT → LIGHT → FULL; the LIGHT shape described above is
+the pre-tier history.

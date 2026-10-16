@@ -1,15 +1,16 @@
 ## FULL pipeline (Phase 3)
 
 FULL adds MAGI vote, governance veto, waves, quality-gated implementation,
-and a full audit-and-closure stage on top of the LIGHT primitives
-(RED/GREEN/REFACTOR, Aoba commits, the RDD hook, usage collection, the
-deliberation log — all reused unchanged, see the LIGHT pipeline above).
+and a full audit-and-closure stage on top of the shared primitives
+(RED/GREEN/REFACTOR, user-validated commits, the RDD hook, usage
+collection, the deliberation log). FULL keeps its own work-unit cycle:
+`nerv:kaworu` RED, `nerv:aoba` commit, pilot GREEN, `nerv:aoba` commit.
 Once every wave is closed and Maya's full gate is green, the run proceeds
 into the audit stage (steps 13-19 below): a frozen patch, four blind audit
 passes, Kaji's compilation and the refuter batch, Hyuga's ranking behind a
 user HARD issue gate, fix routing with a bounded re-audit loop, then
 documentation, archive, and the run summary. Never silently skip a step in
-the table below or downgrade FULL to LIGHT mid-run.
+the table below or downgrade FULL to LIGHT or DIRECT mid-run.
 
 | Step | Actor | Launch prompt carries | Expected envelope | Gate |
 |---|---|---|---|---|
@@ -30,14 +31,14 @@ the table below or downgrade FULL to LIGHT mid-run.
 | 14. Audit passes, 4 in parallel, blind | `nerv:melchior`, `nerv:balthasar`, `nerv:casper` (MODE: audit), `nerv:gendo` | `diff-round-N.patch` + proposal/design/tasks/specs/test-plan locators, skills; `RDD scope` for melchior/balthasar (`cross-commit` only with native assess evidence, else `full`; see RDD narrowing) | one JSON pass object each per the contract in `nerv-artifacts.md`; Ikari writes each to `nerv/audit/pass-<name>-round-N.json` | gatekeeper — JSON validation, one retry |
 | 15. Compile + refute | `nerv:kaji` (compile), `nerv:fuyutsuki` (MODE: refute, read-only; one batch over that round's inferential BLOCKER/CRITICAL) | the four pass objects/files | `nerv/audit-report.md` with refuter outcomes merged (`refuted` → dropped to a `## Refuted` appendix, `inconclusive` → WARNING, kept) | none |
 | 16. Ranking + issue gate | `nerv:hyuga` (dispatch c) | `audit-report.md` (post-refuter) | `nerv/issue-ranking.md` | **user HARD** — Ikari relays the ranked NOW/DEFER list as one blocking prompt: approve the NOW set / edit it / accept residual and close |
-| 17. Fix routing + re-audit loop | owning pilot per approved issue (LIGHT work-unit cycle: Kaworu RED when behavioral, Aoba commit, pilot fix, Aoba commit, RDD hook), `nerv:aoba` (fix-delta patch), audit passes, `nerv:kaji` | fixes committed; `nerv/audit/diff-round-N+1.patch` scoped to the fix delta only; updated `audit-report.md` carrying forward unresolved items | cap 2 re-audits (loop back to step 14 over the fix-delta patch); at the cap the user accepts the residual (`residual_accepted` in `issue-ranking.md`) or declines the remainder; deviations → Misato ruling |
+| 17. Fix routing + re-audit loop | owning pilot per approved issue (FULL work-unit cycle: Kaworu RED when behavioral, Aoba commit, pilot fix, Aoba commit, RDD hook), `nerv:aoba` (fix-delta patch), audit passes, `nerv:kaji` | fixes committed; `nerv/audit/diff-round-N+1.patch` scoped to the fix delta only; updated `audit-report.md` carrying forward unresolved items | cap 2 re-audits (loop back to step 14 over the fix-delta patch); at the cap the user accepts the residual (`residual_accepted` in `issue-ranking.md`) or declines the remainder; deviations → Misato ruling |
 | 18. Docs + archive + curate | `nerv:ritsuko` (MODE: docs), `nerv:aoba` (Archive duty), `nerv:fuyutsuki` (MODE: curate) | `issue-ranking.md`, fix commits, `tasks.md`, docs deltas | `nerv/issue-resolutions.md`, `nerv/agent-config.md`, repo doc deltas (Ikari writes them at Ritsuko-named locators), change archived to `openspec/changes/archive/YYYY-MM-DD-{change}/` via `nerv spec-compose` + `git mv`, `## Summary` appended to `nerv/deliberation-log.md` | gatekeeper |
 | 19. Run summary + close | `nerv:aoba`; `nerv:hyuga` `DISPATCH: tracker` (`close`, or `done` when the user prefers the task stay open) | usage table from Ikari | `nerv/run-summary.md`, change closed, tracker updated (see `### Tracker dispatch (Phase 4)` below) | none — the user already validated at gates 16 and 18 |
 
 ### Tracker dispatch (Phase 4)
 
-`nerv:hyuga` `DISPATCH: tracker` runs at four points in FULL (Preflight
-and Close only in LIGHT):
+`nerv:hyuga` `DISPATCH: tracker` runs at four points in FULL (in DIRECT
+and LIGHT: Preflight, the work unit's verification start, and Close):
 
 - **Preflight (step 0).** `createTask` if requested, then `start`
   (assign, `inDev` stage, local timer). Skipped when the provider is
@@ -143,7 +144,7 @@ re-audit cap (2) has been reached. A non-empty NOW set never closes
 without a fix round.
 
 **Fix routing.** For each approved issue, in `fix_order`, the owning pilot
-fixes it through the LIGHT work-unit cycle: `nerv:kaworu` writes a RED
+fixes it through FULL's own work-unit cycle: `nerv:kaworu` writes a RED
 regression test when the issue is behavioral, `nerv:aoba` commits it (user
 validates), the pilot fixes it, `nerv:aoba` commits the fix (user
 validates), then the RDD hook runs as usual. Any deviation from the
@@ -189,7 +190,7 @@ rationale.
 
 ### Ratchet handling
 
-The diff already produced while a change was still LIGHT becomes the
+The diff already produced while a change was still DIRECT or LIGHT becomes the
 wave-1 candidate once Ikari reclassifies to FULL. Misato's `tasks.md` MUST
 include that diff as its own task, carrying `status: implemented-pre-plan`
 in addition to its `id`/`pilot`/`depends_on` fields, and MAGI votes on it
@@ -274,6 +275,6 @@ task's dependencies. The unfreeze is logged as a `ruling_issued` event
 (carrying `unfreezes: [task_id]`) plus the resulting `vote_result` event.
 The RDD per-commit relay (see
 `## RDD relay` above) and the delivery-budget tracking (see `## Delivery`
-above) apply identically inside FULL waves as they do in LIGHT — there is
+above) apply identically inside FULL waves as they do in DIRECT and LIGHT — there is
 no separate FULL-only commit or budget mechanism.
 
