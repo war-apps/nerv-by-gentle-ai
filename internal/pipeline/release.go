@@ -80,26 +80,33 @@ var ErrNoReleaseOutputs = errors.New("no release outputs")
 func ReadReleaseOutputs(repo string) (ReleaseOutputs, error) {
 	var o ReleaseOutputs
 	path := ReleaseOutputsPath(repo)
-	artifacts := filepath.Join(repo, ".nerv", "artifacts")
-	if err := checkAncestorInside(repo, artifacts); err != nil {
-		return o, err
-	}
-	if _, err := os.Lstat(artifacts); err == nil {
-		if err := checkRealInside(repo, artifacts, path); err != nil {
-			return o, err
-		}
-	}
-	data, err := os.ReadFile(path)
+	err := readArtifactJSON(repo, path, &o)
 	if errors.Is(err, os.ErrNotExist) {
 		return o, fmt.Errorf("%s: %w", path, ErrNoReleaseOutputs)
 	}
+	return o, err
+}
+
+// readArtifactJSON decodes path under the artifacts into v, after the
+// symlink checks; a missing file is an error wrapping os.ErrNotExist.
+func readArtifactJSON(repo, path string, v any) error {
+	artifacts := filepath.Join(repo, ".nerv", "artifacts")
+	if err := checkAncestorInside(repo, artifacts); err != nil {
+		return err
+	}
+	if _, err := os.Lstat(artifacts); err == nil {
+		if err := checkRealInside(repo, artifacts, path); err != nil {
+			return err
+		}
+	}
+	data, err := os.ReadFile(path)
 	if err != nil {
-		return o, err
+		return err
 	}
-	if err := json.Unmarshal(data, &o); err != nil {
-		return o, fmt.Errorf("%s: %w", path, err)
+	if err := json.Unmarshal(data, v); err != nil {
+		return fmt.Errorf("%s: %w", path, err)
 	}
-	return o, nil
+	return nil
 }
 
 // DockerResultFile is the docker step's result, for the deploy step.
