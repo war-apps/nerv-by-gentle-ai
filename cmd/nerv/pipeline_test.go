@@ -266,3 +266,19 @@ func TestPipeline_TestRecordsPathsExactly(t *testing.T) {
 		t.Errorf("changes %q, want %q", r.Changes, want)
 	}
 }
+
+func TestPipeline_TestRecordsTheCoverageGate(t *testing.T) {
+	f := newPipelineFixture(t, strings.Replace(pipelineYAML, "    solution: App.slnx\n", "    solution: App.slnx\n    coverage: { mode: report }\n", 1))
+	code, stdout, stderr := f.run(t, "test", "--json")
+	if code != 0 {
+		t.Fatalf("exit %d\n%s", code, stderr)
+	}
+	var doc pipeline.Result
+	if err := json.Unmarshal([]byte(stdout), &doc); err != nil || doc.Coverage == nil || doc.Coverage.Mode != "report" {
+		t.Errorf("--json coverage %+v %v", doc.Coverage, err)
+	}
+	_, r, ok := readTestRecord(t, f.top)
+	if !ok || r.Coverage == nil || r.Coverage.Mode != "report" || !r.Coverage.Met {
+		t.Errorf("test.json coverage %+v", r.Coverage)
+	}
+}

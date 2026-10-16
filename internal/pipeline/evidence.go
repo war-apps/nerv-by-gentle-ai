@@ -23,6 +23,9 @@ type TestRecord struct {
 	// Dirty: the working tree had changes outside .nerv/ (Changes).
 	Dirty   bool     `json:"dirty"`
 	Changes []string `json:"changes,omitempty"`
+	// Coverage is the coverage gate of the run: its mode, the thresholds
+	// checked (and their source) and the measured values.
+	Coverage *CoverageResult `json:"coverage,omitempty"`
 }
 
 // TestRecordPath is <repo>/.nerv/artifacts/pipeline/test.json.

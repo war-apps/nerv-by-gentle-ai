@@ -381,6 +381,21 @@ func TestLoad_ValidationErrors(t *testing.T) {
 		{"unsafe ssh paths", minimal + "  deploy: { ssh: { auth: key, key_file: \"-oProxyCommand=x\", known_hosts: \"/a\\\"b\" } }\n", []string{
 			`pipeline.deploy.ssh.key_file: "-oProxyCommand=x" must be a file path without a leading -, quotes or control characters`,
 			`pipeline.deploy.ssh.known_hosts: "/a\"b" must be a file path without a leading -, quotes or control characters`}},
+		{"unknown coverage mode", strings.Replace(minimal, "solution: App.slnx\n", "solution: App.slnx\n    coverage: { mode: strict }\n", 1), []string{`pipeline.dotnet.coverage.mode: unknown mode "strict" (want enforce, report or off)`}},
+		{"bad coverage thresholds", strings.Replace(minimal, "solution: App.slnx\n", "solution: App.slnx\n    coverage: { thresholds: { line: 120, branch: -1, method: 50, stat: median } }\n", 1), []string{
+			"pipeline.dotnet.coverage.thresholds.line: 120 must be a percentage from 0 to 100",
+			"pipeline.dotnet.coverage.thresholds.branch: -1 must be a percentage from 0 to 100",
+			`pipeline.dotnet.coverage.thresholds.stat: unknown stat "median" (want minimum, total or average)`}},
+		{"non-finite coverage thresholds", strings.Replace(minimal, "solution: App.slnx\n", "solution: App.slnx\n    coverage: { thresholds: { line: .nan, branch: .inf, method: -.inf } }\n", 1), []string{
+			"pipeline.dotnet.coverage.thresholds.line: NaN must be a percentage from 0 to 100",
+			"pipeline.dotnet.coverage.thresholds.branch: +Inf must be a percentage from 0 to 100",
+			"pipeline.dotnet.coverage.thresholds.method: -Inf must be a percentage from 0 to 100"}},
+		{"empty coverage thresholds", strings.Replace(minimal, "solution: App.slnx\n", "solution: App.slnx\n    coverage: { thresholds: {} }\n", 1), []string{
+			"pipeline.dotnet.coverage.thresholds: set at least one of line, branch or method (or stat with a runsettings file)"}},
+		{"coverage stat without metrics or runsettings", strings.Replace(minimal, "solution: App.slnx\n", "solution: App.slnx\n    coverage: { thresholds: { stat: total } }\n", 1), []string{
+			"pipeline.dotnet.coverage.thresholds: set at least one of line, branch or method (or stat with a runsettings file)"}},
+		{"thresholds with coverage off", strings.Replace(minimal, "solution: App.slnx\n", "solution: App.slnx\n    coverage: { mode: off, thresholds: { line: 90 } }\n", 1), []string{
+			"pipeline.dotnet.coverage.thresholds: not used with mode off"}},
 		{"unknown selection", minimal + "  deploy: { selection: newest }\n", []string{`pipeline.deploy.selection: unknown selection "newest" (want target or branches)`}},
 		{"branches with selection target", minimal + "  deploy: { environments: [{ name: staging, branches: [develop] }] }\n", []string{
 			"pipeline.deploy.environments[0].branches: only used by selection branches (selection is target)"}},
@@ -604,6 +619,7 @@ func TestDefaults_MatchDocs(t *testing.T) {
 		pipelineconfig.DefaultSyncRelease:         "release/*",
 		pipelineconfig.DefaultDeploySource:        "env",
 		pipelineconfig.DefaultDeploySelection:     "target",
+		pipelineconfig.DefaultCoverageMode:        "enforce",
 		pipelineconfig.DefaultUpdateTimeout:       "15m",
 		pipelineconfig.DefaultSSHAuth:             "password",
 		pipelineconfig.DefaultSSHKnownHosts:       "~/.ssh/known_hosts",
@@ -719,5 +735,24 @@ func TestLoad_DeployEnvironmentForms(t *testing.T) {
 	q := mustLoad(t, minimal+"  deploy: { environments: [staging, development] }\n")
 	if !reflect.DeepEqual(q.Deploy.EnvironmentNames(), []string{"staging", "development"}) || q.Deploy.Environments[0].Branches != nil {
 		t.Errorf("plain environments %+v", q.Deploy.Environments)
+	}
+}
+
+func TestLoad_DotnetCoverage(t *testing.T) {
+	p := mustLoad(t, minimal)
+	if c := p.Dotnet.Coverage; c.Mode != "enforce" || c.Thresholds != nil {
+		t.Errorf("default coverage %+v", c)
+	}
+	q := mustLoad(t, strings.Replace(minimal, "solution: App.slnx\n", "solution: App.slnx\n    coverage: { mode: report, thresholds: { line: 90, method: 85.5, stat: total } }\n", 1))
+	c := q.Dotnet.Coverage
+	if c.Mode != "report" || c.Thresholds == nil || *c.Thresholds.Line != 90 || c.Thresholds.Branch != nil || *c.Thresholds.Method != 85.5 || c.Thresholds.Stat != "total" {
+		t.Errorf("coverage %+v %+v", c, c.Thresholds)
+	}
+}
+
+func TestLoad_CoverageStatAloneOverridesTheRunsettings(t *testing.T) {
+	p := mustLoad(t, strings.Replace(minimal, "solution: App.slnx\n", "solution: App.slnx\n    runsettings: coverlet.runsettings\n    coverage: { thresholds: { stat: average } }\n", 1))
+	if th := p.Dotnet.Coverage.Thresholds; th == nil || th.Stat != "average" || th.Line != nil {
+		t.Errorf("thresholds %+v", th)
 	}
 }

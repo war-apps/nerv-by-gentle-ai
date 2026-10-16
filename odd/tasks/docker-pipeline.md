@@ -1088,9 +1088,13 @@ All three P5 review advisories fixed (user authorized). Route: delegated
     dependency is the dotnet smoke test, which can die of this host's CLR
     0x80131506 crash (seen during the acceptance run); the reviewer's
     lost `FAIL` could not be reproduced.
-- Open: 2 (the coverage gate fails dim as-is) needs a user decision:
-  keep enforcing `<Threshold>`, or add a report-only mode matching dim's
-  CI. Noted only: 6 (the release dry run computes without running the
+- 2 resolved (user decision, 2026-10-16): keep enforcing the runsettings
+  thresholds by default (dim fixes its thresholds), configurable from the
+  start: `pipeline.dotnet.coverage` (`mode` enforce | report | off,
+  `thresholds` line/branch/method/stat overriding the runsettings' key by
+  key), recorded in the step's `--json` and test.json (mode, stat, checks
+  with value, threshold, source, met). Done on `feat/pipeline-coverage-config`
+  (from 4779fce); see "Coverage gate" below. Noted only: 6 (the release dry run computes without running the
   repository's verifyConditions/verifyRelease plugins) and 7 (without a
   `release:` section the project, and so `--expect`, is named after the
   local directory).
@@ -1098,6 +1102,45 @@ All three P5 review advisories fixed (user authorized). Route: delegated
   semrel_integration -run Integration -count=1 ./internal/semrel/
   ./cmd/nerv/` exit 0; `go vet ./...`, `GOOS=windows go vet ./...`, `go
   vet -tags semrel_integration ./...` exit 0; `gofmt -l .` empty.
+
+### Coverage gate
+
+- Route: delegated (one writer; config, gate, CLI record, docs).
+- `pipelineconfig.Coverage{Mode, Thresholds}`, default mode `enforce`;
+  validation: unknown mode, a threshold outside 0-100, an unknown stat,
+  thresholds with mode off. Setting a metric selects it (coverlet's
+  ThresholdType), so there is no separate `type` key.
+- `pipeline.effectiveGate`: the runsettings' thresholds (when any)
+  overridden key by key, each metric's `source` kept; thresholds without
+  a runsettings file stand alone (stat `minimum` unless set); mode off
+  drops the thresholds and so the JSON report request. `gateCoverage`:
+  enforce fails as before (message names the origin: the runsettings
+  file, nerv.yaml or both); report records and adds a `warning:` note,
+  also for a missing report; `Result.Coverage` / `TestRecord.Coverage`
+  (`CoverageResult{mode, stat, checks[type, actual, required, source,
+  met], met}`).
+- RED: `go vet ./internal/pipelineconfig/` (`undefined:
+  DefaultCoverageMode`), `go vet ./internal/pipeline/` (`undefined:
+  CoverageResult`), `go vet ./cmd/nerv/` (`r.Coverage undefined` on
+  TestRecord). GREEN: the existing coverage tests unchanged and new ones
+  for enforce's record, report (warning, passes; also without reports),
+  off (no evaluation, no json format), overrides with mixed sources, and
+  thresholds without runsettings (json format requested, default stat).
+- Docs: the Getting started example sets `coverage:` from the start and
+  explains why (coverlet.collector ignores `<Threshold>`, dim's CI never
+  enforced it; dim's develop at 89.64/82.46/92.88 vs 100/80/100); the
+  test step and the reference describe the modes and the record;
+  `/nerv:pipeline` shows the coverage record; CHANGELOG.
+- Review (approved) findings fixed, test-first: non-finite thresholds
+  (`.nan`, `.inf`, `-.inf`) are refused (NaN passed the range check and
+  made the gate "met"); a `thresholds` block without a metric is refused
+  unless it is a `stat` override with a runsettings file, and at run time
+  a stat-only override of a runsettings file without `<Threshold>` arms
+  no gate (it armed an empty one that failed without reports with "the
+  thresholds of  against"); the missing-report message names the
+  thresholds' origin, and the record says `report_missing: true`. RED:
+  the config validation cases (no error / missing problems) and `go vet
+  ./internal/pipeline/` (`ReportMissing undefined`). GREEN.
 
 ## Next step
 

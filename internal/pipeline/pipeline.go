@@ -89,7 +89,10 @@ type Result struct {
 	Artifacts Artifacts       `json:"artifacts"`
 	// Notes say what was checked beyond the commands (the coverage gate).
 	Notes []string `json:"notes,omitempty"`
-	Error string   `json:"error,omitempty"`
+	// Coverage is the test step's coverage gate: mode, thresholds checked
+	// and measured values.
+	Coverage *CoverageResult `json:"coverage,omitempty"`
+	Error    string          `json:"error,omitempty"`
 	// Err is the failure, for callers (not serialised).
 	Err error `json:"-"`
 }
@@ -153,6 +156,14 @@ func (s Steps) Test(ctx context.Context) Result {
 	if d.TreatWarningsAsErrors() {
 		build = append(build, "-warnaserror")
 	}
+	// The thresholds checked: the runsettings' ones, overridden key by key
+	// by pipeline.dotnet.coverage.thresholds; none with mode off.
+	mode := d.Coverage.Mode
+	if mode == "" {
+		mode = pipelineconfig.DefaultCoverageMode
+	}
+	g = effectiveGate(g, d.Coverage, mode)
+	r.Coverage = &CoverageResult{Mode: mode, Met: true}
 	test := []string{"dotnet", "test", d.Solution, "--configuration", d.Configuration, "--no-build", shipplan.DisableBuildServers, "--collect", g.collectArg()}
 	if d.Runsettings != "" {
 		test = append(test, "--settings", d.Runsettings)
@@ -164,12 +175,7 @@ func (s Steps) Test(ctx context.Context) Result {
 	r.Artifacts.Coverage = reportsNamed(results, CoverageFile)
 	r.Artifacts.CoverageJSON = reportsNamed(results, CoverageJSONFile)
 	if r.Status == StatusPassed && g != nil && g.th != nil {
-		note, err := checkCoverage(d.Runsettings, g.th, r.Artifacts.CoverageJSON, r.Artifacts.Coverage)
-		if err != nil {
-			r.fail(err)
-		} else {
-			r.Notes = append(r.Notes, note)
-		}
+		gateCoverage(r, d.Runsettings, mode, g.th)
 	}
 	return *r
 }

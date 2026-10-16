@@ -2,10 +2,12 @@ package pipelineconfig
 
 import (
 	"fmt"
+	"math"
 	"net/url"
 	"path"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 	"unicode"
@@ -19,6 +21,12 @@ var DeploySources = []string{"env", "infisical"}
 
 // DeploySelections are the ways the deploy step chooses its environments.
 var DeploySelections = []string{"target", "branches"}
+
+// CoverageModes are the test step's coverage gate modes.
+var CoverageModes = []string{"enforce", "report", "off"}
+
+// CoverageStats are coverlet's ThresholdStat values.
+var CoverageStats = []string{"minimum", "total", "average"}
 
 // SSHAuths are the SSH authentication methods.
 var SSHAuths = []string{"password", "key"}
@@ -103,6 +111,7 @@ func (v *validator) checkDotnet(d Dotnet) {
 			v.addf("%s.env.%s: not a valid environment variable name", at, key)
 		}
 	}
+	v.checkCoverage(d.Coverage, d.Runsettings != "")
 }
 
 func (v *validator) checkBranches(branches []Branch) {
@@ -441,4 +450,36 @@ func sortedKeys[V any](m map[string]V) []string {
 	}
 	slices.Sort(keys)
 	return keys
+}
+
+func (v *validator) checkCoverage(c Coverage, hasRunsettings bool) {
+	const at = "pipeline.dotnet.coverage"
+	if !slices.Contains(CoverageModes, c.Mode) {
+		v.addf("%s.mode: unknown mode %q (want enforce, report or off)", at, c.Mode)
+	}
+	t := c.Thresholds
+	if t == nil {
+		return
+	}
+	if c.Mode == "off" {
+		v.addf("%s.thresholds: not used with mode off", at)
+		return
+	}
+	for _, m := range []struct {
+		name string
+		v    *float64
+	}{{"line", t.Line}, {"branch", t.Branch}, {"method", t.Method}} {
+		// NaN fails every comparison and ±Inf is no percentage either.
+		if m.v != nil && (math.IsNaN(*m.v) || *m.v < 0 || *m.v > 100) {
+			v.addf("%s.thresholds.%s: %s must be a percentage from 0 to 100", at, m.name, strconv.FormatFloat(*m.v, 'f', -1, 64))
+		}
+	}
+	// A block without a metric only makes sense as a stat override of the
+	// runsettings' thresholds.
+	if t.Line == nil && t.Branch == nil && t.Method == nil && (t.Stat == "" || !hasRunsettings) {
+		v.addf("%s.thresholds: set at least one of line, branch or method (or stat with a runsettings file)", at)
+	}
+	if t.Stat != "" && !slices.Contains(CoverageStats, t.Stat) {
+		v.addf("%s.thresholds.stat: unknown stat %q (want minimum, total or average)", at, t.Stat)
+	}
 }

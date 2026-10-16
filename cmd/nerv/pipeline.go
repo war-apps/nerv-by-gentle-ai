@@ -235,7 +235,7 @@ func runPipelineStep(ctx context.Context, step, cwd string, stderr io.Writer, op
 	if step == "test" {
 		// Only a passing run writes test.json; a failure leaves an earlier
 		// one as it was.
-		record.Step, record.Status = "test", pipeline.StatusPassed
+		record.Step, record.Status, record.Coverage = "test", pipeline.StatusPassed, res.Coverage
 		path, err := pipeline.WriteTestRecord(top, record)
 		if err != nil {
 			res.Status, res.Error = pipeline.StatusFailed, "writing "+pipeline.TestRecordFile+": "+err.Error()

@@ -41,6 +41,8 @@ const (
 	// DefaultDeploySelection deploys the environments whose
 	// DOCKER_IMAGE_VERSION points at the release.
 	DefaultDeploySelection = "target"
+	// DefaultCoverageMode enforces the coverage thresholds.
+	DefaultCoverageMode = "enforce"
 	// DefaultUpdateTimeout bounds the compose script's pull and up on a
 	// host: generous, an image pull can be slow.
 	DefaultUpdateTimeout = "15m"
@@ -161,6 +163,9 @@ func (p *Pipeline) applyDefaults() {
 				img.ComputedArgs[name] = arg
 			}
 		}
+	}
+	if p.Dotnet.Coverage.Mode == "" {
+		p.Dotnet.Coverage.Mode = DefaultCoverageMode
 	}
 	if p.Sync.Develop == "" {
 		p.Sync.Develop = DefaultSyncDevelop

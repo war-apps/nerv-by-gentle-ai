@@ -52,6 +52,13 @@ semantic-release-style commits) to a deployed release, end to end:
      dotnet:
        solution: Dim.Comprobantes.slnx
        runsettings: coverlet.runsettings
+       coverage:
+         mode: enforce            # or report (warn, never fail) or off
+         thresholds:              # optional: override the runsettings' ones
+           line: 89
+           branch: 80
+           method: 92
+           stat: total
      images:
        - name: ghcr.io/dirm-s-a/dim.comprobantes.api
          dockerfile: docker/Dockerfile
@@ -67,6 +74,18 @@ semantic-release-style commits) to a deployed release, end to end:
        ssh:
          known_hosts: ~/.config/update-deploy/known_hosts
    ```
+
+   Decide the coverage gate from the start. coverlet's collector (the
+   `coverlet.collector` package dim's tests use) ignores the
+   runsettings' `<Threshold>`, so dim's CI has never enforced its
+   `100,80,100` (`total`); nerv does (`coverage.mode: enforce`, the
+   default). Measured on dim.comprobantes.api's develop (877595d,
+   2026-10-16): line 89.64%, branch 82.46%, method 92.88% — the
+   runsettings' thresholds would fail the test step. Pick them
+   deliberately: lower them in the runsettings (what dim does) or here
+   under `thresholds` (each key overrides the runsettings' one; the rest
+   keep theirs), or use `mode: report` to see the numbers in every run
+   without failing it while the tests catch up. `off` evaluates nothing.
 
    Without `branches`, nerv uses its own defaults, modelled on dim's but
    not the same: `main`, `develop` (alpha), `release/*` (rc on the beta
@@ -195,9 +214,25 @@ working tree at the commit you release.
 the `coverlet.collector` package dim uses) writes the reports but ignores
 `<Threshold>` in the runsettings: verified with coverlet.collector 6.0.4, a
 project at 50% line coverage against `100,80,100` passes `dotnet test`
-with exit 0. So after `dotnet test` succeeds, `nerv pipeline test` enforces
-the thresholds itself, with coverlet's own semantics (verified by calling
-coverlet.core 6.0.4 directly):
+with exit 0, which is why dim's CI does not enforce its thresholds. So after
+`dotnet test` succeeds, `nerv pipeline test` checks them itself, with
+coverlet's own semantics (verified by calling coverlet.core 6.0.4
+directly), as `pipeline.dotnet.coverage` says:
+
+- `mode: enforce` (default): a threshold missed, or no readable report,
+  fails the step; `report`: the same check, recorded and printed as a
+  `warning:` note, the step passes; `off`: no check (and no JSON report
+  requested).
+- `thresholds`: `line`, `branch`, `method` and `stat` override the
+  runsettings' values key by key; without a runsettings file they are the
+  only thresholds (stat `minimum` unless set, as coverlet).
+- The step's `--json` document and `test.json` hold `coverage`: the mode,
+  the stat, and per metric checked the measured value, the threshold, its
+  `source` (`runsettings` or `nerv.yaml`) and whether it is met;
+  `report_missing: true` when thresholds were set but no readable report
+  was found (nothing measured, `met: false`).
+
+The runsettings settings:
 
 | Setting (collector `Configuration`) | Meaning |
 |---|---|
@@ -680,9 +715,11 @@ The source column cites where each default comes from in dim's
 |---|---|---|
 | `solution` | required | The `.sln`/`.slnx` every dotnet command runs against. |
 | `configuration` | `Release` | Build configuration (ci-cd.yml: `--configuration Release`). |
-| `runsettings` | none | Passed to `dotnet test --settings`: the coverage collector settings; its `<Threshold>` is enforced by nerv (see [`nerv pipeline test`](#nerv-pipeline-test)). |
+| `runsettings` | none | Passed to `dotnet test --settings`: the coverage collector settings; its `<Threshold>` is checked by nerv as `coverage.mode` says (see [`nerv pipeline test`](#nerv-pipeline-test)). |
 | `warnings_as_errors` | `true` | Build with `-warnaserror` (ci-cd.yml, test job). |
 | `env` | none | Environment variables for every dotnet command; literal values, never secrets. |
+| `coverage.mode` | `enforce` | The coverage gate: `enforce` fails the test step below a threshold; `report` computes and records the coverage against the thresholds and warns, never fails; `off` evaluates nothing. |
+| `coverage.thresholds` | none | Overrides the runsettings' thresholds key by key: `line`, `branch`, `method` (percentages, 0 to 100; setting one selects it, as coverlet's `ThresholdType`) and `stat` (`minimum`, `total` or `average`, coverlet's `ThresholdStat`); an unset key keeps the runsettings' value. Refused with `mode: off`, with a value that is not a finite percentage (`.nan`, `.inf`), and without any metric (`stat` alone is only accepted with a `runsettings` file, as an override of its stat; it never adds a gate when the file has no threshold). |
 
 ### `pipeline.branches`
 

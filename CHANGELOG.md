@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- pipelineconfig: `pipeline.dotnet.coverage` configures the test step's coverage gate: `mode` `enforce` (the
+  default, as before), `report` (record and warn, never fail) or `off`, and optional `thresholds` (`line`,
+  `branch`, `method`, `stat`) overriding the runsettings' ones key by key; the step's `--json` document and
+  `test.json` record the mode, the thresholds with their source and the measured values.
 - pipeline: the Docker pipeline, a standalone copy of dim.comprobantes.api's CI/CD for repositories that deploy a
   Docker image, configured by the `pipeline:` section of the local `.nerv/nerv.yaml` (docs/pipeline.md, with a
   Getting started guide): `nerv pipeline validate`, `test`, `release`, `docker`, `sync` and `deploy`, each a

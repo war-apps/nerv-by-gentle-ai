@@ -57,6 +57,9 @@ Talk to the user in their language.
 
 4. **Present the plan.** Read the step records the dry run wrote under
    `.nerv/artifacts/pipeline/` and show, in one short summary:
+   - `test.json`: `coverage` — its `mode` and, per metric checked, the
+     measured value against the threshold and its `source`; in `report`
+     mode a threshold not met is a warning to mention, not a failure;
    - `release.json`: `published` (false: there is no new release, and the
      docker, sync and deploy steps have nothing to do), `version`,
      `channel`, `git_tag`, `branch`;
