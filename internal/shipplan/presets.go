@@ -34,10 +34,13 @@ func (b *builder) dotnet() error {
 		target = d.ProjectFile
 	}
 	version := "-p:Version=" + b.ctx.Version
-	b.add("restore", Step{Name: "dotnet:restore", Exec: []string{"dotnet", "restore", target}})
-	b.add("lint", Step{Name: "dotnet:lint", Exec: []string{"dotnet", "format", target, "--verify-no-changes"}})
-	b.add("build", Step{Name: "dotnet:build", Exec: []string{"dotnet", "build", target, "-c", cfg, "--no-restore", version}})
-	test := []string{"dotnet", "test", target, "-c", cfg, "--no-build"}
+	// Every dotnet command runs without build servers (DotnetBuildServerEnv);
+	// format takes the environment but not the flag.
+	noServers := func() shipconfig.Command { return shipconfig.Command{Env: DotnetBuildServerEnv()} }
+	b.add("restore", Step{Name: "dotnet:restore", Command: noServers(), Exec: []string{"dotnet", "restore", target, DisableBuildServers}})
+	b.add("lint", Step{Name: "dotnet:lint", Command: noServers(), Exec: []string{"dotnet", "format", target, "--verify-no-changes"}})
+	b.add("build", Step{Name: "dotnet:build", Command: noServers(), Exec: []string{"dotnet", "build", target, "-c", cfg, "--no-restore", DisableBuildServers, version}})
+	test := []string{"dotnet", "test", target, "-c", cfg, "--no-build", DisableBuildServers}
 	if threshold := d.CoverageThreshold; threshold > 0 {
 		dir := filepath.Join(b.artifacts, "coverage")
 		b.resetDirs = append(b.resetDirs, dir)
@@ -54,9 +57,9 @@ func (b *builder) dotnet() error {
 			},
 		})
 	}
-	b.add("test", Step{Name: "dotnet:test", Exec: test})
+	b.add("test", Step{Name: "dotnet:test", Command: noServers(), Exec: test})
 	if b.enabled("nuget") {
-		b.add("package", Step{Name: "dotnet:pack", Exec: []string{"dotnet", "pack", d.ProjectFile, "-c", cfg, "--no-build", version, "-o", b.packagesDir()}})
+		b.add("package", Step{Name: "dotnet:pack", Command: noServers(), Exec: []string{"dotnet", "pack", d.ProjectFile, "-c", cfg, "--no-build", DisableBuildServers, version, "-o", b.packagesDir()}})
 	}
 	return nil
 }

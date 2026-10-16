@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/war-apps/nerv-by-gentle-ai/internal/pipelineconfig"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/shipplan"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/shiprun"
 )
 
@@ -49,7 +50,7 @@ func TestValidate_RestoresThenChecksTheFormat(t *testing.T) {
 	cfg := config(func(p *pipelineconfig.Pipeline) { p.Dotnet.Env = map[string]string{"NUGET_PACKAGES": "/cache/nuget"} })
 	r := Steps{Repo: repo, Config: cfg, Run: f}.Validate(context.Background())
 	want := [][]string{
-		{"dotnet", "restore", "App.slnx"},
+		{"dotnet", "restore", "App.slnx", "--disable-build-servers"},
 		{"dotnet", "format", "App.slnx", "--verify-no-changes"},
 	}
 	if !slices.EqualFunc(f.argvs(), want, slices.Equal) {
@@ -89,13 +90,13 @@ func TestTest_Commands(t *testing.T) {
 		test  []string
 	}{
 		{"defaults: warnings as errors, no runsettings", nil,
-			[]string{"dotnet", "build", "App.slnx", "--configuration", "Release", "--no-restore", "-warnaserror"},
-			[]string{"dotnet", "test", "App.slnx", "--configuration", "Release", "--no-build", "--collect", "XPlat Code Coverage", "--logger", "trx;LogFileName=test-results.trx", "--results-directory", "RESULTS"}},
+			[]string{"dotnet", "build", "App.slnx", "--configuration", "Release", "--no-restore", "--disable-build-servers", "-warnaserror"},
+			[]string{"dotnet", "test", "App.slnx", "--configuration", "Release", "--no-build", "--disable-build-servers", "--collect", "XPlat Code Coverage", "--logger", "trx;LogFileName=test-results.trx", "--results-directory", "RESULTS"}},
 		{"warnings allowed, runsettings, Debug", func(p *pipelineconfig.Pipeline) {
 			p.Dotnet.WarningsAsErrors, p.Dotnet.Runsettings, p.Dotnet.Configuration = &no, "coverlet.runsettings", "Debug"
 		},
-			[]string{"dotnet", "build", "App.slnx", "--configuration", "Debug", "--no-restore"},
-			[]string{"dotnet", "test", "App.slnx", "--configuration", "Debug", "--no-build", "--collect", "XPlat Code Coverage", "--settings", "coverlet.runsettings", "--logger", "trx;LogFileName=test-results.trx", "--results-directory", "RESULTS"}},
+			[]string{"dotnet", "build", "App.slnx", "--configuration", "Debug", "--no-restore", "--disable-build-servers"},
+			[]string{"dotnet", "test", "App.slnx", "--configuration", "Debug", "--no-build", "--disable-build-servers", "--collect", "XPlat Code Coverage", "--settings", "coverlet.runsettings", "--logger", "trx;LogFileName=test-results.trx", "--results-directory", "RESULTS"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -112,7 +113,7 @@ func TestTest_Commands(t *testing.T) {
 					tt.test[i] = results
 				}
 			}
-			want := [][]string{{"dotnet", "restore", "App.slnx"}, tt.build, tt.test}
+			want := [][]string{{"dotnet", "restore", "App.slnx", "--disable-build-servers"}, tt.build, tt.test}
 			if !slices.EqualFunc(f.argvs(), want, slices.Equal) {
 				t.Errorf("argv\n %v\nwant\n %v", f.argvs(), want)
 			}
@@ -239,6 +240,34 @@ func TestTest_SymlinkedNervOrArtifactsOutsideAreRefusedBeforeCreatingAnything(t 
 			}
 			if entries, _ := os.ReadDir(outside); len(entries) != 0 {
 				t.Errorf("created outside the repository: %v", entries)
+			}
+		})
+	}
+}
+
+func TestDotnetCommands_NoBuildServers(t *testing.T) {
+	for _, name := range []string{"validate", "test"} {
+		t.Run(name, func(t *testing.T) {
+			f := &fakeSteps{}
+			cfg := config(func(p *pipelineconfig.Pipeline) { p.Dotnet.Env = map[string]string{"UseSharedCompilation": "true"} })
+			st := Steps{Repo: t.TempDir(), Config: cfg, Run: f}
+			if name == "validate" {
+				st.Validate(context.Background())
+			} else {
+				st.Test(context.Background())
+			}
+			for _, s := range f.steps {
+				env := s.Command.Env
+				if env["MSBUILDDISABLENODEREUSE"] != "1" || env["DOTNET_CLI_USE_MSBUILD_SERVER"] != "0" {
+					t.Errorf("%q: env %v lacks the no-build-server defaults", s.Exec, env)
+				}
+				if env["UseSharedCompilation"] != "true" {
+					t.Errorf("%q: pipeline.dotnet.env must win over the defaults, got %q", s.Exec, env["UseSharedCompilation"])
+				}
+				wantFlag := s.Exec[1] != "format"
+				if got := slices.Contains(s.Exec, shipplan.DisableBuildServers); got != wantFlag {
+					t.Errorf("%q: --disable-build-servers %v, want %v", s.Exec, got, wantFlag)
+				}
 			}
 		})
 	}

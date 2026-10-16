@@ -40,8 +40,14 @@ Each step reads the `pipeline:` section of your local `.nerv/nerv.yaml`
 `validate` and `test` run in your **working tree**, as CI runs on a
 checkout: they check the code as it is, uncommitted changes included. Every
 command runs without a shell, with `DOTNET_NOLOGO=true`,
-`DOTNET_CLI_TELEMETRY_OPTOUT=true` (dim's workflow environment) and then
-`pipeline.dotnet.env` over them; its output is streamed to stderr prefixed
+`DOTNET_CLI_TELEMETRY_OPTOUT=true` (dim's workflow environment),
+`MSBUILDDISABLENODEREUSE=1`, `UseSharedCompilation=false` and
+`DOTNET_CLI_USE_MSBUILD_SERVER=0`, and then `pipeline.dotnet.env` over
+them, so a variable the repository sets there wins. Those last three, and
+`--disable-build-servers` on restore, build and test (`dotnet format`
+rejects the flag), keep dotnet from reusing MSBuild nodes and compiler
+servers, which on shared hosts makes it die midway ("Internal CLR error
+(0x80131506)"). Its output is streamed to stderr prefixed
 `[pipeline:<step>] `. A step stops at the first failing command and names
 it. Ctrl-C stops the command and every process it started.
 
@@ -49,18 +55,19 @@ it. Ctrl-C stops the command and every process it started.
 
 dim's validate job:
 
-1. `dotnet restore <solution>`
+1. `dotnet restore <solution> --disable-build-servers`
 2. `dotnet format <solution> --verify-no-changes`
 
 ### `nerv pipeline test`
 
 dim's test job:
 
-1. `dotnet restore <solution>`
-2. `dotnet build <solution> --configuration <configuration> --no-restore`,
+1. `dotnet restore <solution> --disable-build-servers`
+2. `dotnet build <solution> --configuration <configuration> --no-restore
+   --disable-build-servers`,
    plus `-warnaserror` unless `warnings_as_errors: false`
 3. `dotnet test <solution> --configuration <configuration> --no-build
-   --collect "XPlat Code Coverage"` (with `;Format=...,json` when a
+   --disable-build-servers --collect "XPlat Code Coverage"` (with `;Format=...,json` when a
    threshold is checked, see below), plus `--settings <runsettings>` when
    set, `--logger "trx;LogFileName=test-results.trx"` and
    `--results-directory <repo>/.nerv/artifacts/pipeline/test`

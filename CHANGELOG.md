@@ -32,6 +32,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - orchestrator: agent launch labels and deliberation log `launch` lines show the role's model, as
   `({model}) {Display name}: {action}` (e.g. `(sonnet) Shinji Ikari: Retrying dotnet format verification`).
 
+### Fixed
+- dotnet: every dotnet command nerv runs (the `dotnet` ship preset and `nerv pipeline validate`/`test`) runs
+  without build servers: `MSBUILDDISABLENODEREUSE=1`, `UseSharedCompilation=false`,
+  `DOTNET_CLI_USE_MSBUILD_SERVER=0`, and `--disable-build-servers` on restore, build, test and pack (not on
+  `dotnet format`, which rejects it). On shared hosts reused servers made dotnet die mid-release with "Internal
+  CLR error (0x80131506)". `pipeline.dotnet.env` still wins; stage overrides' `run:` are not rewritten, so
+  repositories that overrode every stage for this can drop those overrides.
+
 ## [4.1.1] - 2026-10-15
 
 ### Changed
