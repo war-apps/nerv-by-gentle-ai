@@ -551,3 +551,30 @@ func TestNewWorkspace_InvalidLocalConfigurationStopsBeforeCloning(t *testing.T) 
 		t.Errorf("cloned despite an invalid configuration")
 	}
 }
+
+func TestWorkspace_CheckoutTag(t *testing.T) {
+	root := t.TempDir()
+	f := workspaceRunner(t, root, "https://github.com/acme/w.git", "abc", nil)
+	base := f.handle
+	f.handle = func(c Command) (Result, error) {
+		if isGit(c, "rev-parse", "--verify", "--quiet") && strings.HasPrefix(c.Args[len(c.Args)-1], "refs/tags/") {
+			if c.Args[len(c.Args)-1] == "refs/tags/v1.1.0^{commit}" {
+				return Result{Stdout: []byte("def\n")}, nil
+			}
+			return Result{}, errors.New("exit status 1")
+		}
+		return base(c)
+	}
+	ws := openWorkspace(t, f, root)
+	commit, err := ws.CheckoutTag(context.Background(), "v1.1.0")
+	if err != nil || commit != "def" {
+		t.Fatalf("CheckoutTag = %q, %v", commit, err)
+	}
+	co := f.find(func(c Command) bool { return isGit(c, "checkout", "--quiet", "--detach") })
+	if len(co) != 1 || co[0].Args[len(co[0].Args)-1] != "def" {
+		t.Errorf("checkout %v", co)
+	}
+	if _, err := ws.CheckoutTag(context.Background(), "v9.9.9"); !errors.Is(err, ErrTagNotOnOrigin) {
+		t.Errorf("missing tag: err = %v", err)
+	}
+}
