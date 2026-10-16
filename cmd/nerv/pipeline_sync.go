@@ -152,7 +152,11 @@ func (s syncRun) run(ctx context.Context) (pipeline.SyncResult, string, error) {
 	if rel.DryRun && !s.dryRun {
 		return res, top, refuse("release.json comes from a dry run (%s was not released): run nerv pipeline release without --dry-run first, or nerv pipeline sync --dry-run", rel.Version)
 	}
-	if err := s.checkDocker(top, rel); err != nil {
+	// Sync nothing unless every earlier step passed for this release.
+	if err := pipeline.CheckSyncEvidence(top, rel); err != nil {
+		if errors.Is(err, pipeline.ErrNoSyncEvidence) {
+			return res, top, &refusal.Error{Err: err}
+		}
 		return res, top, err
 	}
 
@@ -200,25 +204,6 @@ func (s syncRun) run(ctx context.Context) (pipeline.SyncResult, string, error) {
 	out := sync.Run(ctx, targets)
 	out.Identity = ident
 	return out, top, nil
-}
-
-// checkDocker refuses when the docker step of this release failed, as dim
-// syncs only when docker did not fail. No docker.json (the step was skipped)
-// or one for another release does not stop the sync.
-func (s syncRun) checkDocker(top string, rel pipeline.ReleaseOutputs) error {
-	d, err := pipeline.ReadDockerResult(top)
-	switch {
-	case errors.Is(err, pipeline.ErrNoDockerResult):
-		return nil
-	case err != nil:
-		return err
-	case d.Version != rel.Version:
-		fmt.Fprintf(s.out, "nerv pipeline sync: %s is for %s, not %s: ignored\n", pipeline.DockerResultFile, d.Version, rel.Version)
-		return nil
-	case d.Status != pipeline.StatusPassed:
-		return refuse("the docker step failed for %s (%s status %s): fix it and run nerv pipeline docker again before syncing", rel.Version, pipeline.DockerResultFile, d.Status)
-	}
-	return nil
 }
 
 // confirm asks before pushing on an interactive terminal; --yes skips it,

@@ -35,7 +35,12 @@ type ReleaseOutputs struct {
 	GitTag string `json:"git_tag,omitempty"`
 	// GitHead is the released commit (the release commit when a plugin made
 	// one).
-	GitHead     string `json:"git_head,omitempty"`
+	GitHead string `json:"git_head,omitempty"`
+	// BaseCommit is the commit the release was made from: origin's branch
+	// head when the release clone was made (the parent of the release
+	// commit when one was made, GitHead itself otherwise). The test record
+	// must be for it before sync merges anything.
+	BaseCommit  string `json:"base_commit,omitempty"`
 	LastVersion string `json:"last_version,omitempty"`
 	// SemanticReleaseConfig is "repository" or "default" (built-in).
 	SemanticReleaseConfig string `json:"semantic_release_config,omitempty"`

@@ -168,6 +168,10 @@ func fillReleaseOutputs(doc *pipeline.ReleaseOutputs, s *shipRun, outcomes []shi
 	doc.Published = r.NewReleasePublished
 	if r.NewReleasePublished {
 		doc.Version, doc.Channel, doc.GitTag, doc.GitHead = r.NewReleaseVersion, r.NewReleaseChannel, r.NewReleaseGitTag, r.NewReleaseGitHead
+		// semantic-release ran on origin's head in the release clone.
+		if s.ws != nil {
+			doc.BaseCommit = s.ws.OriginHead()
+		}
 	}
 	doc.Outputs = map[string]string{}
 	for _, o := range r.Outputs() {

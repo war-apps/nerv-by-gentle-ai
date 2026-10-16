@@ -47,7 +47,9 @@ func newPipelineFixture(t *testing.T, yaml string) *pipelineFixture {
 		}
 	}
 	return &pipelineFixture{top: top, runner: &envtest.FakeRunner{Responses: map[string]envtest.Response{
-		"git -C . rev-parse --show-toplevel": {Stdout: top + "\n"},
+		"git -C . rev-parse --show-toplevel":                                                  {Stdout: top + "\n"},
+		"git -C " + top + " rev-parse --verify HEAD":                                          {Stdout: "c0ffee\n"},
+		"git -C " + top + " status --porcelain=v1 --untracked-files=all -- . :(exclude).nerv": {Stdout: ""},
 	}}}
 }
 
@@ -166,5 +168,85 @@ func TestPipeline_Interrupted(t *testing.T) {
 	_ = json.Unmarshal([]byte(stdout), &doc)
 	if code != 130 || doc.Status != "interrupted" || !strings.Contains(stderr, "interrupted") {
 		t.Errorf("exit %d, %+v, %s", code, doc, stderr)
+	}
+}
+
+func readTestRecord(t *testing.T, top string) ([]byte, pipeline.TestRecord, bool) {
+	t.Helper()
+	data, err := os.ReadFile(pipeline.TestRecordPath(top))
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, pipeline.TestRecord{}, false
+	}
+	var r pipeline.TestRecord
+	if err := json.Unmarshal(data, &r); err != nil {
+		t.Fatal(err)
+	}
+	return data, r, true
+}
+
+func TestPipeline_TestRecordsTheTestedCommit(t *testing.T) {
+	f := newPipelineFixture(t, pipelineYAML)
+	code, _, stderr := f.run(t, "test")
+	if code != 0 {
+		t.Fatalf("exit %d\n%s", code, stderr)
+	}
+	_, r, ok := readTestRecord(t, f.top)
+	if !ok || r.Step != "test" || r.Status != "passed" || r.Commit != "c0ffee" || r.Dirty || len(r.Changes) != 0 {
+		t.Errorf("test.json %+v %v", r, ok)
+	}
+}
+
+func TestPipeline_TestRecordsUncommittedChanges(t *testing.T) {
+	f := newPipelineFixture(t, pipelineYAML)
+	f.runner.Responses["git -C "+f.top+" status --porcelain=v1 --untracked-files=all -- . :(exclude).nerv"] = envtest.Response{Stdout: " M src/App.cs\n?? notes.txt\n"}
+	if code, _, stderr := f.run(t, "test"); code != 0 {
+		t.Fatalf("exit %d\n%s", code, stderr)
+	}
+	_, r, ok := readTestRecord(t, f.top)
+	if !ok || !r.Dirty || len(r.Changes) != 2 || r.Changes[0] != "src/App.cs" || r.Changes[1] != "notes.txt" {
+		t.Errorf("test.json %+v %v", r, ok)
+	}
+}
+
+func TestPipeline_FailedTestKeepsTheEarlierRecord(t *testing.T) {
+	for _, tt := range []struct {
+		name  string
+		setup func(*pipelineFixture)
+		code  int
+	}{
+		{"failing tests", func(f *pipelineFixture) {
+			f.fail = map[string]error{"dotnet test": &shiprun.StepError{ExitCode: 1, Reason: "exit code 1"}}
+		}, 2},
+		{"failing build", func(f *pipelineFixture) {
+			f.fail = map[string]error{"dotnet build": &shiprun.StepError{ExitCode: 1, Reason: "exit code 1"}}
+		}, 2},
+		{"no HEAD", func(f *pipelineFixture) {
+			f.runner.Responses["git -C "+f.top+" rev-parse --verify HEAD"] = envtest.Response{Stderr: "fatal: Needed a single revision", ExitCode: 128}
+		}, 2},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			f := newPipelineFixture(t, pipelineYAML)
+			if _, err := pipeline.WriteTestRecord(f.top, pipeline.TestRecord{Step: "test", Status: "passed", Commit: "older"}); err != nil {
+				t.Fatal(err)
+			}
+			before, _, _ := readTestRecord(t, f.top)
+			tt.setup(f)
+			if code, _, _ := f.run(t, "test"); code != tt.code {
+				t.Errorf("exit %d, want %d", code, tt.code)
+			}
+			if after, _, ok := readTestRecord(t, f.top); !ok || !bytes.Equal(after, before) {
+				t.Errorf("test.json changed by a failed run:\nbefore %s\nafter %s", before, after)
+			}
+		})
+	}
+}
+
+func TestPipeline_ValidateWritesNoTestRecord(t *testing.T) {
+	f := newPipelineFixture(t, pipelineYAML)
+	if code, _, _ := f.run(t, "validate"); code != 0 {
+		t.Fatal(code)
+	}
+	if _, _, ok := readTestRecord(t, f.top); ok {
+		t.Error("validate wrote test.json")
 	}
 }

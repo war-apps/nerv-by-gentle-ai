@@ -85,15 +85,34 @@ func newSyncFixture(t *testing.T, yaml string) *syncFixture {
 	return &syncFixture{top: top, ws: &fakeSyncWorkspace{origin: []string{"main", "develop", "release/a", "release/b"}}}
 }
 
+// release writes release.json and the passing records of the earlier
+// steps bound to it: test.json at the release's base commit and docker.json
+// for its version, tag and released commit.
 func (f *syncFixture) release(t *testing.T, o pipeline.ReleaseOutputs) {
 	t.Helper()
 	if _, err := pipeline.WriteReleaseOutputs(f.top, o); err != nil {
 		t.Fatal(err)
 	}
+	f.testRecord(t, pipeline.TestRecord{Step: "test", Status: "passed", Commit: o.BaseCommit})
+	f.docker(t, pipeline.DockerResult{Step: "docker", Status: "passed", DryRun: o.DryRun, Version: o.Version, GitTag: o.GitTag, Revision: o.GitHead, Images: []pipeline.ImageResult{}})
+}
+
+func (f *syncFixture) testRecord(t *testing.T, r pipeline.TestRecord) {
+	t.Helper()
+	if _, err := pipeline.WriteTestRecord(f.top, r); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func (f *syncFixture) docker(t *testing.T, d pipeline.DockerResult) {
+	t.Helper()
+	if _, err := pipeline.WriteDockerResult(f.top, d); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func mainRelease() pipeline.ReleaseOutputs {
-	return pipeline.ReleaseOutputs{Step: "release", Status: "passed", Published: true, Branch: "main", Version: "1.4.0", GitTag: "v1.4.0", GitHead: "c0ffee"}
+	return pipeline.ReleaseOutputs{Step: "release", Status: "passed", Published: true, Branch: "main", Version: "1.4.0", GitTag: "v1.4.0", GitHead: "c0ffee", BaseCommit: "base0"}
 }
 
 func (f *syncFixture) run(t *testing.T, args ...string) (int, string, string) {
@@ -248,46 +267,98 @@ func TestPipelineSync_DryRunPreviewsOnly(t *testing.T) {
 }
 
 func TestPipelineSync_Refusals(t *testing.T) {
-	for _, tt := range []struct {
+	rm := func(path func(string) string) func(*syncFixture) {
+		return func(f *syncFixture) { os.Remove(path(f.top)) }
+	}
+	tests := []struct {
 		name    string
 		yaml    string
 		release *pipeline.ReleaseOutputs
-		docker  *pipeline.DockerResult
 		args    []string
 		setup   func(*syncFixture)
 		code    int
 		want    string
 	}{
 		{name: "no section", yaml: "enabled: true\n", code: 1, want: "no pipeline: section"},
-		{name: "no release.json", yaml: pipelineSyncYAML, args: []string{"--yes"}, code: 1, want: "run nerv pipeline release first"},
-		{name: "failed release", yaml: pipelineSyncYAML, release: &pipeline.ReleaseOutputs{Step: "release", Status: "failed"}, args: []string{"--yes"}, code: 1, want: "did not pass"},
-		{name: "dry-run release", yaml: pipelineSyncYAML, release: func() *pipeline.ReleaseOutputs { o := mainRelease(); o.DryRun = true; return &o }(), args: []string{"--yes"}, code: 1, want: "dry run"},
-		{name: "docker failed", yaml: pipelineSyncYAML, release: ptr(mainRelease()), docker: &pipeline.DockerResult{Step: "docker", Status: "failed", Version: "1.4.0"}, args: []string{"--yes"}, code: 1, want: "docker step failed"},
-		{name: "no terminal", yaml: pipelineSyncYAML, release: ptr(mainRelease()), code: 1, want: "pass --yes"},
-		{name: "declined", yaml: pipelineSyncYAML, release: ptr(mainRelease()), setup: func(f *syncFixture) { f.terminal, f.stdin = true, "n\n" }, code: 1, want: "cancelled"},
-		{name: "push denied", yaml: pipelineSyncYAML, release: ptr(mainRelease()), args: []string{"--yes"}, setup: func(f *syncFixture) { f.ws.pushErr = semrel.ErrPushDenied }, code: 2, want: "cannot push"},
-	} {
+		{name: "no release.json", args: []string{"--yes"}, code: 1, want: "run nerv pipeline release first"},
+		{name: "failed release", release: &pipeline.ReleaseOutputs{Step: "release", Status: "failed"}, args: []string{"--yes"}, code: 1, want: "did not pass"},
+		{name: "dry-run release", release: func() *pipeline.ReleaseOutputs { o := mainRelease(); o.DryRun = true; return &o }(), args: []string{"--yes"}, code: 1, want: "dry run"},
+		{name: "release without base commit", release: func() *pipeline.ReleaseOutputs { o := mainRelease(); o.BaseCommit = ""; return &o }(), args: []string{"--yes"}, code: 1, want: "base_commit"},
+
+		{name: "no test record", setup: rm(pipeline.TestRecordPath), code: 1, want: "test: no test record"},
+		{name: "no test record in a dry run", args: []string{"--dry-run"}, setup: rm(pipeline.TestRecordPath), code: 1, want: "test: no test record"},
+		{name: "failed test record", setup: func(f *syncFixture) {
+			f.testRecord(t, pipeline.TestRecord{Step: "test", Status: "failed", Commit: "base0"})
+		}, code: 1, want: "test: the test record did not pass"},
+		{name: "tested uncommitted changes", setup: func(f *syncFixture) {
+			f.testRecord(t, pipeline.TestRecord{Step: "test", Status: "passed", Commit: "base0", Dirty: true, Changes: []string{"src/App.cs"}})
+		}, code: 1, want: "test: tested uncommitted changes (src/App.cs)"},
+		{name: "stale test record", setup: func(f *syncFixture) {
+			f.testRecord(t, pipeline.TestRecord{Step: "test", Status: "passed", Commit: "older0"})
+		}, code: 1, want: "test: the test record is for commit older0, but the release was made from base0"},
+
+		{name: "no docker.json", setup: rm(pipeline.DockerResultPath), code: 1, want: "docker: no docker.json"},
+		{name: "failed docker", setup: func(f *syncFixture) {
+			f.docker(t, pipeline.DockerResult{Step: "docker", Status: "failed", Version: "1.4.0", GitTag: "v1.4.0", Revision: "c0ffee"})
+		}, code: 1, want: "docker: docker.json did not pass"},
+		{name: "docker.json of another version", setup: func(f *syncFixture) {
+			f.docker(t, pipeline.DockerResult{Step: "docker", Status: "passed", Version: "1.3.0", GitTag: "v1.3.0", Revision: "0ld"})
+		}, code: 1, want: "docker: docker.json is for 1.3.0 (v1.3.0, 0ld), not this release 1.4.0 (v1.4.0, c0ffee)"},
+		{name: "docker.json of another commit", setup: func(f *syncFixture) {
+			f.docker(t, pipeline.DockerResult{Step: "docker", Status: "passed", Version: "1.4.0", GitTag: "v1.4.0", Revision: "other"})
+		}, code: 1, want: "docker: docker.json is for 1.4.0 (v1.4.0, other)"},
+		{name: "dry-run docker.json for a real release", setup: func(f *syncFixture) {
+			f.docker(t, pipeline.DockerResult{Step: "docker", Status: "passed", DryRun: true, Version: "1.4.0", GitTag: "v1.4.0", Revision: "c0ffee"})
+		}, code: 1, want: "docker: docker.json comes from a dry run"},
+
+		{name: "no terminal", code: 1, want: "pass --yes"},
+		{name: "declined", setup: func(f *syncFixture) { f.terminal, f.stdin = true, "n\n" }, code: 1, want: "cancelled"},
+		{name: "push denied", args: []string{"--yes"}, setup: func(f *syncFixture) { f.ws.pushErr = semrel.ErrPushDenied }, code: 2, want: "cannot push"},
+	}
+	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			f := newSyncFixture(t, tt.yaml)
-			if tt.release != nil {
-				f.release(t, *tt.release)
+			yaml := tt.yaml
+			if yaml == "" {
+				yaml = pipelineSyncYAML
 			}
-			if tt.docker != nil {
-				if _, err := pipeline.WriteDockerResult(f.top, *tt.docker); err != nil {
-					t.Fatal(err)
-				}
+			f := newSyncFixture(t, yaml)
+			switch {
+			case tt.release != nil:
+				f.release(t, *tt.release)
+			case tt.name != "no section" && tt.name != "no release.json":
+				f.release(t, mainRelease())
 			}
 			if tt.setup != nil {
 				tt.setup(f)
 			}
-			code, _, stderr := f.run(t, tt.args...)
+			args := tt.args
+			if args == nil {
+				args = []string{"--yes"}
+				if tt.name == "no terminal" || tt.name == "declined" {
+					args = nil
+				}
+			}
+			code, _, stderr := f.run(t, args...)
 			if code != tt.code || !strings.Contains(stderr, tt.want) {
 				t.Errorf("exit %d (want %d), stderr:\n%s", code, tt.code, stderr)
 			}
 			if len(f.ws.merges) != 0 || len(f.ws.pushes) != 0 {
 				t.Errorf("merges %q pushes %q", f.ws.merges, f.ws.pushes)
 			}
+			if evidence := strings.HasPrefix(tt.want, "test:") || strings.HasPrefix(tt.want, "docker:"); evidence && f.ws.opened != nil {
+				t.Error("the clone was opened before the evidence was checked")
+			}
 		})
+	}
+}
+
+func TestPipelineSync_DryRunReleaseChainPreviews(t *testing.T) {
+	f := newSyncFixture(t, pipelineSyncYAML)
+	o := mainRelease()
+	o.DryRun, o.GitHead = true, "base0"
+	f.release(t, o)
+	if code, _, stderr := f.run(t, "--dry-run"); code != 0 || len(f.ws.previews) != 3 {
+		t.Errorf("exit %d previews %q\n%s", code, f.ws.previews, stderr)
 	}
 }
 
@@ -303,17 +374,6 @@ func TestPipelineSync_ConfirmedOnATerminal(t *testing.T) {
 		if !strings.Contains(stderr, want) {
 			t.Errorf("stderr lacks %q:\n%s", want, stderr)
 		}
-	}
-}
-
-func TestPipelineSync_DockerSkippedOrForAnotherReleaseProceeds(t *testing.T) {
-	f := newSyncFixture(t, pipelineSyncYAML)
-	f.release(t, mainRelease())
-	if _, err := pipeline.WriteDockerResult(f.top, pipeline.DockerResult{Step: "docker", Status: "failed", Version: "1.3.0"}); err != nil {
-		t.Fatal(err)
-	}
-	if code, _, stderr := f.run(t, "--yes"); code != 0 || len(f.ws.pushes) != 3 {
-		t.Errorf("exit %d pushes %q\n%s", code, f.ws.pushes, stderr)
 	}
 }
 

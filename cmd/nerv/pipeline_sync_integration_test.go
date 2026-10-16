@@ -47,9 +47,19 @@ func TestIntegration_PipelineSyncMergesBackAfterAMainRelease(t *testing.T) {
 	work.git("tag", "v1.1.0")
 	work.git("push", "-q", "origin", "main", "develop", "release/a", "release/b", "--tags")
 	head := origin.git("rev-parse", "main")
+	base := origin.git("rev-parse", "main^")
 	work.write(".nerv/nerv.yaml", "pipeline:\n  dotnet:\n    solution: App.slnx\n  images:\n    - name: ghcr.io/acme/app\n")
+	// The earlier steps' records, as the release, test and docker steps
+	// write them: test at the commit the release was made from, docker for
+	// the release's tag and commit.
 	if _, err := pipeline.WriteReleaseOutputs(work.dir, pipeline.ReleaseOutputs{Step: "release", Status: "passed", Published: true,
-		Branch: "main", Version: "1.1.0", GitTag: "v1.1.0", GitHead: head}); err != nil {
+		Branch: "main", Version: "1.1.0", GitTag: "v1.1.0", GitHead: head, BaseCommit: base}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pipeline.WriteTestRecord(work.dir, pipeline.TestRecord{Step: "test", Status: "passed", Commit: base}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pipeline.WriteDockerResult(work.dir, pipeline.DockerResult{Step: "docker", Status: "passed", Version: "1.1.0", GitTag: "v1.1.0", Revision: head, Images: []pipeline.ImageResult{}}); err != nil {
 		t.Fatal(err)
 	}
 	refs := func() string { return origin.git("for-each-ref", "--format=%(refname) %(objectname)") }

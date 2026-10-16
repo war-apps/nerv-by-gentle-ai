@@ -184,10 +184,15 @@ func runPipelineStep(ctx context.Context, step, cwd string, stderr io.Writer, op
 	}
 	steps := pipeline.Steps{Repo: top, Config: cfg, Run: newSteps(top, stderr)}
 	fmt.Fprintf(stderr, "nerv pipeline %s: in the working tree %s\n", step, top)
+	var record pipeline.TestRecord
 	switch step {
 	case "validate":
 		res = steps.Validate(ctx)
 	case "test":
+		if record, err = testedState(ctx, opts, top); err != nil {
+			res.Status, res.Error = pipeline.StatusFailed, err.Error()
+			break
+		}
 		res = steps.Test(ctx)
 	}
 
@@ -195,7 +200,50 @@ func runPipelineStep(ctx context.Context, step, cwd string, stderr io.Writer, op
 		fmt.Fprintf(stderr, "nerv pipeline %s: %s\n", step, res.Error)
 		return res, 2
 	}
+	if step == "test" {
+		// Only a passing run writes test.json; a failure leaves an earlier
+		// one as it was.
+		record.Step, record.Status = "test", pipeline.StatusPassed
+		path, err := pipeline.WriteTestRecord(top, record)
+		if err != nil {
+			res.Status, res.Error = pipeline.StatusFailed, "writing "+pipeline.TestRecordFile+": "+err.Error()
+			fmt.Fprintf(stderr, "nerv pipeline %s: %s\n", step, res.Error)
+			return res, 2
+		}
+		if record.Dirty {
+			fmt.Fprintf(stderr, "nerv pipeline %s: tested uncommitted changes (%s): sync accepts only a test of a clean tree\n", step, strings.Join(record.Changes, ", "))
+		}
+		fmt.Fprintf(stderr, "nerv pipeline %s: tested %s, record in %s\n", step, short(record.Commit), path)
+	}
 	return res, 0
+}
+
+// testedState reads what the test step tests, before it runs: the working
+// tree's HEAD and its changes outside .nerv/ (where the local nerv.yaml
+// and the artifacts live), tracked or untracked, ignored files excluded.
+func testedState(ctx context.Context, opts options, top string) (pipeline.TestRecord, error) {
+	var r pipeline.TestRecord
+	out, errOut, code, err := opts.Runner.Run(ctx, "git", "-C", top, "rev-parse", "--verify", "HEAD")
+	if err == nil && code != 0 {
+		err = fmt.Errorf("exit code %d: %s", code, strings.TrimSpace(errOut))
+	}
+	if r.Commit = strings.TrimSpace(out); err != nil || r.Commit == "" {
+		return r, fmt.Errorf("reading the tested commit (git rev-parse HEAD): %v", err)
+	}
+	out, errOut, code, err = opts.Runner.Run(ctx, "git", "-C", top, "status", "--porcelain=v1", "--untracked-files=all", "--", ".", ":(exclude).nerv")
+	if err == nil && code != 0 {
+		err = fmt.Errorf("exit code %d: %s", code, strings.TrimSpace(errOut))
+	}
+	if err != nil {
+		return r, fmt.Errorf("reading the working tree's changes (git status): %v", err)
+	}
+	for _, line := range strings.Split(out, "\n") {
+		if len(line) > 3 {
+			r.Changes = append(r.Changes, strings.TrimSpace(line[3:]))
+		}
+	}
+	r.Dirty = len(r.Changes) > 0
+	return r, nil
 }
 
 func pipelineUsageError(stderr io.Writer, problem string) int {
