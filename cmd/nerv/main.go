@@ -122,6 +122,9 @@ type options struct {
 	// inject fakes. Nil means proc.ExecRunner and a real wait.
 	DeployProc  proc.Runner
 	DeploySleep func(context.Context, time.Duration) error
+	// PipelineStep runs one step for nerv pipeline run; tests inject a
+	// fake. Nil means the step's own command (runPipeline).
+	PipelineStep func(step string, args []string, stdout, stderr io.Writer, opts options) int
 }
 
 func defaultOptions() options {

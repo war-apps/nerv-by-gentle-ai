@@ -314,6 +314,11 @@ example YAML, and how to configure per-role models and effort (wizard,
   semantic version of a repo or of each monorepo project), `nerv ship` /
   `/nerv:ship` (a local release of what is on origin) and the `release:`
   section, which `/nerv:release-setup` writes interactively.
+- [docs/pipeline.md](docs/pipeline.md) — the Docker pipeline for your own
+  repositories, a standalone copy of dim.comprobantes.api's CI/CD:
+  `nerv pipeline validate|test|release|docker|sync|deploy`, `nerv pipeline
+  run` and `/nerv:pipeline`, configured by the `pipeline:` section (Getting
+  started guide included).
 - [docs/troubleshooting.md](docs/troubleshooting.md) — known limitations
   and troubleshooting.
 

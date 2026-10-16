@@ -67,7 +67,7 @@ configurable with the data it needs; deploy option (Docker only for now).
 - [x] P5 — `docker` step (tags, computed build args, login, push, retry).
 - [x] P6 — `sync` step.
 - [x] P7 — `deploy` step (env or Infisical; SSH; health and version check).
-- [ ] P8 — `nerv pipeline run`, `/nerv:pipeline`, guide, CHANGELOG.
+- [x] P8 — `nerv pipeline run`, `/nerv:pipeline`, guide, CHANGELOG.
 
 ## Acceptance criteria
 
@@ -99,6 +99,8 @@ per task, merged into develop in order).
 - PR #110 (P5): `feat/pipeline-docker` → develop. Merged b2ea4b9.
 - PR #111 (side request, dotnet runs without build servers — the T2 CLR 0x80131506 workaround built in): merged 42e90c7.
 - PR #112 (P6): `feat/pipeline-sync` → develop. Merged 832c414.
+- PR #113 (P7): `feat/pipeline-deploy` → develop. Merged 0ec381b.
+- P8 branch `feat/pipeline-run` from 0ec381b.
 - P7 branch `feat/pipeline-deploy` from 832c414.
 - P6 branch `feat/pipeline-sync` from 42e90c7.
 - P5 branch `feat/pipeline-docker` from 65caeff.
@@ -956,6 +958,77 @@ All three P5 review advisories fixed (user authorized). Route: delegated
 | Dead `res.Reason` reset in `Runner.Run` | Removed (`Deploy` returns a fresh result). | Run tests green. |
 | Reliability: vacuous ssh-env assertion | The deploy data and `GHCR_TOKEN`/`GHCR_USER` are set in the process environment (`t.Setenv`); ssh's environment must lack them, keep `PATH` and `NERV_DEPLOYMENT`, and hold `SSHPASS` exactly once. | RED by temporarily building ssh's environment from `os.Environ()` unfiltered: the test reported every `NERV_DEPLOY_*` (incl. `..._DOCKER_SSH_PASS`). GREEN with `SafeEnv` restored. |
 
+### P8
+
+- Route: delegated (one bounded writer; trigger: new CLI step, plugin
+  command, guide and docs across several files).
+- `nerv pipeline run [--cwd] [--dry-run] [--yes] [--expect
+  <project>=<version>...] [--from <step> | --only <step>] [--json]`
+  (`cmd/nerv/pipeline_run.go`): every step in dim's order through its own
+  command (`runPipeline(<step> --cwd <top> --json ...)`), so each step's
+  records, gates and confirmations apply unchanged; the step's JSON
+  document (its last stdout line) gives `status` and `error`; the first
+  non-zero exit stops the run, the later steps `not-run`, the run's exit
+  the failing step's; a step with nothing to do passes and the run goes
+  on. Pass-through: `--dry-run` to release, docker, sync, deploy (never
+  validate/test, which only check the working tree); `--yes` to release,
+  sync, deploy (docker asks nothing: its push follows the confirmed
+  release); `--expect` to release only. `run.json`
+  (`pipeline.RunResult`, `StepOutcome`) written at the end of every run
+  that got past the top level; `[pipeline:run]` lines between the steps'
+  own prefixed output. Seam `options.PipelineStep`.
+- Added beyond the spec: `--from` / `--only` (they fall out of the step
+  list; combined they are a usage error) and `--expect` (the slash command
+  binds the real run to the approved version, as `/nerv:ship` does).
+- `/nerv:pipeline` (`plugin/commands/pipeline.md`), structured as
+  `/nerv:ship`: accepted arguments only `--from` or `--only`; nerv
+  installed; always `nerv pipeline run --dry-run --json` first; stop on a
+  step that did not pass; present the plan from the records
+  (release.json, docker.json, sync.json, deploy.json); ask and wait for an
+  explicit yes naming version, images, merge-backs and environments;
+  approve-all-but-deploy runs release, docker and sync with `--only` one
+  at a time, never deploy; real run `nerv pipeline run --yes --json
+  --expect <project>=<version>`; report; never rerun after a failure.
+- Docs: docs/pipeline.md Getting started (install, the smallest
+  dim.comprobantes.api `pipeline:` section, check, credentials, rehearse,
+  run, the slash command) and `nerv pipeline run`; docs/commands.md
+  (`/nerv:pipeline` row and section, run); README docs list; CHANGELOG
+  lead entry covering P1-P8. The Getting started example is indented in
+  a list (not one of the checked doc blocks), so it was loaded once with
+  a throwaway test (exit 0) and that test removed.
+- RED: `go vet ./cmd/nerv/` (`undefined: pipeline.RunResult`) with the
+  run tests; then `TestPipelineRun_ExpectGoesToTheReleaseStep` exit 2
+  (`--expect` unknown). GREEN: order and per-step arguments, stop at the
+  first failure with its exit (test failed 2, release refused 1, docker
+  interrupted 130) and the rest not-run, dry-run pass-through, `--from`,
+  `--only`, usage errors, `--expect` to release only, and the real steps
+  (no `pipeline:` section: validate refused, exit 1, the rest not-run).
+- Checks: `go test -count=1 ./...` exit 0 (30 packages); `go test -tags
+  semrel_integration -run Integration -count=1 ./internal/semrel/
+  ./cmd/nerv/` exit 0; `go vet ./...`, `GOOS=windows go vet ./...`, `go
+  vet -tags semrel_integration ./...` exit 0; `gofmt -l .` empty.
+- Commits: `0836088` `feat(cli): add nerv pipeline run` (5 files, +452);
+  `4babc1a` `feat(cli): pass the approved versions from nerv pipeline run
+  to its release` (3 files, +32); `f969e56` `feat(plugin): add the
+  /nerv:pipeline command` (1 file, +106); `5226f6c` `docs(pipeline): add
+  the getting started guide and nerv pipeline run` (4 files, +138 -4).
+  Total `git diff --shortstat 0ec381b 5226f6c`: 10 files changed, 728
+  insertions(+), 4 deletions(-).
+
+### P8 review
+
+- Native review approved; three findings fixed (user authorized),
+  test-first.
+
+| Item | Fix | Evidence |
+|---|---|---|
+| The run stopped on the exit code only | A step passes only when it exits 0 and its document's status is in `pipeline.RunAccepted` (`passed`: every step reports it, also with nothing to do); otherwise the run stops (exit the step's, 2 when it exited 0). A missing document is `exited <code> without a result document`; a non-zero exit without an error `exited <code> with status <status>`. | RED: `TestPipelineRun_DocumentAndExitMustAgree`: exit 0 with `failed` or `refused` or no document ran on to deploy and passed; exit 2 without an error or document reported `docker: `. GREEN: all five stop at docker with the stated status, error and exit. Commit `41a4ef3` (3 files, +107 -9). |
+| Prove the dry-run chain with the real steps | No gate needed changing: `TestIntegration_PipelineRunDryRunGetsThroughEveryStep` (real git, local bare origin, semantic-release's real dry run with the built-in configuration; faked at the process boundary: dotnet for validate/test via `PipelineSteps`, docker via `DockerProc`, the deploy runner via `DeployProc`, asserted never called) passes every step for (a) a releasable repository (dry-run release 1.1.0, one image build and no push, sync develop `would-merge`, deploy production `would-deploy`) and (b) nothing to release (every later step nothing to do); a real `nerv pipeline sync` on the dry-run records still refuses (exit 1, "dry run"). 7.8s. | Its first run failed only on the fixture (develop created at main's commit, so `up-to-date`); develop now branches before the feature commit. Commit `84424d0` (1 file, +124). |
+| gitTopLevel failure and a stale run.json | Outside a git repository: exit 1 and the refused document on stdout, no step run (tested; it already behaved so). A stale run.json is removed when the run starts (`pipeline.RemoveRunResult`), chosen over writing a refused document because a failure after the start (a write error) would otherwise leave the previous result. | `TestPipelineRun_NotAGitRepository` (passed as written: characterization). RED: `TestPipelineRun_AStaleRunJSONIsRemovedAtTheStart`: the earlier run.json existed while the steps ran. GREEN. In `41a4ef3`. |
+
+- Docs/odd: docs/pipeline.md (the accepted status, the stale run.json, the dry-run chain) and this table, in the docs commit recording the fixes.
+
 ## Next step
 
-P8 (`nerv pipeline run`, `/nerv:pipeline`, guide).
+The feature is complete (acceptance criteria check on
+a copy of dim.comprobantes.api).

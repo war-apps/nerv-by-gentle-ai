@@ -8,6 +8,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- pipeline: the Docker pipeline, a standalone copy of dim.comprobantes.api's CI/CD for repositories that deploy a
+  Docker image, configured by the `pipeline:` section of the local `.nerv/nerv.yaml` (docs/pipeline.md, with a
+  Getting started guide): `nerv pipeline validate`, `test`, `release`, `docker`, `sync` and `deploy`, each a
+  command of its own with its records in `.nerv/artifacts/pipeline/`, and `nerv pipeline run`, which runs them in
+  that order (`--dry-run`, `--yes`, `--expect`, `--from`, `--only`), stops at the first step that does not pass
+  (the rest reported not-run, the exit the failing step's) and writes `run.json`. The `/nerv:pipeline` command
+  rehearses with a dry run, shows the plan and runs the real pipeline only after your explicit yes.
 - pipeline: `nerv pipeline deploy` runs dim's `/update-deploy` for the release just made: it reads each
   `pipeline.deploy` environment from `NERV_DEPLOY_<ENVIRONMENT>_<KEY>` variables or from Infisical (update-deploy's
   layout), deploys those whose `DOCKER_IMAGE_VERSION` points at the release (`selection: target`, the default) or
