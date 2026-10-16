@@ -651,6 +651,18 @@ All four P4 review advisories fixed (user authorized). Route: delegated
   deletions(-). Above the ~400-line heuristic: about 700 lines are tests
   and 90 docs.
 
+### P5 review
+
+- Native review of ee084dd..794e08b (medium, user granted): approved and
+  acknowledged. Advisory: R3-checkout-tag-error-collapse (WARNING: every
+  rev-parse failure becomes ErrTagNotOnOrigin, a refusal with exit 1, even
+  for timeouts or a broken clone), R3-empty-tag-selection (WARNING: an
+  image whose tag selection yields no tags builds without `-t`, pushes
+  nothing and is reported as pushed), R3-token-env-assertion-vacuous (docker
+  children inherit the environment, so the token from `token_env` is still in
+  their environment; the unit test only passes because the test process has
+  no such variable).
+
 ## Next step
 
 Review of P5; then P6 (`sync` step).
