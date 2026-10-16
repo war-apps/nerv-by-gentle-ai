@@ -7,8 +7,8 @@ image, plus the Docker deploy that dim runs with `/update-deploy`. Every step
 runs locally, one process per step, without GitHub Actions; any GitHub
 workflow in the repository is ignored.
 
-> **Status.** `nerv pipeline validate`, `test` and `release` are
-> available ([Running the steps](#running-the-steps)); `docker`, `sync`,
+> **Status.** `nerv pipeline validate`, `test`, `release` and `docker`
+> are available ([Running the steps](#running-the-steps)); `sync`,
 > `deploy` and `nerv pipeline run` come in later releases.
 
 | Step | What it does (dim's job) |
@@ -16,7 +16,7 @@ workflow in the repository is ignored.
 | `validate` | `dotnet restore` and `dotnet format --verify-no-changes` (validate) |
 | `test` | `dotnet build -warnaserror`, `dotnet test` with coverage and the runsettings, then the runsettings' coverage thresholds (test) |
 | `release` | semantic-release on origin's state: version files, release commit, tag, outputs (release) |
-| `docker` | build, tag and push every image (docker) |
+| `docker` | build, tag and push every image from the released commit (docker) |
 | `sync` | merge the released branch back into develop and main into `release/*` (sync-to-develop, sync-main-to-release) |
 | `deploy` | update the containers of each environment over SSH and verify them (`/update-deploy`) |
 
@@ -189,6 +189,54 @@ prints the exact content the file should hold on one stderr line, after
 not run the step again for that release: it would compute the next
 version. Every stderr line is prefixed
 `[pipeline:release] `, semantic-release's log included.
+
+### `nerv pipeline docker`
+
+```
+nerv pipeline docker [--cwd <dir>] [--dry-run] [--no-login] [--fetch-timeout <dur>] [--json]
+```
+
+dim's docker job, over `pipeline.images` in order:
+
+1. Read `.nerv/artifacts/pipeline/release.json` (from `nerv pipeline
+   release`): missing, or not `passed`, is a refusal (run the release step
+   first). `published: false` builds nothing (exit 0), as dim skips the
+   job. A dry-run `release.json` only allows `--dry-run`.
+2. Build from the released commit, not the working tree: a fresh clone of
+   origin (the same safe origin handling as `nerv ship`), checked out at
+   the release tag, which must point to the `git_head` of `release.json`.
+   After a dry-run release (no tag exists) the dry run builds origin's
+   branch head.
+3. Log in (`docker login <host> -u <user> --password-stdin`, the user from
+   `pipeline.registry.username_env`, the token from `token_env` given on
+   stdin only, never on a command line or printed). Both variables are
+   required; `--no-login` uses docker's own credentials for the host
+   instead. `--dry-run` never logs in.
+4. Per image:
+   - `build_args` with `${version}`, `${channel}` and `${tag}` replaced,
+     and each `computed_args` value: its command run in the clone
+     (bash, pwsh or node), its trimmed standard output;
+   - tags (selected by `tags`): the version always, the channel unless it
+     is empty or `default`, `latest` only on the main branch (the first
+     release branch of `pipeline.branches`): main `1.4.0` + `latest`,
+     develop `1.4.0-alpha.3` + `alpha`, `release/*` and `hotfix/*` the
+     version + `beta`;
+   - labels `org.opencontainers.image.title`, `.version`, `.revision`
+     (the released commit) and `.source` (origin's public address, when
+     known);
+   - `docker build --platform <platform> -f <dockerfile> --build-arg ...
+     --label ... -t <name>:<tag> ... <context>` in the clone (BuildKit,
+     the default builder of Docker Engine 23+, takes `--platform` without
+     buildx). When the image has computed arguments, a failed build is
+     retried once with them computed again (dim's broker retry);
+   - `docker push` of every tag (not in a dry run), the digest recorded.
+5. An image with `required: false` may fail without failing the step;
+   every image is tried, and the step fails when a required one failed.
+6. Write `.nerv/artifacts/pipeline/docker.json` (per image: name, tags,
+   refs, digest, status `built` / `pushed` / `failed`, attempts,
+   required, error) for the deploy step; an earlier one is removed at the
+   start. `--json` prints the same document. Every stderr line is
+   prefixed `[pipeline:docker] `.
 
 ### Result
 

@@ -37,6 +37,10 @@ Steps:
              tag, GitHub release; outputs in
              .nerv/artifacts/pipeline/release.json
 
+  docker     build, tag and push every pipeline.images entry from the
+             released commit (release.json), in a clone of origin at the
+             release tag; result in .nerv/artifacts/pipeline/docker.json
+
 validate and test run in your working tree, as CI runs on a checkout: they
 check the code as it is, uncommitted changes included. release releases
 what is on origin: your local branch must equal origin's.
@@ -53,6 +57,14 @@ release also takes:
   --expect <project>=<version>  Release only this approved version
   --fetch-timeout <dur>         Bound for each read of origin (default 60s)
 
+docker also takes:
+  --dry-run       Build the images only; never log in or push (required
+                  after a dry-run release)
+  --no-login      Use docker's own credentials for the registry instead of
+                  logging in with pipeline.registry's username_env and
+                  token_env (the token is given on stdin only)
+  --fetch-timeout <dur>  Bound for each read of origin (default 60s)
+
 Progress goes to stderr (each command's output prefixed
 "[pipeline:<step>] "), the result to stdout. Exit codes: 0 passed, 1
 refused (no or invalid pipeline: section, not a git repository), 2 a
@@ -61,7 +73,7 @@ interrupted.
 `
 
 // pipelineStepNames are the implemented steps, in pipeline order.
-var pipelineStepNames = []string{"validate", "test", "release"}
+var pipelineStepNames = []string{"validate", "test", "release", "docker"}
 
 // pipelineRefused is the status of a step that did not start.
 const pipelineRefused = "refused"
@@ -75,8 +87,11 @@ func runPipeline(args []string, stdout, stderr io.Writer, opts options) int {
 		return 0
 	}
 	step := args[0]
-	if step == "release" {
+	switch step {
+	case "release":
 		return runPipelineRelease(args[1:], stdout, stderr, opts)
+	case "docker":
+		return runPipelineDocker(args[1:], stdout, stderr, opts)
 	}
 	if !slices.Contains(pipelineStepNames, step) {
 		return pipelineUsageError(stderr, fmt.Sprintf("unknown step %q (want one of %s)", step, strings.Join(pipelineStepNames, ", ")))
