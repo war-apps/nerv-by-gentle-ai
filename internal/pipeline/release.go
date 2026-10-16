@@ -35,7 +35,12 @@ type ReleaseOutputs struct {
 	GitTag string `json:"git_tag,omitempty"`
 	// GitHead is the released commit (the release commit when a plugin made
 	// one).
-	GitHead     string `json:"git_head,omitempty"`
+	GitHead string `json:"git_head,omitempty"`
+	// BaseCommit is the commit the release was made from: origin's branch
+	// head when the release clone was made (the parent of the release
+	// commit when one was made, GitHead itself otherwise). The test record
+	// must be for it before sync merges anything.
+	BaseCommit  string `json:"base_commit,omitempty"`
 	LastVersion string `json:"last_version,omitempty"`
 	// SemanticReleaseConfig is "repository" or "default" (built-in).
 	SemanticReleaseConfig string `json:"semantic_release_config,omitempty"`
@@ -80,26 +85,33 @@ var ErrNoReleaseOutputs = errors.New("no release outputs")
 func ReadReleaseOutputs(repo string) (ReleaseOutputs, error) {
 	var o ReleaseOutputs
 	path := ReleaseOutputsPath(repo)
-	artifacts := filepath.Join(repo, ".nerv", "artifacts")
-	if err := checkAncestorInside(repo, artifacts); err != nil {
-		return o, err
-	}
-	if _, err := os.Lstat(artifacts); err == nil {
-		if err := checkRealInside(repo, artifacts, path); err != nil {
-			return o, err
-		}
-	}
-	data, err := os.ReadFile(path)
+	err := readArtifactJSON(repo, path, &o)
 	if errors.Is(err, os.ErrNotExist) {
 		return o, fmt.Errorf("%s: %w", path, ErrNoReleaseOutputs)
 	}
+	return o, err
+}
+
+// readArtifactJSON decodes path under the artifacts into v, after the
+// symlink checks; a missing file is an error wrapping os.ErrNotExist.
+func readArtifactJSON(repo, path string, v any) error {
+	artifacts := filepath.Join(repo, ".nerv", "artifacts")
+	if err := checkAncestorInside(repo, artifacts); err != nil {
+		return err
+	}
+	if _, err := os.Lstat(artifacts); err == nil {
+		if err := checkRealInside(repo, artifacts, path); err != nil {
+			return err
+		}
+	}
+	data, err := os.ReadFile(path)
 	if err != nil {
-		return o, err
+		return err
 	}
-	if err := json.Unmarshal(data, &o); err != nil {
-		return o, fmt.Errorf("%s: %w", path, err)
+	if err := json.Unmarshal(data, v); err != nil {
+		return fmt.Errorf("%s: %w", path, err)
 	}
-	return o, nil
+	return nil
 }
 
 // DockerResultFile is the docker step's result, for the deploy step.
@@ -115,9 +127,6 @@ func DockerResultPath(repo string) string {
 func WriteDockerResult(repo string, r DockerResult) (string, error) {
 	return writeArtifactJSON(repo, DockerResultPath(repo), r)
 }
-
-// RemoveDockerResult removes an earlier docker.json.
-func RemoveDockerResult(repo string) error { return removeArtifact(repo, DockerResultPath(repo)) }
 
 // writeArtifactJSON writes v as indented JSON to path under the artifacts,
 // atomically, after the symlink checks.

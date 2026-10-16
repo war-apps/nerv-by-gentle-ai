@@ -118,9 +118,8 @@ func (d dockerRun) run(ctx context.Context) (pipeline.DockerResult, string, erro
 	case err != nil:
 		return res, top, &refusal.Error{Err: err}
 	}
-	if err := pipeline.RemoveDockerResult(top); err != nil {
-		return res, top, err
-	}
+	// docker.json is never removed or rewritten by a run that does not
+	// pass: a failure or refusal leaves an earlier one as it is.
 	rel, err := pipeline.ReadReleaseOutputs(top)
 	switch {
 	case errors.Is(err, pipeline.ErrNoReleaseOutputs):

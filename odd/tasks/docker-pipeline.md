@@ -65,7 +65,7 @@ configurable with the data it needs; deploy option (Docker only for now).
 - [x] P3 — `validate` and `test` steps.
 - [x] P4 — `release` step (reuse the ship workspace and version guard).
 - [x] P5 — `docker` step (tags, computed build args, login, push, retry).
-- [ ] P6 — `sync` step.
+- [x] P6 — `sync` step.
 - [ ] P7 — `deploy` step (env or Infisical; SSH; health and version check).
 - [ ] P8 — `nerv pipeline run`, `/nerv:pipeline`, guide, CHANGELOG.
 
@@ -96,6 +96,9 @@ per task, merged into develop in order).
 - PR #107 (P3): `feat/pipeline-validate-test` → develop. Merged 33f14ac.
 - PR #108 (side request, launch labels show the model): merged 6220788.
 - PR #109 (P4): `feat/pipeline-release` → develop. Merged 65caeff.
+- PR #110 (P5): `feat/pipeline-docker` → develop. Merged b2ea4b9.
+- PR #111 (side request, dotnet runs without build servers — the T2 CLR 0x80131506 workaround built in): merged 42e90c7.
+- P6 branch `feat/pipeline-sync` from 42e90c7.
 - P5 branch `feat/pipeline-docker` from 65caeff.
 - P4 branch `feat/pipeline-release` from 6220788.
 - P3 branch `feat/pipeline-validate-test` from 87cf385.
@@ -687,6 +690,149 @@ All three P5 review advisories fixed (user authorized). Route: delegated
   +36 -1). Total `git diff --shortstat 2262fd7 7fa336f`: 8 files changed,
   148 insertions(+), 7 deletions(-).
 
+### P6
+
+- Route: delegated (one bounded writer; trigger: additive semrel helpers,
+  new step in internal/pipeline, CLI, docs).
+- `internal/semrel` (additive, `merge.go`; `Workspace` keeps the user's
+  top level): `UseCommitIdentity` (copies `user.name`/`user.email` as the
+  user's repository resolves them into the clone, returns `git var
+  GIT_COMMITTER_IDENT` without the timestamp), `Branches(pattern)`
+  (origin's branches via for-each-ref, filtered with `path.Match`),
+  `Merge` (checkout -B at origin's target, `merge --no-ff --no-edit -m`;
+  up to date via `merge-base --is-ancestor`; a conflict is detected by
+  MERGE_HEAD, its paths read, then `merge --abort`), `PreviewMerge`
+  (`merge-tree --write-tree --name-only`, exit 1 = conflict), `PushBranch`
+  (never forced); `ErrBranchNotOnOrigin`.
+- `internal/pipeline/sync.go`: `Sync.Targets` (main or a
+  `sync.release` match -> develop; main -> every origin `sync.release`
+  branch in name order, main/develop excluded; anything else -> nothing),
+  `Sync.Run` (per target pushed / up-to-date / conflict / failed, dry
+  run would-merge / would-conflict / up-to-date; continues after a
+  conflict or failure; failed at the end naming the branches, with the
+  manual-merge action), `sync.json` (`WriteSyncResult`,
+  `RemoveSyncResult`), `ReadDockerResult` (shared `readArtifactJSON` with
+  release.json).
+- `cmd/nerv/pipeline_sync.go`: `nerv pipeline sync [--cwd] [--dry-run]
+  [--yes] [--fetch-timeout] [--json]`; seam `OpenSyncWorkspace`. Flow:
+  section, stale sync.json removed, `sync.enabled: false` -> nothing (exit
+  0), release.json missing / not passed -> refusal, `published: false` ->
+  nothing, dry-run release.json -> only `--dry-run`, docker.json for the
+  same version not passed -> refusal, clone of origin's released branch,
+  targets (none -> nothing), identity printed, every merge listed, push
+  check and confirmation (real run only), merges.
+- Decisions: the commits use the user's identity, copied from the user's
+  repository (an `includeIf` for its path would not match the clone);
+  sync.json is written for every run that reached the merges or found
+  nothing to do, failed merges included, never for a refusal; a dry run
+  with predicted conflicts passes (exit 0), only a failed preview fails
+  it; a develop conflict is recorded like a release/* one and the
+  release branches still sync (dim's two jobs are independent);
+  docker.json for another version means the docker step did not run for
+  this release (ignored, noted).
+- Decision (user, 2026-10-16): a failed or refused `nerv pipeline docker`
+  never touches docker.json. Docker no longer removes an earlier one at its
+  start and still writes it only on success, so a run that does not pass
+  leaves the file byte-identical. Sync is unchanged: after a failed docker
+  run it reads whatever docker.json an earlier run left (another version
+  is ignored; an earlier success for the same version lets sync proceed),
+  so docker must be rerun until it passes before syncing (documented in
+  the docker and sync sections of docs/pipeline.md). RED:
+  `TestPipelineDocker_FailureOrRefusalKeepsTheEarlierDockerJSON` (build
+  failure exit 2, refusal without release.json exit 1, refusal with the
+  tag not on origin exit 1): docker.json was gone in all three. GREEN
+  after the change; `TestPipelineDocker_FailureLeavesNoDockerJSON` (which
+  asserted the delete) is replaced by it, and the unused
+  `RemoveDockerResult` is removed.
+- Decision (user, 2026-10-16): "if any part of the process fails (build,
+  test or docker), sync nothing". Sync now requires positive, current
+  evidence instead of only refusing a recorded failure:
+  - test: `nerv pipeline test` writes `test.json` only on success (HEAD
+    and the changes outside `.nerv/`, read before the commands; a failed
+    build/test or unreadable HEAD leaves an earlier record untouched).
+    Sync requires it passed, clean ("tested uncommitted changes"
+    otherwise; option 2a), at release.json's new `base_commit`.
+  - release: release.json passed (as before); `base_commit` =
+    `ws.OriginHead()` at release time, the commit semantic-release ran on
+    (git_head's parent after a release commit, git_head itself in a dry
+    run). Proven with real semantic-release in
+    `TestIntegration_PipelineReleaseRecordsItsBaseCommit`.
+  - docker: always required (option 1c: no disable switch, a pipeline has
+    at least one image); docker.json passed for release.json's version,
+    git_tag and git_head; another release's docker.json now refuses (the
+    "ignored with a note" path is gone); a dry-run docker.json only after
+    a dry-run release.
+  - Missing, failed, stale or mismatched records refuse (exit 1) naming
+    the step, before the clone is opened, `--dry-run` included; validate
+    is not required (the user named build, test and docker); a
+    release.json without `base_commit` refuses.
+  - RED: `go vet ./cmd/nerv/` (`undefined: pipeline.TestRecord`) with the
+    new tests: test record written/clean/dirty, kept on failing tests,
+    failing build and unreadable HEAD, validate writes none; release.json
+    `base_commit` (real and dry run); sync refusals for no / failed /
+    dirty / stale test record (also in a dry run), no / failed / other
+    version / other commit / dry-run docker.json, release without
+    `base_commit`; a dry-run release chain previews. GREEN: all.
+- RED: `go vet -tags semrel_integration ./internal/semrel/`
+  (`ws.UseCommitIdentity undefined`), `go vet ./internal/pipeline/`
+  (`undefined: Sync`), `go vet ./cmd/nerv/` with only the new test file
+  on the previous commit (`opts.OpenSyncWorkspace undefined`). GREEN:
+  all; unit tests for targets per released branch (main, release/a,
+  develop, hotfix/x, configured names), conflict abort-and-continue,
+  per-branch failures (missing target, rejected push keeps the commit),
+  dry run, interruption, artifacts; CLI tests for main/release flows,
+  nothing-to-sync cases, conflict exit 2, dry run, refusals (no section,
+  no release.json, failed release, dry-run release, failed docker, no
+  terminal, declined, push denied), confirmation, docker.json for another
+  version.
+- Integration (semrel_integration tag, real git, local bare origin):
+  `TestIntegration_WorkspaceMergesBranchesAndPushes` (0.49s) and
+  `TestIntegration_PipelineSyncMergesBackAfterAMainRelease` (0.78s): main
+  with a `chore(release): 1.1.0 [skip ci]` commit and tag, develop,
+  release/a and a conflicting release/b; `--dry-run` -> exit 0, origin
+  refs unchanged, would-merge / would-merge / would-conflict; `--yes` ->
+  exit 2, develop and release/a pushed with "chore(sync): merge main into
+  <branch> [skip ci]", author `Sync User <sync@example.com>` from the
+  repository's local config (GIT_* identity variables unset), two parents
+  including main's release commit, release/b untouched and reported
+  `conflict (CHANGELOG.md)`, main unchanged, sync.json written; a second
+  run -> up-to-date, up-to-date, conflict. The release itself is simulated
+  (commit, tag, release.json written by the test): semantic-release is
+  proven by P4.
+- Checks: `go test -count=1 ./...` exit 0 (29 packages); `go test -tags
+  semrel_integration -run Integration -count=1 ./internal/semrel/
+  ./cmd/nerv/` exit 0; `go vet ./...`, `GOOS=windows go vet ./...`, `go
+  vet -tags semrel_integration ./...` exit 0; `gofmt -l .` empty.
+- Commits: `50a1b63` `feat(semrel): merge and push origin's branches in a
+  release clone` (3 files, +307 -3); `ce7cadf` `feat(pipeline): merge the
+  released branch back as dim's sync jobs` (3 files, +487 -9); `8e5f7ac`
+  `feat(cli): add nerv pipeline sync` (5 files, +749 -1); `46c4d81`
+  `docs(pipeline): document nerv pipeline sync` (3 files, +67 -4). Total
+  `git diff --shortstat 587a256 46c4d81`: 14 files changed, 1610
+  insertions(+), 17 deletions(-). Above the ~400-line heuristic: about
+  830 lines are tests and 70 docs. Follow-up (docker.json kept on
+  failure): `22f329f` `fix(pipeline): keep docker.json when the docker
+  step fails` (4 files, +45 -33); `8bb7080` `docs(pipeline): say a failed
+  docker run leaves docker.json as it was` (3 files, +29 -11). Follow-up
+  (sync needs passing records): `b6570ab` `fix(pipeline): sync nothing
+  unless test, release and docker passed for the release` (10 files, +407
+  -55); `282c3a6` `docs(pipeline): document the records sync requires`
+  (4 files, +84 -18).
+
+### P6 review
+
+- Native review approved; three advisories fixed (user authorized),
+  test-first:
+
+| Item | Fix | Evidence |
+|---|---|---|
+| Interrupted sync left no sync.json | `Sync.Run` records the targets an interruption stopped as `not-run` (status `interrupted`, an action to rerun); the CLI writes sync.json for an interrupted run that reached the merges, still exiting 128 + signal. | RED: `TestPipelineSync_InterruptedAfterAPushRecordsWhatFinished` (cancel after the develop push): exit 130 but no sync.json. GREEN: sync.json `interrupted` with develop `pushed` (commit) and release/a, release/b `not-run`; nothing ran after the push. Commit `dd37cb7` (4 files, +56 -1). |
+| test.json paths parsed by slicing porcelain v1 | `git status --porcelain=v1 -z`; entries split on NUL, a rename/copy records its new and old path; no quoting. | RED: `TestPipeline_TestRecordsPathsExactly` (space, unicode, a rename, a name with quotes and " -> ") and the dirty-tree test: no changes recorded once the fixture answered with -z output. GREEN: exact paths. Commit `5166902` (2 files, +34 -8). |
+| Commit identity could be guessed | `UseCommitIdentity` resolves with the user's own environment in the user's repository (`Workspace.userEnv`, the environment as given), checks author and committer with `-c user.useConfigOnly=true var` (none configured wraps `ErrNoCommitIdentity`, a refusal before merging), then copies user.name/email; merges also run with `user.useConfigOnly`. | RED (semrel_integration, real git): global-only and includeIf identities already worked (the workspace environment was not isolated), but with none configured git guessed `Walter Rodriguez <wal1rod@...>` from the system account instead of failing. GREEN: `TestIntegration_CommitIdentityFromTheUsersConfiguration` (global only, includeIf gitdir for the repository, none -> ErrNoCommitIdentity), merge commit author and committer = the configured identity; CLI refusal case (exit 1, written with the fix). Commit `a0dfdd8` (5 files, +116 -16). |
+
+- Docs/odd: the docs/pipeline.md, CHANGELOG and feature-doc commit
+  recording these fixes.
+
 ## Next step
 
-Review of P5; then P6 (`sync` step).
+Review of P6; then P7 (`deploy` step).

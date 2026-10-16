@@ -7,8 +7,8 @@ image, plus the Docker deploy that dim runs with `/update-deploy`. Every step
 runs locally, one process per step, without GitHub Actions; any GitHub
 workflow in the repository is ignored.
 
-> **Status.** `nerv pipeline validate`, `test`, `release` and `docker`
-> are available ([Running the steps](#running-the-steps)); `sync`,
+> **Status.** `nerv pipeline validate`, `test`, `release`, `docker` and
+> `sync` are available ([Running the steps](#running-the-steps));
 > `deploy` and `nerv pipeline run` come in later releases.
 
 | Step | What it does (dim's job) |
@@ -82,6 +82,17 @@ repository); it holds `test-results.trx` and, per test project,
 threshold is checked), listed in the result as `coverage` and
 `coverage_json` (also after a failure, as dim uploads them always). `.nerv/artifacts/` gets a `.gitignore` of `*`, so nothing there is
 committed and the repository's own `.gitignore` is not touched.
+
+**Test record.** Before the commands run, the step reads what it tests:
+`HEAD` and the working tree's changes outside `.nerv/` (tracked or
+untracked, ignored files excluded; `.nerv/` holds the local `nerv.yaml`
+and the artifacts; the paths are recorded exactly, from `git status
+--porcelain=v1 -z`, a rename with both its new and old path). Only a passing run writes
+`.nerv/artifacts/pipeline/test.json` (`step`, `status`, `commit`, `dirty`,
+`changes`); a failing build or test, or an unreadable `HEAD`, leaves an
+earlier one exactly as it was. `nerv pipeline sync` requires it (see
+[`nerv pipeline sync`](#nerv-pipeline-sync)): run the test step on a clean
+working tree at the commit you release.
 
 **Coverage thresholds.** coverlet's **collector** (`XPlat Code Coverage`,
 the `coverlet.collector` package dim uses) writes the reports but ignores
@@ -179,10 +190,15 @@ success with `"published": false`.
 
 `release.json` (and `--json` on stdout) holds dim's release outputs
 (`set-release-outputs.sh`: published, version, channel, git tag) and
-semantic-release-action's 12 outputs:
+semantic-release-action's 12 outputs. `git_head` is the released commit
+(the release commit, which the tag points to, when the configuration makes
+one); `base_commit` is the commit the release was made from (origin's
+branch head when the release clone was made: `git_head`'s parent after a
+release commit, `git_head` itself in a dry run or without one), which
+`nerv pipeline sync` matches against the test record:
 
 ```json
-{"step":"release","status":"passed","dry_run":false,"published":true,"project":"api","branch":"develop","version":"1.1.0-alpha.1","channel":"alpha","git_tag":"v1.1.0-alpha.1","git_head":"5d0c...","last_version":"1.0.0","semantic_release_config":"default","version_files":["src/Api/Api.csproj"],"outputs":{"new_release_published":"true","new_release_version":"1.1.0-alpha.1","...":"..."}}
+{"step":"release","status":"passed","dry_run":false,"published":true,"project":"api","branch":"develop","version":"1.1.0-alpha.1","channel":"alpha","git_tag":"v1.1.0-alpha.1","git_head":"5d0c...","base_commit":"9a1f...","last_version":"1.0.0","semantic_release_config":"default","version_files":["src/Api/Api.csproj"],"outputs":{"new_release_published":"true","new_release_version":"1.1.0-alpha.1","...":"..."}}
 ```
 
 `status` is `passed`, `refused` (exit 1), `failed` (exit 2, with `error`
@@ -248,9 +264,87 @@ dim's docker job, over `pipeline.images` in order:
    every image is tried, and the step fails when a required one failed.
 6. Write `.nerv/artifacts/pipeline/docker.json` (per image: name, tags,
    refs, digest, status `built` / `pushed` / `failed`, attempts,
-   required, error) for the deploy step; an earlier one is removed at the
-   start. `--json` prints the same document. Every stderr line is
+   required, error) for the deploy and sync steps, only when the step
+   passes. A failed or refused run never touches `docker.json`: an
+   earlier one stays exactly as it was. `nerv pipeline sync` accepts only
+   a passing `docker.json` of the release it syncs (same version, tag and
+   commit), so after a failure rerun `nerv pipeline docker` until it
+   passes. `--json`
+   prints the same document. Every stderr line is
    prefixed `[pipeline:docker] `.
+
+### `nerv pipeline sync`
+
+```
+nerv pipeline sync [--cwd <dir>] [--dry-run] [--yes] [--fetch-timeout <dur>] [--json]
+```
+
+dim's sync-to-develop and sync-main-to-release jobs:
+
+1. Nothing to do (exit 0) when `pipeline.sync.enabled` is false, or when
+   `release.json` has `published: false` (dim syncs only after a
+   release). `release.json` missing or not `passed` is a refusal (run the
+   release step first); a dry-run `release.json` only allows `--dry-run`.
+   If any earlier part failed (build, test or docker), sync merges
+   nothing: it refuses (exit 1, before reading origin, `--dry-run`
+   included), naming the step and why, unless every record is a passing
+   one of this release:
+   - `test.json` passed, with no uncommitted changes, at `release.json`'s
+     `base_commit` ("tested uncommitted changes" or "the test record is for
+     commit X, but the release was made from Y" otherwise);
+   - `docker.json` passed for `release.json`'s version, `git_tag` and
+     `git_head` (another release's `docker.json` refuses; a dry-run one
+     only after a dry-run release).
+
+   The docker step is always part of the chain (a pipeline has at least
+   one image). Failed runs of test and docker leave their records as they
+   were, so an earlier success of this same release still counts: after a
+   failure, rerun the step until it passes before syncing. `validate` (the
+   format check) is not required. A `release.json` without `base_commit`
+   (written by an older nerv) refuses.
+2. In a fresh clone of origin (the same safe origin handling as `nerv
+   ship`: no credential on a command line or in an environment), the
+   targets depend on the released branch (`release.json`'s `branch`):
+   - the main branch (the first of `pipeline.branches`), or a branch
+     matching `pipeline.sync.release`: merged into `pipeline.sync.develop`;
+   - the main branch only: also merged into every origin branch matching
+     `pipeline.sync.release`, in name order;
+   - any other branch (develop, `hotfix/*`): nothing to sync.
+3. Each target: `git checkout -B <branch> origin/<branch>`, `git merge
+   --no-ff --no-edit origin/<source> -m "chore(sync): merge <source> into
+   <branch> [skip ci]"` (dim's message), `git push origin <branch>` (never
+   forced: a moved origin branch fails that target). Already merged:
+   `up-to-date`, nothing pushed. A conflict is aborted (`git merge
+   --abort`) and recorded with its paths; the other targets still run and
+   the step fails at the end (exit 2), naming the branches to merge by
+   hand.
+4. The merge commits are yours, not dim's release bot: the identity is
+   resolved in your repository with your environment, as git resolves it
+   there (its configuration, your global one and any `includeIf` for its
+   path; `GIT_COMMITTER_*` / `GIT_AUTHOR_*` win), `user.name` and
+   `user.email` are copied into the clone, and the identity is printed
+   before anything is merged. With no identity configured the step
+   refuses (exit 1) before merging: nerv never lets git guess one from the
+   system account (`user.useConfigOnly`). The
+   pushes use your own git credentials (ssh keys or a credential helper,
+   checked first with a dry-run push).
+5. It lists every merge and asks before pushing (`--yes` skips it, and is
+   required without a terminal). `--dry-run` previews instead: each target
+   `would-merge`, `would-conflict` (with the paths, from `git merge-tree`)
+   or `up-to-date`, merging and pushing nothing.
+6. Write `.nerv/artifacts/pipeline/sync.json` (source, version, identity,
+   and per target: branch, source, status `pushed` / `up-to-date` /
+   `conflict` / `failed` (dry run: `would-merge` / `would-conflict`), the
+   merge commit, the conflicting paths, the error); an earlier one is
+   removed at the start, and a refusal writes none. A run interrupted
+   during the merges (exit 128 + signal) still writes it, with status
+   `interrupted`: the targets that finished as they ended (a `pushed` one
+   is on origin) and the rest `not-run`; running the step again finds the
+   pushed ones `up-to-date`. `--json` prints the
+   same document. Every stderr line is prefixed `[pipeline:sync] `.
+
+dim.comprobantes.api's workflow commits as its release bot; with nerv the
+merge-backs carry your name, so they show who ran the sync.
 
 ### Result
 
@@ -420,7 +514,8 @@ The images also receive the labels `org.opencontainers.image.version`,
 After a release, the main branch and every branch matching `release` are
 merged `--no-ff` into `develop`, and main is merged into every branch
 matching `release` (a conflicting branch is aborted, the others continue,
-and the step fails at the end), with `[skip ci]` messages.
+and the step fails at the end), with `[skip ci]` messages; see
+[`nerv pipeline sync`](#nerv-pipeline-sync).
 
 | Field | Default | Meaning |
 |---|---|---|

@@ -260,25 +260,47 @@ func TestPipelineDocker_NoLoginUsesDockersOwnCredentials(t *testing.T) {
 	}
 }
 
-func TestPipelineDocker_FailureLeavesNoDockerJSON(t *testing.T) {
-	f := newDockerFixture(t, pipelineDockerYAML)
-	f.release(t, alphaRelease())
-	if _, err := pipeline.WriteDockerResult(f.top, pipeline.DockerResult{Step: "docker", Status: "passed"}); err != nil {
-		t.Fatal(err)
-	}
-	f.proc.fail = func(c proc.Command) error {
-		if c.Args[0] == "build" {
-			return errors.New("exit status 1")
-		}
-		return nil
-	}
-	code, stdout, _ := f.run(t, "--json")
-	var doc pipeline.DockerResult
-	_ = json.Unmarshal([]byte(stdout), &doc)
-	if code != 2 || doc.Status != "failed" || doc.Images[0].Status != "failed" {
-		t.Errorf("exit %d, %+v", code, doc)
-	}
-	if _, ok := readDockerJSON(t, f.top); ok {
-		t.Error("a stale docker.json survived a failed run")
+func TestPipelineDocker_FailureOrRefusalKeepsTheEarlierDockerJSON(t *testing.T) {
+	earlier := pipeline.DockerResult{Step: "docker", Status: "passed", Version: "1.4.0-alpha.2", Images: []pipeline.ImageResult{}}
+	for _, tt := range []struct {
+		name  string
+		setup func(*dockerFixture)
+		code  int
+	}{
+		{"build failure", func(f *dockerFixture) {
+			f.release(t, alphaRelease())
+			f.proc.fail = func(c proc.Command) error {
+				if c.Args[0] == "build" {
+					return errors.New("exit status 1")
+				}
+				return nil
+			}
+		}, 2},
+		{"refusal: no release.json", func(*dockerFixture) {}, 1},
+		{"refusal: tag not on origin", func(f *dockerFixture) {
+			o := alphaRelease()
+			o.GitTag = "v9.9.9"
+			f.release(t, o)
+		}, 1},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			f := newDockerFixture(t, pipelineDockerYAML)
+			if _, err := pipeline.WriteDockerResult(f.top, earlier); err != nil {
+				t.Fatal(err)
+			}
+			before, err := os.ReadFile(pipeline.DockerResultPath(f.top))
+			if err != nil {
+				t.Fatal(err)
+			}
+			tt.setup(f)
+			code, stdout, stderr := f.run(t, "--json")
+			if code != tt.code {
+				t.Errorf("exit %d, want %d\n%s\n%s", code, tt.code, stdout, stderr)
+			}
+			after, err := os.ReadFile(pipeline.DockerResultPath(f.top))
+			if err != nil || !bytes.Equal(after, before) {
+				t.Errorf("docker.json changed by a run that did not pass (%v):\nbefore %s\nafter %s", err, before, after)
+			}
+		})
 	}
 }

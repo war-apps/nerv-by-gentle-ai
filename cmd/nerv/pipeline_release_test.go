@@ -85,7 +85,7 @@ func TestPipelineRelease_ReleasesWithoutBuildingOrPublishing(t *testing.T) {
 	}
 	o, ok := readOutputs(t, f.top)
 	if !ok || o.Status != "passed" || !o.Published || o.Version != "1.1.0-alpha.1" || o.Channel != "alpha" || o.GitTag != "v1.1.0-alpha.1" ||
-		o.GitHead != "release-commit-repo" || o.DryRun || o.SemanticReleaseConfig != "default" || o.Outputs["new_release_version"] != "1.1.0-alpha.1" {
+		o.GitHead != "release-commit-repo" || o.BaseCommit != localHead || o.DryRun || o.SemanticReleaseConfig != "default" || o.Outputs["new_release_version"] != "1.1.0-alpha.1" {
 		t.Errorf("release.json %+v", o)
 	}
 	var doc pipeline.ReleaseOutputs
@@ -113,7 +113,7 @@ func TestPipelineRelease_DryRunComputesOnly(t *testing.T) {
 		t.Errorf("version file written in a dry run")
 	}
 	o, ok := readOutputs(t, f.top)
-	if !ok || !o.DryRun || !o.Published || o.Version != "1.1.0-alpha.1" || o.GitHead != localHead {
+	if !ok || !o.DryRun || !o.Published || o.Version != "1.1.0-alpha.1" || o.GitHead != localHead || o.BaseCommit != localHead {
 		t.Errorf("release.json %+v", o)
 	}
 	if !strings.Contains(stdout, "release: passed") || !strings.Contains(stdout, "dry run") {

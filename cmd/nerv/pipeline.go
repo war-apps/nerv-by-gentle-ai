@@ -41,6 +41,15 @@ Steps:
              released commit (release.json), in a clone of origin at the
              release tag; result in .nerv/artifacts/pipeline/docker.json
 
+  sync       merge the released branch back as dim's sync jobs: main or
+             a pipeline.sync.release branch into pipeline.sync.develop,
+             and main into every pipeline.sync.release branch on origin
+             (--no-ff, "chore(sync): merge <source> into <branch> [skip
+             ci]"), committed as you and pushed with your credentials; a
+             conflict is aborted, the other branches still sync, and the
+             step fails at the end; result in
+             .nerv/artifacts/pipeline/sync.json
+
 validate and test run in your working tree, as CI runs on a checkout: they
 check the code as it is, uncommitted changes included. release releases
 what is on origin: your local branch must equal origin's.
@@ -65,6 +74,13 @@ docker also takes:
                   token_env (the token is given on stdin only)
   --fetch-timeout <dur>  Bound for each read of origin (default 60s)
 
+sync also takes:
+  --dry-run       Preview the merges (conflicts included); never merge or
+                  push (required after a dry-run release)
+  --yes           Merge and push without asking (required without a
+                  terminal)
+  --fetch-timeout <dur>  Bound for each read of origin (default 60s)
+
 Progress goes to stderr (each command's output prefixed
 "[pipeline:<step>] "), the result to stdout. Exit codes: 0 passed, 1
 refused (no or invalid pipeline: section, not a git repository), 2 a
@@ -73,7 +89,7 @@ interrupted.
 `
 
 // pipelineStepNames are the implemented steps, in pipeline order.
-var pipelineStepNames = []string{"validate", "test", "release", "docker"}
+var pipelineStepNames = []string{"validate", "test", "release", "docker", "sync"}
 
 // pipelineRefused is the status of a step that did not start.
 const pipelineRefused = "refused"
@@ -92,6 +108,8 @@ func runPipeline(args []string, stdout, stderr io.Writer, opts options) int {
 		return runPipelineRelease(args[1:], stdout, stderr, opts)
 	case "docker":
 		return runPipelineDocker(args[1:], stdout, stderr, opts)
+	case "sync":
+		return runPipelineSync(args[1:], stdout, stderr, opts)
 	}
 	if !slices.Contains(pipelineStepNames, step) {
 		return pipelineUsageError(stderr, fmt.Sprintf("unknown step %q (want one of %s)", step, strings.Join(pipelineStepNames, ", ")))
@@ -166,10 +184,15 @@ func runPipelineStep(ctx context.Context, step, cwd string, stderr io.Writer, op
 	}
 	steps := pipeline.Steps{Repo: top, Config: cfg, Run: newSteps(top, stderr)}
 	fmt.Fprintf(stderr, "nerv pipeline %s: in the working tree %s\n", step, top)
+	var record pipeline.TestRecord
 	switch step {
 	case "validate":
 		res = steps.Validate(ctx)
 	case "test":
+		if record, err = testedState(ctx, opts, top); err != nil {
+			res.Status, res.Error = pipeline.StatusFailed, err.Error()
+			break
+		}
 		res = steps.Test(ctx)
 	}
 
@@ -177,7 +200,60 @@ func runPipelineStep(ctx context.Context, step, cwd string, stderr io.Writer, op
 		fmt.Fprintf(stderr, "nerv pipeline %s: %s\n", step, res.Error)
 		return res, 2
 	}
+	if step == "test" {
+		// Only a passing run writes test.json; a failure leaves an earlier
+		// one as it was.
+		record.Step, record.Status = "test", pipeline.StatusPassed
+		path, err := pipeline.WriteTestRecord(top, record)
+		if err != nil {
+			res.Status, res.Error = pipeline.StatusFailed, "writing "+pipeline.TestRecordFile+": "+err.Error()
+			fmt.Fprintf(stderr, "nerv pipeline %s: %s\n", step, res.Error)
+			return res, 2
+		}
+		if record.Dirty {
+			fmt.Fprintf(stderr, "nerv pipeline %s: tested uncommitted changes (%s): sync accepts only a test of a clean tree\n", step, strings.Join(record.Changes, ", "))
+		}
+		fmt.Fprintf(stderr, "nerv pipeline %s: tested %s, record in %s\n", step, short(record.Commit), path)
+	}
 	return res, 0
+}
+
+// testedState reads what the test step tests, before it runs: the working
+// tree's HEAD and its changes outside .nerv/ (where the local nerv.yaml
+// and the artifacts live), tracked or untracked, ignored files excluded.
+func testedState(ctx context.Context, opts options, top string) (pipeline.TestRecord, error) {
+	var r pipeline.TestRecord
+	out, errOut, code, err := opts.Runner.Run(ctx, "git", "-C", top, "rev-parse", "--verify", "HEAD")
+	if err == nil && code != 0 {
+		err = fmt.Errorf("exit code %d: %s", code, strings.TrimSpace(errOut))
+	}
+	if r.Commit = strings.TrimSpace(out); err != nil || r.Commit == "" {
+		return r, fmt.Errorf("reading the tested commit (git rev-parse HEAD): %v", err)
+	}
+	// -z: paths are NUL-terminated and never quoted; a rename or copy is
+	// "XY new\0old\0".
+	out, errOut, code, err = opts.Runner.Run(ctx, "git", "-C", top, "status", "--porcelain=v1", "-z", "--untracked-files=all", "--", ".", ":(exclude).nerv")
+	if err == nil && code != 0 {
+		err = fmt.Errorf("exit code %d: %s", code, strings.TrimSpace(errOut))
+	}
+	if err != nil {
+		return r, fmt.Errorf("reading the working tree's changes (git status): %v", err)
+	}
+	fields := strings.Split(out, "\x00")
+	for i := 0; i < len(fields); i++ {
+		entry := fields[i]
+		if len(entry) < 4 {
+			continue
+		}
+		r.Changes = append(r.Changes, entry[3:])
+		// A rename or copy is followed by its original path.
+		if (entry[0] == 'R' || entry[0] == 'C') && i+1 < len(fields) && fields[i+1] != "" {
+			i++
+			r.Changes = append(r.Changes, fields[i])
+		}
+	}
+	r.Dirty = len(r.Changes) > 0
+	return r, nil
 }
 
 func pipelineUsageError(stderr io.Writer, problem string) int {
