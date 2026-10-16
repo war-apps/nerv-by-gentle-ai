@@ -95,6 +95,9 @@ func (t *Thresholds) origin(runsettings string) string {
 			file = true
 		}
 	}
+	if runsettings == "" {
+		runsettings = "the runsettings"
+	}
 	switch {
 	case file && conf:
 		return runsettings + " and " + SourceConfig
@@ -114,8 +117,12 @@ type CoverageResult struct {
 	// Checks are the thresholds checked, with the measured values and each
 	// threshold's source.
 	Checks []MetricCheck `json:"checks,omitempty"`
-	// Met: every checked threshold met (true when none was checked).
+	// Met: every checked threshold met (true when none was checked; false
+	// when the reports could not be read).
 	Met bool `json:"met"`
+	// ReportMissing: thresholds were set but no readable coverage report
+	// was found, so nothing was measured (Checks is empty).
+	ReportMissing bool `json:"report_missing,omitempty"`
 }
 
 // effectiveGate returns the gate the test step runs: g's report formats
@@ -138,7 +145,9 @@ func effectiveGate(g *gate, c pipelineconfig.Coverage, mode string) *gate {
 		cp := *g.th
 		th = &cp
 	}
-	if o := c.Thresholds; o != nil {
+	// An override without a metric only changes the stat of existing
+	// thresholds: it never arms an empty gate.
+	if o := c.Thresholds; o != nil && (th != nil || o.Line != nil || o.Branch != nil || o.Method != nil) {
 		if th == nil {
 			th = &Thresholds{Stat: StatMinimum}
 		}
@@ -172,7 +181,7 @@ func gateCoverage(r *Result, runsettings, mode string, th *Thresholds) {
 	checks, err := measureCoverage(runsettings, th, r.Artifacts.CoverageJSON, r.Artifacts.Coverage)
 	enforce := mode != "report"
 	if err != nil {
-		r.Coverage.Met = false
+		r.Coverage.Met, r.Coverage.ReportMissing = false, true
 		if enforce {
 			r.fail(err)
 		} else {
@@ -741,7 +750,7 @@ func measureCoverage(runsettings string, th *Thresholds, jsonReports, coberturaR
 		get(filepath.Dir(p)).cobertura = p
 	}
 	if len(runs) == 0 {
-		return nil, fmt.Errorf("no coverage report to check the thresholds of %s against", runsettings)
+		return nil, fmt.Errorf("no coverage report to check the thresholds of %s against", th.origin(runsettings))
 	}
 	cov := newCoverage()
 	for _, dir := range slices.Sorted(maps.Keys(runs)) {

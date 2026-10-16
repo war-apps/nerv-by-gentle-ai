@@ -583,6 +583,9 @@ func TestTest_CoverageReportWithoutReportsWarnsAndPasses(t *testing.T) {
 	if r.Status != StatusPassed || len(r.Notes) != 1 || !strings.Contains(r.Notes[0], "warning: no coverage report") {
 		t.Errorf("result %+v", r)
 	}
+	if c := r.Coverage; c == nil || !c.ReportMissing || c.Met || len(c.Checks) != 0 {
+		t.Errorf("coverage %+v: a missing report must be recorded as such", c)
+	}
 }
 
 func TestTest_CoverageOffEvaluatesNothing(t *testing.T) {
@@ -626,5 +629,29 @@ func TestTest_CoverageThresholdsWithoutRunsettings(t *testing.T) {
 	})
 	if r2.Coverage == nil || r2.Coverage.Stat != "minimum" {
 		t.Errorf("default stat: %+v", r2.Coverage)
+	}
+}
+
+func TestTest_CoverageStatAloneWithoutRunsettingsThresholdsArmsNothing(t *testing.T) {
+	// A runsettings file without <Threshold> and a stat-only override: no
+	// metric to check, so no gate (never an empty one failing without a
+	// report).
+	r, f := runTest(t, collector(`<Format>cobertura</Format>`), nil, func(c *pipelineconfig.Coverage) {
+		c.Thresholds = &pipelineconfig.CoverageThresholds{Stat: "total"}
+	})
+	if r.Status != StatusPassed || len(r.Notes) != 0 || r.Coverage == nil || len(r.Coverage.Checks) != 0 || r.Coverage.ReportMissing {
+		t.Errorf("result %+v coverage %+v", r, r.Coverage)
+	}
+	if last := f.steps[len(f.steps)-1].Exec; slices.ContainsFunc(last, func(a string) bool { return strings.Contains(a, "json") }) {
+		t.Errorf("dotnet test %q: no thresholds, no json report", last)
+	}
+}
+
+func TestTest_CoverageMissingReportNamesTheThresholdsOrigin(t *testing.T) {
+	r, _ := runTest(t, "", nil, func(c *pipelineconfig.Coverage) {
+		c.Thresholds = &pipelineconfig.CoverageThresholds{Line: ptr(50)}
+	})
+	if r.Status != StatusFailed || !strings.Contains(r.Error, "no coverage report to check the thresholds of nerv.yaml against") || !r.Coverage.ReportMissing {
+		t.Errorf("error %q coverage %+v", r.Error, r.Coverage)
 	}
 }
