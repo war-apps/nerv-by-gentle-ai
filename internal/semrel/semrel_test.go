@@ -661,3 +661,11 @@ func TestParseResponse(t *testing.T) {
 		t.Errorf("last marker line: %+v, %v", resp, err)
 	}
 }
+
+func TestParseResponse_KeepsTheErrorDetails(t *testing.T) {
+	stdout := []byte(resultMarker + `{"ok":false,"error":"EPRERELEASEBRANCH A pre-release branch configuration is invalid.\nYour configuration for the problematic branch is ` + "`" + `{\"name\":\"hotfix/a/b\"}` + "`" + `. See https://user:pw@example.com/x"}` + "\n")
+	_, err := parseResponse(stdout, nil)
+	if err == nil || !strings.Contains(err.Error(), "hotfix/a/b") || !strings.Contains(err.Error(), "\n") || strings.Contains(err.Error(), "user:pw") {
+		t.Errorf("err = %v", err)
+	}
+}

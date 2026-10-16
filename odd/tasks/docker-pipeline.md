@@ -1028,6 +1028,77 @@ All three P5 review advisories fixed (user authorized). Route: delegated
 
 - Docs/odd: docs/pipeline.md (the accepted status, the stale run.json, the dry-run chain) and this table, in the docs commit recording the fixes.
 
+### Acceptance
+
+- Run (2026-10-16, `--dry-run`, nerv built from develop 79981b7 in the
+  scratchpad): a copy of dim.comprobantes.api (read-only; a local bare
+  origin built from dim's GitHub-tracking refs, tags and notes, the only
+  remote) with a `pipeline:` section after dim's workflow (two images,
+  computed `CHROME_VERSION`, coverlet.runsettings, version_files,
+  explicit branches) and fake `NERV_DEPLOY_*` / registry values
+  (`*.deploy.invalid`).
+- Results: develop with dim's runsettings: validate passed, test failed on
+  the coverage gate (line 89.64% < 100%, method 92.88% < 100%; dim's CI
+  passes because coverlet.collector ignores `<Threshold>`). Without the
+  runsettings every step passed: release 2.9.0-alpha.11 (alpha, last
+  2.9.0-alpha.10, the repository's configuration), both images built with
+  `2.9.0-alpha.11` + `alpha` and not pushed, sync nothing (a develop
+  release), deploy only development (`would-deploy`), the production and
+  staging environments skipped by `DOCKER_IMAGE_VERSION`. main: validate
+  and the api image fail on dim's own NU1903 (System.Security.Cryptography.Pkcs
+  9.0.4 advisory, fixed only on develop); release computed 2.9.0 (last
+  2.8.1); deploy refused the alpha.11 docker.json for 2.9.0.
+- Environment findings: a bare clone of dim's local repository is not
+  GitHub's state (a local-only `hotfix/...` branch made semantic-release
+  fail EPRERELEASEBRANCH; local notes lacked v2.9.0-alpha.10's, so the
+  dry run computed alpha.10 again). On the first clone dotnet crashed
+  intermittently under nerv (CLR 0x80131506, `dotnet format` "Restore
+  operation failed") while the same commands never failed outside it;
+  root cause not found. The run's cleanup removed an image it had not
+  created (`dim-factura-electronica-service`); rule since: remove only
+  the exact image/container IDs and paths created, never by pattern.
+- Fixed on `fix/pipeline-acceptance` (from a37a20b), test-first:
+
+| # | Defect | Fix | Evidence |
+|---|---|---|---|
+| 1 | validate/test's dotnet got `GHCR_TOKEN`, `GH_TOKEN`, `NERV_DEPLOY_*` | `pipeline.BuildEnv` (SafeEnv minus the GitHub tokens) for the dotnet runner; release, docker and sync clones get `SafeEnv` (GitHub token kept for semantic-release / git) | RED: a fake dotnet on PATH (real runner) recorded the secrets in every call; the release, sync and docker clones had a nil (inherited) environment. GREEN. `66be454` (6 files, +152 -3) |
+| 3 | dry run computed a tag already on origin without a word | the release clone's Compute refuses (exit 1) a computed tag that `TagOnOrigin` finds, naming stale/missing notes; dry and real runs | RED: `TestPipelineRelease_RefusesAComputedTagAlreadyOnOrigin` exit 0 in both modes. GREEN. `55191d5` (2 files, +59 -3) |
+| 4 | semantic-release errors lost their details | the runner's `failureResult` appends each error's `details`, hiding secret env values (`hideSecrets`, semantic-release's name rule); Go keeps the full text, URL credentials redacted | RED: node test, the EPRERELEASEBRANCH details missing. GREEN (23 node tests). `24bc1a9` (3 files, +56 -4) |
+| 5 | a failed docker step's cause was only on stderr | each failed required image's error (docker error + last 10 output lines) goes into the step's `error`, hence its `--json` and run.json; docker.json still untouched | RED: `TestDocker_AFailedBuildReportsItsCause`. GREEN. `64528a7` (2 files, +54 -2) |
+| 8 | sync cloned origin for a release that syncs nothing | `Sync.Syncs()` from release.json's branch before the clone | RED: `TestPipelineSync_NoCloneWhenTheReleasedBranchSyncsNothing` (develop, hotfix/x opened a clone). GREEN. `8427705` (3 files, +30 -2) |
+| 9 | Getting started called nerv's default branches dim's | the guide says they are nerv's, that dim uses `release/rc` and `hotfix/*` with `prerelease: true` (refused by nerv), and shows the explicit `branches:` dim needs | Structural; doc examples still load. `d14a764` (1 file, +46 -9; also documents 1, 3, 4, 5, 8), CHANGELOG `a7db034` |
+
+- Review follow-ups (native review approved), test-first:
+  - The docker failure cause with the real runner:
+    `TestDocker_AFailedBuildReportsItsCauseWithTheRealRunner` runs a fake
+    `docker` script through `proc.ExecRunner` that writes to stdout and
+    stderr and exits 1: the step error carries the image, the stdout line
+    and both stderr lines, and the stderr is streamed. It passed as
+    written: with the same writer for both streams the process gets one
+    pipe and `Result.Stdout` holds the combined tail, so no fix was needed.
+    `6563925` (1 file, +48).
+  - `prepareRelease` built its opener from `s.opts` (wrapping twice when
+    called twice): it now takes the caller's original opener. RED:
+    `TestPipelineRelease_PrepareWrapsTheOpenerOnce` saw two tag checks for
+    one Compute. GREEN. `3c53ff0` (2 files, +36 -5).
+  - Flake hunt: `go test -count=10 -v ./internal/pipeline/` exit 0 in
+    316s (510 passing test results, 0 failing, the dotnet smoke test
+    passed 10 of 10) and `go test -race -count=1 -v ./internal/pipeline/`
+    exit 0 in 32s: no flaky test found. The only test with an outside
+    dependency is the dotnet smoke test, which can die of this host's CLR
+    0x80131506 crash (seen during the acceptance run); the reviewer's
+    lost `FAIL` could not be reproduced.
+- Open: 2 (the coverage gate fails dim as-is) needs a user decision:
+  keep enforcing `<Threshold>`, or add a report-only mode matching dim's
+  CI. Noted only: 6 (the release dry run computes without running the
+  repository's verifyConditions/verifyRelease plugins) and 7 (without a
+  `release:` section the project, and so `--expect`, is named after the
+  local directory).
+- Checks: `go test -count=1 ./...` exit 0 (30 packages); `go test -tags
+  semrel_integration -run Integration -count=1 ./internal/semrel/
+  ./cmd/nerv/` exit 0; `go vet ./...`, `GOOS=windows go vet ./...`, `go
+  vet -tags semrel_integration ./...` exit 0; `gofmt -l .` empty.
+
 ## Next step
 
 The feature is complete (acceptance criteria check on

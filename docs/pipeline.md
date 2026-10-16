@@ -68,10 +68,27 @@ semantic-release-style commits) to a deployed release, end to end:
          known_hosts: ~/.config/update-deploy/known_hosts
    ```
 
-   The branches default to dim's (`main`, `develop` alpha, `release/*` rc
-   on beta, `hotfix/*` beta), the registry to `ghcr.io` with `GHCR_USER` /
-   `GHCR_TOKEN`, the semantic-release configuration to the built-in one
-   when the repository has none. Every field is in the
+   Without `branches`, nerv uses its own defaults, modelled on dim's but
+   not the same: `main`, `develop` (alpha), `release/*` (rc on the beta
+   channel) and `hotfix/*` (beta). dim.comprobantes.api itself releases
+   from `release/rc` only, and its `hotfix/*` uses semantic-release's
+   `prerelease: true` (the branch name as the id), which nerv refuses (a
+   name with a `/` is not a valid prerelease id). For dim, list them
+   explicitly, with a fixed id for the hotfixes:
+
+   ```
+     branches:
+       - { name: main }
+       - { name: release/rc, prerelease: rc, channel: beta }
+       - { name: develop, prerelease: alpha, channel: alpha }
+       - { name: "hotfix/*", prerelease: beta, channel: beta }
+   ```
+
+   These set the image tags and the sync branches; the release itself uses
+   the repository's own semantic-release configuration when it has one
+   (dim's is in `package.json`). The registry defaults to `ghcr.io` with
+   `GHCR_USER` / `GHCR_TOKEN`, and the semantic-release configuration to
+   the built-in one when the repository has none. Every field is in the
    [Reference](#reference); the [Complete example](#complete-example)
    shows the rest (a second image with a computed build argument, deploy
    from environment variables).
@@ -116,7 +133,14 @@ command runs without a shell, with `DOTNET_NOLOGO=true`,
 `DOTNET_CLI_TELEMETRY_OPTOUT=true` (dim's workflow environment),
 `MSBUILDDISABLENODEREUSE=1`, `UseSharedCompilation=false` and
 `DOTNET_CLI_USE_MSBUILD_SERVER=0`, and then `pipeline.dotnet.env` over
-them, so a variable the repository sets there wins. Those last three, and
+them, so a variable the repository sets there wins. dotnet builds and runs
+the repository's own code and tests, so it never gets the pipeline's
+secrets: the registry's `username_env` and `token_env`, every
+`NERV_DEPLOY_*` variable and the GitHub tokens (`GH_TOKEN`,
+`GITHUB_TOKEN`, and their enterprise forms) are removed from its
+environment (the release, docker and sync clones' git and semantic-release
+lose the registry and deploy ones too; semantic-release keeps the GitHub
+token its github plugin needs). Those last three, and
 `--disable-build-servers` on restore, build and test, keep dotnet from reusing MSBuild nodes and compiler
 servers, which on shared hosts makes it die midway ("Internal CLR error
 (0x80131506)"). `dotnet format` rejects the flag, and it exists only from
@@ -256,6 +280,13 @@ docker step builds the images afterwards.
 The step releases one project: a `release:` section with several projects
 is refused (use `nerv ship` for a monorepo). An earlier `release.json` is
 removed at the start, so a refused, failed or interrupted run leaves none.
+A computed release whose tag is already on origin is refused (exit 1),
+dry run or not, before anything is released: semantic-release computes a
+released version again when it cannot see that release on the branch's
+channel, usually because origin's semantic-release notes
+(`refs/notes/semantic-release-<tag>`) are stale or missing. A
+semantic-release error is reported with its details (for example which
+branch configuration is invalid), secrets hidden.
 `--dry-run` computes only (nothing written in the clone, nothing pushed)
 and still writes `release.json`, with `"dry_run": true`, so a dry run of
 the later steps sees the version it would release. No new release is a
@@ -334,7 +365,11 @@ dim's docker job, over `pipeline.images` in order:
      retried once with them computed again (dim's broker retry);
    - `docker push` of every tag (not in a dry run), the digest recorded.
 5. An image with `required: false` may fail without failing the step;
-   every image is tried, and the step fails when a required one failed.
+   every image is tried, and the step fails when a required one failed:
+   the step's `error` (in its `--json` document and in `nerv pipeline
+   run`'s `run.json`) names each failed required image with its cause
+   (the docker error and the build's last output lines), since
+   `docker.json` is not written on a failure.
 6. Write `.nerv/artifacts/pipeline/docker.json` (per image: name, tags,
    refs, digest, status `built` / `pushed` / `failed`, attempts,
    required, error) for the deploy and sync steps, only when the step
@@ -375,9 +410,11 @@ dim's sync-to-develop and sync-main-to-release jobs:
    failure, rerun the step until it passes before syncing. `validate` (the
    format check) is not required. A `release.json` without `base_commit`
    (written by an older nerv) refuses.
-2. In a fresh clone of origin (the same safe origin handling as `nerv
-   ship`: no credential on a command line or in an environment), the
-   targets depend on the released branch (`release.json`'s `branch`):
+2. The targets depend on the released branch (`release.json`'s `branch`),
+   decided before origin is read: a release on any other branch than
+   main or `pipeline.sync.release` syncs nothing and no clone is made.
+   Otherwise, in a fresh clone of origin (the same safe origin handling as `nerv
+   ship`: no credential on a command line or in an environment):
    - the main branch (the first of `pipeline.branches`), or a branch
      matching `pipeline.sync.release`: merged into `pipeline.sync.develop`;
    - the main branch only: also merged into every origin branch matching

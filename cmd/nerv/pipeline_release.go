@@ -8,6 +8,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"os"
 	"strings"
 
 	"github.com/war-apps/nerv-by-gentle-ai/internal/pipeline"
@@ -67,7 +68,7 @@ func runPipelineRelease(args []string, stdout, stderr io.Writer, opts options) i
 
 	doc := pipeline.ReleaseOutputs{Step: "release", DryRun: s.dryRun, Channel: ""}
 	code := 0
-	top, err := s.prepareRelease(ctx)
+	top, err := s.prepareRelease(ctx, opts.OpenShipWorkspace)
 	if err == nil {
 		var outcomes []shipOutcome
 		outcomes, err = s.execute(ctx)
@@ -106,7 +107,11 @@ func runPipelineRelease(args []string, stdout, stderr io.Writer, opts options) i
 // version files, refuses a release: section with several projects (this
 // step releases one), and removes an earlier release.json so a failed run
 // never leaves stale outputs. It returns the repository's top level.
-func (s *shipRun) prepareRelease(ctx context.Context) (string, error) {
+//
+// base is the caller's workspace opener (nil: semrel.NewWorkspace), never
+// s.opts' current one: the release opener is built from it, so preparing
+// again does not wrap it twice.
+func (s *shipRun) prepareRelease(ctx context.Context, base func(context.Context, semrel.WorkspaceOptions) (shipWorkspace, error)) (string, error) {
 	top, err := gitTopLevel(ctx, s.opts.Runner, s.cwd)
 	if err != nil {
 		return "", err
@@ -123,6 +128,22 @@ func (s *shipRun) prepareRelease(ctx context.Context) (string, error) {
 		return "", refuse("the release: section declares %d projects; nerv pipeline release releases one project (use nerv ship for a monorepo)", len(rel.Projects))
 	}
 	s.versionFiles = cfg.Release.VersionFiles
+	// git and semantic-release in the release clone never get the registry
+	// or deploy secrets (GitHub tokens stay: the github plugin needs them).
+	s.opts.OpenShipWorkspace = func(ctx context.Context, o semrel.WorkspaceOptions) (shipWorkspace, error) {
+		o.Env = pipeline.SafeEnv(os.Environ(), cfg.Registry)
+		var ws shipWorkspace
+		var err error
+		if base != nil {
+			ws, err = base(ctx, o)
+		} else {
+			ws, err = semrel.NewWorkspace(ctx, o)
+		}
+		if err != nil {
+			return nil, err
+		}
+		return taggedCheck{ws}, nil
+	}
 	if err := pipeline.RemoveReleaseOutputs(top); err != nil {
 		return "", err
 	}
@@ -231,4 +252,32 @@ func writeReleaseResult(w io.Writer, asJSON bool, doc pipeline.ReleaseOutputs) e
 	}
 	_, err := w.Write(b.Bytes())
 	return err
+}
+
+// taggedCheck refuses a computed release whose tag is already on origin,
+// in a dry run and a real one alike: semantic-release computes it again
+// when it cannot see that tag's release on the branch's channel, usually
+// because origin's refs/notes/semantic-release-<tag> notes are stale or
+// missing.
+type taggedCheck struct{ shipWorkspace }
+
+func (w taggedCheck) Compute(ctx context.Context, project string) ([]semrel.ProjectResult, error) {
+	results, err := w.shipWorkspace.Compute(ctx, project)
+	if err != nil {
+		return results, err
+	}
+	for _, r := range results {
+		if !r.NewReleasePublished || r.NewReleaseGitTag == "" {
+			continue
+		}
+		exists, err := w.TagOnOrigin(ctx, r.NewReleaseGitTag)
+		if err != nil {
+			return nil, fmt.Errorf("checking whether %s is on origin: %w", r.NewReleaseGitTag, err)
+		}
+		if exists {
+			return nil, refuse("the computed release %s: tag %s is already on origin: semantic-release did not see that release on the %s branch's channel, usually because origin's semantic-release notes (refs/notes/semantic-release-%s) are stale or missing; fetch them (git fetch origin 'refs/notes/*:refs/notes/*') or restore them on origin, then run again. Nothing was released.",
+				r.NewReleaseVersion, r.NewReleaseGitTag, r.Branch, r.NewReleaseGitTag)
+		}
+	}
+	return results, nil
 }

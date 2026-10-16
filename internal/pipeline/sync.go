@@ -90,8 +90,7 @@ type Sync struct {
 func (s Sync) Targets(ctx context.Context) ([]SyncTarget, error) {
 	released, develop, pattern := s.Release.Branch, s.Config.Sync.Develop, s.Config.Sync.Release
 	main := s.Config.MainBranch()
-	isRelease, _ := path.Match(pattern, released)
-	if released != main && !isRelease {
+	if !s.Syncs() {
 		return nil, nil
 	}
 	targets := []SyncTarget{target(develop, released)}
@@ -108,6 +107,15 @@ func (s Sync) Targets(ctx context.Context) ([]SyncTarget, error) {
 		}
 	}
 	return targets, nil
+}
+
+// Syncs reports, from the released branch alone (no clone needed),
+// whether the release has any merge-back: only a release on the main
+// branch or on a branch matching pipeline.sync.release does.
+func (s Sync) Syncs() bool {
+	released := s.Release.Branch
+	isRelease, _ := path.Match(s.Config.Sync.Release, released)
+	return released == s.Config.MainBranch() || isRelease
 }
 
 func target(branch, source string) SyncTarget {

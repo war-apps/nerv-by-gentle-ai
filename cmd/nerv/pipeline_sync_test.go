@@ -424,3 +424,16 @@ func TestPipelineSync_InterruptedAfterAPushRecordsWhatFinished(t *testing.T) {
 }
 
 func ptr[T any](v T) *T { return &v }
+
+func TestPipelineSync_NoCloneWhenTheReleasedBranchSyncsNothing(t *testing.T) {
+	for _, branch := range []string{"develop", "hotfix/x"} {
+		f := newSyncFixture(t, pipelineSyncYAML)
+		o := mainRelease()
+		o.Branch = branch
+		f.release(t, o)
+		code, _, stderr := f.run(t, "--yes")
+		if code != 0 || f.ws.opened != nil || !strings.Contains(stderr, "nothing to sync") {
+			t.Errorf("%s: exit %d, clone opened %v\n%s", branch, code, f.ws.opened != nil, stderr)
+		}
+	}
+}

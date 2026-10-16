@@ -152,7 +152,7 @@ func (d dockerRun) run(ctx context.Context) (pipeline.DockerResult, string, erro
 		}
 	}
 	fmt.Fprintf(d.out, "nerv pipeline docker: reading origin's %s into a build clone\n", rel.Branch)
-	ws, err := open(ctx, semrel.WorkspaceOptions{RepoRoot: top, Branch: rel.Branch, FetchTimeout: d.timeout})
+	ws, err := open(ctx, semrel.WorkspaceOptions{RepoRoot: top, Branch: rel.Branch, FetchTimeout: d.timeout, Env: pipeline.SafeEnv(os.Environ(), cfg.Registry)})
 	if errors.Is(err, semrel.ErrNoOrigin) {
 		return res, top, refuse("the repository has no origin remote")
 	}

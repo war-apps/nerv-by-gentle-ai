@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"slices"
@@ -73,7 +74,7 @@ func TestPipelineRelease_ReleasesWithoutBuildingOrPublishing(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("exit %d\n%s", code, stderr)
 	}
-	if want := []string{"open", "compute", "check-push", "release repo", "close"}; !slices.Equal(f.events, want) {
+	if want := []string{"open", "compute", "tag? v1.1.0-alpha.1", "check-push", "release repo", "close"}; !slices.Equal(f.events, want) {
 		t.Errorf("events %v, want %v (no build, publish or hooks)", f.events, want)
 	}
 	if req := f.ws.requests[0]; !slices.Equal(req.ExtraAssets, []string{"src/Api/Api.csproj"}) || req.Expected.NewReleaseVersion != "1.1.0-alpha.1" {
@@ -273,5 +274,53 @@ func TestPipelineRelease_RepositoryConfigMustCommitTheVersionFiles(t *testing.T)
 				}
 			}
 		})
+	}
+}
+
+func TestPipelineRelease_RefusesAComputedTagAlreadyOnOrigin(t *testing.T) {
+	for _, args := range [][]string{{"--dry-run", "--json"}, {"--yes", "--json"}} {
+		t.Run(args[0], func(t *testing.T) {
+			f := newPipelineReleaseFixture(t, pipelineReleaseYAML)
+			f.ws.tags["v1.1.0-alpha.1"] = true
+			code, stdout, stderr := f.runPipeline(t, append([]string{"release"}, args...)...)
+			var doc pipeline.ReleaseOutputs
+			_ = json.Unmarshal([]byte(stdout), &doc)
+			if code != 1 || doc.Status != "refused" || !strings.Contains(doc.Error, "v1.1.0-alpha.1 is already on origin") || !strings.Contains(doc.Error, "semantic-release notes") {
+				t.Errorf("exit %d %+v\n%s", code, doc, stderr)
+			}
+			if slices.ContainsFunc(f.events, func(e string) bool { return strings.HasPrefix(e, "release ") }) {
+				t.Errorf("released anyway: %v", f.events)
+			}
+			if _, ok := readOutputs(t, f.top); ok {
+				t.Error("a refused release left release.json")
+			}
+		})
+	}
+}
+
+func TestPipelineRelease_PrepareWrapsTheOpenerOnce(t *testing.T) {
+	f := newPipelineReleaseFixture(t, pipelineReleaseYAML)
+	opts := f.options(t)
+	s := &shipRun{opts: opts, stdout: io.Discard, stderr: io.Discard, releaseOnly: true, expect: expectations{}, cwd: "."}
+	for i := 0; i < 2; i++ {
+		if _, err := s.prepareRelease(context.Background(), opts.OpenShipWorkspace); err != nil {
+			t.Fatal(err)
+		}
+	}
+	ws, err := s.opts.OpenShipWorkspace(context.Background(), semrel.WorkspaceOptions{RepoRoot: f.top, Branch: "main"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ws.Compute(context.Background(), ""); err != nil {
+		t.Fatal(err)
+	}
+	var checks int
+	for _, e := range f.events {
+		if strings.HasPrefix(e, "tag? ") {
+			checks++
+		}
+	}
+	if len(f.opened) != 1 || checks != 1 {
+		t.Errorf("opened %d times, %d tag checks (events %v): want one wrapper", len(f.opened), checks, f.events)
 	}
 }
