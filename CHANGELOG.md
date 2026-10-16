@@ -12,8 +12,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the release step: in a fresh clone of origin it merges main or a `release/*` release into develop, and main into
   every `release/*` branch on origin (`--no-ff`, "chore(sync): merge <source> into <branch> [skip ci]"), pushes
   with your credentials and commits as you; a conflict is aborted and reported, the other branches still sync and
-  the step fails at the end. It refuses after a failed docker step, asks before pushing (`--yes`), previews with
-  `--dry-run` (conflicts included) and writes `.nerv/artifacts/pipeline/sync.json`.
+  the step fails at the end. It syncs nothing unless every earlier part passed for this release: a passing
+  `test.json` on a clean tree at the commit the release was made from (`release.json`'s new `base_commit`) and a
+  passing `docker.json` of the release's version, tag and commit; it asks before pushing (`--yes`), previews with
+  `--dry-run` (conflicts included, same checks) and writes `.nerv/artifacts/pipeline/sync.json`.
+- pipeline: `nerv pipeline test` records a passing run in `.nerv/artifacts/pipeline/test.json` (the tested `HEAD`
+  and any uncommitted changes outside `.nerv/`); a failed run leaves an earlier record untouched.
 - pipeline: `nerv pipeline docker` runs dim.comprobantes.api's docker job: from the release step's outputs, in a
   clone of origin at the release tag, it builds every `pipeline.images` entry (build and computed arguments, OCI
   labels, `--platform`), tags it with the version, the channel and `latest` on main, pushes it after a
@@ -23,7 +27,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - pipeline: `nerv pipeline release` runs dim.comprobantes.api's release job: it releases what is on origin as
   `nerv ship` does (same checks, configuration, version guard, `--expect`, `--dry-run`), without building or
   publishing, versions `pipeline.release.version_files` (`<Version>` and the release link) in the release commit,
-  and writes the release outputs to `.nerv/artifacts/pipeline/release.json` for the later steps.
+  and writes the release outputs to `.nerv/artifacts/pipeline/release.json` for the later steps, including
+  `base_commit`, the commit the release was made from.
 - pipeline: `nerv pipeline validate` and `nerv pipeline test` run dim.comprobantes.api's validate and test jobs
   locally from the `pipeline:` section (dotnet restore, format check, build with `-warnaserror`, tests with coverage
   and a trx logger), in the working tree, with streamed output and a `--json` result; test results go to the

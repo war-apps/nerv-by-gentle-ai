@@ -199,14 +199,16 @@ Runs one step of the Docker pipeline configured in the `pipeline:` section
 restore`, `dotnet format --verify-no-changes`) and `test` (restore, build
 with `-warnaserror`, `dotnet test` with coverage and a trx logger, results
 in `.nerv/artifacts/pipeline/test`, and the runsettings coverage thresholds
-enforced by nerv, since coverlet's collector ignores them); both run in your
+enforced by nerv, since coverlet's collector ignores them; a passing run
+is recorded in `.nerv/artifacts/pipeline/test.json`); both run in your
 working tree. `release` releases what is on origin as `nerv ship` does,
 without building or publishing (version files, release commit, tag;
 outputs in `.nerv/artifacts/pipeline/release.json`); `docker` builds, tags
 and pushes every image from the released commit (results in
 `.nerv/artifacts/pipeline/docker.json`); `sync` merges the released branch
 back as dim's sync jobs (main or `release/*` into develop, main into every
-`release/*`; conflicts aborted and reported, committed as you; results in
+`release/*`; conflicts aborted and reported, committed as you; only after
+passing test and docker records of the release; results in
 `.nerv/artifacts/pipeline/sync.json`). Details:
 [pipeline.md](pipeline.md#running-the-steps).
 

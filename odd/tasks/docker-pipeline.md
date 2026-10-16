@@ -744,6 +744,35 @@ All three P5 review advisories fixed (user authorized). Route: delegated
   after the change; `TestPipelineDocker_FailureLeavesNoDockerJSON` (which
   asserted the delete) is replaced by it, and the unused
   `RemoveDockerResult` is removed.
+- Decision (user, 2026-10-16): "if any part of the process fails (build,
+  test or docker), sync nothing". Sync now requires positive, current
+  evidence instead of only refusing a recorded failure:
+  - test: `nerv pipeline test` writes `test.json` only on success (HEAD
+    and the changes outside `.nerv/`, read before the commands; a failed
+    build/test or unreadable HEAD leaves an earlier record untouched).
+    Sync requires it passed, clean ("tested uncommitted changes"
+    otherwise; option 2a), at release.json's new `base_commit`.
+  - release: release.json passed (as before); `base_commit` =
+    `ws.OriginHead()` at release time, the commit semantic-release ran on
+    (git_head's parent after a release commit, git_head itself in a dry
+    run). Proven with real semantic-release in
+    `TestIntegration_PipelineReleaseRecordsItsBaseCommit`.
+  - docker: always required (option 1c: no disable switch, a pipeline has
+    at least one image); docker.json passed for release.json's version,
+    git_tag and git_head; another release's docker.json now refuses (the
+    "ignored with a note" path is gone); a dry-run docker.json only after
+    a dry-run release.
+  - Missing, failed, stale or mismatched records refuse (exit 1) naming
+    the step, before the clone is opened, `--dry-run` included; validate
+    is not required (the user named build, test and docker); a
+    release.json without `base_commit` refuses.
+  - RED: `go vet ./cmd/nerv/` (`undefined: pipeline.TestRecord`) with the
+    new tests: test record written/clean/dirty, kept on failing tests,
+    failing build and unreadable HEAD, validate writes none; release.json
+    `base_commit` (real and dry run); sync refusals for no / failed /
+    dirty / stale test record (also in a dry run), no / failed / other
+    version / other commit / dry-run docker.json, release without
+    `base_commit`; a dry-run release chain previews. GREEN: all.
 - RED: `go vet -tags semrel_integration ./internal/semrel/`
   (`ws.UseCommitIdentity undefined`), `go vet ./internal/pipeline/`
   (`undefined: Sync`), `go vet ./cmd/nerv/` with only the new test file
@@ -783,7 +812,11 @@ All three P5 review advisories fixed (user authorized). Route: delegated
   insertions(+), 17 deletions(-). Above the ~400-line heuristic: about
   830 lines are tests and 70 docs. Follow-up (docker.json kept on
   failure): `22f329f` `fix(pipeline): keep docker.json when the docker
-  step fails` (4 files, +45 -33), plus the docs/odd commit recording it.
+  step fails` (4 files, +45 -33); `8bb7080` `docs(pipeline): say a failed
+  docker run leaves docker.json as it was` (3 files, +29 -11). Follow-up
+  (sync needs passing records): `b6570ab` `fix(pipeline): sync nothing
+  unless test, release and docker passed for the release` (10 files, +407
+  -55), plus the docs/odd commit recording it.
 
 ## Next step
 
