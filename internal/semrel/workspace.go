@@ -273,6 +273,11 @@ type ReleaseRequest struct {
 	Env []string
 	// Output receives semantic-release's log; nil discards it.
 	Output io.Writer
+	// ExtraAssets are repository-relative files the release commit must hold
+	// besides the changelog (version files written in the clone). Applied to
+	// the built-in configuration's @semantic-release/git only: a
+	// repository's own configuration lists its own assets.
+	ExtraAssets []string
 }
 
 // Release runs semantic-release for real in the clone for one project, with
@@ -315,10 +320,11 @@ func (w *Workspace) Release(ctx context.Context, req ReleaseRequest) (ProjectRes
 		return ProjectResult{}, err
 	}
 	script := filepath.Join(scriptDir, runnerMain)
-	configFile, err := e.checkPlan(ctx, script, w.dir, env, cacheDir, specs)
+	plan, err := e.checkPlan(ctx, script, w.dir, env, cacheDir, specs)
 	if err != nil {
 		return ProjectResult{}, err
 	}
+	configFile := plan.ConfigFile
 	var defaults []defaultBranch
 	if configFile == "" {
 		if defaults, err = w.local.defaultBranches(); err != nil {
@@ -346,6 +352,7 @@ func (w *Workspace) Release(ctx context.Context, req ReleaseRequest) (ProjectRes
 		UseDefault:       configFile == "",
 		Branches:         defaults,
 		GitHubRelease:    remoteIsGitHub(w.public, env),
+		ExtraAssets:      extraAssets(configFile, req.ExtraAssets),
 		CommitFilesCache: filepath.Join(w.root, "commit-files.json"),
 	}, req.Output)
 	if m := resp.VersionMismatch; m != nil {
@@ -360,7 +367,7 @@ func (w *Workspace) Release(ctx context.Context, req ReleaseRequest) (ProjectRes
 		fmt.Fprintf(req.Output, "nerv ship: warning: the release: section sets each project's changelog, but the semantic-release configuration has no @semantic-release/changelog plugin: no changelog is written (add the plugin, and @semantic-release/git to commit it)\n")
 	}
 	r := normalize(p.Name, w.branch, resp)
-	configSource(&r, configFile)
+	configSource(&r, plan)
 	if !r.NewReleasePublished {
 		return r, fmt.Errorf("project %s: %w: computed %s, semantic-release released nothing (see its log); nothing was tagged", p.Name, ErrVersionMismatch, expected)
 	}

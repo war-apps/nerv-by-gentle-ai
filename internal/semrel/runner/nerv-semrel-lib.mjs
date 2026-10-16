@@ -316,8 +316,10 @@ const DIM_NOTES_OPTIONS = () => ({
 // channel?} (the pipeline: section's, or its defaults, sent by Go); a branch
 // with neither is written as its bare name. @semantic-release/github is
 // included only when github is true (origin on GitHub): elsewhere it fails
-// its checks (EINVALIDGITHUBURL). Fresh objects on every call.
-export function defaultConfig(branches, { github = true } = {}) {
+// its checks (EINVALIDGITHUBURL). assets are extra files the git plugin
+// commits with the changelog (nerv pipeline release's version files).
+// Fresh objects on every call.
+export function defaultConfig(branches, { github = true, assets = [] } = {}) {
   if (!Array.isArray(branches) || branches.length === 0) {
     throw new Error("the built-in semantic-release configuration needs its branches");
   }
@@ -329,8 +331,24 @@ export function defaultConfig(branches, { github = true } = {}) {
       ["@semantic-release/commit-analyzer", DIM_NOTES_OPTIONS()],
       ["@semantic-release/release-notes-generator", DIM_NOTES_OPTIONS()],
       ["@semantic-release/changelog", { changelogFile: "CHANGELOG.md" }],
-      ["@semantic-release/git", { assets: ["CHANGELOG.md"] }],
+      ["@semantic-release/git", { assets: ["CHANGELOG.md", ...assets.filter((a) => a !== "CHANGELOG.md")] }],
       ...(github ? ["@semantic-release/github"] : []),
     ],
   };
+}
+
+// gitAssets lists what a plugin list's @semantic-release/git entries commit:
+// gitPlugin false when there is none; each entry's assets (the plugin's
+// defaults when unset, none for false, an object's path), in order.
+export function gitAssets(plugins) {
+  const out = { gitPlugin: false, gitAssets: [] };
+  for (const p of Array.isArray(plugins) ? plugins : []) {
+    const [name, options = {}] = Array.isArray(p) ? p : [p, {}];
+    if (name !== GIT_PLUGIN) continue;
+    out.gitPlugin = true;
+    if (options.assets === false) continue;
+    const assets = options.assets == null ? DEFAULT_GIT_ASSETS : [].concat(options.assets);
+    for (const a of assets) out.gitAssets.push(a && typeof a === "object" ? a.path : a);
+  }
+  return out;
 }

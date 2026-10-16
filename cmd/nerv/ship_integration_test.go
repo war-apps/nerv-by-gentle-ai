@@ -14,6 +14,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -401,5 +402,124 @@ func TestIntegration_ShipWithTheBuiltInConfiguration(t *testing.T) {
 	}
 	if files := origin.git("show", "--name-only", "--format=", "v1.1.0-alpha.1"); files != "CHANGELOG.md" {
 		t.Errorf("release commit holds %q, want CHANGELOG.md", files)
+	}
+}
+
+// nerv pipeline release with the built-in semantic-release configuration
+// and a version file: dry run, release on develop, then nothing to release.
+func TestIntegration_PipelineReleaseWithTheBuiltInConfiguration(t *testing.T) {
+	requireShipToolchain(t)
+	shipEnv(t)
+	cache := t.TempDir()
+	origin, work := newShipRepos(t)
+	work.write("src/Api/Api.csproj", apiCsproj)
+	work.commit("chore: init", "a.txt")
+	work.git("tag", "v1.0.0")
+	work.git("checkout", "-q", "-b", "develop")
+	work.commit("feat: add gadgets", "b.txt")
+	work.git("push", "-q", "origin", "main", "develop", "--tags")
+	// The pipeline: section is local (untracked).
+	work.write(".nerv/nerv.yaml", "pipeline:\n  dotnet:\n    solution: App.slnx\n  images:\n    - name: ghcr.io/acme/app\n  release:\n    version_files: [src/Api/Api.csproj]\n")
+	originBefore := origin.git("for-each-ref", "--format=%(refname) %(objectname)")
+	outputs := filepath.Join(work.dir, ".nerv", "artifacts", "pipeline", "release.json")
+	readJSON := func() map[string]any {
+		t.Helper()
+		data, err := os.ReadFile(outputs)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var m map[string]any
+		if err := json.Unmarshal(data, &m); err != nil {
+			t.Fatal(err)
+		}
+		return m
+	}
+	runRelease := func(args ...string) (int, string, string) {
+		var stdout, stderr bytes.Buffer
+		code := run(append([]string{"pipeline", "release", "--cwd", work.dir}, args...), &stdout, &stderr, shipOptions(t, cache))
+		return code, stdout.String(), stderr.String()
+	}
+
+	code, _, stderr := runRelease("--dry-run")
+	if code != 0 {
+		t.Fatalf("dry run: exit %d\n%s", code, stderr)
+	}
+	if got := origin.git("for-each-ref", "--format=%(refname) %(objectname)"); got != originBefore {
+		t.Errorf("the dry run changed origin")
+	}
+	if m := readJSON(); m["dry_run"] != true || m["published"] != true || m["version"] != "1.1.0-alpha.1" || m["semantic_release_config"] != "default" {
+		t.Errorf("dry-run release.json %v", m)
+	}
+
+	code, stdout, stderr := runRelease("--yes", "--json", "--expect", filepath.Base(work.dir)+"=1.1.0-alpha.1")
+	if code != 0 {
+		t.Fatalf("release: exit %d\nstdout %s\nstderr %s", code, stdout, stderr)
+	}
+	head := origin.git("rev-parse", "develop")
+	if origin.git("rev-parse", "v1.1.0-alpha.1^{commit}") != head {
+		t.Errorf("tag v1.1.0-alpha.1 is not origin's develop")
+	}
+	if files := origin.git("show", "--name-only", "--format=", "v1.1.0-alpha.1"); files != "CHANGELOG.md\nsrc/Api/Api.csproj" {
+		t.Errorf("release commit holds %q, want the CHANGELOG and the version file", files)
+	}
+	if cs := origin.git("show", "develop:src/Api/Api.csproj"); !strings.Contains(cs, "<Version>1.1.0-alpha.1</Version>") {
+		t.Errorf("version file on origin:\n%s", cs)
+	}
+	if !strings.Contains(stderr, "[pipeline:release] nerv pipeline release: warning: origin has no public address") {
+		t.Errorf("no warning for the release link on a local origin:\n%s", stderr)
+	}
+	m := readJSON()
+	if m["published"] != true || m["dry_run"] != false || m["version"] != "1.1.0-alpha.1" || m["channel"] != "alpha" || m["git_tag"] != "v1.1.0-alpha.1" || m["git_head"] != head {
+		t.Errorf("release.json %v", m)
+	}
+	if !strings.Contains(stdout, `"git_tag":"v1.1.0-alpha.1"`) {
+		t.Errorf("--json stdout %s", stdout)
+	}
+
+	// Pull the release commit; nothing new to release.
+	work.git("pull", "-q", "origin", "develop")
+	code, _, stderr = runRelease("--yes")
+	if m := readJSON(); code != 0 || m["published"] != false || m["last_version"] != "1.1.0-alpha.1" {
+		t.Errorf("no release: exit %d, %v\n%s", code, m, stderr)
+	}
+}
+
+// With the repository's own configuration, version files its
+// @semantic-release/git assets do not list are refused before anything is
+// released; once listed, they enter the release commit.
+func TestIntegration_PipelineReleaseRepositoryConfigAssets(t *testing.T) {
+	requireShipToolchain(t)
+	shipEnv(t)
+	cache := t.TempDir()
+	origin, work := newShipRepos(t)
+	work.write("package.json", shipReleaseConfig) // git assets: CHANGELOG.md only
+	work.write("src/Api/Api.csproj", apiCsproj)
+	work.commit("chore: init", "a.txt")
+	work.git("tag", "v1.0.0")
+	work.commit("feat: add gadgets", "b.txt")
+	work.git("push", "-q", "origin", "main", "--tags")
+	work.write(".nerv/nerv.yaml", "pipeline:\n  dotnet:\n    solution: App.slnx\n  images:\n    - name: ghcr.io/acme/app\n  release:\n    version_files: [src/Api/Api.csproj]\n")
+	runRelease := func(args ...string) (int, string, string) {
+		var stdout, stderr bytes.Buffer
+		code := run(append([]string{"pipeline", "release", "--cwd", work.dir}, args...), &stdout, &stderr, shipOptions(t, cache))
+		return code, stdout.String(), stderr.String()
+	}
+
+	code, stdout, stderr := runRelease("--yes", "--json")
+	if code != 1 || !strings.Contains(stdout, `"status":"refused"`) || !strings.Contains(stdout, `src/Api/Api.csproj`) || !strings.Contains(stdout, "package.json") {
+		t.Fatalf("uncovered: exit %d\nstdout %s\nstderr %s", code, stdout, stderr)
+	}
+	if tags := origin.git("tag", "--list"); tags != "v1.0.0" {
+		t.Errorf("tagged despite the refusal: %q", tags)
+	}
+
+	work.write("package.json", strings.Replace(shipReleaseConfig, `{ "assets": ["CHANGELOG.md"] }`, `{ "assets": ["CHANGELOG.md", "src/**/*.csproj"] }`, 1))
+	work.commit("chore: commit the csproj in releases")
+	work.git("push", "-q", "origin", "main")
+	if code, stdout, stderr := runRelease("--yes", "--json"); code != 0 {
+		t.Fatalf("covered: exit %d\nstdout %s\nstderr %s", code, stdout, stderr)
+	}
+	if files := origin.git("show", "--name-only", "--format=", "v1.1.0"); files != "CHANGELOG.md\nsrc/Api/Api.csproj" {
+		t.Errorf("release commit holds %q", files)
 	}
 }

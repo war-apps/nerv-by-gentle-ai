@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strings"
 	"sync"
@@ -339,7 +340,7 @@ func TestNormalize(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := normalize("api", "develop", tt.resp); got != tt.want {
+			if got := normalize("api", "develop", tt.resp); !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("normalize:\n got %+v\nwant %+v", got, tt.want)
 			}
 		})

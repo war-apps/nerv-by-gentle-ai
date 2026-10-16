@@ -211,7 +211,7 @@ func TestWorkspaceRelease_BuiltInConfigurationRequest(t *testing.T) {
 				return base(c)
 			}
 			ws := openWorkspace(t, f, root)
-			r, err := ws.Release(context.Background(), ReleaseRequest{Expected: ProjectResult{Project: filepath.Base(root), NewReleasePublished: true, NewReleaseVersion: "1.1.0"}})
+			r, err := ws.Release(context.Background(), ReleaseRequest{Expected: ProjectResult{Project: filepath.Base(root), NewReleasePublished: true, NewReleaseVersion: "1.1.0"}, ExtraAssets: []string{"src/Api/Api.csproj"}})
 			if tt.wantErr != nil {
 				if !errors.Is(err, tt.wantErr) || len(runs) != 0 {
 					t.Fatalf("err = %v, runs %d", err, len(runs))
@@ -221,9 +221,69 @@ func TestWorkspaceRelease_BuiltInConfigurationRequest(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if len(runs) != 1 || !runs[0].UseDefault || runs[0].GitHubRelease != tt.wantGitHub || r.SemanticReleaseConfig != ConfigBuiltIn {
+			if len(runs) != 1 || !runs[0].UseDefault || runs[0].GitHubRelease != tt.wantGitHub || r.SemanticReleaseConfig != ConfigBuiltIn || !slices.Equal(runs[0].ExtraAssets, []string{"src/Api/Api.csproj"}) {
 				t.Errorf("runs %+v, result %+v", runs, r)
 			}
 		})
+	}
+}
+
+func TestWorkspaceRelease_ExtraAssetsOnlyForTheBuiltInConfiguration(t *testing.T) {
+	root := t.TempDir()
+	var runs []runnerRequest
+	f := workspaceRunner(t, root, "https://github.com/acme/w.git", "abc", func(req runnerRequest) (Result, error) {
+		if req.Mode == "plan" {
+			return respond(map[string]any{"ok": true, "packages": []string{}, "configFile": ".releaserc.json"})
+		}
+		runs = append(runs, req)
+		return respond(map[string]any{"ok": true, "released": true, "nextRelease": map[string]any{"version": "1.1.0", "gitTag": "v1.1.0"}})
+	})
+	ws := openWorkspace(t, f, root)
+	if _, err := ws.Release(context.Background(), ReleaseRequest{Expected: ProjectResult{Project: filepath.Base(root), NewReleasePublished: true, NewReleaseVersion: "1.1.0"}, ExtraAssets: []string{"a.csproj"}}); err != nil {
+		t.Fatal(err)
+	}
+	if len(runs) != 1 || runs[0].UseDefault || runs[0].ExtraAssets != nil {
+		t.Errorf("request %+v: the repository's own configuration keeps its own assets", runs)
+	}
+}
+
+func TestAssetsCover(t *testing.T) {
+	tests := []struct {
+		assets []string
+		file   string
+		want   bool
+	}{
+		{[]string{"src/Api/Api.csproj"}, "src/Api/Api.csproj", true},
+		{[]string{"./src/Api/Api.csproj"}, "src/Api/Api.csproj", true},
+		{[]string{"src/Api/CHANGELOG.md", "package.json"}, "src/Api/Api.csproj", false},
+		{[]string{"src/**/*.csproj"}, "src/Api/Api.csproj", true},
+		{[]string{"**/*.csproj"}, "Api.csproj", true},
+		{[]string{"*.csproj"}, "src/Api/Api.csproj", false},
+		{[]string{"src/Api/*.{csproj,props}"}, "src/Api/Api.csproj", true},
+		{[]string{"src/Api/Api.cs?roj"}, "src/Api/Api.csproj", true},
+		{[]string{"src/**", "!src/Api/Api.csproj"}, "src/Api/Api.csproj", false},
+		{nil, "src/Api/Api.csproj", false},
+	}
+	for _, tt := range tests {
+		if got := AssetsCover(tt.assets, tt.file); got != tt.want {
+			t.Errorf("AssetsCover(%q, %q) = %v, want %v", tt.assets, tt.file, got, tt.want)
+		}
+	}
+}
+
+func TestCompute_ReportsTheRepositorysGitAssets(t *testing.T) {
+	root := t.TempDir()
+	f := fakeRepo(t, root, func(req runnerRequest) (Result, error) {
+		if req.Mode == "plan" {
+			return respond(map[string]any{"ok": true, "packages": []string{}, "configFile": ".releaserc.json", "gitPlugin": true, "gitAssets": []string{"CHANGELOG.md", "src/**/*.csproj"}})
+		}
+		return respond(map[string]any{"ok": true, "released": true, "nextRelease": map[string]any{"version": "1.1.0", "gitTag": "v1.1.0"}})
+	})
+	results, err := (&Engine{Runner: f}).Compute(context.Background(), Options{RepoRoot: root, Branch: "main", CacheDir: t.TempDir(), Offline: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r := results[0]; !r.GitPlugin || !slices.Equal(r.GitAssets, []string{"CHANGELOG.md", "src/**/*.csproj"}) {
+		t.Errorf("result %+v", r)
 	}
 }

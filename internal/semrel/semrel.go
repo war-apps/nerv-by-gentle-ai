@@ -175,10 +175,11 @@ func (e *Engine) compute(ctx context.Context, opts Options, local *localConfig) 
 			req.CommitFilesCache = filepath.Join(filepath.Dir(mirror), "commit-files.json")
 			return e.node(ctx, script, wt, nodeEnv(env), req, nil)
 		}
-		configFile, err := e.checkPlan(ctx, script, wt, env, cacheDir, specs)
+		plan, err := e.checkPlan(ctx, script, wt, env, cacheDir, specs)
 		if err != nil {
 			return err
 		}
+		configFile := plan.ConfigFile
 		var defaults []defaultBranch
 		if configFile == "" {
 			if defaults, err = local.defaultBranches(); err != nil {
@@ -205,7 +206,7 @@ func (e *Engine) compute(ctx context.Context, opts Options, local *localConfig) 
 				return fmt.Errorf("project %s: %w", p.Name, err)
 			}
 			r := normalize(p.Name, branch, resp)
-			configSource(&r, configFile)
+			configSource(&r, plan)
 			byName[p.Name] = r
 			if opts.Project == "" || p.Name == opts.Project {
 				results = append(results, r)
@@ -251,13 +252,23 @@ func (e *Engine) prepareNode(ctx context.Context, env []string, rel *shipconfig.
 // semantic-release configuration (the repository's, or the built-in
 // default when it has none) needs a package that is neither bundled nor
 // pinned. It returns the repository's configuration file ("" when there is
-// none), found by semantic-release's own search.
-func (e *Engine) checkPlan(ctx context.Context, script, dir string, env []string, cacheDir string, specs []string) (string, error) {
+// none), found by semantic-release's own search, and what its
+// @semantic-release/git commits.
+func (e *Engine) checkPlan(ctx context.Context, script, dir string, env []string, cacheDir string, specs []string) (planInfo, error) {
 	plan, err := e.node(ctx, script, dir, nodeEnv(env), runnerRequest{Mode: "plan", CacheDir: cacheDir, Cwd: dir}, nil)
 	if err != nil {
-		return "", err
+		return planInfo{}, err
 	}
-	return plan.ConfigFile, checkPins(plan.Packages, plan.Unresolved, specs)
+	info := planInfo{ConfigFile: plan.ConfigFile, GitPlugin: plan.GitPlugin, GitAssets: plan.GitAssets}
+	return info, checkPins(plan.Packages, plan.Unresolved, specs)
+}
+
+// planInfo is what the runner's plan mode reports about the repository's
+// semantic-release configuration.
+type planInfo struct {
+	ConfigFile string
+	GitPlugin  bool
+	GitAssets  []string
 }
 
 // writeRunner writes the embedded runner files into dir.

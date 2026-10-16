@@ -60,7 +60,25 @@ func (p *Pipeline) validate() []string {
 	if p.Deploy != nil {
 		v.checkDeploy(*p.Deploy)
 	}
+	v.checkRelease(p.Release)
 	return v.problems
+}
+
+func (v *validator) checkRelease(r Release) {
+	seen := map[string]bool{}
+	for i, f := range r.VersionFiles {
+		at := fmt.Sprintf("pipeline.release.version_files[%d]", i)
+		if strings.TrimSpace(f) == "" {
+			v.addf("%s: required", at)
+			continue
+		}
+		v.checkPath(at, f)
+		if n := normalize(f); seen[n] {
+			v.addf("%s: duplicate %q", at, n)
+		} else {
+			seen[n] = true
+		}
+	}
 }
 
 func (v *validator) checkDotnet(d Dotnet) {

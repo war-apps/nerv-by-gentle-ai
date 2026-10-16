@@ -95,6 +95,7 @@ import {
   defaultConfig,
   failureResult,
   finish,
+  gitAssets,
   isPackage,
   makeFilter,
   neededPackages,
@@ -156,7 +157,15 @@ async function plan({ cacheDir, cwd }) {
   }
 
   neededPackages(options).forEach((p) => packages.add(p));
-  return { ok: true, packages: [...packages].sort(), unresolved, configFile: path.relative(cwd, found.filepath) || found.filepath };
+  return {
+    ok: true,
+    packages: [...packages].sort(),
+    unresolved,
+    configFile: path.relative(cwd, found.filepath) || found.filepath,
+    // What the configuration's @semantic-release/git commits (nerv pipeline
+    // release checks its version files against it).
+    ...gitAssets(options.plugins),
+  };
 }
 
 // loadKnownFiles reads the per-run cache of commit files (hash -> files)
@@ -176,7 +185,7 @@ function saveKnownFiles(file, known) {
 }
 
 async function run(req) {
-  const { cacheDir, cwd, repositoryUrl, tagFormat, filter, minReleaseType, commitFilesCache, expectedVersion, changelog, useDefault, branches, githubRelease } = req;
+  const { cacheDir, cwd, repositoryUrl, tagFormat, filter, minReleaseType, commitFilesCache, expectedVersion, changelog, useDefault, branches, githubRelease, extraAssets } = req;
   const real = req.mode === "release";
   const m = cacheModules(cacheDir);
   const semanticRelease = (await m.index()).default;
@@ -199,7 +208,7 @@ async function run(req) {
   if (real) baseOptions.repositoryUrl = repositoryUrl;
   // No configuration of the repository's own: the built-in one (dim's), as
   // API options (merged over the empty repository configuration).
-  if (useDefault) Object.assign(baseOptions, defaultConfig(branches, { github: githubRelease }));
+  if (useDefault) Object.assign(baseOptions, defaultConfig(branches, { github: githubRelease, assets: extraAssets || [] }));
   // The repository's own steps, built exactly as semantic-release builds them.
   const context = { cwd, env, stdout: process.stderr, stderr: process.stderr };
   context.logger = getLogger(context);

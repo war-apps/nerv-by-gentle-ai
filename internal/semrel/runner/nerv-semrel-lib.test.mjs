@@ -17,6 +17,7 @@ import {
   commitScopes,
   defaultConfig,
   failureResult,
+  gitAssets,
   makeFilter,
   neededPackages,
   notesRepositoryUrl,
@@ -411,4 +412,25 @@ test("defaultConfig leaves the GitHub plugin out for an origin not on GitHub", (
   const off = defaultConfig(branches, { github: false }).plugins;
   assert.equal(off.length, 4);
   assert.ok(!off.includes("@semantic-release/github"));
+});
+
+test("defaultConfig commits extra assets with the changelog", () => {
+  const git = defaultConfig([{ name: "main" }], { assets: ["src/Api/Api.csproj", "CHANGELOG.md"] }).plugins[3];
+  assert.deepEqual(git, ["@semantic-release/git", { assets: ["CHANGELOG.md", "src/Api/Api.csproj"] }]);
+});
+
+test("gitAssets lists what the repository's @semantic-release/git commits", () => {
+  assert.deepEqual(gitAssets(["@semantic-release/commit-analyzer"]), { gitPlugin: false, gitAssets: [] });
+  assert.deepEqual(gitAssets(["@semantic-release/git"]), {
+    gitPlugin: true,
+    gitAssets: ["CHANGELOG.md", "package.json", "package-lock.json", "npm-shrinkwrap.json"],
+  });
+  assert.deepEqual(
+    gitAssets([
+      ["@semantic-release/git", { assets: ["src/Api/CHANGELOG.md", { path: "src/**/*.csproj" }] }],
+      ["@semantic-release/git", { assets: "dist/app.js" }],
+    ]),
+    { gitPlugin: true, gitAssets: ["src/Api/CHANGELOG.md", "src/**/*.csproj", "dist/app.js"] },
+  );
+  assert.deepEqual(gitAssets([["@semantic-release/git", { assets: false }]]), { gitPlugin: true, gitAssets: [] });
 });

@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -627,6 +628,22 @@ func TestLoad_BranchPatternsOnlySupportStarQuestionAndClasses(t *testing.T) {
 		text := strings.Replace(minimal, "pipeline:\n", "pipeline:\n  branches:\n    - name: main\n    - name: develop\n      prerelease: alpha\n    - name: \""+name+"\"\n      prerelease: rc\n", 1)
 		if _, err := pipelineconfig.Load(writeConfig(t, text)); err != nil {
 			t.Errorf("%s: %v", name, err)
+		}
+	}
+}
+
+func TestLoad_ReleaseVersionFiles(t *testing.T) {
+	p := mustLoad(t, minimal+"  release:\n    version_files: [src\\Api\\Api.csproj, src/Lib/Lib.csproj]\n")
+	if want := []string{"src/Api/Api.csproj", "src/Lib/Lib.csproj"}; !slices.Equal(p.Release.VersionFiles, want) {
+		t.Errorf("version_files %v, want %v", p.Release.VersionFiles, want)
+	}
+	if p := mustLoad(t, minimal); len(p.Release.VersionFiles) != 0 {
+		t.Errorf("default version_files %v", p.Release.VersionFiles)
+	}
+	_, err := pipelineconfig.Load(writeConfig(t, minimal+"  release:\n    version_files: [../x.csproj, \"\", /abs.csproj, a.csproj, a.csproj]\n"))
+	for _, want := range []string{"pipeline.release.version_files[0]", "pipeline.release.version_files[1]", "pipeline.release.version_files[2]", `pipeline.release.version_files[4]: duplicate "a.csproj"`} {
+		if err == nil || !strings.Contains(err.Error(), want) {
+			t.Errorf("err = %v, want %q", err, want)
 		}
 	}
 }

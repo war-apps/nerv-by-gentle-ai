@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- pipeline: `nerv pipeline release` runs dim.comprobantes.api's release job: it releases what is on origin as
+  `nerv ship` does (same checks, configuration, version guard, `--expect`, `--dry-run`), without building or
+  publishing, versions `pipeline.release.version_files` (`<Version>` and the release link) in the release commit,
+  and writes the release outputs to `.nerv/artifacts/pipeline/release.json` for the later steps.
 - pipeline: `nerv pipeline validate` and `nerv pipeline test` run dim.comprobantes.api's validate and test jobs
   locally from the `pipeline:` section (dotnet restore, format check, build with `-warnaserror`, tests with coverage
   and a trx logger), in the working tree, with streamed output and a `--json` result; test results go to the

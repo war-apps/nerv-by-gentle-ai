@@ -63,7 +63,7 @@ configurable with the data it needs; deploy option (Docker only for now).
 - [x] P2 — built-in default semantic-release configuration (dim's, with
   `release/*`), used by the engine when the repository has none.
 - [x] P3 — `validate` and `test` steps.
-- [ ] P4 — `release` step (reuse the ship workspace and version guard).
+- [x] P4 — `release` step (reuse the ship workspace and version guard).
 - [ ] P5 — `docker` step (tags, computed build args, login, push, retry).
 - [ ] P6 — `sync` step.
 - [ ] P7 — `deploy` step (env or Infisical; SSH; health and version check).
@@ -93,6 +93,9 @@ per task, merged into develop in order).
 
 - PR #105 (P1): `feat/pipeline-config` → develop. Merged f1a69de.
 - PR #106 (P2): `feat/pipeline-default-semrel` → develop. Merged 87cf385.
+- PR #107 (P3): `feat/pipeline-validate-test` → develop. Merged 33f14ac.
+- PR #108 (side request, launch labels show the model): merged 6220788.
+- P4 branch `feat/pipeline-release` from 6220788.
 - P3 branch `feat/pipeline-validate-test` from 87cf385.
 - P2 branch `feat/pipeline-default-semrel` from f1a69de.
 
@@ -459,6 +462,117 @@ directly.
   diff --shortstat a8af92a 0326131`: 6 files changed, 347 insertions(+),
   100 deletions(-).
 
+### P4
+
+- Route: delegated (one bounded writer; trigger: config field, semrel
+  plumbing, outputs package, CLI, docs).
+- Sharing with `nerv ship` (decided): `nerv pipeline release` builds a
+  `shipRun` in a new release-only mode (`releaseOnly`, `versionFiles`,
+  `released`) and calls the same `execute`: release clone, local-vs-origin
+  check, version-file check on origin, Compute, `--expect`, listing,
+  confirmation, push check, GH token, `ws.Release` and the same failure
+  advice. In that mode the plan is empty (no stages, no hooks) and
+  `ship()` delegates to `releaseOnlyStep` (dry run stops there; version
+  files; release; a tagged failure gets advice without NERV's publish
+  stage). Ship's own code paths and texts are unchanged (all ship unit
+  and integration tests pass untouched). The shared messages say "nerv
+  ship"; the pipeline command renames them on its own stderr (a line
+  writer under the `[pipeline:release] ` PrefixWriter) and in its
+  document's `error`/`action`.
+- Version files: `pipeline.release.version_files` (pipelineconfig,
+  additive: validated, normalised, no duplicates) written in the clone
+  before semantic-release with shipplan's csproj writer (`<Version>` +
+  release link, or version only with a warning without a public origin),
+  as ship writes the dotnet preset's file. Ship relies on the
+  repository's own `@semantic-release/git` assets listing the file; the
+  built-in configuration now takes `extraAssets` (semrel
+  `ReleaseRequest.ExtraAssets` -> runner `defaultConfig(..., {assets})`),
+  so the release commit holds CHANGELOG + the version files; a
+  repository's own configuration keeps its own assets (documented, dim's
+  lists its csproj).
+- Outputs: `pipeline.ReleaseOutputs` (dim's published, version, channel,
+  git_tag + git_head, last_version, project, branch, config source, the
+  12 action outputs, error, action) written atomically to
+  `.nerv/artifacts/pipeline/release.json` after the same symlink checks
+  as the test results; `--json` prints the same document. Decisions: an
+  earlier release.json is removed at the start (a refused, failed or
+  interrupted run leaves none); `--dry-run` writes it with `dry_run: true`
+  (later dry runs see the would-be version); no new release is
+  `published: false`, exit 0; a `release:` section with several projects
+  is refused (one project per pipeline; `nerv ship` for monorepos); an
+  invalid `pipeline:` section is a refusal (exit 1).
+- RED: `go test ./internal/pipelineconfig/` (`p.Release undefined`), node
+  (`defaultConfig` without assets), `go test ./internal/semrel/`
+  (`unknown field ExtraAssets`), `go test ./internal/pipeline/`
+  (`undefined: ReleaseOutputs`), `go test ./cmd/nerv/` (the release step
+  did not exist: 6 test functions failed). GREEN: all; one refusal fixed
+  after GREEN (an invalid pipeline: section first exited 2).
+- Integration (`TestIntegration_PipelineReleaseWithTheBuiltInConfiguration`,
+  real semantic-release, local bare origin, no repo semantic-release
+  config, untracked local `pipeline:` with `version_files:
+  [src/Api/Api.csproj]`): `--dry-run` -> origin refs unchanged,
+  release.json `dry_run: true`, published, `1.1.0-alpha.1`, config
+  `default`; `--yes --json --expect widgets=1.1.0-alpha.1` -> tag
+  `v1.1.0-alpha.1` = origin's develop, release commit holds exactly
+  `CHANGELOG.md` and `src/Api/Api.csproj`, the csproj on origin has
+  `<Version>1.1.0-alpha.1</Version>`, the warning (no public address for
+  the link) is printed prefixed, release.json has the outputs and
+  `git_head` = origin's develop; after `git pull`, a second run ->
+  `published: false`, `last_version` `1.1.0-alpha.1`. 20.8s. The release
+  link itself is proven by the unit test (GitHub origin fake): a real
+  GitHub origin would also bring the GitHub plugin, not testable locally.
+- Checks: `go test -count=1 ./...` exit 0 (29 packages); `go test -tags
+  semrel_integration -run Integration -count=1 ./internal/semrel/
+  ./cmd/nerv/` exit 0; node runner tests 20/20; `go vet ./...`,
+  `GOOS=windows go vet ./...`, `go vet -tags semrel_integration` exit 0;
+  `gofmt -l .` empty.
+- Commits: `f8bf4fd` `feat(pipelineconfig): add the release step's version
+  files` (4 files changed, 49 insertions(+)); `0ef0a65` `feat(semrel):
+  commit extra assets with the built-in configuration's changelog` (7
+  files, +51 -7); `86aa2ce` `feat(pipeline): keep the release outputs for
+  the later steps` (2 files, +248); `f4ae06b` `feat(cli): add nerv
+  pipeline release` (8 files, +665 -13). Total `git diff --shortstat
+  b41e0ba f4ae06b`: 21 files changed, 1013 insertions(+), 20
+  deletions(-). Above the ~400-line heuristic: about 450 lines are tests
+  and 120 docs; four work-unit commits.
+
+### P4 review
+
+- Native review of b41e0ba..2e84c5a (medium, user granted): approved and
+  acknowledged. Advisory: R3-outputs-write-after-release (WARNING: a failed
+  `release.json` write after the tag reports a bare failure, without saying
+  the release is on origin), R3-own-config-version-files-silent (WARNING: with
+  the repository's own config, version files its git assets do not list stay
+  out of the release commit silently), R3-failed-doc-claims-published (a
+  failed run's document reports the computed release as published),
+  R3-prefixwriter-error-redup (a failed write is retried and duplicated).
+
+### P4 follow-ups
+
+All four P4 review advisories fixed (user authorized). Route: delegated
+(one writer). Test-first; `go test` exit codes captured directly.
+
+| Item | Fix | Evidence |
+|---|---|---|
+| R3-outputs-write-after-release | A failed release.json write (seam `options.WriteReleaseOutputs`) fails the step (exit 2) with `error` naming the write failure and an `action` saying the release is on origin (version, tag, commit), that docker/sync/deploy read release.json, and how to recover: the exact content (status passed) is printed on one stderr line after `release.json should hold: ` to save by hand; never a rerun ("Do not run nerv pipeline release again for this release"). | RED: build failure (`opts.WriteReleaseOutputs undefined`). GREEN: `TestPipelineRelease_OutputsWriteFailureAfterTheRelease` (exit 2, published true with version/tag/commit, the printed line parses back to a `passed` document with the tag, one release only). |
+| R3-own-config-version-files-silent | The runner's plan mode returns `gitPlugin` / `gitAssets` of the repository's own configuration (`gitAssets(plugins)`: the plugin's default assets when unset, none for `false`, object paths); Compute carries them on `ProjectResult` (`json:"-"`, so `version next` output is unchanged); `nerv pipeline release` refuses after Compute, before listing, confirmation or any release (dry run included) when the config has no `@semantic-release/git` or `semrel.AssetsCover` (globby-style: `*`, `?`, `**`, `[...]`, `{a,b}`, leading `./`, `!` exclusions) leaves a version file out, naming the files and the fix. `ProjectResult` is no longer comparable with `==`: two tests switched to `reflect.DeepEqual`. | RED: node `gitAssets` export missing; Go build failures (`AssetsCover`, `GitPlugin`, `GitAssets`). GREEN: node 21/21, `TestAssetsCover` (10 cases), `TestCompute_ReportsTheRepositorysGitAssets`, `TestPipelineRelease_RepositoryConfigMustCommitTheVersionFiles` (covered by a glob proceeds; not in the assets and no git plugin refused, dry run and real, nothing released). Integration `TestIntegration_PipelineReleaseRepositoryConfigAssets` (real semantic-release, own package.json config): assets `CHANGELOG.md` only -> refused naming `src/Api/Api.csproj` and `package.json`, origin tags unchanged; assets with `src/**/*.csproj` -> `v1.1.0` released, the release commit holds `CHANGELOG.md` and `src/Api/Api.csproj`. |
+| R3-failed-doc-claims-published | `published` and the release fields describe only what was released; a real run that computed but did not release reports `published: false` and `computed {version, channel, git_tag}`; a dry run keeps reporting the computation as before. | RED: build failure (`doc.Computed undefined`). GREEN: `TestPipelineRelease_FailureLeavesNoOutputs` extended (published false, no version/tag, computed `1.1.0-alpha.1` / `v1.1.0-alpha.1`). |
+| R3-prefixwriter-error-redup | `PrefixWriter` consumes a line before writing it: a failed write returns its error and the line is not written again. | RED: `TestPrefixWriter_DropsTheLineThatFailed` got `> lost` written after the failure. GREEN. |
+
+- Docs: docs/pipeline.md (the own-config assets check, `computed`, the
+  write-failure recovery), committed with the assets fix in `a4175da`.
+- Checks: `go test -count=1 ./...` exit 0 (29 packages); `go test -tags
+  semrel_integration -run Integration -count=1 ./internal/semrel/
+  ./cmd/nerv/` exit 0; node runner tests 21/21; `go vet ./...`,
+  `GOOS=windows go vet ./...`, `go vet -tags semrel_integration` exit 0;
+  `gofmt -l .` empty.
+- Commits: `8a8f1a5` `fix(pipeline): drop a prefixed line whose write
+  failed` (2 files); `397b2ae` `fix(cli): report a release.json write
+  failure and only what was released` (4 files, +87 -5); `a4175da`
+  `fix(cli): refuse version files the repository's release commit would
+  not hold` (15 files, +302 -17). Total `git diff --shortstat 4a16bf4
+  a4175da`: 19 files changed, 425 insertions(+), 25 deletions(-).
+
 ## Next step
 
-Review of P3 (with the coverage gate); then P4 (`release` step).
+Review of P4; then P5 (`docker` step, reading release.json).
