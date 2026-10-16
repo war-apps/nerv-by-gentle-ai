@@ -15,7 +15,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the step fails at the end. It syncs nothing unless every earlier part passed for this release: a passing
   `test.json` on a clean tree at the commit the release was made from (`release.json`'s new `base_commit`) and a
   passing `docker.json` of the release's version, tag and commit; it asks before pushing (`--yes`), previews with
-  `--dry-run` (conflicts included, same checks) and writes `.nerv/artifacts/pipeline/sync.json`.
+  `--dry-run` (conflicts included, same checks) and writes `.nerv/artifacts/pipeline/sync.json` (also after an
+  interruption, with the targets not run). It refuses when git has no commit identity configured instead of
+  letting git guess one.
 - pipeline: `nerv pipeline test` records a passing run in `.nerv/artifacts/pipeline/test.json` (the tested `HEAD`
   and any uncommitted changes outside `.nerv/`); a failed run leaves an earlier record untouched.
 - pipeline: `nerv pipeline docker` runs dim.comprobantes.api's docker job: from the release step's outputs, in a

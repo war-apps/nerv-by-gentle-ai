@@ -816,7 +816,22 @@ All three P5 review advisories fixed (user authorized). Route: delegated
   docker run leaves docker.json as it was` (3 files, +29 -11). Follow-up
   (sync needs passing records): `b6570ab` `fix(pipeline): sync nothing
   unless test, release and docker passed for the release` (10 files, +407
-  -55), plus the docs/odd commit recording it.
+  -55); `282c3a6` `docs(pipeline): document the records sync requires`
+  (4 files, +84 -18).
+
+### P6 review
+
+- Native review approved; three advisories fixed (user authorized),
+  test-first:
+
+| Item | Fix | Evidence |
+|---|---|---|
+| Interrupted sync left no sync.json | `Sync.Run` records the targets an interruption stopped as `not-run` (status `interrupted`, an action to rerun); the CLI writes sync.json for an interrupted run that reached the merges, still exiting 128 + signal. | RED: `TestPipelineSync_InterruptedAfterAPushRecordsWhatFinished` (cancel after the develop push): exit 130 but no sync.json. GREEN: sync.json `interrupted` with develop `pushed` (commit) and release/a, release/b `not-run`; nothing ran after the push. Commit `dd37cb7` (4 files, +56 -1). |
+| test.json paths parsed by slicing porcelain v1 | `git status --porcelain=v1 -z`; entries split on NUL, a rename/copy records its new and old path; no quoting. | RED: `TestPipeline_TestRecordsPathsExactly` (space, unicode, a rename, a name with quotes and " -> ") and the dirty-tree test: no changes recorded once the fixture answered with -z output. GREEN: exact paths. Commit `5166902` (2 files, +34 -8). |
+| Commit identity could be guessed | `UseCommitIdentity` resolves with the user's own environment in the user's repository (`Workspace.userEnv`, the environment as given), checks author and committer with `-c user.useConfigOnly=true var` (none configured wraps `ErrNoCommitIdentity`, a refusal before merging), then copies user.name/email; merges also run with `user.useConfigOnly`. | RED (semrel_integration, real git): global-only and includeIf identities already worked (the workspace environment was not isolated), but with none configured git guessed `Walter Rodriguez <wal1rod@...>` from the system account instead of failing. GREEN: `TestIntegration_CommitIdentityFromTheUsersConfiguration` (global only, includeIf gitdir for the repository, none -> ErrNoCommitIdentity), merge commit author and committer = the configured identity; CLI refusal case (exit 1, written with the fix). Commit `a0dfdd8` (5 files, +116 -16). |
+
+- Docs/odd: the docs/pipeline.md, CHANGELOG and feature-doc commit
+  recording these fixes.
 
 ## Next step
 

@@ -86,7 +86,8 @@ committed and the repository's own `.gitignore` is not touched.
 **Test record.** Before the commands run, the step reads what it tests:
 `HEAD` and the working tree's changes outside `.nerv/` (tracked or
 untracked, ignored files excluded; `.nerv/` holds the local `nerv.yaml`
-and the artifacts). Only a passing run writes
+and the artifacts; the paths are recorded exactly, from `git status
+--porcelain=v1 -z`, a rename with both its new and old path). Only a passing run writes
 `.nerv/artifacts/pipeline/test.json` (`step`, `status`, `commit`, `dirty`,
 `changes`); a failing build or test, or an unreadable `HEAD`, leaves an
 earlier one exactly as it was. `nerv pipeline sync` requires it (see
@@ -317,10 +318,14 @@ dim's sync-to-develop and sync-main-to-release jobs:
    --abort`) and recorded with its paths; the other targets still run and
    the step fails at the end (exit 2), naming the branches to merge by
    hand.
-4. The merge commits are yours, not dim's release bot: `user.name` and
-   `user.email` as your repository resolves them are copied into the
-   clone (`GIT_COMMITTER_*` / `GIT_AUTHOR_*` still win, as in any git
-   command), and the identity is printed before anything is merged. The
+4. The merge commits are yours, not dim's release bot: the identity is
+   resolved in your repository with your environment, as git resolves it
+   there (its configuration, your global one and any `includeIf` for its
+   path; `GIT_COMMITTER_*` / `GIT_AUTHOR_*` win), `user.name` and
+   `user.email` are copied into the clone, and the identity is printed
+   before anything is merged. With no identity configured the step
+   refuses (exit 1) before merging: nerv never lets git guess one from the
+   system account (`user.useConfigOnly`). The
    pushes use your own git credentials (ssh keys or a credential helper,
    checked first with a dry-run push).
 5. It lists every merge and asks before pushing (`--yes` skips it, and is
@@ -331,7 +336,11 @@ dim's sync-to-develop and sync-main-to-release jobs:
    and per target: branch, source, status `pushed` / `up-to-date` /
    `conflict` / `failed` (dry run: `would-merge` / `would-conflict`), the
    merge commit, the conflicting paths, the error); an earlier one is
-   removed at the start, and a refusal writes none. `--json` prints the
+   removed at the start, and a refusal writes none. A run interrupted
+   during the merges (exit 128 + signal) still writes it, with status
+   `interrupted`: the targets that finished as they ended (a `pushed` one
+   is on origin) and the rest `not-run`; running the step again finds the
+   pushed ones `up-to-date`. `--json` prints the
    same document. Every stderr line is prefixed `[pipeline:sync] `.
 
 dim.comprobantes.api's workflow commits as its release bot; with nerv the
