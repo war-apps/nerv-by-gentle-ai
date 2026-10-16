@@ -114,6 +114,9 @@ type options struct {
 	OpenDockerWorkspace func(context.Context, semrel.WorkspaceOptions) (dockerWorkspace, error)
 	DockerProc          proc.Runner
 	DockerArgs          func(repoRoot string, output io.Writer) pipeline.ArgRunner
+	// OpenSyncWorkspace is nerv pipeline sync's clone; tests inject a fake.
+	// Nil means semrel.NewWorkspace.
+	OpenSyncWorkspace func(context.Context, semrel.WorkspaceOptions) (syncWorkspace, error)
 }
 
 func defaultOptions() options {

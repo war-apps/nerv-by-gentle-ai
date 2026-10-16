@@ -41,6 +41,15 @@ Steps:
              released commit (release.json), in a clone of origin at the
              release tag; result in .nerv/artifacts/pipeline/docker.json
 
+  sync       merge the released branch back as dim's sync jobs: main or
+             a pipeline.sync.release branch into pipeline.sync.develop,
+             and main into every pipeline.sync.release branch on origin
+             (--no-ff, "chore(sync): merge <source> into <branch> [skip
+             ci]"), committed as you and pushed with your credentials; a
+             conflict is aborted, the other branches still sync, and the
+             step fails at the end; result in
+             .nerv/artifacts/pipeline/sync.json
+
 validate and test run in your working tree, as CI runs on a checkout: they
 check the code as it is, uncommitted changes included. release releases
 what is on origin: your local branch must equal origin's.
@@ -65,6 +74,13 @@ docker also takes:
                   token_env (the token is given on stdin only)
   --fetch-timeout <dur>  Bound for each read of origin (default 60s)
 
+sync also takes:
+  --dry-run       Preview the merges (conflicts included); never merge or
+                  push (required after a dry-run release)
+  --yes           Merge and push without asking (required without a
+                  terminal)
+  --fetch-timeout <dur>  Bound for each read of origin (default 60s)
+
 Progress goes to stderr (each command's output prefixed
 "[pipeline:<step>] "), the result to stdout. Exit codes: 0 passed, 1
 refused (no or invalid pipeline: section, not a git repository), 2 a
@@ -73,7 +89,7 @@ interrupted.
 `
 
 // pipelineStepNames are the implemented steps, in pipeline order.
-var pipelineStepNames = []string{"validate", "test", "release", "docker"}
+var pipelineStepNames = []string{"validate", "test", "release", "docker", "sync"}
 
 // pipelineRefused is the status of a step that did not start.
 const pipelineRefused = "refused"
@@ -92,6 +108,8 @@ func runPipeline(args []string, stdout, stderr io.Writer, opts options) int {
 		return runPipelineRelease(args[1:], stdout, stderr, opts)
 	case "docker":
 		return runPipelineDocker(args[1:], stdout, stderr, opts)
+	case "sync":
+		return runPipelineSync(args[1:], stdout, stderr, opts)
 	}
 	if !slices.Contains(pipelineStepNames, step) {
 		return pipelineUsageError(stderr, fmt.Sprintf("unknown step %q (want one of %s)", step, strings.Join(pipelineStepNames, ", ")))
