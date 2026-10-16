@@ -35,8 +35,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - dotnet: every dotnet command nerv runs (the `dotnet` ship preset and `nerv pipeline validate`/`test`) runs
   without build servers: `MSBUILDDISABLENODEREUSE=1`, `UseSharedCompilation=false`,
-  `DOTNET_CLI_USE_MSBUILD_SERVER=0`, and `--disable-build-servers` on restore, build, test and pack (not on
-  `dotnet format`, which rejects it). On shared hosts reused servers made dotnet die mid-release with "Internal
+  `DOTNET_CLI_USE_MSBUILD_SERVER=0`, and `--disable-build-servers` on restore, build, test and pack when the
+  SDK (`dotnet --version`, once per run and directory) is 7.0.100 or later (never on `dotnet format`, which
+  rejects it; left out with a note when the version cannot be detected). On shared hosts reused servers made dotnet die mid-release with "Internal
   CLR error (0x80131506)". `pipeline.dotnet.env` still wins; stage overrides' `run:` are not rewritten, so
   repositories that overrode every stage for this can drop those overrides.
 

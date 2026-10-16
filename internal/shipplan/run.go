@@ -126,9 +126,10 @@ func (e Executor) checkSecrets(plan *Plan) error {
 }
 
 func (e Executor) run(ctx context.Context, stages []Stage, vars shiprun.Vars) error {
+	probe := NewBuildServersProbe(e.Steps)
 	for _, st := range stages {
 		for i, s := range st.Steps {
-			if err := e.step(ctx, s, vars); err != nil {
+			if err := e.step(ctx, s, vars, probe); err != nil {
 				return &StepFailure{Stage: st.Name, Step: s.Name, Index: i, Err: err}
 			}
 		}
@@ -136,7 +137,7 @@ func (e Executor) run(ctx context.Context, stages []Stage, vars shiprun.Vars) er
 	return nil
 }
 
-func (e Executor) step(ctx context.Context, s Step, vars shiprun.Vars) error {
+func (e Executor) step(ctx context.Context, s Step, vars shiprun.Vars, probe *BuildServersProbe) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -151,6 +152,11 @@ func (e Executor) step(ctx context.Context, s Step, vars shiprun.Vars) error {
 		return nil
 	}
 	rs := shiprun.Step{Name: s.Name, Stage: s.Stage, Command: s.Command, Exec: s.Exec}
+	var note string
+	rs.Exec, note = probe.Argv(ctx, rs, vars)
+	if e.Output != nil && note != "" {
+		fmt.Fprintf(e.Output, "[%s:%s] %s\n", vars.Project, s.Name, note)
+	}
 	return e.Steps.Run(ctx, rs, vars)
 }
 

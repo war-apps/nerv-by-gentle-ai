@@ -532,10 +532,26 @@ func TestBuild_ContextIsChecked(t *testing.T) {
 	}
 }
 
-// fakeRunner records the steps it runs and fails those named in fail.
+// fakeRunner records the steps it runs and fails those named in fail. Its
+// Capture answers the SDK probe (dotnet --version) with sdk (10.0.112 when
+// empty) or sdkErr, recording the probes apart from the steps.
 type fakeRunner struct {
-	steps []shiprun.Step
-	fail  map[string]error
+	steps  []shiprun.Step
+	fail   map[string]error
+	sdk    string
+	sdkErr error
+	probes []shiprun.Step
+}
+
+func (f *fakeRunner) Capture(_ context.Context, s shiprun.Step, _ shiprun.Vars) (string, error) {
+	f.probes = append(f.probes, s)
+	if f.sdkErr != nil {
+		return "", f.sdkErr
+	}
+	if f.sdk == "" {
+		return "10.0.112\n", nil
+	}
+	return f.sdk, nil
 }
 
 func (f *fakeRunner) Run(_ context.Context, s shiprun.Step, _ shiprun.Vars) error {

@@ -746,8 +746,12 @@ flags go in a stage override, e.g.
 - Every dotnet preset command runs without build servers: it receives
   `MSBUILDDISABLENODEREUSE=1`, `UseSharedCompilation=false` and
   `DOTNET_CLI_USE_MSBUILD_SERVER=0`, and restore, build, test and pack
-  also get `--disable-build-servers`. `dotnet format` rejects that flag,
-  so it gets only the variables. Reused MSBuild nodes and compiler servers
+  also get `--disable-build-servers` when the SDK accepts it (7.0.100 or
+  later). nerv runs `dotnet --version` once per run in the directory the
+  commands run in (so `global.json` decides); with an older SDK the flag is
+  left out, and when the version cannot be detected it is left out with a
+  note in the step's output. `dotnet format` rejects the flag, so it gets
+  only the variables. Reused MSBuild nodes and compiler servers
   make dotnet die mid-release on shared hosts ("Internal CLR error
   (0x80131506)"). A stage override's `run:` is never rewritten: it runs as
   written, so a repository that overrode every stage only for this (as

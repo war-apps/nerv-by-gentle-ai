@@ -44,10 +44,13 @@ command runs without a shell, with `DOTNET_NOLOGO=true`,
 `MSBUILDDISABLENODEREUSE=1`, `UseSharedCompilation=false` and
 `DOTNET_CLI_USE_MSBUILD_SERVER=0`, and then `pipeline.dotnet.env` over
 them, so a variable the repository sets there wins. Those last three, and
-`--disable-build-servers` on restore, build and test (`dotnet format`
-rejects the flag), keep dotnet from reusing MSBuild nodes and compiler
+`--disable-build-servers` on restore, build and test, keep dotnet from reusing MSBuild nodes and compiler
 servers, which on shared hosts makes it die midway ("Internal CLR error
-(0x80131506)"). Its output is streamed to stderr prefixed
+(0x80131506)"). `dotnet format` rejects the flag, and it exists only from
+SDK 7.0.100: each step runs `dotnet --version` once in the repository
+root (so `global.json` decides) and leaves the flag out with an older SDK,
+or, adding a note to the result, when the version cannot be detected; the
+variables always apply. Its output is streamed to stderr prefixed
 `[pipeline:<step>] `. A step stops at the first failing command and names
 it. Ctrl-C stops the command and every process it started.
 

@@ -14,11 +14,27 @@ import (
 	"github.com/war-apps/nerv-by-gentle-ai/internal/shiprun"
 )
 
-// fakeSteps records every step and fails the ones named in fail.
+// fakeSteps records every step and fails the ones named in fail. Its
+// Capture answers the SDK probe (dotnet --version) with sdk (10.0.112 when
+// empty) or sdkErr, recording the probes apart from the steps.
 type fakeSteps struct {
-	steps []shiprun.Step
-	vars  []shiprun.Vars
-	fail  map[string]error
+	steps  []shiprun.Step
+	vars   []shiprun.Vars
+	fail   map[string]error
+	sdk    string
+	sdkErr error
+	probes []shiprun.Step
+}
+
+func (f *fakeSteps) Capture(_ context.Context, s shiprun.Step, _ shiprun.Vars) (string, error) {
+	f.probes = append(f.probes, s)
+	if f.sdkErr != nil {
+		return "", f.sdkErr
+	}
+	if f.sdk == "" {
+		return "10.0.112\n", nil
+	}
+	return f.sdk, nil
 }
 
 func (f *fakeSteps) Run(_ context.Context, s shiprun.Step, v shiprun.Vars) error {
@@ -166,6 +182,10 @@ type writingSteps struct {
 	write func()
 }
 
+func (w *writingSteps) Capture(ctx context.Context, s shiprun.Step, v shiprun.Vars) (string, error) {
+	return w.inner.Capture(ctx, s, v)
+}
+
 func (w *writingSteps) Run(ctx context.Context, s shiprun.Step, v shiprun.Vars) error {
 	if s.Exec[1] == "test" {
 		w.write()
@@ -246,15 +266,28 @@ func TestTest_SymlinkedNervOrArtifactsOutsideAreRefusedBeforeCreatingAnything(t 
 }
 
 func TestDotnetCommands_NoBuildServers(t *testing.T) {
-	for _, name := range []string{"validate", "test"} {
-		t.Run(name, func(t *testing.T) {
+	for _, tt := range []struct {
+		name string
+		want []string
+	}{
+		{"validate", []string{"dotnet restore", "dotnet format"}},
+		{"test", []string{"dotnet restore", "dotnet build", "dotnet test"}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
 			f := &fakeSteps{}
 			cfg := config(func(p *pipelineconfig.Pipeline) { p.Dotnet.Env = map[string]string{"UseSharedCompilation": "true"} })
 			st := Steps{Repo: t.TempDir(), Config: cfg, Run: f}
-			if name == "validate" {
+			if tt.name == "validate" {
 				st.Validate(context.Background())
 			} else {
 				st.Test(context.Background())
+			}
+			var ran []string
+			for _, s := range f.steps {
+				ran = append(ran, strings.Join(s.Exec[:2], " "))
+			}
+			if !slices.Equal(ran, tt.want) {
+				t.Fatalf("ran %q, want %q", ran, tt.want)
 			}
 			for _, s := range f.steps {
 				env := s.Command.Env
@@ -268,6 +301,52 @@ func TestDotnetCommands_NoBuildServers(t *testing.T) {
 				if got := slices.Contains(s.Exec, shipplan.DisableBuildServers); got != wantFlag {
 					t.Errorf("%q: --disable-build-servers %v, want %v", s.Exec, got, wantFlag)
 				}
+			}
+		})
+	}
+}
+
+func TestDotnetCommands_BuildServersFlagFollowsTheSDK(t *testing.T) {
+	for _, tt := range []struct {
+		name     string
+		sdk      string
+		sdkErr   error
+		wantFlag bool
+		wantNote bool
+	}{
+		{"SDK 8", "8.0.404\n", nil, true, false},
+		{"SDK 6", "6.0.428\n", nil, false, false},
+		{"detection fails", "", errors.New("dotnet: not found"), false, true},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			f := &fakeSteps{sdk: tt.sdk, sdkErr: tt.sdkErr}
+			r := Steps{Repo: t.TempDir(), Config: config(nil), Run: f}.Test(context.Background())
+			if len(f.steps) != 3 {
+				t.Fatalf("ran %q, want restore, build and test", f.argvs())
+			}
+			if len(f.probes) != 1 || !slices.Equal(f.probes[0].Exec, []string{"dotnet", "--version"}) || f.probes[0].Command.Workdir != "" {
+				t.Errorf("probes %+v, want one dotnet --version in the repository root", f.probes)
+			}
+			if f.probes[0].Command.Env["MSBUILDDISABLENODEREUSE"] != "1" {
+				t.Errorf("the probe must get the commands' env, got %v", f.probes[0].Command.Env)
+			}
+			for i, s := range f.steps {
+				if got := slices.Contains(s.Exec, shipplan.DisableBuildServers); got != tt.wantFlag {
+					t.Errorf("%q: --disable-build-servers %v, want %v", s.Exec, got, tt.wantFlag)
+				}
+				if s.Command.Env["MSBUILDDISABLENODEREUSE"] != "1" {
+					t.Errorf("%q: the env must apply whatever the SDK", s.Exec)
+				}
+				if !slices.Equal(r.Commands[i].Argv, s.Exec) {
+					t.Errorf("result argv %q, ran %q", r.Commands[i].Argv, s.Exec)
+				}
+			}
+			noted := slices.ContainsFunc(r.Notes, func(n string) bool { return strings.Contains(n, shipplan.DisableBuildServers) })
+			if noted != tt.wantNote {
+				t.Errorf("notes %q: a note about the flag %v, want %v", r.Notes, noted, tt.wantNote)
+			}
+			if r.Status != StatusPassed {
+				t.Errorf("status %s (%s)", r.Status, r.Error)
 			}
 		})
 	}

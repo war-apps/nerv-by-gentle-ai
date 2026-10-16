@@ -179,9 +179,17 @@ func (s Steps) Test(ctx context.Context) Result {
 func (s Steps) run(ctx context.Context, r *Result, cmds ...[]string) {
 	env := dotnetDefaultEnv()
 	maps.Copy(env, s.Config.Dotnet.Env)
+	vars := shiprun.Vars{Project: "pipeline"}
+	probe := shipplan.NewBuildServersProbe(s.Run)
 	for _, argv := range cmds {
 		step := shiprun.Step{Name: r.Step, Stage: r.Step, Command: shipconfig.Command{Env: env}, Exec: argv}
-		err := s.Run.Run(ctx, step, shiprun.Vars{Project: "pipeline"})
+		var note string
+		step.Exec, note = probe.Argv(ctx, step, vars)
+		if note != "" {
+			r.Notes = append(r.Notes, note)
+		}
+		argv = step.Exec
+		err := s.Run.Run(ctx, step, vars)
 		cr := CommandResult{Argv: argv, Exit: 0}
 		if err != nil {
 			cr.Exit = -1
