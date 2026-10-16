@@ -518,17 +518,26 @@ it runs alone (sync still requires this release's passing test and docker
 records, deploy the docker one).
 
 - `--dry-run` goes to release, docker, sync and deploy (validate and test
-  always run for real: they only check the working tree); `--yes` to
+  always run for real: they only check the working tree); a dry run gets
+  through every step on dry-run records (a dry-run `release.json` and
+  `docker.json`), which a real sync or deploy still refuses; `--yes` to
   release, sync and deploy (docker asks nothing: its push follows the
   release you confirmed); `--expect` to release only.
 - `--from <step>` starts at that step; `--only <step>` runs that step
   alone.
-- The first step that does not pass (exit not 0: refused, failed or
-  interrupted) stops the run: the later steps are `not-run`, and the run's
-  exit is that step's. A step with nothing to do (no new release, sync or
+- The first step that does not pass stops the run: the later steps are
+  `not-run`, and the run's exit is that step's. A step passes only when it
+  exits 0 **and** its document's `status` is `passed` (the status of every
+  step, also when it had nothing to do); a step that exits 0 with another
+  status, or without a document, stops the run with exit 2, and a
+  non-zero exit without an error is reported as `<step>: exited <code>
+  with status <status>`. A step with nothing to do (no new release, sync or
   deploy disabled) passes, and the run goes on.
 - Every stderr line keeps its step's prefix (`[pipeline:<step>] `); the
-  run's own lines are prefixed `[pipeline:run] `. `.nerv/artifacts/pipeline/run.json`
+  run's own lines are prefixed `[pipeline:run] `. An earlier `run.json` is
+  removed when the run starts, so it is never read as this run's result
+  (outside a git repository the run is refused, exit 1, with the refused
+  document on stdout and no file). `.nerv/artifacts/pipeline/run.json`
   (and `--json` on stdout) holds `status`, `dry_run`, `error` (the failing
   step's, prefixed with its name) and, per step, `step`, `status`
   (`passed`, `refused`, `failed`, `interrupted`, `not-run`) and `exit`.

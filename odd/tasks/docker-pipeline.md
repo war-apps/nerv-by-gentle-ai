@@ -1015,7 +1015,20 @@ All three P5 review advisories fixed (user authorized). Route: delegated
   Total `git diff --shortstat 0ec381b 5226f6c`: 10 files changed, 728
   insertions(+), 4 deletions(-).
 
+### P8 review
+
+- Native review approved; three findings fixed (user authorized),
+  test-first.
+
+| Item | Fix | Evidence |
+|---|---|---|
+| The run stopped on the exit code only | A step passes only when it exits 0 and its document's status is in `pipeline.RunAccepted` (`passed`: every step reports it, also with nothing to do); otherwise the run stops (exit the step's, 2 when it exited 0). A missing document is `exited <code> without a result document`; a non-zero exit without an error `exited <code> with status <status>`. | RED: `TestPipelineRun_DocumentAndExitMustAgree`: exit 0 with `failed` or `refused` or no document ran on to deploy and passed; exit 2 without an error or document reported `docker: `. GREEN: all five stop at docker with the stated status, error and exit. Commit `41a4ef3` (3 files, +107 -9). |
+| Prove the dry-run chain with the real steps | No gate needed changing: `TestIntegration_PipelineRunDryRunGetsThroughEveryStep` (real git, local bare origin, semantic-release's real dry run with the built-in configuration; faked at the process boundary: dotnet for validate/test via `PipelineSteps`, docker via `DockerProc`, the deploy runner via `DeployProc`, asserted never called) passes every step for (a) a releasable repository (dry-run release 1.1.0, one image build and no push, sync develop `would-merge`, deploy production `would-deploy`) and (b) nothing to release (every later step nothing to do); a real `nerv pipeline sync` on the dry-run records still refuses (exit 1, "dry run"). 7.8s. | Its first run failed only on the fixture (develop created at main's commit, so `up-to-date`); develop now branches before the feature commit. Commit `84424d0` (1 file, +124). |
+| gitTopLevel failure and a stale run.json | Outside a git repository: exit 1 and the refused document on stdout, no step run (tested; it already behaved so). A stale run.json is removed when the run starts (`pipeline.RemoveRunResult`), chosen over writing a refused document because a failure after the start (a write error) would otherwise leave the previous result. | `TestPipelineRun_NotAGitRepository` (passed as written: characterization). RED: `TestPipelineRun_AStaleRunJSONIsRemovedAtTheStart`: the earlier run.json existed while the steps ran. GREEN. In `41a4ef3`. |
+
+- Docs/odd: docs/pipeline.md (the accepted status, the stale run.json, the dry-run chain) and this table, in the docs commit recording the fixes.
+
 ## Next step
 
-Review of P8; then the feature is complete (acceptance criteria check on
+The feature is complete (acceptance criteria check on
 a copy of dim.comprobantes.api).
