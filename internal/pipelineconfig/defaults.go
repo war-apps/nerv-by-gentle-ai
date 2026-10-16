@@ -38,6 +38,12 @@ const (
 	DefaultSyncRelease = "release/*"
 	// DefaultDeploySource reads the deploy data from environment variables.
 	DefaultDeploySource = "env"
+	// DefaultDeploySelection deploys the environments whose
+	// DOCKER_IMAGE_VERSION points at the release.
+	DefaultDeploySelection = "target"
+	// DefaultUpdateTimeout bounds the compose script's pull and up on a
+	// host: generous, an image pull can be slow.
+	DefaultUpdateTimeout = "15m"
 	// DefaultSSHAuth is password authentication (update-deploy.sh: sshpass).
 	DefaultSSHAuth = "password"
 	// DefaultSSHPort is the SSH port (update-deploy.sh: reachable on 22).
@@ -166,8 +172,16 @@ func (p *Pipeline) applyDefaults() {
 		if d.Source == "" {
 			d.Source = DefaultDeploySource
 		}
+		if d.Selection == "" {
+			d.Selection = DefaultDeploySelection
+		}
+		if d.UpdateTimeout == "" {
+			d.UpdateTimeout = DefaultUpdateTimeout
+		}
 		if d.Environments == nil {
-			d.Environments = DefaultEnvironments()
+			for _, name := range DefaultEnvironments() {
+				d.Environments = append(d.Environments, Environment{Name: name})
+			}
 		}
 		if d.SSH.Auth == "" {
 			d.SSH.Auth = DefaultSSHAuth

@@ -66,7 +66,7 @@ configurable with the data it needs; deploy option (Docker only for now).
 - [x] P4 — `release` step (reuse the ship workspace and version guard).
 - [x] P5 — `docker` step (tags, computed build args, login, push, retry).
 - [x] P6 — `sync` step.
-- [ ] P7 — `deploy` step (env or Infisical; SSH; health and version check).
+- [x] P7 — `deploy` step (env or Infisical; SSH; health and version check).
 - [ ] P8 — `nerv pipeline run`, `/nerv:pipeline`, guide, CHANGELOG.
 
 ## Acceptance criteria
@@ -98,6 +98,8 @@ per task, merged into develop in order).
 - PR #109 (P4): `feat/pipeline-release` → develop. Merged 65caeff.
 - PR #110 (P5): `feat/pipeline-docker` → develop. Merged b2ea4b9.
 - PR #111 (side request, dotnet runs without build servers — the T2 CLR 0x80131506 workaround built in): merged 42e90c7.
+- PR #112 (P6): `feat/pipeline-sync` → develop. Merged 832c414.
+- P7 branch `feat/pipeline-deploy` from 832c414.
 - P6 branch `feat/pipeline-sync` from 42e90c7.
 - P5 branch `feat/pipeline-docker` from 65caeff.
 - P4 branch `feat/pipeline-release` from 6220788.
@@ -833,6 +835,127 @@ All three P5 review advisories fixed (user authorized). Route: delegated
 - Docs/odd: the docs/pipeline.md, CHANGELOG and feature-doc commit
   recording these fixes.
 
+### P7
+
+- Route: delegated (one bounded writer; trigger: config change, new
+  `internal/deploy` package, pipeline artifact, CLI, integration test,
+  docs).
+- Decision (user, 2026-10-16): which environments a release deploys is
+  `pipeline.deploy.selection`: `target` (default), the environments whose
+  `DOCKER_IMAGE_VERSION` points at the release by update-deploy's
+  `resolve_target` rules (version equal, `latest` = no prerelease, `alpha`
+  = `-alpha.`, `beta` = `-rc.`/`-beta.`, other tag = `-<tag>.`; the
+  fallback of an unknown tag to the latest release needs GitHub's list and
+  is not applied); `branches`, each environment's `branches` globs
+  matching release.json's branch. With `target`, a missing
+  `DOCKER_IMAGE_VERSION` refuses (also with `source: env`, documented in
+  the env example); with `branches`, every environment needs a non-empty
+  `branches`, and `target` refuses `branches` (no silent ignore). The
+  configured order is the execution order. Asked first because the
+  remote `manage.sh pull/up` deploys what Infisical declares, so nerv only
+  chooses which environments to update.
+- `internal/pipelineconfig`: `Deploy.Selection`, `Environment{Name,
+  Branches}` (a scalar or a mapping, so `environments: [staging]` keeps
+  working), `Matches` (path.Match as release branches), `EnvironmentNames`,
+  `DefaultDeploySelection`, validation.
+- `internal/deploy`: `EnvSource` (`NERV_DEPLOY_<ENV>_<KEY>`),
+  `InfisicalSource` (`infisical export --silent --env --path
+  --projectId --format json --include-imports=false --expand=false
+  --secret-overriding=false [--domain]`, root = host keys, app_path = app
+  keys; errors never carry the output), `NewTarget` (container
+  `<name>-<variant>`, enabled unless false/0/no/off, missing keys wrap
+  `ErrIncompleteData`), `Select`, `Plan` (read every environment in order,
+  select, refuse incomplete data of a deployed one), `SSH` (strict host
+  keys, ConnectTimeout, port; password via `sshpass -e` with `SSHPASS`
+  only; key via `-i`, IdentitiesOnly, BatchMode; exit 5/6/255 and a
+  missing tool explained without the password), `Runner` (`cd <path> &&
+  <script> pull --container <c> && <script> up --container <c>` with
+  POSIX quoting, the output streamed; `docker ps --all --filter
+  name=^<c>$` until `(healthy)` or `Up` without `verify.healthy`,
+  failing at once on `(unhealthy)` or not running, within
+  `verify.timeout`; the version label equal to the release; the first
+  failure stops, the rest `not-run`).
+- `internal/pipeline`: `DeployResult` / `EnvironmentDeploy`, deploy.json
+  (`WriteDeployResult`, `ReadDeployResult`), `CheckDeployEvidence` (the
+  docker record bound to the release, as sync's).
+- `cmd/nerv/pipeline_deploy.go`: `nerv pipeline deploy [--cwd]
+  [--dry-run] [--yes] [--json]`; seams `DeployProc`, `DeploySleep`.
+  Flow: section, no `pipeline.deploy` -> nothing (exit 0), release.json
+  gate, unpublished -> nothing, dry-run release -> only `--dry-run`,
+  docker gate, data, plan (incomplete data -> refusal exit 1, unreadable
+  source -> exit 2), listing with the blue-green warning, nothing
+  selected -> nothing, `--dry-run` stops before any SSH, confirmation,
+  deploys. Child processes get `pipeline.SafeEnv` (no registry secrets, no
+  `NERV_DEPLOY_*`), ssh adds only `SSHPASS`. `~/` in key_file and
+  known_hosts expands to the home.
+- deploy.json: written for every run that reached its outcome (deployed,
+  nothing to deploy, dry run, failed or interrupted deploy); a refusal or
+  an earlier failure never touches an earlier one (never removed at the
+  start).
+- RED: `go vet ./internal/pipelineconfig/` (`d.EnvironmentNames
+  undefined`), `go vet ./internal/deploy/` (`undefined: Data`, then
+  `undefined: SSH`), `go vet ./internal/pipeline/` (`undefined:
+  ReadDeployResult`), `go vet ./cmd/nerv/` (`opts.DeployProc undefined`).
+  GREEN: all; unit tests for the config forms and validation, env and
+  Infisical sources (argv, domain, failure without output), targets,
+  selection by target (13 version/tag cases) and branches, the SSH argv
+  (password only in SSHPASS, key auth, unknown host key), health wait,
+  failures (update, unhealthy, timeout, no container, exited, other
+  version), stop at the first failure, interruption, the plan; CLI tests
+  for target and branches selection, Infisical, dry run (no SSH), failure
+  (exit 2, rest not-run), blue-green warning and confirmation, nothing to
+  do, refusals (no/failed/dry-run release, no/stale docker.json, missing
+  DOCKER_IMAGE_VERSION, missing host key data, no terminal, declined)
+  with an earlier deploy.json byte-identical; no secret in stdout,
+  stderr or deploy.json. `TestPipeline_Usage` used `deploy` as its
+  unknown step; now `publish`.
+- Integration: real `ssh` client and the system's `sshd` run as the
+  current user on 127.0.0.1 (a free port, loopback only, no root, no
+  docker: sshd unprivileged can only log in as this user, so it tests
+  key auth; password auth through sshpass needs PAM and root and is
+  covered by fakes). The remote PATH (sshd `SetEnv`) puts a fake `docker`
+  first; the compose script is a fake recording its calls.
+  `TestIntegration_PipelineDeployOverARealSSHD` (0.53s): an unpinned host
+  key -> exit 2, staging failed ("ssh could not connect"), the script
+  never ran; pinned -> exit 0 in 325ms, production skipped (latest),
+  staging deployed: the script got exactly `pull --container
+  api-staging` and `up --container api-staging`, its output streamed with
+  the prefix, health `Up 12 seconds (healthy)`, version 1.4.0-rc.1. No
+  real server was touched.
+- Checks: `go test -count=1 ./...` exit 0 (30 packages); `go test -tags
+  semrel_integration -run Integration -count=1 ./internal/semrel/
+  ./cmd/nerv/` exit 0; `go vet ./...`, `GOOS=windows go vet ./...`, `go
+  vet -tags semrel_integration ./...` exit 0; `gofmt -l .` empty.
+- Commits: `dbe685c` `feat(pipelineconfig): choose the deploy
+  environments by target or by branch` (5 files, +159 -8); `f092bea`
+  `feat(deploy): read the deploy data and select the release's
+  environments` (3 files, +401); `237a026` `feat(pipeline): keep the
+  deploy result and gate it on the release's image` (2 files, +132);
+  `e539556` `feat(deploy): update each container over SSH and verify its
+  health and version` (3 files, +524); `f716891` `feat(cli): add nerv
+  pipeline deploy` (8 files, +678 -4); `6b6c441` `test(cli): deploy over
+  a real sshd on loopback` (1 file, +195); `d97ae41` `docs(pipeline):
+  document nerv pipeline deploy` (3 files, +98 -4). Total `git diff
+  --shortstat 832c414 d97ae41`: 21 files changed, 2185 insertions(+), 14
+  deletions(-). Above the ~400-line heuristic: about 1150 lines are tests
+  and 100 docs; seven work-unit commits.
+
+### P7 review
+
+- Native review (4 lenses) approved; six advisories fixed (user
+  authorized), test-first. Commit `a2ca665` `fix(deploy): validate ssh
+  destinations and bound every remote call` (16 files, +236 -27), plus
+  the docs/odd commit recording it.
+
+| Item | Fix | Evidence |
+|---|---|---|
+| Risk: ssh destination positional, a `-o...` user or host became an option | `checkDestination` (user `[A-Za-z0-9._@\][A-Za-z0-9._@\-]*`, relaxed by the user's follow-up for domain accounts `user@DOMAIN.TLD` / `DOMAIN\user`, safe since the user is its own argv element after `-l`; host a hostname or `net.ParseIP`) in `NewTarget` (refusal via `ErrIncompleteData`) and again in `SSH.Run` before any process; user with `-l`, host after `--`; `UserKnownHostsFile="<path>"` quoted (verified with `ssh -G`); key_file/known_hosts with a leading -, quotes or control characters refused in `SSH.Run` and in pipelineconfig. | RED: `TestSSH_RefusesUnsafeDestinations`: every unsafe user/host (`-oProxyCommand=...`, spaces, `@`, `;`, NUL, newline, empty) was run; argv test expected `-l`/`--`. GREEN; valid hosts (IPv4, IPv6, hostnames) still accepted; pipelineconfig `unsafe ssh paths` case. Follow-up: RED `wal1rod@DIRMAD.COM.AR` and `DOMAIN\user` refused; GREEN both accepted and passed verbatim after `-l` (and by `NewTarget`), unsafe users (leading -, whitespace, tab, newline, `;`, empty) still refused. |
+| Resilience: only ConnectTimeout, a dead link hangs | `ServerAliveInterval=15`, `ServerAliveCountMax=3`; `Runner.call` bounds each health check and the label read by `verify.timeout` and the compose pull/up by the new `pipeline.deploy.update_timeout` (default `15m`), reporting "timed out after <limit>". | RED: `TestRunner_HungCallsAreCutOff` (a call blocking until its context ends) never returned (`go test -timeout 20s`: "test timed out"). GREEN: compose script, health check and label read each cut off after 50ms. |
+| Readability: deploy refused through sync's sentinel | `ErrMissingEvidence`, shared by `CheckSyncEvidence` and `CheckDeployEvidence` (renamed, behaviour unchanged). | Existing sync and deploy refusal tests green. |
+| sshpass exit codes undocumented | Comment: 5 and 6 are sshpass's, 255 ssh's. | Structural. |
+| Dead `res.Reason` reset in `Runner.Run` | Removed (`Deploy` returns a fresh result). | Run tests green. |
+| Reliability: vacuous ssh-env assertion | The deploy data and `GHCR_TOKEN`/`GHCR_USER` are set in the process environment (`t.Setenv`); ssh's environment must lack them, keep `PATH` and `NERV_DEPLOYMENT`, and hold `SSHPASS` exactly once. | RED by temporarily building ssh's environment from `os.Environ()` unfiltered: the test reported every `NERV_DEPLOY_*` (incl. `..._DOCKER_SSH_PASS`). GREEN with `SafeEnv` restored. |
+
 ## Next step
 
-Review of P6; then P7 (`deploy` step).
+P8 (`nerv pipeline run`, `/nerv:pipeline`, guide).

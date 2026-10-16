@@ -84,7 +84,7 @@ func (f *pipelineFixture) run(t *testing.T, args ...string) (int, string, string
 
 func TestPipeline_Usage(t *testing.T) {
 	f := newPipelineFixture(t, pipelineYAML)
-	for _, args := range [][]string{nil, {"deploy"}, {"validate", "extra"}, {"test", "--nope"}} {
+	for _, args := range [][]string{nil, {"publish"}, {"validate", "extra"}, {"test", "--nope"}} {
 		code, _, stderr := f.run(t, args...)
 		if code != 2 || !strings.Contains(stderr, "Usage: nerv pipeline <step>") || !strings.Contains(stderr, "validate") || !strings.Contains(stderr, "test") {
 			t.Errorf("%v: exit %d, stderr %q", args, code, stderr)

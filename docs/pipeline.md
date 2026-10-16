@@ -7,9 +7,9 @@ image, plus the Docker deploy that dim runs with `/update-deploy`. Every step
 runs locally, one process per step, without GitHub Actions; any GitHub
 workflow in the repository is ignored.
 
-> **Status.** `nerv pipeline validate`, `test`, `release`, `docker` and
-> `sync` are available ([Running the steps](#running-the-steps));
-> `deploy` and `nerv pipeline run` come in later releases.
+> **Status.** `nerv pipeline validate`, `test`, `release`, `docker`,
+> `sync` and `deploy` are available ([Running the steps](#running-the-steps));
+> `nerv pipeline run` comes in a later release.
 
 | Step | What it does (dim's job) |
 |---|---|
@@ -346,6 +346,92 @@ dim's sync-to-develop and sync-main-to-release jobs:
 dim.comprobantes.api's workflow commits as its release bot; with nerv the
 merge-backs carry your name, so they show who ran the sync.
 
+### `nerv pipeline deploy`
+
+```
+nerv pipeline deploy [--cwd <dir>] [--dry-run] [--yes] [--json]
+```
+
+dim's `/update-deploy` (update-deploy.sh) for the release just made, over
+`pipeline.deploy`:
+
+1. Nothing to do (exit 0) without `pipeline.deploy`, or when
+   `release.json` has `published: false`. `release.json` missing or not
+   `passed` is a refusal (run the release step first); a dry-run
+   `release.json` only allows `--dry-run`. The image must be this
+   release's: a passing `docker.json` for `release.json`'s version,
+   `git_tag` and `git_head` is required (as for sync; another release's,
+   a failed one or none refuses).
+2. Read every environment of `pipeline.deploy.environments`, in order,
+   from the source ([Deploy data](#deploy-data)): `env`, the
+   `NERV_DEPLOY_<ENVIRONMENT>_<KEY>` variables; `infisical`, `infisical
+   export` of the environment's root and of `infisical.app_path` (raw
+   values, with your `infisical login` session and `--domain` when
+   `infisical.domain` is set). An environment that cannot be read fails
+   the step before anything is deployed.
+3. Select the environments the release deploys
+   (`pipeline.deploy.selection`); the others are reported as `skipped`
+   with the reason, and `DOCKER_DEPLOY_ENABLED` `false` (`0`, `no`, `off`)
+   always skips:
+   - `target` (default): the environments whose `DOCKER_IMAGE_VERSION`
+     points at the release, by update-deploy's `resolve_target` rules: a
+     version equal to the released one (a leading `v` ignored); `latest`,
+     a release without prerelease (main); `alpha`, a version with
+     `-alpha.`; `beta`, one with `-rc.` or `-beta.`; any other tag, one
+     with `-<tag>.` (update-deploy's fallback of an unknown tag to the
+     latest release needs GitHub's release list and is not applied). An
+     environment without `DOCKER_IMAGE_VERSION` refuses the step (exit 1),
+     naming it.
+   - `branches`: the environments whose `branches` match the released
+     branch (`release.json`'s `branch`).
+
+   `DOCKER_SSH_USER` must be letters, digits, `.`, `_`, `-`, `@` and `\`
+   (domain accounts such as `user@DOMAIN.TLD` or `DOMAIN\user`; not
+   starting with `-`, no whitespace or control characters) and
+   `DOCKER_SSH_HOST` a hostname or an IP address; anything else refuses the step. A deployed environment needs `DOCKER_SSH_HOST`, `DOCKER_SSH_USER`,
+   `DOCKER_COMPOSE_PATH`, `DOCKER_COMPOSE_SCRIPT`,
+   `DOCKER_CONTAINER_NAME`, `DOCKER_CONTAINER_VARIANT` and, with `ssh.auth:
+   password`, `DOCKER_SSH_PASS`; a missing one refuses the step, naming
+   them.
+4. List every deploy (environment, container
+   `<DOCKER_CONTAINER_NAME>-<DOCKER_CONTAINER_VARIANT>`, host, script), with
+   update-deploy's warning for a `blue-green` container (if it is the live
+   one, the update recreates it and it is down until healthy), and ask
+   before deploying (`--yes` skips it, and is required without a
+   terminal). `--dry-run` stops here: no SSH connection is made.
+5. For each selected environment, one at a time, in the configured order:
+   - over SSH (`StrictHostKeyChecking=yes` against `ssh.known_hosts`,
+     `ConnectTimeout`, `ServerAliveInterval=15` and `ServerAliveCountMax=3`
+     so a dead link fails in about 45s, `ssh.port`; the user given with
+     `-l` and the host after `--`, so no value can be read as an ssh
+     option): the compose script, bounded by `update_timeout`, `cd <DOCKER_COMPOSE_PATH> &&
+     <script> pull --container <c> && <script> up --container <c>`, every
+     value quoted for the remote shell, the script's output streamed. With
+     `ssh.auth: password` ssh runs under `sshpass -e`: the password
+     (`DOCKER_SSH_PASS`) is only in `sshpass`'s `SSHPASS` variable, never
+     on a command line, in the output or in `deploy.json`; with `key`, ssh
+     uses `ssh.key_file` in batch mode. No child process (ssh, sshpass,
+     infisical) gets the registry secrets or any `NERV_DEPLOY_*`
+     variable;
+   - verify (each check bounded by `verify.timeout`, so a hung call is cut
+     off): `docker ps` until the container is `(healthy)`
+     (`verify.healthy`; without it, `Up` is enough) within
+     `verify.timeout`, failing at once when it is `(unhealthy)` or not
+     running; then its `verify.version_label` must be the released version
+     (a leading `v` ignored).
+
+   The first failure stops the deploy, as update-deploy does: no rollback,
+   and the environments after it are `not-run` (exit 2).
+6. Write `.nerv/artifacts/pipeline/deploy.json` (version, tag, branch,
+   source, selection, and per environment: container, host, strategy,
+   `image_version`, status `deployed` / `skipped` / `failed` / `not-run`
+   (dry run: `would-deploy` / `skipped`), the skip reason, the last health
+   status, the running version, the error) for every run that reached its
+   outcome: deployed, nothing to deploy, a dry run, a failed or interrupted
+   deploy. A refusal or a failure before it never touches an earlier
+   `deploy.json`. `--json` prints the same document. Every stderr line is
+   prefixed `[pipeline:deploy] `.
+
 ### Result
 
 stdout carries the result: `<step>: passed|failed|refused|interrupted`,
@@ -539,7 +625,9 @@ Without `deploy` there is no deploy step.
 | `infisical.project_id` | required by `infisical` | The Infisical project. |
 | `infisical.app_path` | required by `infisical` | The application's folder, e.g. `/comprobantes-api`. |
 | `infisical.domain` | the CLI session's | The Infisical URL; Infisical is read through the user's `infisical login` session. |
-| `environments` | `production-green`, `production-blue`, `staging`, `development` | Deployed in this order: dim's processing order (update-deploy.sh, table). |
+| `selection` | `target` | Which environments a release deploys: `target`, each environment whose `DOCKER_IMAGE_VERSION` points at the release (see [`nerv pipeline deploy`](#nerv-pipeline-deploy)); `branches`, each environment whose `branches` match the released branch. |
+| `environments` | `production-green`, `production-blue`, `staging`, `development` | Deployed in this order (dim's processing order, update-deploy.sh's table). Each entry is a name, or `{ name: <env>, branches: [<glob>, ...] }`: with `selection: branches` every environment needs a non-empty `branches` (names or globs as in `pipeline.branches`, e.g. `main`, `develop`, `release/*`, `hotfix/*`); with `target`, `branches` is refused. |
+| `update_timeout` | `15m` | Bounds the compose script's `pull` and `up` on each host (an image pull can be slow); every health check and the version-label read are bounded by `verify.timeout`. |
 | `ssh.auth` | `password` | `password` (`DOCKER_SSH_PASS`) or `key` (update-deploy.sh uses sshpass). |
 | `ssh.key_file` | required by `key` | The private key file. |
 | `ssh.known_hosts` | `~/.ssh/known_hosts` | Host keys are always checked strictly. dim pins its hosts in `~/.config/update-deploy/known_hosts`. |
@@ -586,7 +674,12 @@ NERV_DEPLOY_PRODUCTION_BLUE_DOCKER_COMPOSE_PATH=/srv/apps
 NERV_DEPLOY_PRODUCTION_BLUE_DOCKER_COMPOSE_SCRIPT=./manage.sh
 NERV_DEPLOY_PRODUCTION_BLUE_DOCKER_CONTAINER_NAME=comprobantes-api
 NERV_DEPLOY_PRODUCTION_BLUE_DOCKER_CONTAINER_VARIANT=blue
+NERV_DEPLOY_PRODUCTION_BLUE_DOCKER_IMAGE_VERSION=latest   # required by selection target
 ```
+
+With `selection: target` (the default) an environment without
+`DOCKER_IMAGE_VERSION` is refused: nerv cannot tell whether the release is
+its target.
 
 Two environments whose names map to the same prefix (`production-blue` and
 `production_blue`) are rejected.

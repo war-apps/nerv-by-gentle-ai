@@ -134,8 +134,14 @@ func TestLoad_DeployDefaults(t *testing.T) {
 	if d.Source != "env" || d.Infisical != nil {
 		t.Errorf("source = %q infisical = %+v", d.Source, d.Infisical)
 	}
-	if want := []string{"production-green", "production-blue", "staging", "development"}; !reflect.DeepEqual(d.Environments, want) {
+	if want := []string{"production-green", "production-blue", "staging", "development"}; !reflect.DeepEqual(d.EnvironmentNames(), want) {
 		t.Errorf("environments = %v, want %v", d.Environments, want)
+	}
+	if d.Selection != "target" {
+		t.Errorf("selection = %q, want target", d.Selection)
+	}
+	if d.UpdateTimeoutDuration() != 15*time.Minute {
+		t.Errorf("update_timeout = %q, want 15m", d.UpdateTimeout)
 	}
 	if d.SSH.Auth != "password" || d.SSH.Port != 22 || d.SSH.KnownHosts != "~/.ssh/known_hosts" ||
 		d.SSH.KeyFile != "" || d.SSH.ConnectTimeoutDuration() != 10*time.Second {
@@ -371,6 +377,24 @@ func TestLoad_ValidationErrors(t *testing.T) {
 			`pipeline.deploy.ssh.connect_timeout: "soon" is not a duration such as 10s or 2m`,
 			`pipeline.deploy.verify.timeout: "-1s" must be positive`,
 		}},
+		{"bad update timeout", minimal + "  deploy: { update_timeout: forever }\n", []string{`pipeline.deploy.update_timeout: "forever" is not a duration such as 10s or 2m`}},
+		{"unsafe ssh paths", minimal + "  deploy: { ssh: { auth: key, key_file: \"-oProxyCommand=x\", known_hosts: \"/a\\\"b\" } }\n", []string{
+			`pipeline.deploy.ssh.key_file: "-oProxyCommand=x" must be a file path without a leading -, quotes or control characters`,
+			`pipeline.deploy.ssh.known_hosts: "/a\"b" must be a file path without a leading -, quotes or control characters`}},
+		{"unknown selection", minimal + "  deploy: { selection: newest }\n", []string{`pipeline.deploy.selection: unknown selection "newest" (want target or branches)`}},
+		{"branches with selection target", minimal + "  deploy: { environments: [{ name: staging, branches: [develop] }] }\n", []string{
+			"pipeline.deploy.environments[0].branches: only used by selection branches (selection is target)"}},
+		{"selection branches without branches", minimal + "  deploy: { selection: branches, environments: [staging, { name: dev, branches: [] }] }\n", []string{
+			"pipeline.deploy.environments[0].branches: required by selection branches",
+			"pipeline.deploy.environments[1].branches: required by selection branches"}},
+		{"bad environment branches", minimal + "  deploy: { selection: branches, environments: [{ name: dev, branches: [\"\", \"release/**\", develop, develop] }] }\n", []string{
+			"pipeline.deploy.environments[0].branches[0]: required",
+			`pipeline.deploy.environments[0].branches[1]: "release/**" is not a valid branch pattern`,
+			`pipeline.deploy.environments[0].branches[3]: duplicate branch "develop"`}},
+		{"unknown environment field", minimal + "  deploy: { environments: [{ name: dev, branch: develop }] }\n", []string{
+			"pipeline.deploy.environments[0].branch: unknown field (line 6)"}},
+		{"environment without a name", minimal + "  deploy: { selection: branches, environments: [{ branches: [develop] }] }\n", []string{
+			"pipeline.deploy.environments[0]: required"}},
 		{"key auth without key file", minimal + "  deploy: { ssh: { auth: key } }\n", []string{"pipeline.deploy.ssh.key_file: required by auth key"}},
 		{"key file with password auth", minimal + "  deploy: { ssh: { key_file: ~/.ssh/id } }\n", []string{"pipeline.deploy.ssh.key_file: only used by auth key"}},
 	}
@@ -579,6 +603,8 @@ func TestDefaults_MatchDocs(t *testing.T) {
 		pipelineconfig.DefaultSyncDevelop:         "develop",
 		pipelineconfig.DefaultSyncRelease:         "release/*",
 		pipelineconfig.DefaultDeploySource:        "env",
+		pipelineconfig.DefaultDeploySelection:     "target",
+		pipelineconfig.DefaultUpdateTimeout:       "15m",
 		pipelineconfig.DefaultSSHAuth:             "password",
 		pipelineconfig.DefaultSSHKnownHosts:       "~/.ssh/known_hosts",
 		pipelineconfig.DefaultSSHConnectTimeout:   "10s",
@@ -657,5 +683,41 @@ func TestLoad_ImageTagsMustIncludeTheVersion(t *testing.T) {
 	ok := strings.Replace(minimal, "    - name: ghcr.io/acme/app\n", "    - name: ghcr.io/acme/app\n      tags: [version]\n", 1)
 	if _, err := pipelineconfig.Load(writeConfig(t, ok)); err != nil {
 		t.Errorf("tags [version]: %v", err)
+	}
+}
+
+func TestLoad_DeployEnvironmentForms(t *testing.T) {
+	p := mustLoad(t, minimal+`  deploy:
+    selection: branches
+    environments:
+      - { name: production-green, branches: [main] }
+      - name: staging
+        branches: ["release/*", "hotfix/*"]
+      - { name: development, branches: [develop] }
+`)
+	d := p.Deploy
+	if d.Selection != "branches" || !reflect.DeepEqual(d.EnvironmentNames(), []string{"production-green", "staging", "development"}) {
+		t.Fatalf("deploy = %+v", d)
+	}
+	for _, tt := range []struct {
+		env, branch string
+		want        bool
+	}{
+		{"production-green", "main", true},
+		{"production-green", "develop", false},
+		{"staging", "release/1.4", true},
+		{"staging", "hotfix/x", true},
+		{"staging", "release/a/b", false},
+		{"development", "develop", true},
+	} {
+		i := slices.Index(d.EnvironmentNames(), tt.env)
+		if got := d.Environments[i].Matches(tt.branch); got != tt.want {
+			t.Errorf("%s.Matches(%q) = %v, want %v", tt.env, tt.branch, got, tt.want)
+		}
+	}
+	// The plain form keeps working, with no branches.
+	q := mustLoad(t, minimal+"  deploy: { environments: [staging, development] }\n")
+	if !reflect.DeepEqual(q.Deploy.EnvironmentNames(), []string{"staging", "development"}) || q.Deploy.Environments[0].Branches != nil {
+		t.Errorf("plain environments %+v", q.Deploy.Environments)
 	}
 }

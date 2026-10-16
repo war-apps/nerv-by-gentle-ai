@@ -209,7 +209,11 @@ and pushes every image from the released commit (results in
 back as dim's sync jobs (main or `release/*` into develop, main into every
 `release/*`; conflicts aborted and reported, committed as you; only after
 passing test and docker records of the release; results in
-`.nerv/artifacts/pipeline/sync.json`). Details:
+`.nerv/artifacts/pipeline/sync.json`); `deploy` updates the release's
+environments over SSH as dim's `/update-deploy` (selected by their
+`DOCKER_IMAGE_VERSION` or by branch, data from environment variables or
+Infisical; health and version verified; results in
+`.nerv/artifacts/pipeline/deploy.json`). Details:
 [pipeline.md](pipeline.md#running-the-steps).
 
 ```
@@ -218,6 +222,7 @@ nerv pipeline test --json
 nerv pipeline release --dry-run
 nerv pipeline docker --dry-run
 nerv pipeline sync --dry-run
+nerv pipeline deploy --dry-run
 ```
 
 ### nerv ship

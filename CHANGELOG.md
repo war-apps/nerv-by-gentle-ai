@@ -8,6 +8,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- pipeline: `nerv pipeline deploy` runs dim's `/update-deploy` for the release just made: it reads each
+  `pipeline.deploy` environment from `NERV_DEPLOY_<ENVIRONMENT>_<KEY>` variables or from Infisical (update-deploy's
+  layout), deploys those whose `DOCKER_IMAGE_VERSION` points at the release (`selection: target`, the default) or
+  whose `branches` match the released branch (`selection: branches`), runs the host's compose script (`pull`, then
+  `up`, bounded by `pipeline.deploy.update_timeout`) over SSH with strict host keys, keepalives and validated user
+  and host (password through `sshpass -e` only, or a key), and verifies the container
+  is healthy and carries the released version label; it stops at the first failure, requires this release's
+  passing `docker.json`, asks before deploying (`--yes`), lists the deploys without connecting with `--dry-run`, and
+  writes `.nerv/artifacts/pipeline/deploy.json`.
+- pipelineconfig: `pipeline.deploy.selection` (`target` or `branches`) and per-environment `branches`
+  (`environments: [{ name: staging, branches: [release/*] }]`).
 - pipeline: `nerv pipeline sync` runs dim.comprobantes.api's sync-to-develop and sync-main-to-release jobs after
   the release step: in a fresh clone of origin it merges main or a `release/*` release into develop, and main into
   every `release/*` branch on origin (`--no-ff`, "chore(sync): merge <source> into <branch> [skip ci]"), pushes

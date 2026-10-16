@@ -157,7 +157,7 @@ func (s syncRun) run(ctx context.Context) (pipeline.SyncResult, string, error) {
 	}
 	// Sync nothing unless every earlier step passed for this release.
 	if err := pipeline.CheckSyncEvidence(top, rel); err != nil {
-		if errors.Is(err, pipeline.ErrNoSyncEvidence) {
+		if errors.Is(err, pipeline.ErrMissingEvidence) {
 			return res, top, &refusal.Error{Err: err}
 		}
 		return res, top, err

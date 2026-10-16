@@ -181,13 +181,67 @@ type Deploy struct {
 	Source string `yaml:"source"`
 	// Infisical configures source infisical.
 	Infisical *Infisical `yaml:"infisical"`
-	// Environments are deployed in this order.
+	// Selection chooses which environments a release deploys: target (each
+	// environment whose DOCKER_IMAGE_VERSION points at the release) or
+	// branches (each environment whose Branches match the released
+	// branch). Default: DefaultDeploySelection.
+	Selection string `yaml:"selection"`
+	// Environments are deployed in this order; each is a name, or a
+	// mapping with its name and, with selection branches, its branches.
 	// Default: DefaultEnvironments().
-	Environments []string `yaml:"environments"`
+	Environments []Environment `yaml:"environments"`
+	// UpdateTimeout bounds the compose script's pull and up on each host,
+	// as a Go duration. Default: DefaultUpdateTimeout; read it through
+	// UpdateTimeoutDuration.
+	UpdateTimeout string `yaml:"update_timeout"`
 	// SSH configures the connection to the Docker hosts.
 	SSH SSH `yaml:"ssh"`
 	// Verify configures the check after each deploy.
 	Verify Verify `yaml:"verify"`
+}
+
+// UpdateTimeoutDuration returns the validated update timeout.
+func (d *Deploy) UpdateTimeoutDuration() time.Duration { return duration(d.UpdateTimeout) }
+
+// EnvironmentNames returns the environments' names, in order.
+func (d *Deploy) EnvironmentNames() []string {
+	names := make([]string, len(d.Environments))
+	for i, e := range d.Environments {
+		names[i] = e.Name
+	}
+	return names
+}
+
+// Environment is one deploy environment: written as its name
+// (`staging`) or as a mapping (`{ name: staging, branches: [release/*] }`).
+type Environment struct {
+	// Name is the environment (an Infisical environment slug with source
+	// infisical). Required.
+	Name string `yaml:"name"`
+	// Branches are the released branches (names or globs, as
+	// pipeline.branches) that deploy the environment with selection
+	// branches; required there and refused with selection target.
+	Branches []string `yaml:"branches"`
+}
+
+// UnmarshalYAML accepts the name alone or the mapping.
+func (e *Environment) UnmarshalYAML(node *yaml.Node) error {
+	if node.Kind == yaml.ScalarNode {
+		return node.Decode(&e.Name)
+	}
+	type plain Environment
+	return node.Decode((*plain)(e))
+}
+
+// Matches reports whether a release on branch deploys the environment
+// with selection branches (a * does not cross a /, as in Branch).
+func (e Environment) Matches(branch string) bool {
+	for _, b := range e.Branches {
+		if ok, err := path.Match(b, branch); err == nil && ok {
+			return true
+		}
+	}
+	return false
 }
 
 // Infisical locates the deploy data in Infisical (read through the user's
