@@ -47,19 +47,19 @@ behavior.
 
 ## Tasks
 
-- [ ] T1 - Prose contract tests (RED) for the three tiers, pilot solo mode,
+- [x] T1 - Prose contract tests (RED) for the three tiers, pilot solo mode,
   FULL step 17, state schema and tracker trigger. Route: inline (one test
   file, already understood).
-- [ ] T2 - Orchestrator core + references: classification, delegation
+- [x] T2 - Orchestrator core + references: classification, delegation
   triggers, Identity, Supersession, `pipeline-direct.md`, `pipeline-light.md`,
   `pipeline-full.md` step 17, usage-and-log, resume. Route: inline (the parent
   is the delegated writer for this feature; no further delegation available
   to a subagent).
-- [ ] T3 - Roles and shared contracts: pilots' `MODE: solo`, Ritsuko
+- [x] T3 - Roles and shared contracts: pilots' `MODE: solo`, Ritsuko
   intel-light as the optional explorer, Maya routing in solo mode, Aoba and
   Kaworu scope notes, `nerv-artifacts.md`, `nerv-tasks/SKILL.md`. Route:
   inline (same reason as T2).
-- [ ] T4 - `plugin/evals/classification-direct/` eval case; docs
+- [x] T4 - `plugin/evals/classification-direct/` eval case; docs
   (`docs/integration.md`, `bench/journeys.md`, `bench/README.md`,
   `CHANGELOG.md`). Route: inline.
 
@@ -82,9 +82,38 @@ See task checkboxes and the evidence below.
 
 ## Evidence
 
-- RED: (filled after observation)
-- GREEN: (filled after observation)
-- Commits: (filled after commit)
+- RED (observed before any source write, `go test -count=1 -run '...' .`,
+  exit 1): six new tests in `skill_split_test.go` failed —
+  `TestOrchestrator_ClassifiesThreeRoutingTiers` (missing three-tier
+  heading, `references/pipeline-direct.md`, gentle-ai thresholds; retired
+  4-file/20-call triggers present), `TestLightPipeline_LaunchesOneBoundedWriter`
+  (Kaworu step row, no `MODE: solo`), `TestDirectPipeline_...` (file absent),
+  `TestPilots_DocumentSoloMode` (4 pilots), `TestFullPipeline_FixRoutingSpellsOutItsOwnCycle`,
+  `TestSharedContracts_KnowTheDirectTier`.
+- GREEN: `go test -count=1 ./...` exit 0 after T2-T3 (SKILL.md at 500 lines,
+  the split test's cap); `go vet ./...` exit 0; `gofmt -l .` empty.
+- Evals: `claude plugin eval` needs a model; not run. The new
+  `classification-direct/scaffold.sh` was executed once in a scratch dir
+  (exit 0, README with the typo committed).
+- Commits:
+  - T1+T2 `4c8a179` feat(orchestrator): route work through DIRECT, LIGHT and FULL tiers
+  - T3 `cc078cf` feat(agents): let a LIGHT pilot run its own test-first cycle
+  - T4 `082c646` test(evals): add a DIRECT classification case
+  - T4 `79fcdd4` docs: describe the DIRECT, LIGHT and FULL routing tiers
+- RDD: not run by this writer (no review assess/consent relay from a
+  subagent); the parent owns the native review decision per commit.
+
+## Rationale
+
+- DIRECT keeps "user validates before commit": gentle-ai's direct-inline
+  tier does not require it, but removing a user gate was not clearly
+  authorized.
+- DIRECT with RDD off/unknown and a `high`/unassessable assess tier
+  launches Maya: gentle-ai's gate only covers delegated writers, so this is
+  a conservative NERV derivation, not a gentle-ai rule.
+- LIGHT is one coherent work unit (more than one is already a FULL
+  criterion), so its table no longer repeats per work unit; test and code
+  land in one work-unit commit (gentle-ai: tests alongside the behavior).
 
 ## Next step
 
