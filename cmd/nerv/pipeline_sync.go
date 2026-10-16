@@ -69,6 +69,9 @@ func runPipelineSync(args []string, stdout, stderr io.Writer, opts options) int 
 	switch {
 	case ctx.Err() != nil:
 		res.Status, code = pipeline.StatusInterrupted, interruptedExitCode(received())
+		// A run interrupted during the merges still records the targets
+		// that finished (pushed ones are on origin) and those not run.
+		write = err == nil && len(res.Branches) > 0
 		fmt.Fprintln(out, "nerv pipeline sync: interrupted")
 	case err != nil:
 		res.Status, res.Error, code = pipeline.StatusFailed, err.Error(), 2

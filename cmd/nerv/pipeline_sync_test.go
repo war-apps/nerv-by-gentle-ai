@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"syscall"
 	"testing"
 
 	"github.com/war-apps/nerv-by-gentle-ai/internal/env/envtest"
@@ -30,6 +31,7 @@ type fakeSyncWorkspace struct {
 	previews  []string
 	pushCheck int
 	closed    bool
+	onPush    func()
 }
 
 func (w *fakeSyncWorkspace) Branches(_ context.Context, pattern string) ([]string, error) {
@@ -57,6 +59,9 @@ func (w *fakeSyncWorkspace) PreviewMerge(_ context.Context, target, source strin
 
 func (w *fakeSyncWorkspace) PushBranch(_ context.Context, branch string) error {
 	w.pushes = append(w.pushes, branch)
+	if w.onPush != nil {
+		w.onPush()
+	}
 	return nil
 }
 
@@ -71,6 +76,8 @@ type syncFixture struct {
 	ws       *fakeSyncWorkspace
 	terminal bool
 	stdin    string
+	cancel   context.CancelFunc
+	signal   os.Signal
 }
 
 func newSyncFixture(t *testing.T, yaml string) *syncFixture {
@@ -121,6 +128,11 @@ func (f *syncFixture) run(t *testing.T, args ...string) (int, string, string) {
 	opts.Runner = &envtest.FakeRunner{Responses: map[string]envtest.Response{"git -C . rev-parse --show-toplevel": {Stdout: f.top + "\n"}}}
 	opts.IsTerminal = func() bool { return f.terminal }
 	opts.Stdin = strings.NewReader(f.stdin)
+	opts.SignalContext = func(parent context.Context) (context.Context, context.CancelFunc, func() os.Signal) {
+		ctx, cancel := context.WithCancel(parent)
+		f.cancel = cancel
+		return ctx, cancel, func() os.Signal { return f.signal }
+	}
 	opts.OpenSyncWorkspace = func(_ context.Context, o semrel.WorkspaceOptions) (syncWorkspace, error) {
 		f.ws.opened = &o
 		return f.ws, nil
@@ -374,6 +386,36 @@ func TestPipelineSync_ConfirmedOnATerminal(t *testing.T) {
 		if !strings.Contains(stderr, want) {
 			t.Errorf("stderr lacks %q:\n%s", want, stderr)
 		}
+	}
+}
+
+func TestPipelineSync_InterruptedAfterAPushRecordsWhatFinished(t *testing.T) {
+	f := newSyncFixture(t, pipelineSyncYAML)
+	f.release(t, mainRelease())
+	f.signal = syscall.SIGINT
+	f.ws.onPush = func() { f.cancel() }
+	code, stdout, stderr := f.run(t, "--yes", "--json")
+	if code != 130 {
+		t.Fatalf("exit %d, want 130\n%s\n%s", code, stdout, stderr)
+	}
+	if !slices.Equal(f.ws.pushes, []string{"develop"}) {
+		t.Errorf("pushes %q: nothing may run after the interruption", f.ws.pushes)
+	}
+	r, ok := readSyncJSON(t, f.top)
+	if !ok {
+		t.Fatalf("no sync.json after an interrupted run that pushed develop\n%s", stderr)
+	}
+	want := []string{"develop:pushed", "release/a:not-run", "release/b:not-run"}
+	var got []string
+	for _, b := range r.Branches {
+		got = append(got, b.Branch+":"+b.Status)
+	}
+	if r.Status != "interrupted" || !slices.Equal(got, want) || r.Branches[0].Commit == "" {
+		t.Errorf("sync.json status %s branches %q (%+v), want interrupted %q", r.Status, got, r.Branches, want)
+	}
+	var doc pipeline.SyncResult
+	if err := json.Unmarshal([]byte(stdout), &doc); err != nil || doc.Status != "interrupted" || len(doc.Branches) != 3 {
+		t.Errorf("stdout %s %v", stdout, err)
 	}
 }
 

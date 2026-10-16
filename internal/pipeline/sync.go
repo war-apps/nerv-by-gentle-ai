@@ -22,6 +22,8 @@ const (
 	SyncFailed        = "failed"
 	SyncWouldMerge    = "would-merge"
 	SyncWouldConflict = "would-conflict"
+	// SyncNotRun is a target an interruption stopped before it started.
+	SyncNotRun = "not-run"
 )
 
 // SyncRepo is the clone the sync step merges in; *semrel.Workspace is the
@@ -118,9 +120,14 @@ func target(branch, source string) SyncTarget {
 func (s Sync) Run(ctx context.Context, targets []SyncTarget) SyncResult {
 	res := SyncResult{Step: "sync", Status: StatusPassed, DryRun: s.DryRun, Version: s.Release.Version, Source: s.Release.Branch, Branches: []BranchSync{}}
 	var failed []string
-	for _, t := range targets {
+	for i, t := range targets {
 		if ctx.Err() != nil {
+			// Record what did not run, so sync.json shows what is left.
+			for _, rest := range targets[i:] {
+				res.Branches = append(res.Branches, BranchSync{Branch: rest.Branch, Source: rest.Source, Status: SyncNotRun})
+			}
 			res.Status, res.Error = StatusInterrupted, "interrupted"
+			res.Action = "the targets marked not-run were not merged; run nerv pipeline sync again (merged ones are then up-to-date)"
 			return res
 		}
 		b := s.one(ctx, t)

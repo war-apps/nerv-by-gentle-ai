@@ -214,6 +214,9 @@ func TestSync_InterruptedStopsBeforeTheNextBranch(t *testing.T) {
 	if len(f.merges) != 0 || res.Status != StatusInterrupted {
 		t.Errorf("merges %q status %s", f.merges, res.Status)
 	}
+	if len(res.Branches) != 2 || res.Branches[0].Status != SyncNotRun || res.Branches[1].Branch != "release/a" || res.Branches[1].Status != SyncNotRun {
+		t.Errorf("branches %+v, want every target not-run", res.Branches)
+	}
 }
 
 func TestSyncAndDockerArtifacts(t *testing.T) {
