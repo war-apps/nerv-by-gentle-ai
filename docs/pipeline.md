@@ -385,9 +385,10 @@ dim's `/update-deploy` (update-deploy.sh) for the release just made, over
    - `branches`: the environments whose `branches` match the released
      branch (`release.json`'s `branch`).
 
-   `DOCKER_SSH_USER` must be letters, digits, `.`, `_` and `-` (not
-   starting with `-`, no `@`) and `DOCKER_SSH_HOST` a hostname or an IP
-   address; anything else refuses the step. A deployed environment needs `DOCKER_SSH_HOST`, `DOCKER_SSH_USER`,
+   `DOCKER_SSH_USER` must be letters, digits, `.`, `_`, `-`, `@` and `\`
+   (domain accounts such as `user@DOMAIN.TLD` or `DOMAIN\user`; not
+   starting with `-`, no whitespace or control characters) and
+   `DOCKER_SSH_HOST` a hostname or an IP address; anything else refuses the step. A deployed environment needs `DOCKER_SSH_HOST`, `DOCKER_SSH_USER`,
    `DOCKER_COMPOSE_PATH`, `DOCKER_COMPOSE_SCRIPT`,
    `DOCKER_CONTAINER_NAME`, `DOCKER_CONTAINER_VARIANT` and, with `ssh.auth:
    password`, `DOCKER_SSH_PASS`; a missing one refuses the step, naming
