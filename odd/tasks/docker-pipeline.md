@@ -96,6 +96,9 @@ per task, merged into develop in order).
 - PR #107 (P3): `feat/pipeline-validate-test` → develop. Merged 33f14ac.
 - PR #108 (side request, launch labels show the model): merged 6220788.
 - PR #109 (P4): `feat/pipeline-release` → develop. Merged 65caeff.
+- PR #110 (P5): `feat/pipeline-docker` → develop. Merged b2ea4b9.
+- PR #111 (side request, dotnet runs without build servers — the T2 CLR 0x80131506 workaround built in): merged 42e90c7.
+- P6 branch `feat/pipeline-sync` from 42e90c7.
 - P5 branch `feat/pipeline-docker` from 65caeff.
 - P4 branch `feat/pipeline-release` from 6220788.
 - P3 branch `feat/pipeline-validate-test` from 87cf385.
