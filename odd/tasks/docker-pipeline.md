@@ -1131,6 +1131,16 @@ All three P5 review advisories fixed (user authorized). Route: delegated
   enforced it; dim's develop at 89.64/82.46/92.88 vs 100/80/100); the
   test step and the reference describe the modes and the record;
   `/nerv:pipeline` shows the coverage record; CHANGELOG.
+- Review (approved) findings fixed, test-first: non-finite thresholds
+  (`.nan`, `.inf`, `-.inf`) are refused (NaN passed the range check and
+  made the gate "met"); a `thresholds` block without a metric is refused
+  unless it is a `stat` override with a runsettings file, and at run time
+  a stat-only override of a runsettings file without `<Threshold>` arms
+  no gate (it armed an empty one that failed without reports with "the
+  thresholds of  against"); the missing-report message names the
+  thresholds' origin, and the record says `report_missing: true`. RED:
+  the config validation cases (no error / missing problems) and `go vet
+  ./internal/pipeline/` (`ReportMissing undefined`). GREEN.
 
 ## Next step
 

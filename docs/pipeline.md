@@ -228,7 +228,9 @@ directly), as `pipeline.dotnet.coverage` says:
   only thresholds (stat `minimum` unless set, as coverlet).
 - The step's `--json` document and `test.json` hold `coverage`: the mode,
   the stat, and per metric checked the measured value, the threshold, its
-  `source` (`runsettings` or `nerv.yaml`) and whether it is met.
+  `source` (`runsettings` or `nerv.yaml`) and whether it is met;
+  `report_missing: true` when thresholds were set but no readable report
+  was found (nothing measured, `met: false`).
 
 The runsettings settings:
 
@@ -717,7 +719,7 @@ The source column cites where each default comes from in dim's
 | `warnings_as_errors` | `true` | Build with `-warnaserror` (ci-cd.yml, test job). |
 | `env` | none | Environment variables for every dotnet command; literal values, never secrets. |
 | `coverage.mode` | `enforce` | The coverage gate: `enforce` fails the test step below a threshold; `report` computes and records the coverage against the thresholds and warns, never fails; `off` evaluates nothing. |
-| `coverage.thresholds` | none | Overrides the runsettings' thresholds key by key: `line`, `branch`, `method` (percentages, 0 to 100; setting one selects it, as coverlet's `ThresholdType`) and `stat` (`minimum`, `total` or `average`, coverlet's `ThresholdStat`); an unset key keeps the runsettings' value. Refused with `mode: off`. |
+| `coverage.thresholds` | none | Overrides the runsettings' thresholds key by key: `line`, `branch`, `method` (percentages, 0 to 100; setting one selects it, as coverlet's `ThresholdType`) and `stat` (`minimum`, `total` or `average`, coverlet's `ThresholdStat`); an unset key keeps the runsettings' value. Refused with `mode: off`, with a value that is not a finite percentage (`.nan`, `.inf`), and without any metric (`stat` alone is only accepted with a `runsettings` file, as an override of its stat; it never adds a gate when the file has no threshold). |
 
 ### `pipeline.branches`
 
