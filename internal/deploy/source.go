@@ -19,7 +19,8 @@ import (
 )
 
 // ErrIncompleteData is wrapped when an environment's deploy data lacks a
-// key the deploy needs: a configuration problem, nothing is deployed.
+// key the deploy needs or holds an invalid one (an unsafe user or host): a
+// configuration problem, nothing is deployed.
 var ErrIncompleteData = errors.New("incomplete deploy data")
 
 // Data is an environment's deploy keys (pipelineconfig.DeployHostKeys and
@@ -161,6 +162,9 @@ func NewTarget(environment string, d Data, auth string) (Target, error) {
 	}
 	if len(missing) > 0 {
 		return t, fmt.Errorf("%s: missing %s: %w", environment, strings.Join(missing, ", "), ErrIncompleteData)
+	}
+	if err := checkDestination(t.User, t.Host); err != nil {
+		return t, fmt.Errorf("%s: %v: %w", environment, err, ErrIncompleteData)
 	}
 	return t, nil
 }

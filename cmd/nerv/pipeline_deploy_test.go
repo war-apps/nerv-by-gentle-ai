@@ -165,6 +165,14 @@ func statuses(envs []pipeline.EnvironmentDeploy) []string {
 
 func TestPipelineDeploy_DeploysTheEnvironmentsTargetingTheRelease(t *testing.T) {
 	f := newDeployFixture(t, pipelineDeployYAML)
+	// The deploy data and the registry secrets are in nerv's own process
+	// environment too, as in a real run: ssh's environment must not
+	// inherit them.
+	for k, v := range f.env {
+		t.Setenv(k, v)
+	}
+	t.Setenv("GHCR_USER", "bot")
+	t.Setenv("NERV_DEPLOYMENT", "kept")
 	f.release(t, nil)
 	code, stdout, stderr := f.run(t, "--yes", "--json")
 	if code != 0 {
@@ -175,13 +183,22 @@ func TestPipelineDeploy_DeploysTheEnvironmentsTargetingTheRelease(t *testing.T) 
 	}
 	c := f.host.ssh()[0]
 	kh := filepath.Join(f.home, ".config", "update-deploy", "known_hosts")
-	if c.Name != "sshpass" || !slices.Contains(c.Args, "UserKnownHostsFile="+kh) || !slices.Contains(c.Args, "deploy@10.0.0.s") || !slices.Contains(c.Env, "SSHPASS=s3cr3t-staging") {
+	n := len(c.Args)
+	if c.Name != "sshpass" || !slices.Contains(c.Args, `UserKnownHostsFile="`+kh+`"`) || !slices.Equal(c.Args[n-3:n-1], []string{"--", "10.0.0.s"}) ||
+		c.Args[slices.Index(c.Args, "-l")+1] != "deploy" {
 		t.Errorf("ssh %s %q", c.Name, c.Args)
 	}
+	var sshpass []string
 	for _, kv := range c.Env {
-		if strings.HasPrefix(kv, "NERV_DEPLOY_") || strings.HasPrefix(kv, "GHCR_TOKEN=") {
+		switch {
+		case strings.HasPrefix(kv, "SSHPASS="):
+			sshpass = append(sshpass, kv)
+		case strings.HasPrefix(kv, "NERV_DEPLOY_") || strings.HasPrefix(kv, "GHCR_TOKEN=") || strings.HasPrefix(kv, "GHCR_USER="):
 			t.Errorf("ssh's environment holds %s", kv)
 		}
+	}
+	if !slices.Equal(sshpass, []string{"SSHPASS=s3cr3t-staging"}) || !slices.Contains(c.Env, "NERV_DEPLOYMENT=kept") || !slices.ContainsFunc(c.Env, func(kv string) bool { return strings.HasPrefix(kv, "PATH=") }) {
+		t.Errorf("ssh's environment: SSHPASS %q, the rest kept? %v", sshpass, c.Env)
 	}
 	_, r, ok := readDeployJSON(t, f.top)
 	want := []string{"production:skipped", "staging:deployed", "development:skipped"}

@@ -83,7 +83,7 @@ func ReadDeployResult(repo string) (DeployResult, error) {
 // docker.json of its version, tag and released commit (as
 // CheckSyncEvidence does for docker; the deploy updates containers to the
 // pushed image). A missing, failed, stale or mismatched record wraps
-// ErrNoSyncEvidence, prefixed "docker: ".
+// ErrMissingEvidence, prefixed "docker: ".
 func CheckDeployEvidence(repo string, rel ReleaseOutputs) error {
 	return checkDockerRecord(repo, rel)
 }

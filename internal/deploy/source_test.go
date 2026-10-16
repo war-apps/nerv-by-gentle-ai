@@ -17,10 +17,15 @@ import (
 type fakeProc struct {
 	cmds   []proc.Command
 	answer func(proc.Command) (proc.Result, error)
+	// answerCtx, when set, answers instead with the command's context.
+	answerCtx func(context.Context, proc.Command) (proc.Result, error)
 }
 
-func (f *fakeProc) Run(_ context.Context, c proc.Command) (proc.Result, error) {
+func (f *fakeProc) Run(ctx context.Context, c proc.Command) (proc.Result, error) {
 	f.cmds = append(f.cmds, c)
+	if f.answerCtx != nil {
+		return f.answerCtx(ctx, c)
+	}
 	if f.answer == nil {
 		return proc.Result{}, nil
 	}

@@ -8,6 +8,7 @@ import (
 	"slices"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/war-apps/nerv-by-gentle-ai/internal/shipconfig"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/shipconfig/yamlsection"
@@ -313,6 +314,12 @@ func (v *validator) checkDeploy(d Deploy) {
 		v.addf("%s.ssh.port: %d must be between 1 and 65535", at, ssh.Port)
 	}
 	v.checkDuration(at+".ssh.connect_timeout", ssh.ConnectTimeout)
+	v.checkDuration(at+".update_timeout", d.UpdateTimeout)
+	for _, f := range []struct{ field, path string }{{"ssh.key_file", ssh.KeyFile}, {"ssh.known_hosts", ssh.KnownHosts}} {
+		if strings.HasPrefix(f.path, "-") || strings.ContainsAny(f.path, "\"") || strings.ContainsFunc(f.path, unicode.IsControl) {
+			v.addf("%s.%s: %q must be a file path without a leading -, quotes or control characters", at, f.field, f.path)
+		}
+	}
 	v.checkDuration(at+".verify.timeout", d.Verify.Timeout)
 }
 

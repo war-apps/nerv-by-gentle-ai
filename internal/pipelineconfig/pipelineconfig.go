@@ -190,11 +190,18 @@ type Deploy struct {
 	// mapping with its name and, with selection branches, its branches.
 	// Default: DefaultEnvironments().
 	Environments []Environment `yaml:"environments"`
+	// UpdateTimeout bounds the compose script's pull and up on each host,
+	// as a Go duration. Default: DefaultUpdateTimeout; read it through
+	// UpdateTimeoutDuration.
+	UpdateTimeout string `yaml:"update_timeout"`
 	// SSH configures the connection to the Docker hosts.
 	SSH SSH `yaml:"ssh"`
 	// Verify configures the check after each deploy.
 	Verify Verify `yaml:"verify"`
 }
+
+// UpdateTimeoutDuration returns the validated update timeout.
+func (d *Deploy) UpdateTimeoutDuration() time.Duration { return duration(d.UpdateTimeout) }
 
 // EnvironmentNames returns the environments' names, in order.
 func (d *Deploy) EnvironmentNames() []string {

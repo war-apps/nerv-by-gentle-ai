@@ -41,6 +41,9 @@ const (
 	// DefaultDeploySelection deploys the environments whose
 	// DOCKER_IMAGE_VERSION points at the release.
 	DefaultDeploySelection = "target"
+	// DefaultUpdateTimeout bounds the compose script's pull and up on a
+	// host: generous, an image pull can be slow.
+	DefaultUpdateTimeout = "15m"
 	// DefaultSSHAuth is password authentication (update-deploy.sh: sshpass).
 	DefaultSSHAuth = "password"
 	// DefaultSSHPort is the SSH port (update-deploy.sh: reachable on 22).
@@ -171,6 +174,9 @@ func (p *Pipeline) applyDefaults() {
 		}
 		if d.Selection == "" {
 			d.Selection = DefaultDeploySelection
+		}
+		if d.UpdateTimeout == "" {
+			d.UpdateTimeout = DefaultUpdateTimeout
 		}
 		if d.Environments == nil {
 			for _, name := range DefaultEnvironments() {

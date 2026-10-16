@@ -42,9 +42,10 @@ func ReadTestRecord(repo string) (TestRecord, error) {
 	return r, readArtifactJSON(repo, TestRecordPath(repo), &r)
 }
 
-// ErrNoSyncEvidence is wrapped by CheckSyncEvidence when an earlier step
-// gives no passing, current record for the release: sync merges nothing.
-var ErrNoSyncEvidence = errors.New("no passing record for this release")
+// ErrMissingEvidence is wrapped by CheckSyncEvidence and
+// CheckDeployEvidence when an earlier step gives no passing, current record
+// for the release: sync merges nothing, deploy deploys nothing.
+var ErrMissingEvidence = errors.New("no passing record for this release")
 
 // CheckSyncEvidence requires, for the release in rel, a passing record of
 // every earlier step that sync depends on (the user's rule: if build, test
@@ -54,12 +55,12 @@ var ErrNoSyncEvidence = errors.New("no passing record for this release")
 //   - docker.json passed for rel's version, tag and released commit
 //     (git_head), from a dry run only when the release was one.
 //
-// A missing, failed, stale or mismatched record wraps ErrNoSyncEvidence,
+// A missing, failed, stale or mismatched record wraps ErrMissingEvidence,
 // naming the step ("test: ...", "docker: ..."); other errors (an
 // unreadable or broken file) are returned as they are.
 func CheckSyncEvidence(repo string, rel ReleaseOutputs) error {
 	if rel.BaseCommit == "" {
-		return fmt.Errorf("release: release.json has no base_commit (it was written by an older nerv): the tested commit cannot be checked: %w", ErrNoSyncEvidence)
+		return fmt.Errorf("release: release.json has no base_commit (it was written by an older nerv): the tested commit cannot be checked: %w", ErrMissingEvidence)
 	}
 	if err := checkTestRecord(repo, rel); err != nil {
 		return err
@@ -69,7 +70,7 @@ func CheckSyncEvidence(repo string, rel ReleaseOutputs) error {
 
 func checkTestRecord(repo string, rel ReleaseOutputs) error {
 	refuse := func(format string, args ...any) error {
-		return fmt.Errorf("test: "+format+": %w", append(args, ErrNoSyncEvidence)...)
+		return fmt.Errorf("test: "+format+": %w", append(args, ErrMissingEvidence)...)
 	}
 	r, err := ReadTestRecord(repo)
 	switch {
@@ -89,7 +90,7 @@ func checkTestRecord(repo string, rel ReleaseOutputs) error {
 
 func checkDockerRecord(repo string, rel ReleaseOutputs) error {
 	refuse := func(format string, args ...any) error {
-		return fmt.Errorf("docker: "+format+": %w", append(args, ErrNoSyncEvidence)...)
+		return fmt.Errorf("docker: "+format+": %w", append(args, ErrMissingEvidence)...)
 	}
 	d, err := ReadDockerResult(repo)
 	switch {

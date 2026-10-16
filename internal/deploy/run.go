@@ -62,6 +62,30 @@ type Runner struct {
 	Sleep        func(context.Context, time.Duration) error
 	Now          func() time.Time
 	PollInterval time.Duration
+	// UpdateTimeout bounds the compose script's pull and up (default
+	// pipelineconfig.DefaultUpdateTimeout); every health check and the
+	// label read are bounded by the verify timeout.
+	UpdateTimeout time.Duration
+}
+
+// call runs one remote command bounded by limit; a call cut off by it
+// reports "timed out after <limit>".
+func (r Runner) call(ctx context.Context, t Target, limit time.Duration, remote string, stream io.Writer) (string, error) {
+	cctx, cancel := context.WithTimeout(ctx, limit)
+	defer cancel()
+	out, err := r.SSH.Run(cctx, t, remote, stream)
+	if err != nil && cctx.Err() == context.DeadlineExceeded && ctx.Err() == nil {
+		return out, fmt.Errorf("%s@%s: timed out after %s", t.User, t.Host, limit)
+	}
+	return out, err
+}
+
+func (r Runner) updateTimeout() time.Duration {
+	if r.UpdateTimeout > 0 {
+		return r.UpdateTimeout
+	}
+	d, _ := time.ParseDuration(pipelineconfig.DefaultUpdateTimeout)
+	return d
 }
 
 // Run deploys the planned environments in order, one at a time, and stops
@@ -80,7 +104,6 @@ func (r Runner) Run(ctx context.Context, plan []Planned) ([]pipeline.Environment
 				res.Status = pipeline.DeployNotRun
 			default:
 				res = r.Deploy(ctx, p.Target)
-				res.Reason = ""
 				if res.Status != pipeline.DeployDeployed {
 					failed, stop = p.Target.Environment, true
 				}
@@ -104,7 +127,7 @@ func (r Runner) Deploy(ctx context.Context, t Target) pipeline.EnvironmentDeploy
 	c, script := shQuote(t.Container), shQuote(t.ComposeScript)
 	update := fmt.Sprintf("cd %s && %s pull --container %s && %s up --container %s", shQuote(t.ComposePath), script, c, script, c)
 	r.printf("%s: updating %s on %s\n", t.Environment, t.Container, t.Host)
-	if _, err := r.SSH.Run(ctx, t, update, r.Output); err != nil {
+	if _, err := r.call(ctx, t, r.updateTimeout(), update, r.Output); err != nil {
 		return fail("updating %s: %v", t.Container, err)
 	}
 	health, err := r.waitHealthy(ctx, t)
@@ -113,7 +136,7 @@ func (r Runner) Deploy(ctx context.Context, t Target) pipeline.EnvironmentDeploy
 		return fail("%v", err)
 	}
 	inspect := fmt.Sprintf("docker inspect --format %s %s", shQuote(`{{index .Config.Labels "`+r.Verify.VersionLabel+`"}}`), c)
-	label, err := r.SSH.Run(ctx, t, inspect, nil)
+	label, err := r.call(ctx, t, r.Verify.TimeoutDuration(), inspect, nil)
 	if err != nil {
 		return fail("reading the version label of %s: %v", t.Container, err)
 	}
@@ -152,7 +175,7 @@ func (r Runner) waitHealthy(ctx context.Context, t Target) (string, error) {
 	timeout := r.Verify.TimeoutDuration()
 	deadline := now().Add(timeout)
 	for {
-		out, err := r.SSH.Run(ctx, t, ps, nil)
+		out, err := r.call(ctx, t, timeout, ps, nil)
 		if err != nil {
 			return "", fmt.Errorf("checking %s: %v", t.Container, err)
 		}

@@ -144,7 +144,7 @@ func (d deployRun) run(ctx context.Context) (pipeline.DeployResult, string, erro
 	}
 	// Deploy only the image the docker step pushed for this release.
 	if err := pipeline.CheckDeployEvidence(top, rel); err != nil {
-		if errors.Is(err, pipeline.ErrNoSyncEvidence) {
+		if errors.Is(err, pipeline.ErrMissingEvidence) {
 			return res, top, &refusal.Error{Err: err}
 		}
 		return res, top, err
@@ -201,7 +201,7 @@ func (d deployRun) run(ctx context.Context) (pipeline.DeployResult, string, erro
 	}
 	ssh := deploy.SSH{Proc: runner, Auth: dc.SSH.Auth, KeyFile: expandHome(dc.SSH.KeyFile, home), KnownHosts: expandHome(dc.SSH.KnownHosts, home),
 		Port: dc.SSH.Port, ConnectTimeout: dc.SSH.ConnectTimeoutDuration(), Env: childEnv}
-	r := deploy.Runner{SSH: ssh, Verify: dc.Verify, Release: rel, Output: d.out, Sleep: d.opts.DeploySleep}
+	r := deploy.Runner{SSH: ssh, Verify: dc.Verify, Release: rel, Output: d.out, Sleep: d.opts.DeploySleep, UpdateTimeout: dc.UpdateTimeoutDuration()}
 	envs, failed := r.Run(ctx, plan)
 	res.Environments = envs
 	res.Status = pipeline.StatusPassed

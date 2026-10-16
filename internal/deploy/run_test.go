@@ -71,8 +71,9 @@ func TestSSH_PasswordGoesThroughSSHPASSOnly(t *testing.T) {
 		t.Fatal(err)
 	}
 	c := f.cmds[0]
-	want := []string{"-e", "ssh", "-o", "StrictHostKeyChecking=yes", "-o", "UserKnownHostsFile=/kh", "-o", "ConnectTimeout=10", "-o", "LogLevel=ERROR",
-		"-p", "22", "-o", "PreferredAuthentications=password", "-o", "PubkeyAuthentication=no", "-o", "NumberOfPasswordPrompts=1", "deploy@10.0.0.1", "uptime"}
+	want := []string{"-e", "ssh", "-o", "StrictHostKeyChecking=yes", "-o", `UserKnownHostsFile="/kh"`, "-o", "ConnectTimeout=10", "-o", "LogLevel=ERROR",
+		"-o", "ServerAliveInterval=15", "-o", "ServerAliveCountMax=3", "-p", "22", "-l", "deploy",
+		"-o", "PreferredAuthentications=password", "-o", "PubkeyAuthentication=no", "-o", "NumberOfPasswordPrompts=1", "--", "10.0.0.1", "uptime"}
 	if c.Name != "sshpass" || !slices.Equal(c.Args, want) {
 		t.Errorf("command %s %q", c.Name, c.Args)
 	}
@@ -238,5 +239,76 @@ func TestRun_StopsAtTheFirstFailure(t *testing.T) {
 	envs, _ = r.Run(ctx, plan)
 	if envs[0].Status != pipeline.DeployNotRun || envs[3].Status != pipeline.DeployNotRun {
 		t.Errorf("interrupted: %+v", envs)
+	}
+}
+
+func TestSSH_RefusesUnsafeDestinations(t *testing.T) {
+	for _, tt := range []struct{ field, value string }{
+		{"user", "-oProxyCommand=touch /tmp/pwned"}, {"user", "de ploy"}, {"user", "root@evil"}, {"user", "deploy\n"}, {"user", ""},
+		{"host", "-oProxyCommand=touch /tmp/pwned"}, {"host", "docker 01"}, {"host", "a;b"}, {"host", "h\x00"}, {"host", ""}, {"host", "user@host"},
+	} {
+		tg := target("staging")
+		if tt.field == "user" {
+			tg.User = tt.value
+		} else {
+			tg.Host = tt.value
+		}
+		f := &fakeProc{}
+		if _, err := passwordSSH(f).Run(context.Background(), tg, "uptime", nil); err == nil || len(f.cmds) != 0 {
+			t.Errorf("%s %q: err %v, %d commands run", tt.field, tt.value, err, len(f.cmds))
+		}
+		d := dataFor("alpha")
+		d["DOCKER_SSH_USER"], d["DOCKER_SSH_HOST"] = tg.User, tg.Host
+		if _, err := NewTarget("staging", d, "password"); !errors.Is(err, ErrIncompleteData) {
+			t.Errorf("NewTarget with %s %q: err = %v", tt.field, tt.value, err)
+		}
+	}
+	for _, host := range []string{"10.2.0.126", "docker-01.example.com", "fe80::1", "localhost"} {
+		tg := target("staging")
+		tg.Host = host
+		if _, err := passwordSSH(&fakeProc{}).Run(context.Background(), tg, "uptime", nil); err != nil {
+			t.Errorf("host %q refused: %v", host, err)
+		}
+	}
+	s := passwordSSH(&fakeProc{})
+	for _, kh := range []string{"/a\"b", "-oProxyCommand=x", "/a\nb"} {
+		s.KnownHosts = kh
+		if _, err := s.Run(context.Background(), target("staging"), "uptime", nil); err == nil {
+			t.Errorf("known_hosts %q accepted", kh)
+		}
+	}
+}
+
+// hang blocks every command matching match until its context ends.
+func hang(match func(remote string) bool, h *host) func(context.Context, proc.Command) (proc.Result, error) {
+	return func(ctx context.Context, c proc.Command) (proc.Result, error) {
+		if match(remoteOf(c)) {
+			<-ctx.Done()
+			return proc.Result{}, ctx.Err()
+		}
+		return h.answer(c)
+	}
+}
+
+func TestRunner_HungCallsAreCutOff(t *testing.T) {
+	for _, tt := range []struct {
+		name  string
+		match func(string) bool
+		want  string
+	}{
+		{"compose script", func(r string) bool { return strings.HasPrefix(r, "cd ") }, "timed out after 50ms"},
+		{"health check", func(r string) bool { return strings.HasPrefix(r, "docker ps") }, "timed out after 50ms"},
+		{"version label", func(r string) bool { return strings.HasPrefix(r, "docker inspect") }, "timed out after 50ms"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			h := &host{statuses: []string{"Up (healthy)"}, label: "1.4.0"}
+			r, _ := newRunner(&fakeProc{answerCtx: hang(tt.match, h)}, true)
+			r.Verify.Timeout, r.UpdateTimeout = "50ms", 50*time.Millisecond
+			start := time.Now()
+			res := r.Deploy(context.Background(), target("staging"))
+			if res.Status != pipeline.DeployFailed || !strings.Contains(res.Error, tt.want) || time.Since(start) > 5*time.Second {
+				t.Errorf("result %+v after %s", res, time.Since(start))
+			}
+		})
 	}
 }

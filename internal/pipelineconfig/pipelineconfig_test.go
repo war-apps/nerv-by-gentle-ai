@@ -140,6 +140,9 @@ func TestLoad_DeployDefaults(t *testing.T) {
 	if d.Selection != "target" {
 		t.Errorf("selection = %q, want target", d.Selection)
 	}
+	if d.UpdateTimeoutDuration() != 15*time.Minute {
+		t.Errorf("update_timeout = %q, want 15m", d.UpdateTimeout)
+	}
 	if d.SSH.Auth != "password" || d.SSH.Port != 22 || d.SSH.KnownHosts != "~/.ssh/known_hosts" ||
 		d.SSH.KeyFile != "" || d.SSH.ConnectTimeoutDuration() != 10*time.Second {
 		t.Errorf("ssh = %+v", d.SSH)
@@ -374,6 +377,10 @@ func TestLoad_ValidationErrors(t *testing.T) {
 			`pipeline.deploy.ssh.connect_timeout: "soon" is not a duration such as 10s or 2m`,
 			`pipeline.deploy.verify.timeout: "-1s" must be positive`,
 		}},
+		{"bad update timeout", minimal + "  deploy: { update_timeout: forever }\n", []string{`pipeline.deploy.update_timeout: "forever" is not a duration such as 10s or 2m`}},
+		{"unsafe ssh paths", minimal + "  deploy: { ssh: { auth: key, key_file: \"-oProxyCommand=x\", known_hosts: \"/a\\\"b\" } }\n", []string{
+			`pipeline.deploy.ssh.key_file: "-oProxyCommand=x" must be a file path without a leading -, quotes or control characters`,
+			`pipeline.deploy.ssh.known_hosts: "/a\"b" must be a file path without a leading -, quotes or control characters`}},
 		{"unknown selection", minimal + "  deploy: { selection: newest }\n", []string{`pipeline.deploy.selection: unknown selection "newest" (want target or branches)`}},
 		{"branches with selection target", minimal + "  deploy: { environments: [{ name: staging, branches: [develop] }] }\n", []string{
 			"pipeline.deploy.environments[0].branches: only used by selection branches (selection is target)"}},
@@ -597,6 +604,7 @@ func TestDefaults_MatchDocs(t *testing.T) {
 		pipelineconfig.DefaultSyncRelease:         "release/*",
 		pipelineconfig.DefaultDeploySource:        "env",
 		pipelineconfig.DefaultDeploySelection:     "target",
+		pipelineconfig.DefaultUpdateTimeout:       "15m",
 		pipelineconfig.DefaultSSHAuth:             "password",
 		pipelineconfig.DefaultSSHKnownHosts:       "~/.ssh/known_hosts",
 		pipelineconfig.DefaultSSHConnectTimeout:   "10s",

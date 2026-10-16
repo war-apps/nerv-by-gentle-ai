@@ -620,6 +620,7 @@ Without `deploy` there is no deploy step.
 | `infisical.domain` | the CLI session's | The Infisical URL; Infisical is read through the user's `infisical login` session. |
 | `selection` | `target` | Which environments a release deploys: `target`, each environment whose `DOCKER_IMAGE_VERSION` points at the release (see [`nerv pipeline deploy`](#nerv-pipeline-deploy)); `branches`, each environment whose `branches` match the released branch. |
 | `environments` | `production-green`, `production-blue`, `staging`, `development` | Deployed in this order (dim's processing order, update-deploy.sh's table). Each entry is a name, or `{ name: <env>, branches: [<glob>, ...] }`: with `selection: branches` every environment needs a non-empty `branches` (names or globs as in `pipeline.branches`, e.g. `main`, `develop`, `release/*`, `hotfix/*`); with `target`, `branches` is refused. |
+| `update_timeout` | `15m` | Bounds the compose script's `pull` and `up` on each host (an image pull can be slow); every health check and the version-label read are bounded by `verify.timeout`. |
 | `ssh.auth` | `password` | `password` (`DOCKER_SSH_PASS`) or `key` (update-deploy.sh uses sshpass). |
 | `ssh.key_file` | required by `key` | The private key file. |
 | `ssh.known_hosts` | `~/.ssh/known_hosts` | Host keys are always checked strictly. dim pins its hosts in `~/.config/update-deploy/known_hosts`. |

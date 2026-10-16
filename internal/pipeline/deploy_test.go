@@ -24,13 +24,13 @@ func TestDeployResult_WrittenAndRead(t *testing.T) {
 func TestCheckDeployEvidence_RequiresThisReleasesDockerRecord(t *testing.T) {
 	rel := ReleaseOutputs{Status: StatusPassed, Published: true, Version: "1.4.0", GitTag: "v1.4.0", GitHead: "c0ffee"}
 	repo := t.TempDir()
-	if err := CheckDeployEvidence(repo, rel); !errors.Is(err, ErrNoSyncEvidence) || !strings.HasPrefix(err.Error(), "docker: no docker.json") {
+	if err := CheckDeployEvidence(repo, rel); !errors.Is(err, ErrMissingEvidence) || !strings.HasPrefix(err.Error(), "docker: no docker.json") {
 		t.Errorf("no docker.json: err = %v", err)
 	}
 	if _, err := WriteDockerResult(repo, DockerResult{Status: StatusPassed, Version: "1.3.0", GitTag: "v1.3.0", Revision: "old"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := CheckDeployEvidence(repo, rel); !errors.Is(err, ErrNoSyncEvidence) || !strings.Contains(err.Error(), "not this release") {
+	if err := CheckDeployEvidence(repo, rel); !errors.Is(err, ErrMissingEvidence) || !strings.Contains(err.Error(), "not this release") {
 		t.Errorf("stale docker.json: err = %v", err)
 	}
 	if _, err := WriteDockerResult(repo, DockerResult{Status: StatusPassed, Version: "1.4.0", GitTag: "v1.4.0", Revision: "c0ffee"}); err != nil {
