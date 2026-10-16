@@ -268,7 +268,17 @@ var ErrTagNotOnOrigin = errors.New("the tag is not on origin")
 // step builds a release from its released commit.
 func (w *Workspace) CheckoutTag(ctx context.Context, tag string) (string, error) {
 	commit, err := w.e.git(ctx, w.dir, w.env, "rev-parse", "--verify", "--quiet", "refs/tags/"+tag+"^{commit}")
-	if err != nil || commit == "" {
+	// rev-parse --verify --quiet exits 1, printing nothing, for a ref that
+	// does not exist; any other failure (a timeout, a broken clone, git
+	// itself) is an environment error with its cause.
+	var coder interface{ ExitCode() int }
+	switch {
+	case err == nil && commit != "":
+	case err != nil && errors.As(err, &coder) && coder.ExitCode() == 1 && commit == "":
+		return "", fmt.Errorf("tag %s: %w", tag, ErrTagNotOnOrigin)
+	case err != nil:
+		return "", fmt.Errorf("reading tag %s: %w", tag, err)
+	default:
 		return "", fmt.Errorf("tag %s: %w", tag, ErrTagNotOnOrigin)
 	}
 	if _, err := w.e.git(ctx, w.dir, w.env, "checkout", "--quiet", "--detach", commit); err != nil {

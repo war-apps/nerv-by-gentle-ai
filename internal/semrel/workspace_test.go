@@ -3,6 +3,7 @@ package semrel
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -558,10 +559,16 @@ func TestWorkspace_CheckoutTag(t *testing.T) {
 	base := f.handle
 	f.handle = func(c Command) (Result, error) {
 		if isGit(c, "rev-parse", "--verify", "--quiet") && strings.HasPrefix(c.Args[len(c.Args)-1], "refs/tags/") {
-			if c.Args[len(c.Args)-1] == "refs/tags/v1.1.0^{commit}" {
+			switch c.Args[len(c.Args)-1] {
+			case "refs/tags/v1.1.0^{commit}":
 				return Result{Stdout: []byte("def\n")}, nil
+			case "refs/tags/broken^{commit}":
+				return Result{Stderr: []byte("fatal: not a git repository")}, exitCodeErr(128)
+			case "refs/tags/slow^{commit}":
+				return Result{}, context.DeadlineExceeded
 			}
-			return Result{}, errors.New("exit status 1")
+			// rev-parse --verify --quiet: exit 1, no output, for a missing ref.
+			return Result{}, exitCodeErr(1)
 		}
 		return base(c)
 	}
@@ -577,4 +584,16 @@ func TestWorkspace_CheckoutTag(t *testing.T) {
 	if _, err := ws.CheckoutTag(context.Background(), "v9.9.9"); !errors.Is(err, ErrTagNotOnOrigin) {
 		t.Errorf("missing tag: err = %v", err)
 	}
+	for tag, cause := range map[string]string{"broken": "not a git repository", "slow": "deadline exceeded"} {
+		_, err := ws.CheckoutTag(context.Background(), tag)
+		if err == nil || errors.Is(err, ErrTagNotOnOrigin) || !strings.Contains(err.Error(), cause) {
+			t.Errorf("%s: err = %v, want the environment failure with its cause", tag, err)
+		}
+	}
 }
+
+// exitCodeErr is a process error with an exit code, as exec.ExitError.
+type exitCodeErr int
+
+func (e exitCodeErr) Error() string { return fmt.Sprintf("exit status %d", int(e)) }
+func (e exitCodeErr) ExitCode() int { return int(e) }
