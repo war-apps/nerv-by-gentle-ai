@@ -183,8 +183,9 @@ func (d dockerRun) run(ctx context.Context) (pipeline.DockerResult, string, erro
 	}
 	argRunner := d.opts.DockerArgs
 	if argRunner == nil {
+		// Computed-argument scripts do not get the pipeline's secrets either.
 		argRunner = func(root string, out io.Writer) pipeline.ArgRunner {
-			return &shiprun.Runner{RepoRoot: root, Output: out}
+			return &shiprun.Runner{RepoRoot: root, Output: out, Environ: func() []string { return pipeline.SafeEnv(os.Environ(), cfg.Registry) }}
 		}
 	}
 	run := pipeline.Docker{Dir: ws.Dir(), Config: cfg, Release: rel, Revision: revision, Source: sourceURL(ws.PublicURL()),

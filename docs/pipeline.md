@@ -209,7 +209,11 @@ dim's docker job, over `pipeline.images` in order:
    branch head.
 3. Log in (`docker login <host> -u <user> --password-stdin`, the user from
    `pipeline.registry.username_env`, the token from `token_env` given on
-   stdin only, never on a command line or printed). Both variables are
+   stdin only, never on a command line or printed). No docker command and
+   no computed-argument script gets those two variables, or any
+   `NERV_DEPLOY_*` variable, in its environment; everything else docker
+   needs (`PATH`, `HOME`, `DOCKER_CONFIG`, `DOCKER_HOST`, proxies) is
+   kept. Both variables are
    required; `--no-login` uses docker's own credentials for the host
    instead. `--dry-run` never logs in.
 4. Per image:

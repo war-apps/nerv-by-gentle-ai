@@ -48,8 +48,28 @@ type Docker struct {
 	Login *Credentials
 	// DryRun builds but never logs in or pushes.
 	DryRun bool
-	// Env is docker's environment; nil means os.Environ().
+	// Env is docker's environment before SafeEnv filters it; nil means
+	// os.Environ().
 	Env []string
+}
+
+// SafeEnv is env without the pipeline's secrets: the registry's
+// username_env and token_env variables and every NERV_DEPLOY_* variable.
+// Everything else docker needs (PATH, HOME, DOCKER_CONFIG, DOCKER_HOST,
+// proxies) is kept. Names compare case-insensitively (Windows).
+func SafeEnv(env []string, r pipelineconfig.Registry) []string {
+	out := make([]string, 0, len(env))
+	for _, kv := range env {
+		name, _, _ := strings.Cut(kv, "=")
+		upper := strings.ToUpper(name)
+		if (r.UsernameEnv != "" && strings.EqualFold(name, r.UsernameEnv)) ||
+			(r.TokenEnv != "" && strings.EqualFold(name, r.TokenEnv)) ||
+			strings.HasPrefix(upper, pipelineconfig.DeployEnvPrefix+"_") {
+			continue
+		}
+		out = append(out, kv)
+	}
+	return out
 }
 
 // ImageResult is what happened to one image.
@@ -233,6 +253,9 @@ func (d Docker) docker(ctx context.Context, stdin []byte, args ...string) ([]byt
 	if env == nil {
 		env = os.Environ()
 	}
+	// The token reaches docker only on login's stdin: no child gets the
+	// registry's or the deploy's secrets in its environment.
+	env = SafeEnv(env, d.Config.Registry)
 	res, err := d.Proc.Run(ctx, proc.Command{Name: "docker", Args: args, Dir: d.Dir, Env: env, Stdin: stdin, Stdout: d.Output, Stderr: d.Output})
 	return res.Stdout, err
 }

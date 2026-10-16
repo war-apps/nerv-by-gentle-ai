@@ -238,3 +238,52 @@ func TestDocker_LoginFailureStopsBeforeBuilding(t *testing.T) {
 		t.Errorf("result %+v", r)
 	}
 }
+
+func TestDocker_ChildrenNeverInheritTheRegistrySecrets(t *testing.T) {
+	t.Setenv("GHCR_USER", "bot-env")
+	t.Setenv("GHCR_TOKEN", "s3cr3t-env-token")
+	t.Setenv("NERV_DEPLOY_PRODUCTION_DOCKER_SSH_KEY", "deploy-secret")
+	t.Setenv("DOCKER_CONFIG", "/home/me/.docker")
+	t.Setenv("HTTPS_PROXY", "http://proxy:3128")
+	f := &fakeDocker{}
+	d := dockerStep(f, &fakeArgs{values: []string{"1"}}, release("main", "1.4.0", "", "v1.4.0"))
+	d.Config.Registry.UsernameEnv, d.Config.Registry.TokenEnv = "GHCR_USER", "GHCR_TOKEN"
+	d.Login = &Credentials{Host: "ghcr.io", User: "bot-env", Token: "s3cr3t-env-token"}
+	if r := d.Run(context.Background()); r.Status != StatusPassed {
+		t.Fatalf("result %+v", r)
+	}
+	if len(f.cmds) < 3 {
+		t.Fatalf("commands %d", len(f.cmds))
+	}
+	for _, c := range f.cmds {
+		for _, kv := range c.Env {
+			name, _, _ := strings.Cut(kv, "=")
+			if name == "GHCR_TOKEN" || name == "GHCR_USER" || strings.HasPrefix(name, "NERV_DEPLOY_") ||
+				strings.Contains(kv, "s3cr3t-env-token") || strings.Contains(kv, "deploy-secret") {
+				t.Errorf("%q: secret in the environment: %s", c.Args, name)
+			}
+		}
+		if strings.Contains(strings.Join(c.Args, " "), "s3cr3t-env-token") {
+			t.Errorf("token on argv: %q", c.Args)
+		}
+		for _, keep := range []string{"DOCKER_CONFIG=/home/me/.docker", "HTTPS_PROXY=http://proxy:3128"} {
+			if !slices.Contains(c.Env, keep) {
+				t.Errorf("%q lost %s", c.Args, keep)
+			}
+		}
+		if !slices.ContainsFunc(c.Env, func(kv string) bool { return strings.HasPrefix(kv, "PATH=") }) {
+			t.Errorf("%q lost PATH", c.Args)
+		}
+	}
+	if string(f.cmds[0].Stdin) != "s3cr3t-env-token\n" {
+		t.Errorf("login stdin %q", f.cmds[0].Stdin)
+	}
+}
+
+func TestSafeEnv(t *testing.T) {
+	env := []string{"PATH=/bin", "GHCR_TOKEN=t", "ghcr_user=u", "NERV_DEPLOY_STAGING_DOCKER_SSH_HOST=h", "NERV_DEPLOYMENT=keep", "DOCKER_HOST=unix:///x"}
+	got := SafeEnv(env, pipelineconfig.Registry{UsernameEnv: "GHCR_USER", TokenEnv: "GHCR_TOKEN"})
+	if want := []string{"PATH=/bin", "NERV_DEPLOYMENT=keep", "DOCKER_HOST=unix:///x"}; !slices.Equal(got, want) {
+		t.Errorf("SafeEnv = %v, want %v", got, want)
+	}
+}
