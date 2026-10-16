@@ -129,10 +129,17 @@ func (s *shipRun) prepareRelease(ctx context.Context) (string, error) {
 	open := s.opts.OpenShipWorkspace
 	s.opts.OpenShipWorkspace = func(ctx context.Context, o semrel.WorkspaceOptions) (shipWorkspace, error) {
 		o.Env = pipeline.SafeEnv(os.Environ(), cfg.Registry)
+		var ws shipWorkspace
+		var err error
 		if open != nil {
-			return open(ctx, o)
+			ws, err = open(ctx, o)
+		} else {
+			ws, err = semrel.NewWorkspace(ctx, o)
 		}
-		return semrel.NewWorkspace(ctx, o)
+		if err != nil {
+			return nil, err
+		}
+		return taggedCheck{ws}, nil
 	}
 	if err := pipeline.RemoveReleaseOutputs(top); err != nil {
 		return "", err
@@ -242,4 +249,32 @@ func writeReleaseResult(w io.Writer, asJSON bool, doc pipeline.ReleaseOutputs) e
 	}
 	_, err := w.Write(b.Bytes())
 	return err
+}
+
+// taggedCheck refuses a computed release whose tag is already on origin,
+// in a dry run and a real one alike: semantic-release computes it again
+// when it cannot see that tag's release on the branch's channel, usually
+// because origin's refs/notes/semantic-release-<tag> notes are stale or
+// missing.
+type taggedCheck struct{ shipWorkspace }
+
+func (w taggedCheck) Compute(ctx context.Context, project string) ([]semrel.ProjectResult, error) {
+	results, err := w.shipWorkspace.Compute(ctx, project)
+	if err != nil {
+		return results, err
+	}
+	for _, r := range results {
+		if !r.NewReleasePublished || r.NewReleaseGitTag == "" {
+			continue
+		}
+		exists, err := w.TagOnOrigin(ctx, r.NewReleaseGitTag)
+		if err != nil {
+			return nil, fmt.Errorf("checking whether %s is on origin: %w", r.NewReleaseGitTag, err)
+		}
+		if exists {
+			return nil, refuse("the computed release %s: tag %s is already on origin: semantic-release did not see that release on the %s branch's channel, usually because origin's semantic-release notes (refs/notes/semantic-release-%s) are stale or missing; fetch them (git fetch origin 'refs/notes/*:refs/notes/*') or restore them on origin, then run again. Nothing was released.",
+				r.NewReleaseVersion, r.NewReleaseGitTag, r.Branch, r.NewReleaseGitTag)
+		}
+	}
+	return results, nil
 }

@@ -73,7 +73,7 @@ func TestPipelineRelease_ReleasesWithoutBuildingOrPublishing(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("exit %d\n%s", code, stderr)
 	}
-	if want := []string{"open", "compute", "check-push", "release repo", "close"}; !slices.Equal(f.events, want) {
+	if want := []string{"open", "compute", "tag? v1.1.0-alpha.1", "check-push", "release repo", "close"}; !slices.Equal(f.events, want) {
 		t.Errorf("events %v, want %v (no build, publish or hooks)", f.events, want)
 	}
 	if req := f.ws.requests[0]; !slices.Equal(req.ExtraAssets, []string{"src/Api/Api.csproj"}) || req.Expected.NewReleaseVersion != "1.1.0-alpha.1" {
@@ -271,6 +271,27 @@ func TestPipelineRelease_RepositoryConfigMustCommitTheVersionFiles(t *testing.T)
 				if code != 1 || doc.Status != "refused" || !strings.Contains(doc.Error, tt.want) || !strings.Contains(doc.Error, ".releaserc.json") || len(f.ws.requests) != 0 {
 					t.Errorf("%v: exit %d, %+v", args, code, doc)
 				}
+			}
+		})
+	}
+}
+
+func TestPipelineRelease_RefusesAComputedTagAlreadyOnOrigin(t *testing.T) {
+	for _, args := range [][]string{{"--dry-run", "--json"}, {"--yes", "--json"}} {
+		t.Run(args[0], func(t *testing.T) {
+			f := newPipelineReleaseFixture(t, pipelineReleaseYAML)
+			f.ws.tags["v1.1.0-alpha.1"] = true
+			code, stdout, stderr := f.runPipeline(t, append([]string{"release"}, args...)...)
+			var doc pipeline.ReleaseOutputs
+			_ = json.Unmarshal([]byte(stdout), &doc)
+			if code != 1 || doc.Status != "refused" || !strings.Contains(doc.Error, "v1.1.0-alpha.1 is already on origin") || !strings.Contains(doc.Error, "semantic-release notes") {
+				t.Errorf("exit %d %+v\n%s", code, doc, stderr)
+			}
+			if slices.ContainsFunc(f.events, func(e string) bool { return strings.HasPrefix(e, "release ") }) {
+				t.Errorf("released anyway: %v", f.events)
+			}
+			if _, ok := readOutputs(t, f.top); ok {
+				t.Error("a refused release left release.json")
 			}
 		})
 	}
