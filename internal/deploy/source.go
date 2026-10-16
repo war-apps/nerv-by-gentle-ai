@@ -9,6 +9,7 @@ package deploy
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -16,6 +17,10 @@ import (
 	"github.com/war-apps/nerv-by-gentle-ai/internal/pipelineconfig"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/proc"
 )
+
+// ErrIncompleteData is wrapped when an environment's deploy data lacks a
+// key the deploy needs: a configuration problem, nothing is deployed.
+var ErrIncompleteData = errors.New("incomplete deploy data")
 
 // Data is an environment's deploy keys (pipelineconfig.DeployHostKeys and
 // DeployAppKeys) as a source gives them.
@@ -155,7 +160,7 @@ func NewTarget(environment string, d Data, auth string) (Target, error) {
 		t.Container = d["DOCKER_CONTAINER_NAME"] + "-" + t.Variant
 	}
 	if len(missing) > 0 {
-		return t, fmt.Errorf("%s: missing %s", environment, strings.Join(missing, ", "))
+		return t, fmt.Errorf("%s: missing %s: %w", environment, strings.Join(missing, ", "), ErrIncompleteData)
 	}
 	return t, nil
 }

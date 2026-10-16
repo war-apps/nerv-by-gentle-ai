@@ -50,6 +50,13 @@ Steps:
              step fails at the end; result in
              .nerv/artifacts/pipeline/sync.json
 
+  deploy     update every pipeline.deploy environment the release
+             targets (selection target: its DOCKER_IMAGE_VERSION; or
+             branches) over SSH with the host's compose script (pull,
+             up), then check the container is healthy and runs the
+             released version; data from environment variables or
+             Infisical; result in .nerv/artifacts/pipeline/deploy.json
+
 validate and test run in your working tree, as CI runs on a checkout: they
 check the code as it is, uncommitted changes included. release releases
 what is on origin: your local branch must equal origin's.
@@ -81,6 +88,10 @@ sync also takes:
                   terminal)
   --fetch-timeout <dur>  Bound for each read of origin (default 60s)
 
+deploy also takes:
+  --dry-run       Read the data and list the deploys; no SSH connection
+  --yes           Deploy without asking (required without a terminal)
+
 Progress goes to stderr (each command's output prefixed
 "[pipeline:<step>] "), the result to stdout. Exit codes: 0 passed, 1
 refused (no or invalid pipeline: section, not a git repository), 2 a
@@ -89,7 +100,7 @@ interrupted.
 `
 
 // pipelineStepNames are the implemented steps, in pipeline order.
-var pipelineStepNames = []string{"validate", "test", "release", "docker", "sync"}
+var pipelineStepNames = []string{"validate", "test", "release", "docker", "sync", "deploy"}
 
 // pipelineRefused is the status of a step that did not start.
 const pipelineRefused = "refused"
@@ -110,6 +121,8 @@ func runPipeline(args []string, stdout, stderr io.Writer, opts options) int {
 		return runPipelineDocker(args[1:], stdout, stderr, opts)
 	case "sync":
 		return runPipelineSync(args[1:], stdout, stderr, opts)
+	case "deploy":
+		return runPipelineDeploy(args[1:], stdout, stderr, opts)
 	}
 	if !slices.Contains(pipelineStepNames, step) {
 		return pipelineUsageError(stderr, fmt.Sprintf("unknown step %q (want one of %s)", step, strings.Join(pipelineStepNames, ", ")))

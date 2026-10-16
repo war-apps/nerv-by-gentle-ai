@@ -40,7 +40,7 @@ func Select(t Target, env pipelineconfig.Environment, selection string, rel pipe
 	}
 	v := t.ImageVersion
 	if v == "" {
-		return Decision{}, fmt.Errorf("%s: DOCKER_IMAGE_VERSION is not set: with selection target it says which releases the environment runs", t.Environment)
+		return Decision{}, fmt.Errorf("%s: DOCKER_IMAGE_VERSION is not set: with selection target it says which releases the environment runs: %w", t.Environment, ErrIncompleteData)
 	}
 	version := strings.TrimPrefix(rel.Version, "v")
 	var ok bool

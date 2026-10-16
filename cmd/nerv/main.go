@@ -117,6 +117,11 @@ type options struct {
 	// OpenSyncWorkspace is nerv pipeline sync's clone; tests inject a fake.
 	// Nil means semrel.NewWorkspace.
 	OpenSyncWorkspace func(context.Context, semrel.WorkspaceOptions) (syncWorkspace, error)
+	// DeployProc runs nerv pipeline deploy's infisical, ssh and sshpass
+	// commands and DeploySleep waits between its health checks; tests
+	// inject fakes. Nil means proc.ExecRunner and a real wait.
+	DeployProc  proc.Runner
+	DeploySleep func(context.Context, time.Duration) error
 }
 
 func defaultOptions() options {

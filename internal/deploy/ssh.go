@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"os/exec"
 	"strconv"
 	"strings"
 	"time"
@@ -64,6 +65,13 @@ func (s SSH) explain(t Target, err error, res proc.Result) error {
 		code = coder.ExitCode()
 	}
 	where := t.User + "@" + t.Host
+	if errors.Is(err, exec.ErrNotFound) {
+		tool := "ssh"
+		if s.Auth == "password" {
+			tool = "sshpass (auth password) or ssh"
+		}
+		return fmt.Errorf("%s: %s is not installed: %w", where, tool, err)
+	}
 	switch {
 	case s.Auth == "password" && code == 6:
 		return fmt.Errorf("%s: the host key is not in the known_hosts file %s (host keys are checked strictly): pin it after checking its fingerprint (ssh-keyscan -t ed25519 %s)", where, s.KnownHosts, t.Host)
