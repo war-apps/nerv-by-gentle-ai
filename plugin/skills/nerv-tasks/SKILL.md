@@ -112,23 +112,25 @@ never change the following — these are properties of the port itself:
 
 ## 6. In a NERV run
 
-What Hyuga does in `DISPATCH: tracker` (dispatch d), across a FULL or LIGHT
-run:
+What Hyuga does in `DISPATCH: tracker` (dispatch d), across a FULL, LIGHT
+or DIRECT run:
 
 1. **Preflight**: after Ikari's grouped question is answered, run
    `createTask` if the user chose to create one, then `start(taskRef)`.
-   Aoba creates the worktree and branch with the confirmed names, using the
-   task's `taskRef` to build `git.branch_pattern`, and the path resolved
-   from `git.worktree_pattern`.
+   The worktree and branch are created with the confirmed names (by Aoba
+   in FULL, by Ikari itself in DIRECT and LIGHT), using the task's
+   `taskRef` to build `git.branch_pattern`, and the path resolved from
+   `git.worktree_pattern`.
 2. **Per-wave subtasks** (FULL only, optional): `createSubtask(parentRef, ...)`
    for each wave when `tasks.subtasks_per_wave: true`.
 3. **Testing gate**: `moveStage(taskRef, testing)` when Maya's full quality
-   gate starts (FULL phase 13) or the LIGHT reduced gate starts.
+   gate starts (FULL phase 13), or in DIRECT and LIGHT
+   when the work unit's verification starts.
 4. **Audit summary** (FULL only): `comment(taskRef, <ranked audit summary>)`
    after the issue-ranking gate (FULL phase 15), plus `createTask` for each
    DEFER issue the user accepted.
 5. **Close**: at the end of the run, `close(taskRef)` or `done(taskRef)` as
-   the user chooses (FULL phase 19 / LIGHT close).
+   the user chooses (FULL phase 19 / DIRECT or LIGHT close).
 6. **Halt**: `block(taskRef, reason)` when a run is halted before
    completion, with the mandatory cause.
 

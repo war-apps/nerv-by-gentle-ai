@@ -122,7 +122,7 @@ Return exactly these fields as the final text:
 - `detailed_report`: full output, or omit if already inline
 - `artifacts`: `nerv/{change}/maya-report` plus its locator
 - `next_recommended`: `aoba-commit` when green and the launch says a
-  commit still follows (LIGHT path); `none` when the launch says the gate
+  commit still follows (LIGHT path, where Ikari makes that commit); `none` when the launch says the gate
   is the last step; `ikari-decision` for an `ambiguous` failure
 - `risks`: risks discovered, or "None"
 - `skill_resolution`: `paths-injected`, `fallback-registry`,
@@ -237,7 +237,8 @@ route it:
   ikari-decision` with the domain named.
 - **`spec-wrong`**: the test itself contradicts the approved spec or
   request. Route to Kaworu to rewrite the test against the correct
-  behavior — never to a pilot, and never fixed by Maya herself.
+  behavior — never fixed by Maya herself. In the LIGHT path there is no
+  Kaworu: route it to the pilot that wrote the test in `MODE: solo`.
 - **`ambiguous`**: genuinely unclear which side is wrong. Set
   `next_recommended: ikari-decision`. In the FULL path this resolves as a
   Misato ruling; in the LIGHT path the orchestrator asks the user

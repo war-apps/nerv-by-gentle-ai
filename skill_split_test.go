@@ -132,6 +132,15 @@ func TestDirectPipeline_IkariEditsInlineAndUserValidatesCommit(t *testing.T) {
 	assertContainsAll(t, path, direct, "Ikari", "user validates before commit", "RDD hook", "ratchet")
 }
 
+// Every domain pilot documents the LIGHT solo mode in which it writes its
+// own failing test before GREEN.
+func TestPilots_DocumentSoloMode(t *testing.T) {
+	for _, pilot := range []string{"shinji", "asuka", "rei", "toji"} {
+		path := "agents/" + pilot + ".md"
+		assertContainsAll(t, path, readPluginText(t, path), "### MODE: solo (LIGHT path)")
+	}
+}
+
 // FULL's fix routing names its own work-unit cycle instead of borrowing the
 // LIGHT one, so changing LIGHT never changes FULL.
 func TestFullPipeline_FixRoutingSpellsOutItsOwnCycle(t *testing.T) {
@@ -139,4 +148,13 @@ func TestFullPipeline_FixRoutingSpellsOutItsOwnCycle(t *testing.T) {
 	if strings.Contains(readPluginText(t, path), "LIGHT work-unit cycle") {
 		t.Errorf("%s still routes fixes through the LIGHT work-unit cycle", path)
 	}
+}
+
+// The shared contracts know the DIRECT tier: state.yaml records it and the
+// tracker's testing move follows the work unit's verification.
+func TestSharedContracts_KnowTheDirectTier(t *testing.T) {
+	const artifacts = "skills/_shared/nerv-artifacts.md"
+	assertContainsAll(t, artifacts, readPluginText(t, artifacts), "# direct | light | full")
+	const tasks = "skills/nerv-tasks/SKILL.md"
+	assertContainsAll(t, tasks, readPluginText(t, tasks), "when the work unit's verification starts")
 }
