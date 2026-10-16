@@ -245,14 +245,37 @@ export function versionGuard(expected, actual) {
   throw error;
 }
 
+// SECRET_NAME matches the environment variables whose values never appear
+// in a failure text (semantic-release's own hideSensitive rule).
+const SECRET_NAME = /token|password|credential|secret|private/i;
+
+// hideSecrets replaces every secret environment value (5 characters or
+// more) in text with [secure].
+export function hideSecrets(text, env = process.env) {
+  let out = text;
+  for (const [name, value] of Object.entries(env)) {
+    if (SECRET_NAME.test(name) && typeof value === "string" && value.length >= 5) {
+      out = out.split(value).join("[secure]");
+    }
+  }
+  return out;
+}
+
 // failureResult is the runner's result for a failed run: every error's
-// "<code> <message>", and, when one of them is versionGuard's, a structured
-// versionMismatch {expected, actual} the Go side checks instead of the text.
-export function failureResult(error) {
+// "<code> <message>" followed by its details (semantic-release's
+// explanation, e.g. which branch is wrong), secrets hidden, and, when one
+// of them is versionGuard's, a structured versionMismatch {expected,
+// actual} the Go side checks instead of the text.
+export function failureResult(error, env = process.env) {
   const errors = error && Array.isArray(error.errors) ? error.errors : [error];
+  const text = (e) => {
+    const head = e && e.code ? `${e.code} ${e.message}` : String(e && e.message ? e.message : e);
+    const details = e && typeof e.details === "string" ? e.details.trim() : "";
+    return details ? `${head}\n${details}` : head;
+  };
   const result = {
     ok: false,
-    error: errors.map((e) => (e && e.code ? `${e.code} ${e.message}` : String(e && e.message ? e.message : e))).join("; "),
+    error: hideSecrets(errors.map(text).join("; "), env),
   };
   const mismatch = errors.find((e) => e && e.code === VERSION_MISMATCH);
   if (mismatch) result.versionMismatch = { expected: mismatch.expected, actual: mismatch.actual };

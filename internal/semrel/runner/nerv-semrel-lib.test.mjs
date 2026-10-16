@@ -18,6 +18,7 @@ import {
   defaultConfig,
   failureResult,
   gitAssets,
+  hideSecrets,
   makeFilter,
   neededPackages,
   notesRepositoryUrl,
@@ -433,4 +434,24 @@ test("gitAssets lists what the repository's @semantic-release/git commits", () =
     { gitPlugin: true, gitAssets: ["src/Api/CHANGELOG.md", "src/**/*.csproj", "dist/app.js"] },
   );
   assert.deepEqual(gitAssets([["@semantic-release/git", { assets: false }]]), { gitPlugin: true, gitAssets: [] });
+});
+
+test("failureResult keeps semantic-release's error details", () => {
+  const e = Object.assign(new Error("A pre-release branch configuration is invalid in the `branches` configuration."), {
+    code: "EPRERELEASEBRANCH",
+    details: "Each pre-release branch in the [branches configuration](x) must have a `prerelease` property.\n\nYour configuration for the problematic branch is `{\"name\":\"hotfix/a/b\"}`.",
+    semanticRelease: true,
+  });
+  const r = failureResult({ errors: [e] });
+  assert.match(r.error, /^EPRERELEASEBRANCH A pre-release branch configuration is invalid/);
+  assert.match(r.error, /hotfix\/a\/b/);
+  assert.match(r.error, /must have a `prerelease` property/);
+});
+
+test("failureResult hides secret environment values", () => {
+  const e = Object.assign(new Error("push to https://x-access-token:ghp_secret123@github.com/a/b.git failed"), { code: "EGITNOPERMISSION", details: "token ghp_secret123" });
+  const r = failureResult(e, { GH_TOKEN: "ghp_secret123", PATH: "/bin" });
+  assert.doesNotMatch(r.error, /ghp_secret123/);
+  assert.match(r.error, /\[secure\]/);
+  assert.equal(hideSecrets("a /bin b", { PATH: "/bin" }), "a /bin b");
 });
