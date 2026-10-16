@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"syscall"
 	"testing"
@@ -47,9 +48,9 @@ func newPipelineFixture(t *testing.T, yaml string) *pipelineFixture {
 		}
 	}
 	return &pipelineFixture{top: top, runner: &envtest.FakeRunner{Responses: map[string]envtest.Response{
-		"git -C . rev-parse --show-toplevel":                                                  {Stdout: top + "\n"},
-		"git -C " + top + " rev-parse --verify HEAD":                                          {Stdout: "c0ffee\n"},
-		"git -C " + top + " status --porcelain=v1 --untracked-files=all -- . :(exclude).nerv": {Stdout: ""},
+		"git -C . rev-parse --show-toplevel":                                                     {Stdout: top + "\n"},
+		"git -C " + top + " rev-parse --verify HEAD":                                             {Stdout: "c0ffee\n"},
+		"git -C " + top + " status --porcelain=v1 -z --untracked-files=all -- . :(exclude).nerv": {Stdout: ""},
 	}}}
 }
 
@@ -198,7 +199,7 @@ func TestPipeline_TestRecordsTheTestedCommit(t *testing.T) {
 
 func TestPipeline_TestRecordsUncommittedChanges(t *testing.T) {
 	f := newPipelineFixture(t, pipelineYAML)
-	f.runner.Responses["git -C "+f.top+" status --porcelain=v1 --untracked-files=all -- . :(exclude).nerv"] = envtest.Response{Stdout: " M src/App.cs\n?? notes.txt\n"}
+	f.runner.Responses["git -C "+f.top+" status --porcelain=v1 -z --untracked-files=all -- . :(exclude).nerv"] = envtest.Response{Stdout: " M src/App.cs\x00?? notes.txt\x00"}
 	if code, _, stderr := f.run(t, "test"); code != 0 {
 		t.Fatalf("exit %d\n%s", code, stderr)
 	}
@@ -248,5 +249,20 @@ func TestPipeline_ValidateWritesNoTestRecord(t *testing.T) {
 	}
 	if _, _, ok := readTestRecord(t, f.top); ok {
 		t.Error("validate wrote test.json")
+	}
+}
+
+func TestPipeline_TestRecordsPathsExactly(t *testing.T) {
+	f := newPipelineFixture(t, pipelineYAML)
+	// git status --porcelain=v1 -z: no quoting; a rename is "R  new\0old".
+	f.runner.Responses["git -C "+f.top+" status --porcelain=v1 -z --untracked-files=all -- . :(exclude).nerv"] = envtest.Response{
+		Stdout: " M src/My App/Ünïcode.cs\x00R  src/New Name.cs\x00src/Old Name.cs\x00?? \"quoted\" -> x.txt\x00"}
+	if code, _, stderr := f.run(t, "test"); code != 0 {
+		t.Fatalf("exit %d\n%s", code, stderr)
+	}
+	_, r, _ := readTestRecord(t, f.top)
+	want := []string{"src/My App/Ünïcode.cs", "src/New Name.cs", "src/Old Name.cs", `"quoted" -> x.txt`}
+	if !r.Dirty || !slices.Equal(r.Changes, want) {
+		t.Errorf("changes %q, want %q", r.Changes, want)
 	}
 }

@@ -230,16 +230,26 @@ func testedState(ctx context.Context, opts options, top string) (pipeline.TestRe
 	if r.Commit = strings.TrimSpace(out); err != nil || r.Commit == "" {
 		return r, fmt.Errorf("reading the tested commit (git rev-parse HEAD): %v", err)
 	}
-	out, errOut, code, err = opts.Runner.Run(ctx, "git", "-C", top, "status", "--porcelain=v1", "--untracked-files=all", "--", ".", ":(exclude).nerv")
+	// -z: paths are NUL-terminated and never quoted; a rename or copy is
+	// "XY new\0old\0".
+	out, errOut, code, err = opts.Runner.Run(ctx, "git", "-C", top, "status", "--porcelain=v1", "-z", "--untracked-files=all", "--", ".", ":(exclude).nerv")
 	if err == nil && code != 0 {
 		err = fmt.Errorf("exit code %d: %s", code, strings.TrimSpace(errOut))
 	}
 	if err != nil {
 		return r, fmt.Errorf("reading the working tree's changes (git status): %v", err)
 	}
-	for _, line := range strings.Split(out, "\n") {
-		if len(line) > 3 {
-			r.Changes = append(r.Changes, strings.TrimSpace(line[3:]))
+	fields := strings.Split(out, "\x00")
+	for i := 0; i < len(fields); i++ {
+		entry := fields[i]
+		if len(entry) < 4 {
+			continue
+		}
+		r.Changes = append(r.Changes, entry[3:])
+		// A rename or copy is followed by its original path.
+		if (entry[0] == 'R' || entry[0] == 'C') && i+1 < len(fields) && fields[i+1] != "" {
+			i++
+			r.Changes = append(r.Changes, fields[i])
 		}
 	}
 	r.Dirty = len(r.Changes) > 0
