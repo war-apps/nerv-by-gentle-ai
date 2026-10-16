@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.2.0] - 2026-10-16
+
 ### Added
 - pipelineconfig: `pipeline.dotnet.coverage` configures the test step's coverage gate: `mode` `enforce` (the
   default, as before), `report` (record and warn, never fail) or `off`, and optional `thresholds` (`line`,
