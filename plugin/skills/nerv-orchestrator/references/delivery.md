@@ -1,7 +1,8 @@
 ## Delivery
 
 Work happens as one conventional commit per work unit, validated by the user
-before Aoba commits it. Track a running authored-line count (additions +
+before it is committed — by Ikari itself in DIRECT and LIGHT, by Aoba in
+FULL. Track a running authored-line count (additions +
 deletions) against the roughly-400-line slice budget from session start.
 When the forecast or running count crosses the budget, apply the cached PR
 strategy (`ask-on-risk` asks once for `stacked-to-main` vs
@@ -15,7 +16,8 @@ commands, never runs them.
 **Artifacts commit policy.** `artifacts.commit` in the merged `nerv.yaml`
 (`with-change`|`at-close`|`never`, default `at-close`): `with-change` adds
 `openspec/changes/{change}/` to each work-unit commit that touches it;
-`at-close` leaves it untracked until Aoba commits it once, whole, as
+`at-close` leaves it untracked until it is committed once (by the tier's
+committer), whole, as
 `docs: nerv artifacts for {change}`, through the normal user-validated
 commit; `never` leaves it untracked permanently. `nerv/.orchestrator.lock`
 is excluded from every commit regardless of this setting, and when Aoba

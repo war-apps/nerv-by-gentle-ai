@@ -3,7 +3,7 @@ name: classification-full
 description: >-
   J2 preflight/classification slice: a request touching two pilot domains
   (backend + ci-cd/infra) must classify FULL per SKILL.md's
-  "Classification: LIGHT vs FULL" rules, without the session starting to
+  "Classification: DIRECT, LIGHT or FULL" rules, without the session starting to
   implement anything.
 tags: [nerv, classification, j2]
 runs: 1
@@ -19,8 +19,9 @@ execution:
     strategy: single-pr.
 
     Do not implement anything: run only the NERV preflight and
-    classification, then stop and print the classification (LIGHT or
-    FULL), the path, and the agents you would launch next. Ask nothing.
+    classification, then stop. Print the classification on its own line
+    exactly as `Classification: <TIER>` (TIER is DIRECT, LIGHT or FULL),
+    then the path, and the agents you would launch next. Ask nothing.
 
     Request: add a `multiply(a, b)` function to `src/calc.py` that
     returns `a * b`, and add a GitHub Actions workflow at

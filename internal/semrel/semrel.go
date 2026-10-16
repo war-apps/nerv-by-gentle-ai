@@ -98,10 +98,10 @@ func loadRelease(dir string) (*shipconfig.Release, error) {
 	return rel, err
 }
 
-// compute is Compute with the release: section given by config (nil loads
+// compute is Compute with the local configuration given by local (nil loads
 // it from the repository's top level; a Workspace gives the user's local
-// section, never the clone's).
-func (e *Engine) compute(ctx context.Context, opts Options, config func() (*shipconfig.Release, error)) ([]ProjectResult, error) {
+// file, never the clone's).
+func (e *Engine) compute(ctx context.Context, opts Options, local *localConfig) ([]ProjectResult, error) {
 	env := opts.Env
 	if env == nil {
 		env = os.Environ()
@@ -112,13 +112,14 @@ func (e *Engine) compute(ctx context.Context, opts Options, config func() (*ship
 	}
 	top = filepath.Clean(top)
 
-	if config == nil {
-		config = func() (*shipconfig.Release, error) { return loadRelease(top) }
+	if local == nil {
+		lc, err := loadLocalConfig(top)
+		if err != nil {
+			return nil, err
+		}
+		local = &lc
 	}
-	rel, err := config()
-	if err != nil {
-		return nil, err
-	}
+	rel := local.rel
 	projects, err := planProjects(rel, filepath.Base(top), opts.Project)
 	if err != nil {
 		return nil, err
@@ -174,8 +175,19 @@ func (e *Engine) compute(ctx context.Context, opts Options, config func() (*ship
 			req.CommitFilesCache = filepath.Join(filepath.Dir(mirror), "commit-files.json")
 			return e.node(ctx, script, wt, nodeEnv(env), req, nil)
 		}
-		if err := e.checkPlan(ctx, script, wt, env, cacheDir, specs); err != nil {
+		plan, err := e.checkPlan(ctx, script, wt, env, cacheDir, specs)
+		if err != nil {
 			return err
+		}
+		configFile := plan.ConfigFile
+		var defaults []defaultBranch
+		if configFile == "" {
+			if defaults, err = local.defaultBranches(); err != nil {
+				return err
+			}
+			if err := e.checkPrereleaseBranches(ctx, mirror, env, "refs/heads/", defaults); err != nil {
+				return err
+			}
 		}
 		byName := map[string]ProjectResult{}
 		for _, p := range projects {
@@ -186,11 +198,15 @@ func (e *Engine) compute(ctx context.Context, opts Options, config func() (*ship
 				Filter:         p.Filter,
 				MinReleaseType: minReleaseType(p.DependsOn, byName),
 				Changelog:      p.Changelog,
+				UseDefault:     configFile == "",
+				Branches:       defaults,
+				GitHubRelease:  remoteIsGitHub(remote.Public, env),
 			})
 			if err != nil {
 				return fmt.Errorf("project %s: %w", p.Name, err)
 			}
 			r := normalize(p.Name, branch, resp)
+			configSource(&r, plan)
 			byName[p.Name] = r
 			if opts.Project == "" || p.Name == opts.Project {
 				results = append(results, r)
@@ -233,14 +249,26 @@ func (e *Engine) prepareNode(ctx context.Context, env []string, rel *shipconfig.
 }
 
 // checkPlan runs the runner's plan mode in dir and fails when the
-// repository's configuration needs a package that is neither bundled nor
-// pinned.
-func (e *Engine) checkPlan(ctx context.Context, script, dir string, env []string, cacheDir string, specs []string) error {
+// semantic-release configuration (the repository's, or the built-in
+// default when it has none) needs a package that is neither bundled nor
+// pinned. It returns the repository's configuration file ("" when there is
+// none), found by semantic-release's own search, and what its
+// @semantic-release/git commits.
+func (e *Engine) checkPlan(ctx context.Context, script, dir string, env []string, cacheDir string, specs []string) (planInfo, error) {
 	plan, err := e.node(ctx, script, dir, nodeEnv(env), runnerRequest{Mode: "plan", CacheDir: cacheDir, Cwd: dir}, nil)
 	if err != nil {
-		return err
+		return planInfo{}, err
 	}
-	return checkPins(plan.Packages, plan.Unresolved, specs)
+	info := planInfo{ConfigFile: plan.ConfigFile, GitPlugin: plan.GitPlugin, GitAssets: plan.GitAssets}
+	return info, checkPins(plan.Packages, plan.Unresolved, specs)
+}
+
+// planInfo is what the runner's plan mode reports about the repository's
+// semantic-release configuration.
+type planInfo struct {
+	ConfigFile string
+	GitPlugin  bool
+	GitAssets  []string
 }
 
 // writeRunner writes the embedded runner files into dir.

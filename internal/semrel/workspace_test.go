@@ -3,6 +3,7 @@ package semrel
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -551,3 +552,48 @@ func TestNewWorkspace_InvalidLocalConfigurationStopsBeforeCloning(t *testing.T) 
 		t.Errorf("cloned despite an invalid configuration")
 	}
 }
+
+func TestWorkspace_CheckoutTag(t *testing.T) {
+	root := t.TempDir()
+	f := workspaceRunner(t, root, "https://github.com/acme/w.git", "abc", nil)
+	base := f.handle
+	f.handle = func(c Command) (Result, error) {
+		if isGit(c, "rev-parse", "--verify", "--quiet") && strings.HasPrefix(c.Args[len(c.Args)-1], "refs/tags/") {
+			switch c.Args[len(c.Args)-1] {
+			case "refs/tags/v1.1.0^{commit}":
+				return Result{Stdout: []byte("def\n")}, nil
+			case "refs/tags/broken^{commit}":
+				return Result{Stderr: []byte("fatal: not a git repository")}, exitCodeErr(128)
+			case "refs/tags/slow^{commit}":
+				return Result{}, context.DeadlineExceeded
+			}
+			// rev-parse --verify --quiet: exit 1, no output, for a missing ref.
+			return Result{}, exitCodeErr(1)
+		}
+		return base(c)
+	}
+	ws := openWorkspace(t, f, root)
+	commit, err := ws.CheckoutTag(context.Background(), "v1.1.0")
+	if err != nil || commit != "def" {
+		t.Fatalf("CheckoutTag = %q, %v", commit, err)
+	}
+	co := f.find(func(c Command) bool { return isGit(c, "checkout", "--quiet", "--detach") })
+	if len(co) != 1 || co[0].Args[len(co[0].Args)-1] != "def" {
+		t.Errorf("checkout %v", co)
+	}
+	if _, err := ws.CheckoutTag(context.Background(), "v9.9.9"); !errors.Is(err, ErrTagNotOnOrigin) {
+		t.Errorf("missing tag: err = %v", err)
+	}
+	for tag, cause := range map[string]string{"broken": "not a git repository", "slow": "deadline exceeded"} {
+		_, err := ws.CheckoutTag(context.Background(), tag)
+		if err == nil || errors.Is(err, ErrTagNotOnOrigin) || !strings.Contains(err.Error(), cause) {
+			t.Errorf("%s: err = %v, want the environment failure with its cause", tag, err)
+		}
+	}
+}
+
+// exitCodeErr is a process error with an exit code, as exec.ExitError.
+type exitCodeErr int
+
+func (e exitCodeErr) Error() string { return fmt.Sprintf("exit status %d", int(e)) }
+func (e exitCodeErr) ExitCode() int { return int(e) }

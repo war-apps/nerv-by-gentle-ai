@@ -209,6 +209,55 @@ module) must be pinned in `extra_plugins`; otherwise the command fails and
 names it. An `extra_plugins` entry for one of the packages above replaces
 its version.
 
+### Built-in semantic-release configuration
+
+A repository with a semantic-release configuration of its own
+(`package.json` `release`, `.releaserc`, `.releaserc.{json,yaml,yml,js,cjs,mjs,ts}`,
+`.config/releaserc*`, `release.config.{js,cjs,mjs,ts}`, found in the
+repository root exactly as semantic-release finds it) keeps it, unchanged.
+A repository with **none** uses NERV's built-in configuration,
+dim.comprobantes.api's:
+
+- branches: `main`; `develop` (prerelease `alpha`, channel `alpha`);
+  `release/*` (prerelease `rc`, channel `beta`, widening dim's single
+  `release/rc`); `hotfix/*` (prerelease `beta`, channel `beta`). A
+  `pipeline:` section's `branches` replace these
+  ([pipeline.md](pipeline.md#pipelinebranches));
+- `@semantic-release/commit-analyzer` and
+  `@semantic-release/release-notes-generator` with the `conventionalcommits`
+  preset and note keywords `BREAKING CHANGE`, `BREAKING CHANGES`,
+  `BREAKING`;
+- `@semantic-release/changelog` (`CHANGELOG.md` at the root, or the
+  project's own changelog, see [The project's changelog](#the-projects-changelog));
+- `@semantic-release/git` committing the changelog (its default release
+  commit message, as dim);
+- `@semantic-release/github` (the GitHub release), only when origin is on
+  GitHub (`github.com`, or the GitHub Enterprise host in `GH_HOST`):
+  elsewhere it would fail its checks (`EINVALIDGITHUBURL`). A real release
+  needs `GH_TOKEN`; `nerv ship` reads it, see [Credentials](#credentials).
+
+dim's `@semantic-release/npm` (`npmPublish: false`) and
+`@semantic-release/exec` (`bump-csproj.sh`, `set-release-outputs.sh`) are
+left out: the dotnet preset writes the project file and NERV prints the
+release outputs itself. Every plugin it needs is bundled or pinned, so no
+`extra_plugins` are required.
+
+`nerv version next` (text: `semantic-release config: repository (<file>)`
+or `built-in default (dim)`; JSON: `semantic_release_config`
+`repository` / `default` and `semantic_release_config_file`) and `nerv ship`
+(stderr line; `--json` document field `semantic_release_config`) say which
+one was used.
+
+A prerelease glob with a fixed id (`release/*` with `rc`) serves one
+matching branch at a time: semantic-release 24 rejects two branches with
+the same prerelease id (`EPRERELEASEBRANCHES`, verified with two
+`release/x` branches on origin). With the built-in configuration NERV
+refuses that case first, naming the branches: keep one release branch at a
+time (merge or delete the others), or give each its own prerelease id in
+the `pipeline:` section's `branches`. The check reads origin's branches as
+`nerv ship` last fetched them, in both the version computation and the
+release.
+
 ### `release.projects[]`
 
 At least one project is required. A single-repo setup is one project with
@@ -674,12 +723,12 @@ commands run in the project's `path`.
 
 | Preset | Stage | Step | Command |
 |---|---|---|---|
-| `dotnet` | restore | `dotnet:restore` | `dotnet restore <target>` |
+| `dotnet` | restore | `dotnet:restore` | `dotnet restore <target> --disable-build-servers` |
 | | lint | `dotnet:lint` | `dotnet format <target> --verify-no-changes` |
-| | build | `dotnet:build` | `dotnet build <target> -c <cfg> --no-restore -p:Version=<version>` |
-| | test | `dotnet:test` | `dotnet test <target> -c <cfg> --no-build`, plus `--collect "XPlat Code Coverage" --results-directory <artifacts>/coverage` when `coverage_threshold` > 0 |
+| | build | `dotnet:build` | `dotnet build <target> -c <cfg> --no-restore --disable-build-servers -p:Version=<version>` |
+| | test | `dotnet:test` | `dotnet test <target> -c <cfg> --no-build --disable-build-servers`, plus `--collect "XPlat Code Coverage" --results-directory <artifacts>/coverage` when `coverage_threshold` > 0 |
 | | coverage | `dotnet:coverage` | only when `coverage_threshold` > 0: the coverage check below (in NERV, no process) |
-| | package | `dotnet:pack` | only with the `nuget` preset: `dotnet pack <project_file> -c <cfg> --no-build -p:Version=<version> -o <artifacts>/nuget` |
+| | package | `dotnet:pack` | only with the `nuget` preset: `dotnet pack <project_file> -c <cfg> --no-build --disable-build-servers -p:Version=<version> -o <artifacts>/nuget` |
 | `node` | restore | `node:restore` | `npm ci`; `pnpm install --frozen-lockfile`; `yarn install --frozen-lockfile` (Yarn 1) or `yarn install --immutable` (Yarn 2+, detected by `packageManager: "yarn@2…"` or later in `package.json`, or a `.yarnrc.yml` in the project or repository root) |
 | | lint, build, test | `node:<script>` | `<package_manager> run <script>`, only for the scripts `lint`, `build`, `test` that `package.json` defines |
 | `docker` | package | `docker:build <name>` | per image: `docker build -f <dockerfile> -t <name>:<tag>... --build-arg K=V... --label org.opencontainers.image.version=<version> [--label org.opencontainers.image.revision=<commit>] <context>` (build args sorted by name, placeholders replaced) |
@@ -694,6 +743,19 @@ coverage). Its CI also builds with `-warnaserror` and tests with
 flags go in a stage override, e.g.
 `stages: { build: { run: "dotnet build X.slnx -c Release --no-restore -warnaserror -p:Version=$NERV_RELEASE_VERSION" } }`.
 
+- Every dotnet preset command runs without build servers: it receives
+  `MSBUILDDISABLENODEREUSE=1`, `UseSharedCompilation=false` and
+  `DOTNET_CLI_USE_MSBUILD_SERVER=0`, and restore, build, test and pack
+  also get `--disable-build-servers` when the SDK accepts it (7.0.100 or
+  later). nerv runs `dotnet --version` once per run in the directory the
+  commands run in (so `global.json` decides); with an older SDK the flag is
+  left out, and when the version cannot be detected it is left out with a
+  note in the step's output. `dotnet format` rejects the flag, so it gets
+  only the variables. Reused MSBuild nodes and compiler servers
+  make dotnet die mid-release on shared hosts ("Internal CLR error
+  (0x80131506)"). A stage override's `run:` is never rewritten: it runs as
+  written, so a repository that overrode every stage only for this (as
+  dim.comprobantes.api did) can drop those overrides.
 - The node preset never writes the package version: semantic-release's
   `@semantic-release/npm` plugin (or the repository's own configuration)
   does. Enable the `npm` preset only when that plugin does not publish

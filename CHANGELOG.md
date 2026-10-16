@@ -7,6 +7,94 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.2.0] - 2026-10-16
+
+### Added
+- pipelineconfig: `pipeline.dotnet.coverage` configures the test step's coverage gate: `mode` `enforce` (the
+  default, as before), `report` (record and warn, never fail) or `off`, and optional `thresholds` (`line`,
+  `branch`, `method`, `stat`) overriding the runsettings' ones key by key; the step's `--json` document and
+  `test.json` record the mode, the thresholds with their source and the measured values.
+- pipeline: the Docker pipeline, a standalone copy of dim.comprobantes.api's CI/CD for repositories that deploy a
+  Docker image, configured by the `pipeline:` section of the local `.nerv/nerv.yaml` (docs/pipeline.md, with a
+  Getting started guide): `nerv pipeline validate`, `test`, `release`, `docker`, `sync` and `deploy`, each a
+  command of its own with its records in `.nerv/artifacts/pipeline/`, and `nerv pipeline run`, which runs them in
+  that order (`--dry-run`, `--yes`, `--expect`, `--from`, `--only`), stops at the first step that does not pass
+  (the rest reported not-run, the exit the failing step's) and writes `run.json`. The `/nerv:pipeline` command
+  rehearses with a dry run, shows the plan and runs the real pipeline only after your explicit yes.
+- pipeline: `nerv pipeline deploy` runs dim's `/update-deploy` for the release just made: it reads each
+  `pipeline.deploy` environment from `NERV_DEPLOY_<ENVIRONMENT>_<KEY>` variables or from Infisical (update-deploy's
+  layout), deploys those whose `DOCKER_IMAGE_VERSION` points at the release (`selection: target`, the default) or
+  whose `branches` match the released branch (`selection: branches`), runs the host's compose script (`pull`, then
+  `up`, bounded by `pipeline.deploy.update_timeout`) over SSH with strict host keys, keepalives and validated user
+  and host (password through `sshpass -e` only, or a key), and verifies the container
+  is healthy and carries the released version label; it stops at the first failure, requires this release's
+  passing `docker.json`, asks before deploying (`--yes`), lists the deploys without connecting with `--dry-run`, and
+  writes `.nerv/artifacts/pipeline/deploy.json`.
+- pipelineconfig: `pipeline.deploy.selection` (`target` or `branches`) and per-environment `branches`
+  (`environments: [{ name: staging, branches: [release/*] }]`).
+- pipeline: `nerv pipeline sync` runs dim.comprobantes.api's sync-to-develop and sync-main-to-release jobs after
+  the release step: in a fresh clone of origin it merges main or a `release/*` release into develop, and main into
+  every `release/*` branch on origin (`--no-ff`, "chore(sync): merge <source> into <branch> [skip ci]"), pushes
+  with your credentials and commits as you; a conflict is aborted and reported, the other branches still sync and
+  the step fails at the end. It syncs nothing unless every earlier part passed for this release: a passing
+  `test.json` on a clean tree at the commit the release was made from (`release.json`'s new `base_commit`) and a
+  passing `docker.json` of the release's version, tag and commit; it asks before pushing (`--yes`), previews with
+  `--dry-run` (conflicts included, same checks) and writes `.nerv/artifacts/pipeline/sync.json` (also after an
+  interruption, with the targets not run). It refuses when git has no commit identity configured instead of
+  letting git guess one.
+- pipeline: `nerv pipeline test` records a passing run in `.nerv/artifacts/pipeline/test.json` (the tested `HEAD`
+  and any uncommitted changes outside `.nerv/`); a failed run leaves an earlier record untouched.
+- pipeline: `nerv pipeline docker` runs dim.comprobantes.api's docker job: from the release step's outputs, in a
+  clone of origin at the release tag, it builds every `pipeline.images` entry (build and computed arguments, OCI
+  labels, `--platform`), tags it with the version, the channel and `latest` on main, pushes it after a
+  `docker login` that receives the token on stdin only, retries a failed build once with recomputed arguments,
+  and writes `.nerv/artifacts/pipeline/docker.json` when it passes (a failed or refused run leaves an earlier one
+  untouched); `--dry-run` builds without logging in or pushing.
+- pipeline: `nerv pipeline release` runs dim.comprobantes.api's release job: it releases what is on origin as
+  `nerv ship` does (same checks, configuration, version guard, `--expect`, `--dry-run`), without building or
+  publishing, versions `pipeline.release.version_files` (`<Version>` and the release link) in the release commit,
+  and writes the release outputs to `.nerv/artifacts/pipeline/release.json` for the later steps, including
+  `base_commit`, the commit the release was made from.
+- pipeline: `nerv pipeline validate` and `nerv pipeline test` run dim.comprobantes.api's validate and test jobs
+  locally from the `pipeline:` section (dotnet restore, format check, build with `-warnaserror`, tests with coverage
+  and a trx logger), in the working tree, with streamed output and a `--json` result; test results go to the
+  git-ignored `.nerv/artifacts/pipeline/test`. The runsettings' coverage thresholds, which coverlet's collector
+  ignores, are enforced by nerv with coverlet's semantics (line, branch, method; total, average or minimum).
+- release: a built-in semantic-release configuration (dim.comprobantes.api's: `main`, `develop` alpha, `release/*`
+  rc on beta, `hotfix/*` beta; conventionalcommits, changelog, git, github) for repositories without one of their
+  own; a `pipeline:` section's `branches` replace its branches. `nerv version next` and `nerv ship` say which
+  configuration was used (`semantic_release_config` in JSON). A fixed-id prerelease glob matching several branches
+  on origin is refused with the branch names.
+
+### Changed
+- orchestrator: Ikari now routes every request through three tiers that mirror gentle-ai's Work Routing Ladder.
+  DIRECT (direct inline) covers one mechanical, already-understood file: Ikari edits it, runs the focused check and
+  commits it after you validate. LIGHT (delegated direct) launches an explorer only when the mapping trigger fires,
+  one domain pilot in `MODE: solo` that writes and observes its own failing test, and Maya only when gentle-ai's
+  Delegated Verification Gate asks for an independent verifier; Ikari commits (after your validation) and writes the
+  run summary. FULL is unchanged. The delegation triggers use gentle-ai's current thresholds, the classification
+  event records the route declaration, the ratchet runs DIRECT → LIGHT → FULL, and `state.yaml` accepts
+  `path: direct`. New `classification-direct` eval case.
+- orchestrator: agent launch labels and deliberation log `launch` lines show the role's model, as
+  `({model}) {Display name}: {action}` (e.g. `(sonnet) Shinji Ikari: Retrying dotnet format verification`).
+
+### Fixed
+- pipeline: the dotnet commands of `nerv pipeline validate` and `test` no longer inherit the registry token, the
+  `NERV_DEPLOY_*` data or the GitHub tokens; the release, docker and sync clones' git and semantic-release lose the
+  registry and deploy secrets too.
+- pipeline: `nerv pipeline release` refuses a computed release whose tag is already on origin (stale or missing
+  semantic-release notes), dry run or not; semantic-release errors are reported with their details, secrets hidden.
+- pipeline: a failed `nerv pipeline docker` names each failed image with the docker error and the build's last
+  output lines in its result (and in `run.json`); `nerv pipeline sync` no longer clones origin for a release that
+  syncs nothing.
+- dotnet: every dotnet command nerv runs (the `dotnet` ship preset and `nerv pipeline validate`/`test`) runs
+  without build servers: `MSBUILDDISABLENODEREUSE=1`, `UseSharedCompilation=false`,
+  `DOTNET_CLI_USE_MSBUILD_SERVER=0`, and `--disable-build-servers` on restore, build, test and pack when the
+  SDK (`dotnet --version`, once per run and directory) is 7.0.100 or later (never on `dotnet format`, which
+  rejects it; left out with a note when the version cannot be detected). On shared hosts reused servers made dotnet die mid-release with "Internal
+  CLR error (0x80131506)". `pipeline.dotnet.env` still wins; stage overrides' `run:` are not rewritten, so
+  repositories that overrode every stage for this can drop those overrides.
+
 ## [4.1.1] - 2026-10-15
 
 ### Changed

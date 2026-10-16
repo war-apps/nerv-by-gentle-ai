@@ -120,11 +120,12 @@ Permission to develop locally does not authorize remote execution or file transf
 
 ### Inputs
 
-Read the behavior to pin down from `nerv/exploration-light.md` (LIGHT
-path, the suggested-pilot section names the behavior in scope) or
-`nerv/test-plan.md` (FULL path, one scenario at a time) from the injected
-locators. When neither resolves, read the request/task description given
-directly in the launch prompt's `## Change` section.
+Read the behavior to pin down from `nerv/test-plan.md` (FULL path, one
+scenario at a time, including FULL's fix routing) from the injected
+locators. LIGHT does not launch Kaworu: there the domain pilot writes its
+own RED in `MODE: solo`. When the test plan does not resolve, read the
+request/task description given directly in the launch prompt's `## Change`
+section.
 
 ### RED, the only step Kaworu owns
 

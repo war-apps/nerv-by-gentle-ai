@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strings"
 	"sync"
@@ -339,7 +340,7 @@ func TestNormalize(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := normalize("api", "develop", tt.resp); got != tt.want {
+			if got := normalize("api", "develop", tt.resp); !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("normalize:\n got %+v\nwant %+v", got, tt.want)
 			}
 		})
@@ -658,5 +659,13 @@ func TestParseResponse(t *testing.T) {
 	resp, err := parseResponse([]byte(resultMarker+`{"ok":false}`+"\nnoise\n"+resultMarker+`{"ok":true,"released":true}`+"\n"), nil)
 	if err != nil || !resp.Released {
 		t.Errorf("last marker line: %+v, %v", resp, err)
+	}
+}
+
+func TestParseResponse_KeepsTheErrorDetails(t *testing.T) {
+	stdout := []byte(resultMarker + `{"ok":false,"error":"EPRERELEASEBRANCH A pre-release branch configuration is invalid.\nYour configuration for the problematic branch is ` + "`" + `{\"name\":\"hotfix/a/b\"}` + "`" + `. See https://user:pw@example.com/x"}` + "\n")
+	_, err := parseResponse(stdout, nil)
+	if err == nil || !strings.Contains(err.Error(), "hotfix/a/b") || !strings.Contains(err.Error(), "\n") || strings.Contains(err.Error(), "user:pw") {
+		t.Errorf("err = %v", err)
 	}
 }

@@ -1,6 +1,6 @@
 ---
 type: regex
-pattern: "\\bLIGHT\\b"
+pattern: "Classification:[\\s*_`]*LIGHT\\b"
 target: last_message
 arm: both
 ---

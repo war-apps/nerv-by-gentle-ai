@@ -245,14 +245,37 @@ export function versionGuard(expected, actual) {
   throw error;
 }
 
+// SECRET_NAME matches the environment variables whose values never appear
+// in a failure text (semantic-release's own hideSensitive rule).
+const SECRET_NAME = /token|password|credential|secret|private/i;
+
+// hideSecrets replaces every secret environment value (5 characters or
+// more) in text with [secure].
+export function hideSecrets(text, env = process.env) {
+  let out = text;
+  for (const [name, value] of Object.entries(env)) {
+    if (SECRET_NAME.test(name) && typeof value === "string" && value.length >= 5) {
+      out = out.split(value).join("[secure]");
+    }
+  }
+  return out;
+}
+
 // failureResult is the runner's result for a failed run: every error's
-// "<code> <message>", and, when one of them is versionGuard's, a structured
-// versionMismatch {expected, actual} the Go side checks instead of the text.
-export function failureResult(error) {
+// "<code> <message>" followed by its details (semantic-release's
+// explanation, e.g. which branch is wrong), secrets hidden, and, when one
+// of them is versionGuard's, a structured versionMismatch {expected,
+// actual} the Go side checks instead of the text.
+export function failureResult(error, env = process.env) {
   const errors = error && Array.isArray(error.errors) ? error.errors : [error];
+  const text = (e) => {
+    const head = e && e.code ? `${e.code} ${e.message}` : String(e && e.message ? e.message : e);
+    const details = e && typeof e.details === "string" ? e.details.trim() : "";
+    return details ? `${head}\n${details}` : head;
+  };
   const result = {
     ok: false,
-    error: errors.map((e) => (e && e.code ? `${e.code} ${e.message}` : String(e && e.message ? e.message : e))).join("; "),
+    error: hideSecrets(errors.map(text).join("; "), env),
   };
   const mismatch = errors.find((e) => e && e.code === VERSION_MISMATCH);
   if (mismatch) result.versionMismatch = { expected: mismatch.expected, actual: mismatch.actual };
@@ -296,4 +319,59 @@ export function rewriteChangelogPlugins(plugins, changelog) {
     return [name, { ...options, assets: kept }];
   });
   return { plugins: out, applied };
+}
+
+// DIM_NOTES_OPTIONS are dim.comprobantes.api's commit-analyzer and
+// release-notes-generator options (its package.json "release").
+const DIM_NOTES_OPTIONS = () => ({
+  preset: "conventionalcommits",
+  parserOpts: { noteKeywords: ["BREAKING CHANGE", "BREAKING CHANGES", "BREAKING"] },
+});
+
+// defaultConfig is NERV's built-in semantic-release configuration, used when
+// a repository has none of its own: dim.comprobantes.api's package.json
+// "release" without its repository-specific @semantic-release/npm
+// (npmPublish false) and @semantic-release/exec (csproj bump, CI outputs)
+// entries, which nerv's presets and outputs replace; the changelog at the
+// root (a project's changelog is applied afterwards by
+// rewriteChangelogPlugins), committed by @semantic-release/git with its
+// default message (dim sets none). branches are {name, prerelease?,
+// channel?} (the pipeline: section's, or its defaults, sent by Go); a branch
+// with neither is written as its bare name. @semantic-release/github is
+// included only when github is true (origin on GitHub): elsewhere it fails
+// its checks (EINVALIDGITHUBURL). assets are extra files the git plugin
+// commits with the changelog (nerv pipeline release's version files).
+// Fresh objects on every call.
+export function defaultConfig(branches, { github = true, assets = [] } = {}) {
+  if (!Array.isArray(branches) || branches.length === 0) {
+    throw new Error("the built-in semantic-release configuration needs its branches");
+  }
+  return {
+    branches: branches.map(({ name, prerelease, channel }) =>
+      prerelease || channel ? { name, ...(prerelease ? { prerelease } : {}), ...(channel ? { channel } : {}) } : name,
+    ),
+    plugins: [
+      ["@semantic-release/commit-analyzer", DIM_NOTES_OPTIONS()],
+      ["@semantic-release/release-notes-generator", DIM_NOTES_OPTIONS()],
+      ["@semantic-release/changelog", { changelogFile: "CHANGELOG.md" }],
+      ["@semantic-release/git", { assets: ["CHANGELOG.md", ...assets.filter((a) => a !== "CHANGELOG.md")] }],
+      ...(github ? ["@semantic-release/github"] : []),
+    ],
+  };
+}
+
+// gitAssets lists what a plugin list's @semantic-release/git entries commit:
+// gitPlugin false when there is none; each entry's assets (the plugin's
+// defaults when unset, none for false, an object's path), in order.
+export function gitAssets(plugins) {
+  const out = { gitPlugin: false, gitAssets: [] };
+  for (const p of Array.isArray(plugins) ? plugins : []) {
+    const [name, options = {}] = Array.isArray(p) ? p : [p, {}];
+    if (name !== GIT_PLUGIN) continue;
+    out.gitPlugin = true;
+    if (options.assets === false) continue;
+    const assets = options.assets == null ? DEFAULT_GIT_ASSETS : [].concat(options.assets);
+    for (const a of assets) out.gitAssets.push(a && typeof a === "object" ? a.path : a);
+  }
+  return out;
 }

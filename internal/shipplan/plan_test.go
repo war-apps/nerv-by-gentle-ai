@@ -79,10 +79,10 @@ func TestBuild_DotnetAndDockerLikeDim(t *testing.T) {
 	cov := filepath.Join(artifacts, "api", "coverage")
 	api, broker := "ghcr.io/org/dim.comprobantes.api", "ghcr.io/org/dim.comprobantes.api-login-broker"
 	assertLines(t, lines(plan), []string{
-		"restore|dotnet:restore|dotnet restore Dim.Comprobantes.slnx",
+		"restore|dotnet:restore|dotnet restore Dim.Comprobantes.slnx --disable-build-servers",
 		"lint|dotnet:lint|dotnet format Dim.Comprobantes.slnx --verify-no-changes",
-		"build|dotnet:build|dotnet build Dim.Comprobantes.slnx -c Release --no-restore -p:Version=2.9.0-alpha.3",
-		"test|dotnet:test|dotnet test Dim.Comprobantes.slnx -c Release --no-build --collect XPlat Code Coverage --results-directory " + cov,
+		"build|dotnet:build|dotnet build Dim.Comprobantes.slnx -c Release --no-restore --disable-build-servers -p:Version=2.9.0-alpha.3",
+		"test|dotnet:test|dotnet test Dim.Comprobantes.slnx -c Release --no-build --disable-build-servers --collect XPlat Code Coverage --results-directory " + cov,
 		"coverage|dotnet:coverage|check line coverage >= 80% in " + cov,
 		"package|docker:build " + api + "|docker build -f docker/Dockerfile -t " + api + ":2.9.0-alpha.3 -t " + api + ":alpha --build-arg APP_VERSION=2.9.0-alpha.3 --label org.opencontainers.image.version=2.9.0-alpha.3 --label org.opencontainers.image.revision=abc123 .",
 		"package|docker:build " + broker + "|docker build -f docker/LoginBroker.Dockerfile -t " + broker + ":2.9.0-alpha.3 -t " + broker + ":alpha --build-arg APP_VERSION=2.9.0-alpha.3 --build-arg RELEASE=v2.9.0-alpha.3@alpha --label org.opencontainers.image.version=2.9.0-alpha.3 --label org.opencontainers.image.revision=abc123 .",
@@ -91,7 +91,7 @@ func TestBuild_DotnetAndDockerLikeDim(t *testing.T) {
 		"publish|docker:push " + broker + ":2.9.0-alpha.3|docker push " + broker + ":2.9.0-alpha.3",
 		"publish|docker:push " + broker + ":alpha|docker push " + broker + ":alpha",
 	})
-	if got := plan.Stages[3].Steps[0].Exec[7]; got != "XPlat Code Coverage" {
+	if got := plan.Stages[3].Steps[0].Exec[8]; got != "XPlat Code Coverage" {
 		t.Errorf("the collector name is one argument, got %q", got)
 	}
 	var names []string
@@ -114,10 +114,10 @@ func TestBuild_DotnetWithoutCoverageOrNuget(t *testing.T) {
 		t.Fatal(err)
 	}
 	assertLines(t, lines(plan), []string{
-		"restore|dotnet:restore|dotnet restore lib/Lib.csproj",
+		"restore|dotnet:restore|dotnet restore lib/Lib.csproj --disable-build-servers",
 		"lint|dotnet:lint|dotnet format lib/Lib.csproj --verify-no-changes",
-		"build|dotnet:build|dotnet build lib/Lib.csproj -c Debug --no-restore -p:Version=1.0.0",
-		"test|dotnet:test|dotnet test lib/Lib.csproj -c Debug --no-build",
+		"build|dotnet:build|dotnet build lib/Lib.csproj -c Debug --no-restore --disable-build-servers -p:Version=1.0.0",
+		"test|dotnet:test|dotnet test lib/Lib.csproj -c Debug --no-build --disable-build-servers",
 	})
 	if plan.Publish() != nil {
 		t.Error("Publish() should be nil without publishers")
@@ -298,7 +298,7 @@ func TestBuild_NuGet(t *testing.T) {
 	pkgs := filepath.Join(artifacts, "sdk", "nuget")
 	got := lines(plan)
 	assertLines(t, got[len(got)-2:], []string{
-		"package|dotnet:pack|dotnet pack sdk/Sdk.csproj -c Release --no-build -p:Version=3.1.0 -o " + pkgs,
+		"package|dotnet:pack|dotnet pack sdk/Sdk.csproj -c Release --no-build --disable-build-servers -p:Version=3.1.0 -o " + pkgs,
 		"publish|nuget:push|push " + filepath.Join(pkgs, "*.nupkg") + " (and *.snupkg) to https://nuget.example/v3/index.json with the API key from $MY_NUGET_KEY, skipping packages already there",
 	})
 }
@@ -443,7 +443,7 @@ func TestBuild_StageOverrideReplacesEveryPresetCommand(t *testing.T) {
 	}
 	// The other stages keep both presets' commands, in preset order.
 	assertLines(t, lines(plan)[:2], []string{
-		"restore|dotnet:restore|dotnet restore App.csproj",
+		"restore|dotnet:restore|dotnet restore App.csproj --disable-build-servers",
 		"restore|node:restore|npm ci",
 	})
 }
@@ -473,14 +473,14 @@ func TestBuild_HooksWrapStagesAndEmptyStagesAreSkipped(t *testing.T) {
 		t.Fatal(err)
 	}
 	assertLines(t, lines(plan), []string{
-		"restore|dotnet:restore|dotnet restore Api.csproj",
+		"restore|dotnet:restore|dotnet restore Api.csproj --disable-build-servers",
 		"before_lint|before_lint|bash: echo lint",
 		"lint|dotnet:lint|dotnet format Api.csproj --verify-no-changes",
-		"build|dotnet:build|dotnet build Api.csproj -c Release --no-restore -p:Version=1.0.0",
+		"build|dotnet:build|dotnet build Api.csproj -c Release --no-restore --disable-build-servers -p:Version=1.0.0",
 		"after_build|after_build|bash: echo built",
 		"before_test|before_test|bash: echo one",
 		"before_test|before_test|pwsh: echo two",
-		"test|dotnet:test|dotnet test Api.csproj -c Release --no-build",
+		"test|dotnet:test|dotnet test Api.csproj -c Release --no-build --disable-build-servers",
 		"after_test|after_test|node: node report.mjs",
 		"before_publish|before_publish|bash: echo login",
 		"publish|publish|bash: ./deploy.sh",
@@ -532,10 +532,26 @@ func TestBuild_ContextIsChecked(t *testing.T) {
 	}
 }
 
-// fakeRunner records the steps it runs and fails those named in fail.
+// fakeRunner records the steps it runs and fails those named in fail. Its
+// Capture answers the SDK probe (dotnet --version) with sdk (10.0.112 when
+// empty) or sdkErr, recording the probes apart from the steps.
 type fakeRunner struct {
-	steps []shiprun.Step
-	fail  map[string]error
+	steps  []shiprun.Step
+	fail   map[string]error
+	sdk    string
+	sdkErr error
+	probes []shiprun.Step
+}
+
+func (f *fakeRunner) Capture(_ context.Context, s shiprun.Step, _ shiprun.Vars) (string, error) {
+	f.probes = append(f.probes, s)
+	if f.sdkErr != nil {
+		return "", f.sdkErr
+	}
+	if f.sdk == "" {
+		return "10.0.112\n", nil
+	}
+	return f.sdk, nil
 }
 
 func (f *fakeRunner) Run(_ context.Context, s shiprun.Step, _ shiprun.Vars) error {
@@ -653,13 +669,13 @@ func TestPlan_Render(t *testing.T) {
 	cov := filepath.Join(artifacts, "api", "coverage")
 	want := `api 1.0.0 (default channel, tag v1.0.0)
   restore
-    dotnet:restore  dotnet restore Dim.Comprobantes.slnx
+    dotnet:restore  dotnet restore Dim.Comprobantes.slnx --disable-build-servers
   lint
     dotnet:lint  dotnet format Dim.Comprobantes.slnx --verify-no-changes
   build
-    dotnet:build  dotnet build Dim.Comprobantes.slnx -c Release --no-restore -p:Version=1.0.0
+    dotnet:build  dotnet build Dim.Comprobantes.slnx -c Release --no-restore --disable-build-servers -p:Version=1.0.0
   test
-    dotnet:test  dotnet test Dim.Comprobantes.slnx -c Release --no-build --collect "XPlat Code Coverage" --results-directory ` + cov + `
+    dotnet:test  dotnet test Dim.Comprobantes.slnx -c Release --no-build --disable-build-servers --collect "XPlat Code Coverage" --results-directory ` + cov + `
     after_test  [pwsh in tools] scripts/report.ps1
   coverage
     dotnet:coverage  check line coverage >= 80% in ` + cov + `

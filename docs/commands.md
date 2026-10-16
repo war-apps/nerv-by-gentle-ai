@@ -14,6 +14,7 @@ Nerv by Gentle-AI has two command surfaces: Claude Code slash commands
 | `/nerv:version` | Show the next release version of the repository (or of each project) |
 | `/nerv:ship` | Release the repository from origin: dry run first, the real release only after your explicit yes |
 | `/nerv:release-setup` | Write the `release:` section of `.nerv/nerv.yaml` from what the repository has, asking only what it cannot detect |
+| `/nerv:pipeline` | Run the Docker pipeline (validate, test, release, docker, sync, deploy): dry run first, the real run only after your explicit yes |
 
 ### /nerv:configure
 
@@ -91,6 +92,23 @@ or edits one project. It never commits, pushes or releases. See
 /nerv:release-setup
 ```
 
+### /nerv:pipeline
+
+Runs the Docker pipeline of the `pipeline:` section with `nerv pipeline
+run`: a dry run first (validate and test in the working tree, the release
+computed on origin, the images built, the merge-backs previewed, the
+deploys listed without connecting), then a summary of the version, images,
+merge-backs and environments, and the real run only after your explicit
+yes, bound to the approved version (`--expect`). It never releases,
+pushes or deploys without that yes; approving all but the deploy runs the
+steps up to sync one at a time. `--from <step>` or `--only <step>` narrows
+the run. See [pipeline.md](pipeline.md#getting-started).
+
+```
+/nerv:pipeline
+/nerv:pipeline --from docker
+```
+
 ### /nerv:status
 
 Read-only report of NERV's state for the current repo: activation,
@@ -111,6 +129,7 @@ isn't taking effect.
 | `nerv version` | Print the binary and plugin versions |
 | `nerv version next` | Compute the next release version with semantic-release |
 | `nerv ship` | Release the repository from origin: pipeline, semantic-release, publish |
+| `nerv pipeline <step>` | Run a step of the Docker pipeline (`validate`, `test`, `release`, `docker`) |
 | `nerv configure` | Configure NERV non-interactively (or run the wizard) |
 | `nerv install` | Install NERV (plugin, cache, skills, Engram KB) |
 | `nerv uninstall` | Uninstall NERV |
@@ -189,6 +208,42 @@ nerv version next --branch develop --json
 
 ```
 nerv version next --offline --format env >> "$GITHUB_OUTPUT"
+```
+
+### nerv pipeline
+
+Runs one step of the Docker pipeline configured in the `pipeline:` section
+(a standalone copy of dim.comprobantes.api's CI/CD): `validate` (`dotnet
+restore`, `dotnet format --verify-no-changes`) and `test` (restore, build
+with `-warnaserror`, `dotnet test` with coverage and a trx logger, results
+in `.nerv/artifacts/pipeline/test`, and the runsettings coverage thresholds
+enforced by nerv, since coverlet's collector ignores them; a passing run
+is recorded in `.nerv/artifacts/pipeline/test.json`); both run in your
+working tree. `release` releases what is on origin as `nerv ship` does,
+without building or publishing (version files, release commit, tag;
+outputs in `.nerv/artifacts/pipeline/release.json`); `docker` builds, tags
+and pushes every image from the released commit (results in
+`.nerv/artifacts/pipeline/docker.json`); `sync` merges the released branch
+back as dim's sync jobs (main or `release/*` into develop, main into every
+`release/*`; conflicts aborted and reported, committed as you; only after
+passing test and docker records of the release; results in
+`.nerv/artifacts/pipeline/sync.json`); `deploy` updates the release's
+environments over SSH as dim's `/update-deploy` (selected by their
+`DOCKER_IMAGE_VERSION` or by branch, data from environment variables or
+Infisical; health and version verified; results in
+`.nerv/artifacts/pipeline/deploy.json`); `run` runs every step in that
+order, stopping at the first that does not pass (summary in
+`.nerv/artifacts/pipeline/run.json`). Details:
+[pipeline.md](pipeline.md#running-the-steps).
+
+```
+nerv pipeline validate
+nerv pipeline test --json
+nerv pipeline release --dry-run
+nerv pipeline docker --dry-run
+nerv pipeline sync --dry-run
+nerv pipeline deploy --dry-run
+nerv pipeline run --dry-run
 ```
 
 ### nerv ship

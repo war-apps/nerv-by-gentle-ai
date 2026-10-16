@@ -405,6 +405,18 @@ func heredocDelimiter(value string) (string, error) {
 	}
 }
 
+// configSourceText says where a result's semantic-release configuration
+// came from: "repository (<file>)" or "built-in default (dim)".
+func configSourceText(r semrel.ProjectResult) string {
+	switch r.SemanticReleaseConfig {
+	case semrel.ConfigRepository:
+		return "repository (" + r.SemanticReleaseConfigFile + ")"
+	case semrel.ConfigBuiltIn:
+		return "built-in default (dim)"
+	}
+	return ""
+}
+
 // writeVersionText writes a short human summary per project.
 func writeVersionText(w io.Writer, results []semrel.ProjectResult) {
 	for i, r := range results {
@@ -425,6 +437,9 @@ func writeVersionText(w io.Writer, results []semrel.ProjectResult) {
 			fmt.Fprintf(w, "  last release: %s (tag %s)\n", r.LastReleaseVersion, r.LastReleaseGitTag)
 		} else {
 			fmt.Fprintln(w, "  last release: none")
+		}
+		if s := configSourceText(r); s != "" {
+			fmt.Fprintf(w, "  semantic-release config: %s\n", s)
 		}
 	}
 }

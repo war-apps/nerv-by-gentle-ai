@@ -15,7 +15,10 @@ import {
   RESULT_MARKER,
   commitFileLister,
   commitScopes,
+  defaultConfig,
   failureResult,
+  gitAssets,
+  hideSecrets,
   makeFilter,
   neededPackages,
   notesRepositoryUrl,
@@ -356,4 +359,99 @@ test("rewriteChangelogPlugins without a changelog plugin changes nothing", () =>
   const r = rewriteChangelogPlugins(plugins, "api/CHANGELOG.md");
   assert.equal(r.applied, false);
   assert.deepEqual(r.plugins, plugins);
+});
+
+const DIM_NOTES = { preset: "conventionalcommits", parserOpts: { noteKeywords: ["BREAKING CHANGE", "BREAKING CHANGES", "BREAKING"] } };
+
+test("defaultConfig is dim's configuration with the given branches", () => {
+  const c = defaultConfig([
+    { name: "main" },
+    { name: "develop", prerelease: "alpha", channel: "alpha" },
+    { name: "release/*", prerelease: "rc", channel: "beta" },
+    { name: "hotfix/*", prerelease: "beta", channel: "beta" },
+  ]);
+  assert.deepEqual(c.branches, [
+    "main",
+    { name: "develop", prerelease: "alpha", channel: "alpha" },
+    { name: "release/*", prerelease: "rc", channel: "beta" },
+    { name: "hotfix/*", prerelease: "beta", channel: "beta" },
+  ]);
+  assert.deepEqual(c.plugins, [
+    ["@semantic-release/commit-analyzer", DIM_NOTES],
+    ["@semantic-release/release-notes-generator", DIM_NOTES],
+    ["@semantic-release/changelog", { changelogFile: "CHANGELOG.md" }],
+    ["@semantic-release/git", { assets: ["CHANGELOG.md"] }],
+    "@semantic-release/github",
+  ]);
+  // Every package it needs is bundled with semantic-release or pinned by NERV.
+  assert.deepEqual(neededPackages(c).sort(), [
+    "@semantic-release/changelog",
+    "@semantic-release/commit-analyzer",
+    "@semantic-release/git",
+    "@semantic-release/github",
+    "@semantic-release/release-notes-generator",
+    "conventional-changelog-conventionalcommits",
+  ]);
+});
+
+test("defaultConfig takes a pipeline section's branches as they are", () => {
+  const c = defaultConfig([
+    { name: "master" },
+    { name: "next", channel: "next" },
+    { name: "dev", prerelease: "dev", channel: "dev" },
+  ]);
+  assert.deepEqual(c.branches, ["master", { name: "next", channel: "next" }, { name: "dev", prerelease: "dev", channel: "dev" }]);
+  // Fresh objects each call: callers may rewrite the plugins.
+  assert.notEqual(defaultConfig([{ name: "main" }]).plugins[2], defaultConfig([{ name: "main" }]).plugins[2]);
+  assert.throws(() => defaultConfig([]), /branches/);
+});
+
+test("defaultConfig leaves the GitHub plugin out for an origin not on GitHub", () => {
+  const branches = [{ name: "main" }];
+  assert.equal(defaultConfig(branches).plugins.at(-1), "@semantic-release/github");
+  assert.equal(defaultConfig(branches, { github: true }).plugins.at(-1), "@semantic-release/github");
+  const off = defaultConfig(branches, { github: false }).plugins;
+  assert.equal(off.length, 4);
+  assert.ok(!off.includes("@semantic-release/github"));
+});
+
+test("defaultConfig commits extra assets with the changelog", () => {
+  const git = defaultConfig([{ name: "main" }], { assets: ["src/Api/Api.csproj", "CHANGELOG.md"] }).plugins[3];
+  assert.deepEqual(git, ["@semantic-release/git", { assets: ["CHANGELOG.md", "src/Api/Api.csproj"] }]);
+});
+
+test("gitAssets lists what the repository's @semantic-release/git commits", () => {
+  assert.deepEqual(gitAssets(["@semantic-release/commit-analyzer"]), { gitPlugin: false, gitAssets: [] });
+  assert.deepEqual(gitAssets(["@semantic-release/git"]), {
+    gitPlugin: true,
+    gitAssets: ["CHANGELOG.md", "package.json", "package-lock.json", "npm-shrinkwrap.json"],
+  });
+  assert.deepEqual(
+    gitAssets([
+      ["@semantic-release/git", { assets: ["src/Api/CHANGELOG.md", { path: "src/**/*.csproj" }] }],
+      ["@semantic-release/git", { assets: "dist/app.js" }],
+    ]),
+    { gitPlugin: true, gitAssets: ["src/Api/CHANGELOG.md", "src/**/*.csproj", "dist/app.js"] },
+  );
+  assert.deepEqual(gitAssets([["@semantic-release/git", { assets: false }]]), { gitPlugin: true, gitAssets: [] });
+});
+
+test("failureResult keeps semantic-release's error details", () => {
+  const e = Object.assign(new Error("A pre-release branch configuration is invalid in the `branches` configuration."), {
+    code: "EPRERELEASEBRANCH",
+    details: "Each pre-release branch in the [branches configuration](x) must have a `prerelease` property.\n\nYour configuration for the problematic branch is `{\"name\":\"hotfix/a/b\"}`.",
+    semanticRelease: true,
+  });
+  const r = failureResult({ errors: [e] });
+  assert.match(r.error, /^EPRERELEASEBRANCH A pre-release branch configuration is invalid/);
+  assert.match(r.error, /hotfix\/a\/b/);
+  assert.match(r.error, /must have a `prerelease` property/);
+});
+
+test("failureResult hides secret environment values", () => {
+  const e = Object.assign(new Error("push to https://x-access-token:ghp_secret123@github.com/a/b.git failed"), { code: "EGITNOPERMISSION", details: "token ghp_secret123" });
+  const r = failureResult(e, { GH_TOKEN: "ghp_secret123", PATH: "/bin" });
+  assert.doesNotMatch(r.error, /ghp_secret123/);
+  assert.match(r.error, /\[secure\]/);
+  assert.equal(hideSecrets("a /bin b", { PATH: "/bin" }), "a /bin b");
 });

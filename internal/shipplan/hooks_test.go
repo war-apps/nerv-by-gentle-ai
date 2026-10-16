@@ -55,6 +55,10 @@ type countingRunner struct {
 	err    error
 }
 
+func (c *countingRunner) Capture(ctx context.Context, s shiprun.Step, v shiprun.Vars) (string, error) {
+	return c.inner.Capture(ctx, s, v)
+}
+
 func (c *countingRunner) Run(ctx context.Context, s shiprun.Step, v shiprun.Vars) error {
 	c.inner.Run(ctx, s, v)
 	if len(c.inner.steps) == c.failAt {

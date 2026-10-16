@@ -254,8 +254,8 @@ func TestVersionNext_JSONSingleProjectIsAnObject(t *testing.T) {
 		if err := json.Unmarshal([]byte(stdout), &got); err != nil {
 			t.Fatalf("%v: stdout is not one JSON object: %v (%q)", args, err, stdout)
 		}
-		if len(got) != 14 {
-			t.Errorf("%v: %d keys, want project, branch and the 12 outputs: %v", args, len(got), got)
+		if _, ok := got["semantic_release_config"]; len(got) != 15 || !ok {
+			t.Errorf("%v: %d keys, want project, branch, the 12 outputs and semantic_release_config: %v", args, len(got), got)
 		}
 		if got["new_release_version"] != "1.2.0-alpha.2" || got["new_release_channel"] != "alpha" || got["new_release_published"] != true || got["project"] != "repo" || got["branch"] != "develop" {
 			t.Errorf("%v: got %v", args, got)
@@ -276,7 +276,7 @@ func TestVersionNext_JSONSeveralProjectsIsAnArray(t *testing.T) {
 	if err := json.Unmarshal([]byte(stdout), &got); err != nil {
 		t.Fatalf("stdout is not a JSON array: %v (%q)", err, stdout)
 	}
-	if len(got) != 2 || got[0] != f.results[0] || got[1] != f.results[1] {
+	if len(got) != 2 || !reflect.DeepEqual(got[0], f.results[0]) || !reflect.DeepEqual(got[1], f.results[1]) {
 		t.Errorf("got %+v", got)
 	}
 }
@@ -784,5 +784,33 @@ func TestVersionNext_MissingRequestedResultIsAnError(t *testing.T) {
 				}
 			})
 		}
+	}
+}
+
+func TestVersionNext_SaysWhereTheSemanticReleaseConfigCameFrom(t *testing.T) {
+	tests := []struct {
+		name         string
+		source, file string
+		want         string
+	}{
+		{"repository", semrel.ConfigRepository, ".releaserc.json", "semantic-release config: repository (.releaserc.json)"},
+		{"built-in", semrel.ConfigBuiltIn, "", "semantic-release config: built-in default (dim)"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f := newNextFixture(t, "")
+			r := released("repo", "1.1.0", "")
+			r.SemanticReleaseConfig, r.SemanticReleaseConfigFile = tt.source, tt.file
+			f.results = []semrel.ProjectResult{r}
+			code, stdout, _ := f.run(t)
+			if code != 0 || !strings.Contains(stdout, tt.want) {
+				t.Errorf("exit %d, stdout:\n%s", code, stdout)
+			}
+			code, stdout, _ = f.run(t, "--json")
+			var got map[string]any
+			if err := json.Unmarshal([]byte(stdout), &got); err != nil || code != 0 || got["semantic_release_config"] != tt.source {
+				t.Errorf("json %v %v: %s", code, err, stdout)
+			}
+		})
 	}
 }

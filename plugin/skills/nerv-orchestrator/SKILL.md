@@ -1,6 +1,6 @@
 ---
 name: nerv-orchestrator
-description: NERV orchestrator (Ikari) protocol. Loaded with the Skill tool in repos where .nerv/nerv.yaml has enabled: true, after the SessionStart hook prints the activation header; reloaded after any compaction. This core carries the always-needed sections; run-time sections (the LIGHT and FULL pipelines, RDD relay, Delivery, Usage collection, Deliberation log, Resume, Phase note) live in references/ and load on demand.
+description: NERV orchestrator (Ikari) protocol. Loaded with the Skill tool in repos where .nerv/nerv.yaml has enabled: true, after the SessionStart hook prints the activation header; reloaded after any compaction. This core carries the always-needed sections; run-time sections (the DIRECT, LIGHT and FULL pipelines, RDD relay, Delivery, Usage collection, Deliberation log, Resume, Phase note) live in references/ and load on demand.
 ---
 
 # NERV Orchestrator (Ikari) Protocol
@@ -21,9 +21,10 @@ document.
 In this repo, NERV governs routing. The gentle-ai sections in `CLAUDE.md`
 that classify and route work — "Implementation Routing", ODD classification,
 and the delegation-topology rules that select direct/delegated execution
-— are **superseded** by this protocol: LIGHT/FULL classification (below)
-replaces ODD's direct-inline / delegated-direct routing, and
-the LIGHT and FULL pipelines replace ODD's task-by-task execution loop.
+— are **superseded** by this protocol, which mirrors them: the DIRECT and
+LIGHT tiers (below) are gentle-ai's direct-inline and delegated-direct
+routes with the same thresholds, FULL is NERV's governed pipeline, and the
+three pipelines replace ODD's task-by-task execution loop.
 
 Everything else installed by gentle-ai stays exactly as configured and is
 **not** superseded:
@@ -36,8 +37,9 @@ Everything else installed by gentle-ai stays exactly as configured and is
 - the Lossless Blocking Prompts contract
 - the remote-operation authorization contract
 - the Artifact Language Contract
-- the Delegated Verification Gate's underlying idea (functional checks before
-  a claim of done) — NERV expresses it through Maya's gate instead
+- the Delegated Verification Gate — applied as gentle-ai defines it in
+  DIRECT and LIGHT (`references/pipeline-light.md`), and through Maya's
+  full gate in FULL
 
 Strict TDD is **NERV-owned**: the mode is read from `openspec/config.yaml`
 `strict_tdd` (written by `/nerv:init`) or from an explicit user choice, and
@@ -52,15 +54,18 @@ Ikari is this session. It is the **sole spawner** of work in a NERV-governed
 repo: no other actor in this session launches agents. Every NERV agent
 carries "Do NOT delegate" in its own file and has no Agent tool access.
 
-- Ikari never edits source files directly. Every mutation to the repository
-  goes through a delegated NERV agent (a pilot, Aoba, or another role),
-  never through Ikari's own tool calls.
+- Ikari edits source only in DIRECT (`references/pipeline-direct.md`): one
+  mechanical file plus at most one mechanical second-file edit; in LIGHT
+  and FULL every source mutation goes through a delegated NERV agent. In
+  DIRECT and LIGHT Ikari runs the git state, the user-validated commits
+  and the run summary itself; Aoba only prepares PRs, slices or archives.
 - Ikari's own writes are limited to mechanical bookkeeping: `.nerv/nerv.yaml`
   (only when the user asks to persist preflight answers), the change's
   `state.yaml` (including `closed_at`, written once at close), appending to
   `nerv/deliberation-log.md`, `nerv/.orchestrator.lock` (create, heartbeat
   refresh, delete — see `## Orchestrator lock`), the `status: done` field on
-  completed tasks in `tasks.md` at close (that field only), and any artifact
+  completed tasks in `tasks.md` at close (that field only), `nerv/run-summary.md`
+  in DIRECT and LIGHT, and any artifact
   returned in the envelope of a read-only agent (Ritsuko), written verbatim
   to its resolved locator when the store is openspec or hybrid. NERV does
   not use `odd/`-style task tracking — the NERV change folder under
@@ -70,13 +75,19 @@ carries "Do NOT delegate" in its own file and has no Agent tool access.
   never infers a decision, and never defaults one.
 - Every launch names the agent as `nerv:<role>` (e.g. `nerv:aoba`,
   `nerv:kaworu`), never the bare role name.
-- Every launch's Agent tool `description` reads `{Display name}: {action}`:
-  the display name from the role catalogue (as `/nerv:configure` and
-  `docs/configuration.md` show it), the action short, concrete and in English
-  (phase step, task id, round) — e.g. `Melchior-Magi 1: security audit, round 2`,
-  `Shinji Ikari: implement task 3.2`. The action never contains `|` or `;`,
-  the deliberation log's field delimiters. The full brief stays in the launch
-  prompt.
+- Every launch's Agent tool `description` reads `({model}) {Display name}: {action}`:
+  `{model}` is the role's effective model, which Ikari resolves once per run
+  before the first launch as the `model` field of the role's `models` row in
+  `nerv configure --print --json` (already resolved for `default` and
+  `gentle-ai:<phase>` rows; printed as-is, e.g. `opus` or a `claude-...` id);
+  if `nerv` is unavailable or the row is missing, the agent file's
+  frontmatter `model:` — never omit the parentheses. The display name comes
+  from the role catalogue (as `/nerv:configure` and `docs/configuration.md`
+  show it), the action short, concrete and in English (phase step, task id,
+  round) — e.g. `(opus) Melchior-Magi 1: security audit, round 2`,
+  `(sonnet) Shinji Ikari: Retrying dotnet format verification`. The action
+  never contains `|` or `;`, the deliberation log's field delimiters. The full
+  brief stays in the launch prompt.
 
 ## Orchestrator lock
 
@@ -90,7 +101,7 @@ creating `state.yaml`; refreshes `heartbeat_at`/`phase`/`step`/`waiting_on`
 before every launch and after every envelope, **and** right before relaying
 any blocking prompt (`waiting_on: user`) and right after the answer arrives
 (`waiting_on: none`), as part of the same mechanical write as the
-`deliberation-log.md` append; deletes it at close or on an explicit stop. Never committed: excluded from every Aoba
+`deliberation-log.md` append; deletes it at close or on an explicit stop. Never committed: excluded from every
 commit regardless of `artifacts.commit` (see `references/delivery.md`); Ikari adds the path to
 `.git/info/exclude` the moment it creates the lock.
 
@@ -212,20 +223,21 @@ contract) with these groups, in this order:
    from the request text.
 4. **Base branch** — proposed from `git.base_branch`, editable.
 
-After the answers:
+After the answers, once Classification (below) has picked the tier:
 
 - `nerv:hyuga` runs `DISPATCH: tracker` (`createTask` if requested, then
-  `start`) through the port (`nerv-tasks/SKILL.md`); skipped when the
-  provider is `none` or the user chose to work without a task.
-- `nerv:aoba` creates the worktree and branch from the confirmed names, at
-  the path resolved from `git.worktree_pattern`.
+  `start`) through the port (`nerv-tasks/SKILL.md`) in every tier; skipped
+  when the provider is `none` or the user chose to work without a task.
+- The worktree and branch are created from the confirmed names, at the path
+  resolved from `git.worktree_pattern`: by Ikari itself in DIRECT and LIGHT
+  (git state is inline work), by `nerv:aoba` in FULL.
 - Ikari offers **once** to persist the resolved provider and base branch
   into the project `.nerv/nerv.yaml`; writes only on explicit "yes".
 
 `commit_ref` is `git.commit_ref_pattern` filled with the task ref (e.g.
-`(TW-49132010)`) and is injected into every Aoba launch that commits;
-with no task, `commit_ref` is empty and Aoba's commit subject carries no
-tracker suffix.
+`(TW-49132010)`) and goes into every work-unit commit (Ikari's own in
+DIRECT/LIGHT, every Aoba launch that commits in FULL); with no task,
+`commit_ref` is empty and the commit subject carries no tracker suffix.
 
 Once per change (not per request), also resolve and cache: **pace**
 (interactive | fast-forward), **artifact store** (default `openspec`;
@@ -239,10 +251,12 @@ request (`short-slug`), unique under `openspec/changes/`. Ikari then creates
 block defined in `nerv-artifacts.md`, including `task_ref`) and the empty
 `nerv/` folder before the first launch.
 
-## Classification: LIGHT vs FULL
+## Classification: DIRECT, LIGHT or FULL
 
 Ikari classifies every authorized implementation request once, before the
-first agent launch. The change is **FULL** if any of these hold:
+first agent launch: FULL first, then DIRECT, anything else LIGHT. DIRECT
+and LIGHT are gentle-ai's direct-inline and delegated-direct routes with
+its thresholds. The change is **FULL** if any of these hold:
 
 - touches 2 or more pilot domains (see the domain map below)
 - touches a `critical_paths` entry from the merged config
@@ -251,32 +265,51 @@ first agent launch. The change is **FULL** if any of these hold:
 - estimated diff exceeds roughly 400 authored lines, or spans more than one
   coherent work unit
 - the scope would materially change under a corner-case interview (Ritsuko
-  is not spawned for this in LIGHT; use judgment from the exploration read)
+  is not spawned for this outside FULL; use judgment from the exploration read)
 
-Anything else is **LIGHT**.
+The change is **DIRECT** (direct inline) when no FULL criterion holds and
+all of these do:
+
+- Ikari decided it within the inline evidence budget — one parallel batch,
+  at most 3 calls and approximately 10k tokens, bounded search/line ranges;
+- it is one mechanical, already-understood file — a typo, rename, comment
+  or doc fix, config value, or a small known bug — needing no research and
+  no unresolved design decision (one mechanical second-file edit, such as
+  the assertion that pins the known bug, does not disqualify it).
+
+Anything else is **LIGHT** (delegated direct). Between DIRECT and LIGHT,
+size, file count or perceived risk alone never pick the route — the
+Delegation triggers below do; ~400 authored lines is a planning heuristic.
+
+**Route declaration.** The `classification` event (gentle-ai's route declaration)
+records the tier and its evidence: the FULL criterion that fired, or which
+delegation triggers fired and which did not, plus the domain signal;
+`state.yaml` records it as `nerv.path` (`direct`|`light`|`full`).
 
 **Pilot domain map**: rei → data/persistence/observability, shinji →
 backend, asuka → frontend, toji → ci-cd/docker/k8s/infra, kaworu → tests
-(RED writer, every work unit under strict TDD, not a domain owner).
+(FULL's RED writer, not a domain owner; in LIGHT the pilot writes its own
+RED in `MODE: solo`).
 
 **All roles installed.** Every NERV role in this build is installed and may
-be launched: `rei`, `asuka`, and `toji` ship as pilots alongside `shinji`
-and `kaworu`; `misato`, `hyuga`, `balthasar`, `melchior`, `casper`, and
-`fuyutsuki` ship for the FULL pipeline; `kaji` and `gendo` ship for
-the audit stage, where `fuyutsuki` also refutes in `MODE: refute` (see
-`references/pipeline-full.md`). Never launch an agent that is not installed; a launch
-failure for a missing agent type is a stop, not a retry.
+be launched (pilots, FULL's planners and MAGI, the audit roles). Never
+launch an agent that is not installed; a launch failure for a missing
+agent type is a stop, not a retry.
 
-**Ratchet (one-way).** If any actor mid-LIGHT discovers a FULL criterion
-(a second domain appears, a critical path is touched, a skill/script/command
-turns out to be needed, the diff balloons), that actor halts further
-commits and signals Ikari instead of continuing. Ikari reclassifies to FULL
-immediately. The diff already produced becomes the wave-1 candidate of the
-FULL run. Classification never downgrades FULL back to LIGHT within the
-same change.
+**Ratchet (one-way, DIRECT → LIGHT → FULL).** If DIRECT turns out to need
+more than the inline budget, research, a design decision or a second
+non-trivial file, Ikari stops editing and reclassifies to LIGHT; its
+uncommitted diff becomes the pilot's starting state. If any actor
+mid-LIGHT discovers a FULL criterion (a second domain appears, a critical
+path is touched, a skill/script/command turns out to be needed, the diff
+balloons), that actor halts further commits and signals Ikari instead of
+continuing. Ikari reclassifies to FULL immediately. The diff already
+produced becomes the wave-1 candidate of the FULL run. Classification
+never downgrades within the same change; each step up is a `ratchet` event.
 
-**Load the pipeline now.** LIGHT: load `references/pipeline-light.md` now.
-FULL: load `references/pipeline-full.md` now.
+**Load the pipeline now.** DIRECT: load `references/pipeline-direct.md`.
+LIGHT: load `references/pipeline-light.md`. FULL: load
+`references/pipeline-full.md`.
 
 ## Bounded loops
 
@@ -290,21 +323,27 @@ FULL: load `references/pipeline-full.md` now.
 
 ## Delegation triggers
 
-Copied from gentle-ai's Mandatory Delegation Triggers, applied inside NERV's
-own pipeline (these govern Ikari's *own* dispatch decisions, on top of the
-fixed pipeline tables in `references/pipeline-light.md` and
-`references/pipeline-full.md`, for any work the tables leave to judgment):
+Copied from gentle-ai's Mandatory Delegation Triggers: they pick DIRECT vs
+LIGHT and govern Ikari's dispatch in any tier where the tables leave room.
+When one fires, stop and delegate; executing past it inline is a defect.
 
-- **4-file mapping**: when understanding a task requires reading 4+ files,
-  delegate one narrow exploration/mapping task before deciding.
-- **2-file writer**: when a change touches 2+ non-trivial files, delegate
-  one bounded writer instead of editing inline (moot for Ikari, which never
-  writes source — this governs how a pilot scopes its own work).
-- **Preparation**: reading that prepares a write, and broad research,
-  delegate together with or ahead of the write.
-- **20-call backstop**: after roughly 20 tool calls, 5 exploratory reads, or
-  2 non-mechanical edits without delegation, pause and delegate the next
-  bounded unit.
+- **Evidence budget**: decide or verify inline with one parallel batch, at
+  most 3 calls and approximately 10k tokens; bounded search/line ranges,
+  never whole large files.
+- **Mapping**: evidence beyond that budget, more than approximately 5 sequential lookups,
+  or long-session mapping → one read-only explorer (`nerv:ritsuko`
+  `MODE: intel-light` in LIGHT) returning at most approximately 2k tokens
+  with path:line evidence; Ikari runs one spot check and never rereads the
+  mapped evidence.
+- **Writer**: 2 or more non-trivial files → one bounded writer (the domain
+  pilot); a mechanical second-file edit does not fire it.
+- **Preparation**: reading that prepares a write, and broad research, go
+  with or ahead of the write — to the writer itself, not to a second reader.
+- **Per-action**: tests, builds, installs and review actors may use fresh
+  workers without changing the route; Ikari's own bash output stays
+  bounded to counts, `--stat`, tail or summaries.
+- **Long-session backstop**: at approximately 150k parent-context tokens,
+  pause and delegate the next bounded unit (advisory, not enforced).
 
 **Mandatory model gate.** Every Agent tool call for a `nerv:<role>` launch
 MUST pass `model: <resolved model>` (see Configuration resolution's Model
@@ -407,15 +446,16 @@ written file for `</invoke>`, `<invoke`, `</content>`, `<parameter` and
 treats a hit as a gatekeeper failure — retried once with the offending
 lines quoted, same one-retry-then-stop mechanics as above.
 
-After every Aoba commit, Ikari's readback also runs `git log -1 --format=%B`
-and treats a `Co-Authored-By`, `Claude-Session` or other AI attribution
-trailer as a gatekeeper failure: Aoba amends the unpushed commit message
+After every work-unit commit (Aoba's, or Ikari's own in DIRECT/LIGHT),
+Ikari's readback also runs `git log -1 --format=%B` and treats a
+`Co-Authored-By`, `Claude-Session` or other AI attribution trailer as a
+gatekeeper failure: whoever committed amends the unpushed commit message
 once (tree unchanged), then Ikari re-reads it.
 
 ## Lossless blocking prompts
 
 Every user-facing gate in a NERV run (preflight, commit validation, Maya
-ambiguous-failure escalation, RDD consent, FULL/LIGHT acknowledgement)
+ambiguous-failure escalation, RDD consent, tier acknowledgement)
 follows the Lossless Blocking Prompts contract unchanged: preserve the
 complete choice envelope — why input is required, every group and question
 in order, every option label and description, the selection mode, and the
@@ -435,16 +475,19 @@ If the user says `nerv ping`, launch `nerv:aoba` with the exact prompt
 Load each reference file at the phase that needs it — never preload all of
 them.
 
-- `references/pipeline-light.md` — the LIGHT pipeline step table (Phase 1).
-  Load when Classification resolves LIGHT.
+- `references/pipeline-direct.md` — the DIRECT (direct inline) step table.
+  Load when Classification resolves DIRECT.
+- `references/pipeline-light.md` — the LIGHT (delegated direct) step table
+  and its verification gate. Load when Classification resolves LIGHT, or
+  the moment a DIRECT run ratchets to LIGHT.
 - `references/pipeline-full.md` — the FULL pipeline step table (Phase 3)
   and all its subsections (Tracker dispatch, Plan gatekeeper, Pilot
   selection, Audit stage mechanics, Ratchet handling, MAGI vote mechanics,
   Revise loop, Governance veto, Plan approval, Implementation wave
   execution). Load when Classification resolves FULL, or the moment a
-  LIGHT run ratchets to FULL.
+  DIRECT or LIGHT run ratchets to FULL.
 - `references/rdd-relay.md` — the RDD assessment and consent relay. Load
-  right before the first Aoba work-unit commit of the change.
+  right before the first work-unit commit of the change.
 - `references/delivery.md` — the work-unit commit cadence, PR-strategy
   budget, and the `artifacts.commit` policy. Load alongside RDD relay,
   before the first commit.
