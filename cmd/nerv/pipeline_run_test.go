@@ -26,11 +26,15 @@ type runFixture struct {
 	top   string
 	calls []stepCall
 	exit  map[string]int
+	// doc overrides a step's printed document ("" prints nothing).
+	doc map[string]*string
+	// during runs inside each step.
+	during func(step string)
 }
 
 func newRunFixture(t *testing.T) *runFixture {
 	t.Helper()
-	return &runFixture{top: t.TempDir(), exit: map[string]int{}}
+	return &runFixture{top: t.TempDir(), exit: map[string]int{}, doc: map[string]*string{}}
 }
 
 func (f *runFixture) run(t *testing.T, args ...string) (int, string, string) {
@@ -42,7 +46,14 @@ func (f *runFixture) run(t *testing.T, args ...string) (int, string, string) {
 	}}
 	opts.PipelineStep = func(step string, args []string, stdout, stderr io.Writer, _ options) int {
 		f.calls = append(f.calls, stepCall{step, args})
+		if f.during != nil {
+			f.during(step)
+		}
 		fmt.Fprintf(stderr, "[pipeline:%s] working\n", step)
+		if d, ok := f.doc[step]; ok {
+			fmt.Fprint(stdout, *d)
+			return f.exit[step]
+		}
 		code := f.exit[step]
 		status := map[int]string{0: "passed", 1: "refused", 2: "failed", 130: "interrupted"}[code]
 		doc := map[string]any{"step": step, "status": status}
@@ -224,5 +235,70 @@ func TestPipelineRun_ExpectGoesToTheReleaseStep(t *testing.T) {
 		if c.step == "release" && !slices.Equal(c.args[len(c.args)-4:], []string{"--expect", "api=1.4.0", "--expect", "api2=2.0.0"}) {
 			t.Errorf("release args %q", c.args)
 		}
+	}
+}
+
+func strp(s string) *string { return &s }
+
+func TestPipelineRun_DocumentAndExitMustAgree(t *testing.T) {
+	for _, tt := range []struct {
+		name    string
+		doc     *string
+		exit    int
+		code    int
+		status  string
+		wantErr string
+	}{
+		{"exit 0 but failed", strp(`{"step":"docker","status":"failed","error":"push failed"}` + "\n"), 0, 2, "failed", "docker: push failed"},
+		{"exit 0 but refused", strp(`{"step":"docker","status":"refused"}` + "\n"), 0, 2, "refused", "docker: exited 0 with status refused"},
+		{"exit 0 without a document", strp(""), 0, 2, "failed", "docker: exited 0 without a result document"},
+		{"exit 2 without an error", strp(`{"step":"docker","status":"failed"}` + "\n"), 2, 2, "failed", "docker: exited 2 with status failed"},
+		{"exit 2 without a document", strp("garbage\n"), 2, 2, "failed", "docker: exited 2 without a result document"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			f := newRunFixture(t)
+			f.doc["docker"], f.exit["docker"] = tt.doc, tt.exit
+			code, _, stderr := f.run(t, "--yes")
+			r, _ := readRunJSON(t, f.top)
+			if code != tt.code || r.Status != tt.status || r.Error != tt.wantErr || !slices.Equal(f.steps(), []string{"validate", "test", "release", "docker"}) {
+				t.Errorf("exit %d status %q error %q steps %q\n%s", code, r.Status, r.Error, f.steps(), stderr)
+			}
+			if r.Steps[4].Status != "not-run" {
+				t.Errorf("sync %+v", r.Steps[4])
+			}
+		})
+	}
+}
+
+func TestPipelineRun_NotAGitRepository(t *testing.T) {
+	opts := testOptions(t.TempDir())
+	opts.Runner = &envtest.FakeRunner{Responses: map[string]envtest.Response{
+		"git -C /nowhere rev-parse --show-toplevel": {Stderr: "fatal: not a git repository", ExitCode: 128}}}
+	called := false
+	opts.PipelineStep = func(string, []string, io.Writer, io.Writer, options) int { called = true; return 0 }
+	var out, errOut bytes.Buffer
+	code := run([]string{"pipeline", "run", "--cwd", "/nowhere", "--json"}, &out, &errOut, opts)
+	var r pipeline.RunResult
+	if err := json.Unmarshal(out.Bytes(), &r); err != nil {
+		t.Fatalf("%v: %q", err, out.String())
+	}
+	if code != 1 || r.Status != "refused" || !strings.Contains(r.Error, "not inside a git repository") || called || len(r.Steps) != 0 {
+		t.Errorf("exit %d %+v called %v\n%s", code, r, called, errOut.String())
+	}
+}
+
+func TestPipelineRun_AStaleRunJSONIsRemovedAtTheStart(t *testing.T) {
+	f := newRunFixture(t)
+	if _, err := pipeline.WriteRunResult(f.top, pipeline.RunResult{Step: "run", Status: "passed"}); err != nil {
+		t.Fatal(err)
+	}
+	seen := false
+	f.during = func(string) {
+		if _, err := os.Stat(pipeline.RunResultPath(f.top)); err == nil {
+			seen = true
+		}
+	}
+	if code, _, _ := f.run(t, "--yes"); code != 0 || seen {
+		t.Errorf("exit %d; an earlier run.json existed while the steps ran: %v", code, seen)
 	}
 }

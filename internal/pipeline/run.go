@@ -40,3 +40,12 @@ func RunResultPath(repo string) string {
 func WriteRunResult(repo string, r RunResult) (string, error) {
 	return writeArtifactJSON(repo, RunResultPath(repo), r)
 }
+
+// RemoveRunResult removes an earlier run.json, so a run that stops before
+// writing its own never leaves the previous one to be read as its result.
+func RemoveRunResult(repo string) error { return removeArtifact(repo, RunResultPath(repo)) }
+
+// RunAccepted are the step statuses nerv pipeline run goes on after: every
+// step reports passed, also when it had nothing to do (no new release,
+// sync disabled, no environment to deploy).
+var RunAccepted = []string{StatusPassed}

@@ -67,6 +67,14 @@ func runPipelineRun(args []string, stdout, stderr io.Writer, opts options) int {
 		writeRunResult(stdout, *jsonOut, res)
 		return code
 	}
+	// An earlier run.json must never pass for this run's result.
+	if err := pipeline.RemoveRunResult(top); err != nil {
+		res.Status, res.Error = pipeline.StatusFailed, err.Error()
+		fmt.Fprintf(out, "nerv pipeline run: %v\n", err)
+		out.Flush()
+		writeRunResult(stdout, *jsonOut, res)
+		return 2
+	}
 	step := opts.PipelineStep
 	if step == nil {
 		step = func(name string, args []string, stdout, stderr io.Writer, opts options) int {
@@ -98,18 +106,23 @@ func runPipelineRun(args []string, stdout, stderr io.Writer, opts options) int {
 		exit := step(name, stepArgs, &doc, stderr, opts)
 		o := pipeline.StepOutcome{Step: name, Exit: exit}
 		var parsed struct{ Status, Error string }
-		if err := json.Unmarshal(lastJSONLine(doc.Bytes()), &parsed); err == nil {
+		if err := json.Unmarshal(lastJSONLine(doc.Bytes()), &parsed); err == nil && parsed.Status != "" {
 			o.Status, o.Error = parsed.Status, parsed.Error
-		}
-		if o.Status == "" {
-			o.Status = pipeline.StatusFailed
-			if exit == 0 {
-				o.Status = pipeline.StatusPassed
-			}
+		} else {
+			o.Status, o.Error = pipeline.StatusFailed, fmt.Sprintf("exited %d without a result document", exit)
 		}
 		res.Steps = append(res.Steps, o)
-		if exit != 0 {
+		// Both must agree: exit 0 and an accepted status. A step whose
+		// document disagrees with its exit stops the run too.
+		if exit != 0 || !slices.Contains(pipeline.RunAccepted, o.Status) {
+			if o.Error == "" {
+				o.Error = fmt.Sprintf("exited %d with status %s", exit, o.Status)
+				res.Steps[len(res.Steps)-1].Error = o.Error
+			}
 			code = exit
+			if code == 0 {
+				code = 2
+			}
 			res.Status = o.Status
 			res.Error = name + ": " + o.Error
 			fmt.Fprintf(out, "%s %s (exit %d): %s; the later steps were not run\n", name, o.Status, exit, o.Error)
