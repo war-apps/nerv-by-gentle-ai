@@ -539,7 +539,8 @@ Without `deploy` there is no deploy step.
 | `infisical.project_id` | required by `infisical` | The Infisical project. |
 | `infisical.app_path` | required by `infisical` | The application's folder, e.g. `/comprobantes-api`. |
 | `infisical.domain` | the CLI session's | The Infisical URL; Infisical is read through the user's `infisical login` session. |
-| `environments` | `production-green`, `production-blue`, `staging`, `development` | Deployed in this order: dim's processing order (update-deploy.sh, table). |
+| `selection` | `target` | Which environments a release deploys: `target`, each environment whose `DOCKER_IMAGE_VERSION` points at the release (see [`nerv pipeline deploy`](#nerv-pipeline-deploy)); `branches`, each environment whose `branches` match the released branch. |
+| `environments` | `production-green`, `production-blue`, `staging`, `development` | Deployed in this order (dim's processing order, update-deploy.sh's table). Each entry is a name, or `{ name: <env>, branches: [<glob>, ...] }`: with `selection: branches` every environment needs a non-empty `branches` (names or globs as in `pipeline.branches`, e.g. `main`, `develop`, `release/*`, `hotfix/*`); with `target`, `branches` is refused. |
 | `ssh.auth` | `password` | `password` (`DOCKER_SSH_PASS`) or `key` (update-deploy.sh uses sshpass). |
 | `ssh.key_file` | required by `key` | The private key file. |
 | `ssh.known_hosts` | `~/.ssh/known_hosts` | Host keys are always checked strictly. dim pins its hosts in `~/.config/update-deploy/known_hosts`. |
@@ -586,7 +587,12 @@ NERV_DEPLOY_PRODUCTION_BLUE_DOCKER_COMPOSE_PATH=/srv/apps
 NERV_DEPLOY_PRODUCTION_BLUE_DOCKER_COMPOSE_SCRIPT=./manage.sh
 NERV_DEPLOY_PRODUCTION_BLUE_DOCKER_CONTAINER_NAME=comprobantes-api
 NERV_DEPLOY_PRODUCTION_BLUE_DOCKER_CONTAINER_VARIANT=blue
+NERV_DEPLOY_PRODUCTION_BLUE_DOCKER_IMAGE_VERSION=latest   # required by selection target
 ```
+
+With `selection: target` (the default) an environment without
+`DOCKER_IMAGE_VERSION` is refused: nerv cannot tell whether the release is
+its target.
 
 Two environments whose names map to the same prefix (`production-blue` and
 `production_blue`) are rejected.

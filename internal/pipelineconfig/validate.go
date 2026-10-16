@@ -16,6 +16,9 @@ import (
 // DeploySources are the places the deploy data can come from.
 var DeploySources = []string{"env", "infisical"}
 
+// DeploySelections are the ways the deploy step chooses its environments.
+var DeploySelections = []string{"target", "branches"}
+
 // SSHAuths are the SSH authentication methods.
 var SSHAuths = []string{"password", "key"}
 
@@ -291,7 +294,10 @@ func (v *validator) checkDeploy(d Deploy) {
 			v.addf("%s.infisical: settings given but the source is env", at)
 		}
 	}
-	v.checkEnvironments(d.Environments, d.Source == "env")
+	if !slices.Contains(DeploySelections, d.Selection) {
+		v.addf("%s.selection: unknown selection %q (want %s)", at, d.Selection, list(DeploySelections))
+	}
+	v.checkEnvironments(d.Environments, d.Source == "env", d.Selection)
 
 	ssh := d.SSH
 	if !slices.Contains(SSHAuths, ssh.Auth) {
@@ -334,7 +340,7 @@ func (v *validator) checkInfisical(inf *Infisical) {
 
 // checkEnvironments checks the deploy environments; with source env their
 // variable prefixes must be distinct too.
-func (v *validator) checkEnvironments(envs []string, fromEnv bool) {
+func (v *validator) checkEnvironments(envs []Environment, fromEnv bool, selection string) {
 	const at = "pipeline.deploy.environments"
 	if len(envs) == 0 {
 		v.addf("%s: at least one environment is required", at)
@@ -342,8 +348,10 @@ func (v *validator) checkEnvironments(envs []string, fromEnv bool) {
 	}
 	seen := map[string]bool{}
 	prefixes := map[string]string{}
-	for i, env := range envs {
+	for i, e := range envs {
 		eat := fmt.Sprintf("%s[%d]", at, i)
+		v.checkEnvironmentBranches(eat, e.Branches, selection)
+		env := e.Name
 		switch {
 		case env == "":
 			v.addf("%s: required", eat)
@@ -362,6 +370,34 @@ func (v *validator) checkEnvironments(envs []string, fromEnv bool) {
 			continue
 		}
 		prefixes[prefix] = env
+	}
+}
+
+// checkEnvironmentBranches checks an environment's branches: required by
+// selection branches, refused by selection target (never silently
+// ignored).
+func (v *validator) checkEnvironmentBranches(at string, branches []string, selection string) {
+	at += ".branches"
+	switch {
+	case selection == "target" && branches != nil:
+		v.addf("%s: only used by selection branches (selection is target)", at)
+		return
+	case selection == "branches" && len(branches) == 0:
+		v.addf("%s: required by selection branches", at)
+		return
+	}
+	seen := map[string]bool{}
+	for j, b := range branches {
+		bat := fmt.Sprintf("%s[%d]", at, j)
+		switch {
+		case b == "":
+			v.addf("%s: required", bat)
+		case unsupportedGlob(b) || !validBranchPattern(b):
+			v.addf("%s: %q is not a valid branch pattern", bat, b)
+		case seen[b]:
+			v.addf("%s: duplicate branch %q", bat, b)
+		}
+		seen[b] = true
 	}
 }
 
