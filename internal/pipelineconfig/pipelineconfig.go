@@ -78,6 +78,30 @@ type Dotnet struct {
 	// Env adds environment variables to every dotnet command (literal
 	// values, never secrets).
 	Env map[string]string `yaml:"env"`
+	// Coverage configures the coverage gate of the test step.
+	Coverage Coverage `yaml:"coverage"`
+}
+
+// Coverage configures the test step's coverage gate: coverlet's collector
+// ignores the runsettings' <Threshold>, so nerv checks it itself.
+type Coverage struct {
+	// Mode is enforce (fail below the thresholds), report (record and
+	// warn, never fail) or off (no evaluation). Default:
+	// DefaultCoverageMode.
+	Mode string `yaml:"mode"`
+	// Thresholds override the runsettings' ones key by key; an unset key
+	// keeps the runsettings' value.
+	Thresholds *CoverageThresholds `yaml:"thresholds"`
+}
+
+// CoverageThresholds are coverage percentages (0 to 100) and coverlet's
+// ThresholdStat (minimum, total or average). Setting a metric selects it,
+// as coverlet's ThresholdType does.
+type CoverageThresholds struct {
+	Line   *float64 `yaml:"line"`
+	Branch *float64 `yaml:"branch"`
+	Method *float64 `yaml:"method"`
+	Stat   string   `yaml:"stat"`
 }
 
 // TreatWarningsAsErrors reports whether the build uses -warnaserror (true

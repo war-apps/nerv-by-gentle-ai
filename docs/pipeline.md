@@ -680,9 +680,11 @@ The source column cites where each default comes from in dim's
 |---|---|---|
 | `solution` | required | The `.sln`/`.slnx` every dotnet command runs against. |
 | `configuration` | `Release` | Build configuration (ci-cd.yml: `--configuration Release`). |
-| `runsettings` | none | Passed to `dotnet test --settings`: the coverage collector settings; its `<Threshold>` is enforced by nerv (see [`nerv pipeline test`](#nerv-pipeline-test)). |
+| `runsettings` | none | Passed to `dotnet test --settings`: the coverage collector settings; its `<Threshold>` is checked by nerv as `coverage.mode` says (see [`nerv pipeline test`](#nerv-pipeline-test)). |
 | `warnings_as_errors` | `true` | Build with `-warnaserror` (ci-cd.yml, test job). |
 | `env` | none | Environment variables for every dotnet command; literal values, never secrets. |
+| `coverage.mode` | `enforce` | The coverage gate: `enforce` fails the test step below a threshold; `report` computes and records the coverage against the thresholds and warns, never fails; `off` evaluates nothing. |
+| `coverage.thresholds` | none | Overrides the runsettings' thresholds key by key: `line`, `branch`, `method` (percentages, 0 to 100; setting one selects it, as coverlet's `ThresholdType`) and `stat` (`minimum`, `total` or `average`, coverlet's `ThresholdStat`); an unset key keeps the runsettings' value. Refused with `mode: off`. |
 
 ### `pipeline.branches`
 
