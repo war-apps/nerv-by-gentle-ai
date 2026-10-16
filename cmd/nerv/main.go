@@ -14,6 +14,7 @@ import (
 	nerv "github.com/war-apps/nerv-by-gentle-ai"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/env"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/pipeline"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/proc"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/semrel"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/shipplan"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/version"
@@ -106,6 +107,13 @@ type options struct {
 	// WriteReleaseOutputs writes nerv pipeline release's release.json; tests
 	// inject a failure. Nil means pipeline.WriteReleaseOutputs.
 	WriteReleaseOutputs func(repo string, o pipeline.ReleaseOutputs) (string, error)
+	// OpenDockerWorkspace, DockerProc and DockerArgs are nerv pipeline
+	// docker's build clone, docker runner and computed-argument runner;
+	// tests inject fakes. Nil means semrel.NewWorkspace, proc.ExecRunner and
+	// a shiprun.Runner.
+	OpenDockerWorkspace func(context.Context, semrel.WorkspaceOptions) (dockerWorkspace, error)
+	DockerProc          proc.Runner
+	DockerArgs          func(repoRoot string, output io.Writer) pipeline.ArgRunner
 }
 
 func defaultOptions() options {

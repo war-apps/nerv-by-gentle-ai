@@ -260,6 +260,33 @@ func (w *Workspace) BranchOnOrigin(ctx context.Context) (string, error) {
 	return strings.TrimSpace(sha), nil
 }
 
+// ErrTagNotOnOrigin is wrapped by CheckoutTag when origin has no such tag.
+var ErrTagNotOnOrigin = errors.New("the tag is not on origin")
+
+// CheckoutTag checks the clone out, detached, at origin's tag (the clone
+// holds exactly origin's tags) and returns the tagged commit: the docker
+// step builds a release from its released commit.
+func (w *Workspace) CheckoutTag(ctx context.Context, tag string) (string, error) {
+	commit, err := w.e.git(ctx, w.dir, w.env, "rev-parse", "--verify", "--quiet", "refs/tags/"+tag+"^{commit}")
+	// rev-parse --verify --quiet exits 1, printing nothing, for a ref that
+	// does not exist; any other failure (a timeout, a broken clone, git
+	// itself) is an environment error with its cause.
+	var coder interface{ ExitCode() int }
+	switch {
+	case err == nil && commit != "":
+	case err != nil && errors.As(err, &coder) && coder.ExitCode() == 1 && commit == "":
+		return "", fmt.Errorf("tag %s: %w", tag, ErrTagNotOnOrigin)
+	case err != nil:
+		return "", fmt.Errorf("reading tag %s: %w", tag, err)
+	default:
+		return "", fmt.Errorf("tag %s: %w", tag, ErrTagNotOnOrigin)
+	}
+	if _, err := w.e.git(ctx, w.dir, w.env, "checkout", "--quiet", "--detach", commit); err != nil {
+		return "", fmt.Errorf("checking out %s: %w", tag, err)
+	}
+	return commit, nil
+}
+
 // ReleaseRequest is one real semantic-release run in a Workspace.
 type ReleaseRequest struct {
 	// Expected is the project's computed result: its project name selects

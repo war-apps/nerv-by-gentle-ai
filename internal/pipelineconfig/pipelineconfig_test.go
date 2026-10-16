@@ -647,3 +647,15 @@ func TestLoad_ReleaseVersionFiles(t *testing.T) {
 		}
 	}
 }
+
+func TestLoad_ImageTagsMustIncludeTheVersion(t *testing.T) {
+	text := strings.Replace(minimal, "    - name: ghcr.io/acme/app\n", "    - name: ghcr.io/acme/app\n      tags: [channel, latest]\n", 1)
+	_, err := pipelineconfig.Load(writeConfig(t, text))
+	if want := `pipeline.images[0].tags: must include version (every release has a version tag; channel and latest are not always produced)`; err == nil || !strings.Contains(err.Error(), want) {
+		t.Errorf("err = %v, want %q", err, want)
+	}
+	ok := strings.Replace(minimal, "    - name: ghcr.io/acme/app\n", "    - name: ghcr.io/acme/app\n      tags: [version]\n", 1)
+	if _, err := pipelineconfig.Load(writeConfig(t, ok)); err != nil {
+		t.Errorf("tags [version]: %v", err)
+	}
+}

@@ -321,3 +321,24 @@ func TestReal_OutputWriteErrorIsReportedAfterTheScript(t *testing.T) {
 		t.Errorf("writes = %q, want only the first line", w.writes)
 	}
 }
+
+func TestReal_CaptureReturnsStdoutAndStreamsStderr(t *testing.T) {
+	needShell(t, "bash")
+	root := realRepo(t, nil)
+	var out bytes.Buffer
+	r := &Runner{RepoRoot: root, Output: &out}
+	got, err := r.Capture(context.Background(), Step{Name: "chrome", Command: shipconfig.Command{Run: "echo 1.2.3; echo resolving >&2", Shell: "bash"}}, Vars{Project: "pipeline"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "1.2.3\n" {
+		t.Errorf("stdout %q, want only the command's stdout", got)
+	}
+	if out.String() != "[pipeline:chrome] resolving\n" {
+		t.Errorf("streamed %q, want stderr prefixed", out.String())
+	}
+	_, err = r.Capture(context.Background(), Step{Name: "chrome", Command: shipconfig.Command{Run: "echo partial; exit 3", Shell: "bash"}}, Vars{Project: "pipeline"})
+	if code := exitCode(t, err); code != 3 {
+		t.Errorf("exit code %d", code)
+	}
+}

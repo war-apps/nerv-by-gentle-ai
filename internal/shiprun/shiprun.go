@@ -17,6 +17,7 @@
 package shiprun
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -105,6 +106,21 @@ type Runner struct {
 // Run runs step for the project in vars and returns a *StepError when the
 // command cannot start or does not succeed.
 func (r *Runner) Run(ctx context.Context, step Step, vars Vars) error {
+	return r.run(ctx, step, vars, nil)
+}
+
+// Capture runs step as Run does but returns its standard output instead of
+// streaming it; its standard error is streamed with the prefix (a computed
+// build argument's value is its stdout).
+func (r *Runner) Capture(ctx context.Context, step Step, vars Vars) (string, error) {
+	var stdout bytes.Buffer
+	err := r.run(ctx, step, vars, &stdout)
+	return stdout.String(), err
+}
+
+// run runs step; stdout, when not nil, receives the standard output
+// instead of the prefixed stream.
+func (r *Runner) run(ctx context.Context, step Step, vars Vars, stdout io.Writer) error {
 	c := step.Command
 	shell := c.Shell
 	if shell == "" {
@@ -166,12 +182,16 @@ func (r *Runner) Run(ctx context.Context, step Step, vars Vars) error {
 		out = io.Discard
 	}
 	pw := newPrefixWriter(out, "["+vars.Project+":"+step.Name+"] ", maxLineBytes)
+	var cmdStdout io.Writer = pw
+	if stdout != nil {
+		cmdStdout = stdout
+	}
 	res, runErr := r.proc().Run(runCtx, proc.Command{
 		Name:   interp,
 		Args:   args,
 		Dir:    dir,
 		Env:    r.environment(c.Env, vars, step.stage()),
-		Stdout: pw,
+		Stdout: cmdStdout,
 		Stderr: pw,
 	})
 	pw.Flush()
