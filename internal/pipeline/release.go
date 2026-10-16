@@ -151,10 +151,13 @@ func (p *PrefixWriter) Write(b []byte) (int, error) {
 		if i < 0 {
 			return len(b), nil
 		}
-		if _, err := fmt.Fprintf(p.w, "%s%s\n", p.prefix, p.buf[:i]); err != nil {
+		line := p.buf[:i]
+		// The line is consumed before writing: a line that failed is
+		// dropped, never written again by the next Write or Flush.
+		p.buf = p.buf[i+1:]
+		if _, err := fmt.Fprintf(p.w, "%s%s\n", p.prefix, line); err != nil {
 			return len(b), err
 		}
-		p.buf = p.buf[i+1:]
 	}
 }
 
@@ -163,7 +166,8 @@ func (p *PrefixWriter) Flush() error {
 	if len(p.buf) == 0 {
 		return nil
 	}
-	_, err := fmt.Fprintf(p.w, "%s%s\n", p.prefix, p.buf)
+	line := p.buf
 	p.buf = nil
+	_, err := fmt.Fprintf(p.w, "%s%s\n", p.prefix, line)
 	return err
 }

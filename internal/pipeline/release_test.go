@@ -2,6 +2,7 @@ package pipeline
 
 import (
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -75,5 +76,33 @@ func TestPrefixWriter(t *testing.T) {
 	w.Flush()
 	if got := b.String(); !strings.HasSuffix(got, "[pipeline:release] three\n") {
 		t.Errorf("after flush %q", got)
+	}
+}
+
+// failOnce fails its first write.
+type failOnce struct {
+	strings.Builder
+	failed bool
+}
+
+func (f *failOnce) Write(b []byte) (int, error) {
+	if !f.failed {
+		f.failed = true
+		return 0, errors.New("disk full")
+	}
+	return f.Builder.Write(b)
+}
+
+func TestPrefixWriter_DropsTheLineThatFailed(t *testing.T) {
+	out := &failOnce{}
+	w := NewPrefixWriter(out, "> ")
+	if _, err := w.Write([]byte("lost\n")); err == nil {
+		t.Fatal("the write error was not returned")
+	}
+	w.Write([]byte("kept\n"))
+	w.Write([]byte("tail"))
+	w.Flush()
+	if got := out.String(); got != "> kept\n> tail\n" {
+		t.Errorf("output %q: the failed line must not be written again", got)
 	}
 }
