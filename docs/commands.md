@@ -204,7 +204,10 @@ working tree. `release` releases what is on origin as `nerv ship` does,
 without building or publishing (version files, release commit, tag;
 outputs in `.nerv/artifacts/pipeline/release.json`); `docker` builds, tags
 and pushes every image from the released commit (results in
-`.nerv/artifacts/pipeline/docker.json`). Details:
+`.nerv/artifacts/pipeline/docker.json`); `sync` merges the released branch
+back as dim's sync jobs (main or `release/*` into develop, main into every
+`release/*`; conflicts aborted and reported, committed as you; results in
+`.nerv/artifacts/pipeline/sync.json`). Details:
 [pipeline.md](pipeline.md#running-the-steps).
 
 ```
@@ -212,6 +215,7 @@ nerv pipeline validate
 nerv pipeline test --json
 nerv pipeline release --dry-run
 nerv pipeline docker --dry-run
+nerv pipeline sync --dry-run
 ```
 
 ### nerv ship

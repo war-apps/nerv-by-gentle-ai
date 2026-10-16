@@ -8,6 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- pipeline: `nerv pipeline sync` runs dim.comprobantes.api's sync-to-develop and sync-main-to-release jobs after
+  the release step: in a fresh clone of origin it merges main or a `release/*` release into develop, and main into
+  every `release/*` branch on origin (`--no-ff`, "chore(sync): merge <source> into <branch> [skip ci]"), pushes
+  with your credentials and commits as you; a conflict is aborted and reported, the other branches still sync and
+  the step fails at the end. It refuses after a failed docker step, asks before pushing (`--yes`), previews with
+  `--dry-run` (conflicts included) and writes `.nerv/artifacts/pipeline/sync.json`.
 - pipeline: `nerv pipeline docker` runs dim.comprobantes.api's docker job: from the release step's outputs, in a
   clone of origin at the release tag, it builds every `pipeline.images` entry (build and computed arguments, OCI
   labels, `--platform`), tags it with the version, the channel and `latest` on main, pushes it after a
