@@ -64,7 +64,7 @@ configurable with the data it needs; deploy option (Docker only for now).
   `release/*`), used by the engine when the repository has none.
 - [x] P3 — `validate` and `test` steps.
 - [x] P4 — `release` step (reuse the ship workspace and version guard).
-- [ ] P5 — `docker` step (tags, computed build args, login, push, retry).
+- [x] P5 — `docker` step (tags, computed build args, login, push, retry).
 - [ ] P6 — `sync` step.
 - [ ] P7 — `deploy` step (env or Infisical; SSH; health and version check).
 - [ ] P8 — `nerv pipeline run`, `/nerv:pipeline`, guide, CHANGELOG.
@@ -575,6 +575,82 @@ All four P4 review advisories fixed (user authorized). Route: delegated
   not hold` (15 files, +302 -17). Total `git diff --shortstat 4a16bf4
   a4175da`: 19 files changed, 425 insertions(+), 25 deletions(-).
 
+### P5
+
+- Route: delegated (one bounded writer; trigger: new step package, CLI,
+  additive shiprun/semrel helpers, docs).
+- `internal/shiprun` (additive): `Runner.Capture` returns a command's
+  stdout and streams only its stderr with the prefix (computed build
+  arguments). `internal/semrel` (additive): `Workspace.CheckoutTag`
+  (detached at origin's tag, returns the tagged commit;
+  `ErrTagNotOnOrigin`).
+- `internal/pipeline/docker.go`: `Docker.Run` (dim's docker job over
+  `pipeline.images`): `ImageTags` (version always; channel unless empty or
+  `default`; latest only on `MainBranch()`), build args with `${version}`,
+  `${channel}`, `${tag}`, computed args via `ArgRunner.Capture` (trimmed
+  stdout), labels title/version/revision/source, `docker build --platform
+  -f --build-arg --label -t <context>` in the clone, one retry with the
+  computed args computed again when the image has any, `docker push` per
+  tag (first digest recorded), `required: false` failures reported without
+  failing the step, every image tried. Login `docker login <host> -u <user>
+  --password-stdin` with the token on stdin only; a dry run never logs in
+  or pushes. `ReadReleaseOutputs` and `docker.json` share the artifacts'
+  symlink checks (`writeArtifactJSON`, `removeArtifact`).
+- `cmd/nerv/pipeline_docker.go`: `nerv pipeline docker [--cwd] [--dry-run]
+  [--no-login] [--fetch-timeout] [--json]`; seams `OpenDockerWorkspace`,
+  `DockerProc`, `DockerArgs`. Flow: pipeline: section (refusal without),
+  stale docker.json removed, release.json read (missing or not passed ->
+  refusal "run nerv pipeline release first"; `published: false` -> nothing
+  built, exit 0, docker.json written with no images; a dry-run
+  release.json -> only `--dry-run`), credentials (both env vars required
+  unless `--no-login` or `--dry-run`), a fresh workspace clone of origin's
+  release branch checked out at the release tag whose commit must equal
+  `git_head` (a dry-run release builds origin's branch head: no tag
+  exists), then the images; docker.json written only when passed.
+- Decisions: login requires `username_env` and `token_env` unless
+  `--no-login`; the build is at the release tag (dim checks out the
+  branch ref, which is the release commit right after semantic-release);
+  plain `docker build --platform` (BuildKit default since Docker Engine
+  23; verified on 29.8.2) instead of buildx; `latest` follows
+  `MainBranch()` against release.json's branch.
+- RED: `go test ./internal/shiprun/` (`r.Capture undefined`),
+  `./internal/semrel/` (`ws.CheckoutTag undefined`), `./internal/pipeline/`
+  (`undefined: ImageTags`, `Docker`; then `ReadReleaseOutputs`,
+  `WriteDockerResult`), `./cmd/nerv/` (`opts.OpenDockerWorkspace
+  undefined`). GREEN: all; unit tests for tags per branch (main, develop,
+  release/*, hotfix, selection), the build argv and labels, the broker
+  retry with recomputed args, `required: false`, a required push failure,
+  login via stdin (the token in no argv, env or output), dry run, login
+  failure, refusals (no release.json, failed release, tag missing, tag
+  moved, no credentials, no section), `--no-login`, stale docker.json.
+- Integration (`TestIntegration_PipelineDockerPushesToALocalRegistry`,
+  semrel_integration tag, real Docker Engine 29.8.2 and `registry:2`):
+  local bare origin tagged `v1.0.0`, release.json written by the test,
+  `nerv pipeline docker --no-login --json` -> exit 0 in 514ms; image
+  `127.0.0.1:<port>/acme/app` pushed with tags `1.0.0` and `latest`
+  (registry API `/v2/acme/app/tags/list`), digest recorded, labels
+  revision = the tag's commit, version 1.0.0, title, `app.version` from
+  `${version}` and `app.stamp` from the computed arg; containers and
+  images removed. Environment finding: on this host a published port
+  (`-p 127.0.0.1::5000`) accepted connections but never answered (the
+  first runs hung in an un-timed `http.Get`, leaving registry containers,
+  which were removed); the test now runs the registry on the host network
+  bound to a free loopback port (`REGISTRY_HTTP_ADDR`), bounds every HTTP
+  request (5s), and skips off Linux.
+- Checks: `go test -count=1 ./...` exit 0 (29 packages); `go test -tags
+  semrel_integration -run Integration -count=1 ./internal/semrel/
+  ./cmd/nerv/` exit 0 (docker test included); `go vet ./...`,
+  `GOOS=windows go vet ./...`, `go vet -tags semrel_integration` exit 0;
+  `gofmt -l .` empty; no registry container left.
+- Commits: `0404186` `feat(shiprun): capture a command's standard output`
+  (2 files, +42 -1); `c15540e` `feat(semrel): check a release clone out at
+  origin's tag` (2 files, +44); `4b8ebbc` `feat(pipeline): build, tag and
+  push the pipeline's images` (4 files, +573 -4); `30c013b` `feat(cli):
+  add nerv pipeline docker` (8 files, +783 -7). Total `git diff
+  --shortstat ee084dd 30c013b`: 16 files changed, 1442 insertions(+), 12
+  deletions(-). Above the ~400-line heuristic: about 700 lines are tests
+  and 90 docs.
+
 ## Next step
 
-Review of P4; then P5 (`docker` step, reading release.json).
+Review of P5; then P6 (`sync` step).
