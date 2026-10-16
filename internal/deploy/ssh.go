@@ -127,16 +127,20 @@ func tail(res proc.Result) string {
 func shQuote(s string) string { return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'" }
 
 var (
-	userRe     = regexp.MustCompile(`^[A-Za-z0-9._][A-Za-z0-9._-]*$`)
+	// userRe allows domain accounts (user@DOMAIN.TLD, DOMAIN\user): the
+	// user is its own argv element after -l, never parsed as a
+	// destination.
+	userRe     = regexp.MustCompile(`^[A-Za-z0-9._@\\][A-Za-z0-9._@\\-]*$`)
 	hostnameRe = regexp.MustCompile(`^[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?(\.[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?)*$`)
 )
 
-// checkDestination accepts a user of letters, digits, ., _ and - (not
-// first) and a host that is a hostname or an IP address: nothing ssh could
-// read as an option, a second destination or a shell word.
+// checkDestination accepts a user of letters, digits, ., _, @, \ and -
+// (not first; no whitespace or control characters) and a host that is a
+// hostname or an IP address: nothing ssh could read as an option or a
+// shell word.
 func checkDestination(user, host string) error {
 	if !userRe.MatchString(user) {
-		return fmt.Errorf("DOCKER_SSH_USER %q is not a valid user (letters, digits, ., _ and -, not starting with -)", user)
+		return fmt.Errorf("DOCKER_SSH_USER %q is not a valid user (letters, digits, ., _, @, \\ and -, not starting with -)", user)
 	}
 	if net.ParseIP(host) == nil && !hostnameRe.MatchString(host) {
 		return fmt.Errorf("DOCKER_SSH_HOST %q is not a hostname or an IP address", host)

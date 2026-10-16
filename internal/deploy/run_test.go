@@ -244,7 +244,7 @@ func TestRun_StopsAtTheFirstFailure(t *testing.T) {
 
 func TestSSH_RefusesUnsafeDestinations(t *testing.T) {
 	for _, tt := range []struct{ field, value string }{
-		{"user", "-oProxyCommand=touch /tmp/pwned"}, {"user", "de ploy"}, {"user", "root@evil"}, {"user", "deploy\n"}, {"user", ""},
+		{"user", "-oProxyCommand=touch /tmp/pwned"}, {"user", "de ploy"}, {"user", "deploy\n"}, {"user", ""}, {"user", "a\tb"}, {"user", "x;rm"},
 		{"host", "-oProxyCommand=touch /tmp/pwned"}, {"host", "docker 01"}, {"host", "a;b"}, {"host", "h\x00"}, {"host", ""}, {"host", "user@host"},
 	} {
 		tg := target("staging")
@@ -268,6 +268,23 @@ func TestSSH_RefusesUnsafeDestinations(t *testing.T) {
 		tg.Host = host
 		if _, err := passwordSSH(&fakeProc{}).Run(context.Background(), tg, "uptime", nil); err != nil {
 			t.Errorf("host %q refused: %v", host, err)
+		}
+	}
+	for _, user := range []string{`wal1rod@DIRMAD.COM.AR`, `DOMAIN\user`, "deploy"} {
+		tg := target("staging")
+		tg.User = user
+		f := &fakeProc{}
+		if _, err := passwordSSH(f).Run(context.Background(), tg, "uptime", nil); err != nil || len(f.cmds) != 1 {
+			t.Errorf("user %q refused: %v", user, err)
+			continue
+		}
+		if args := f.cmds[0].Args; args[slices.Index(args, "-l")+1] != user {
+			t.Errorf("user %q not passed verbatim after -l: %q", user, args)
+		}
+		d := dataFor("alpha")
+		d["DOCKER_SSH_USER"] = user
+		if _, err := NewTarget("staging", d, "password"); err != nil {
+			t.Errorf("NewTarget with user %q: %v", user, err)
 		}
 	}
 	s := passwordSSH(&fakeProc{})
