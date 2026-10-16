@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/url"
 	"path"
+	"regexp"
 	"slices"
 	"strings"
 
@@ -177,10 +178,72 @@ func extraAssets(configFile string, assets []string) []string {
 }
 
 // configSource sets where r's semantic-release configuration came from.
-func configSource(r *ProjectResult, configFile string) {
-	if configFile == "" {
+func configSource(r *ProjectResult, plan planInfo) {
+	if plan.ConfigFile == "" {
 		r.SemanticReleaseConfig = ConfigBuiltIn
 		return
 	}
-	r.SemanticReleaseConfig, r.SemanticReleaseConfigFile = ConfigRepository, configFile
+	r.SemanticReleaseConfig, r.SemanticReleaseConfigFile = ConfigRepository, plan.ConfigFile
+	r.GitPlugin, r.GitAssets = plan.GitPlugin, plan.GitAssets
+}
+
+// AssetsCover reports whether @semantic-release/git assets (globby
+// patterns, as the plugin matches them against repository-relative paths)
+// commit file: a pattern matches it (* and ? within a path segment, ** any
+// segments, [...] classes, {a,b} alternatives; a leading ./ ignored) and no
+// later "!" pattern excludes it.
+func AssetsCover(assets []string, file string) bool {
+	file = strings.TrimPrefix(file, "./")
+	covered := false
+	for _, a := range assets {
+		negate := strings.HasPrefix(a, "!")
+		pattern := strings.TrimPrefix(strings.TrimPrefix(a, "!"), "./")
+		re, err := globRegexp(pattern)
+		if err != nil || !re.MatchString(file) {
+			continue
+		}
+		covered = !negate
+	}
+	return covered
+}
+
+// globRegexp compiles a globby pattern to an anchored regular expression.
+func globRegexp(pattern string) (*regexp.Regexp, error) {
+	var b strings.Builder
+	b.WriteString("^")
+	depth := 0
+	for i := 0; i < len(pattern); i++ {
+		c := pattern[i]
+		switch {
+		case strings.HasPrefix(pattern[i:], "**/"):
+			b.WriteString("(?:[^/]*/)*")
+			i += 2
+		case strings.HasPrefix(pattern[i:], "**"):
+			b.WriteString(".*")
+			i++
+		case c == '*':
+			b.WriteString("[^/]*")
+		case c == '?':
+			b.WriteString("[^/]")
+		case c == '[':
+			end := strings.IndexByte(pattern[i:], ']')
+			if end < 0 {
+				return nil, fmt.Errorf("unclosed [ in %q", pattern)
+			}
+			b.WriteString(pattern[i : i+end+1])
+			i += end
+		case c == '{':
+			depth++
+			b.WriteString("(?:")
+		case c == '}' && depth > 0:
+			depth--
+			b.WriteString(")")
+		case c == ',' && depth > 0:
+			b.WriteString("|")
+		default:
+			b.WriteString(regexp.QuoteMeta(string(c)))
+		}
+	}
+	b.WriteString("$")
+	return regexp.Compile(b.String())
 }

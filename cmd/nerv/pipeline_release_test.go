@@ -241,3 +241,37 @@ func TestPipelineRelease_OutputsWriteFailureAfterTheRelease(t *testing.T) {
 		t.Errorf("released %d times", len(f.ws.requests))
 	}
 }
+
+func TestPipelineRelease_RepositoryConfigMustCommitTheVersionFiles(t *testing.T) {
+	tests := []struct {
+		name      string
+		gitPlugin bool
+		assets    []string
+		want      string
+	}{
+		{"covered by a glob", true, []string{"CHANGELOG.md", "src/**/*.csproj"}, ""},
+		{"not in the assets", true, []string{"CHANGELOG.md"}, `"src/Api/Api.csproj"`},
+		{"no git plugin", false, nil, "no @semantic-release/git"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f := newPipelineReleaseFixture(t, pipelineReleaseYAML)
+			r := &f.ws.results[0]
+			r.SemanticReleaseConfig, r.SemanticReleaseConfigFile, r.GitPlugin, r.GitAssets = semrel.ConfigRepository, ".releaserc.json", tt.gitPlugin, tt.assets
+			for _, args := range [][]string{{"release", "--dry-run", "--json"}, {"release", "--yes", "--json"}} {
+				code, stdout, stderr := f.runPipeline(t, args...)
+				var doc pipeline.ReleaseOutputs
+				_ = json.Unmarshal([]byte(stdout), &doc)
+				if tt.want == "" {
+					if code != 0 {
+						t.Errorf("%v: exit %d\n%s", args, code, stderr)
+					}
+					continue
+				}
+				if code != 1 || doc.Status != "refused" || !strings.Contains(doc.Error, tt.want) || !strings.Contains(doc.Error, ".releaserc.json") || len(f.ws.requests) != 0 {
+					t.Errorf("%v: exit %d, %+v", args, code, doc)
+				}
+			}
+		})
+	}
+}

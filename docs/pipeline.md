@@ -151,7 +151,10 @@ docker step builds the images afterwards.
    tag, push, GitHub release when origin is on GitHub. With the built-in
    configuration the version files are added to its `@semantic-release/git`
    assets; a repository's own configuration must list them in its own
-   assets (as dim's lists its csproj).
+   assets (as dim's lists its csproj): the step checks it before anything
+   is released, dry run included, and refuses when that configuration has
+   no `@semantic-release/git` or its assets (literal paths or globs, `!`
+   exclusions applied) do not cover a version file, naming the files.
 3. Write the outputs to `.nerv/artifacts/pipeline/release.json` (the
    git-ignored artifacts directory, with the same symlink checks as the
    test results) for the docker, sync and deploy steps.
@@ -174,7 +177,17 @@ semantic-release-action's 12 outputs:
 
 `status` is `passed`, `refused` (exit 1), `failed` (exit 2, with `error`
 and `action`: what is on origin and what to do, as `nerv ship` reports
-it) or `interrupted` (128 + signal). Every stderr line is prefixed
+it) or `interrupted` (128 + signal). `published` and the release fields
+describe only what was actually released: a run that computed a release
+but did not make it reports `published: false` and the computation under
+`computed` (`version`, `channel`, `git_tag`).
+
+If `release.json` cannot be written after a real release, the step fails
+(exit 2) saying the release is on origin (version, tag, commit) and
+prints the exact content the file should hold on one stderr line, after
+`release.json should hold: `, to save by hand once the cause is fixed. Do
+not run the step again for that release: it would compute the next
+version. Every stderr line is prefixed
 `[pipeline:release] `, semantic-release's log included.
 
 ### Result

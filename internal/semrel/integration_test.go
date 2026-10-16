@@ -696,10 +696,11 @@ func TestIntegration_ConfigDetectionForms(t *testing.T) {
 			if err := os.WriteFile(p, []byte(tt.content), 0o644); err != nil {
 				t.Fatal(err)
 			}
-			got, err := e.checkPlan(ctx, script, dir, env, cacheDir, specs)
+			plan, err := e.checkPlan(ctx, script, dir, env, cacheDir, specs)
 			if err != nil {
 				t.Fatal(err)
 			}
+			got := plan.ConfigFile
 			if filepath.ToSlash(got) != tt.want {
 				t.Errorf("config file %q, want %q", got, tt.want)
 			}

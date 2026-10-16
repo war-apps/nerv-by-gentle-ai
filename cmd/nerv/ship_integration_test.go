@@ -483,3 +483,43 @@ func TestIntegration_PipelineReleaseWithTheBuiltInConfiguration(t *testing.T) {
 		t.Errorf("no release: exit %d, %v\n%s", code, m, stderr)
 	}
 }
+
+// With the repository's own configuration, version files its
+// @semantic-release/git assets do not list are refused before anything is
+// released; once listed, they enter the release commit.
+func TestIntegration_PipelineReleaseRepositoryConfigAssets(t *testing.T) {
+	requireShipToolchain(t)
+	shipEnv(t)
+	cache := t.TempDir()
+	origin, work := newShipRepos(t)
+	work.write("package.json", shipReleaseConfig) // git assets: CHANGELOG.md only
+	work.write("src/Api/Api.csproj", apiCsproj)
+	work.commit("chore: init", "a.txt")
+	work.git("tag", "v1.0.0")
+	work.commit("feat: add gadgets", "b.txt")
+	work.git("push", "-q", "origin", "main", "--tags")
+	work.write(".nerv/nerv.yaml", "pipeline:\n  dotnet:\n    solution: App.slnx\n  images:\n    - name: ghcr.io/acme/app\n  release:\n    version_files: [src/Api/Api.csproj]\n")
+	runRelease := func(args ...string) (int, string, string) {
+		var stdout, stderr bytes.Buffer
+		code := run(append([]string{"pipeline", "release", "--cwd", work.dir}, args...), &stdout, &stderr, shipOptions(t, cache))
+		return code, stdout.String(), stderr.String()
+	}
+
+	code, stdout, stderr := runRelease("--yes", "--json")
+	if code != 1 || !strings.Contains(stdout, `"status":"refused"`) || !strings.Contains(stdout, `src/Api/Api.csproj`) || !strings.Contains(stdout, "package.json") {
+		t.Fatalf("uncovered: exit %d\nstdout %s\nstderr %s", code, stdout, stderr)
+	}
+	if tags := origin.git("tag", "--list"); tags != "v1.0.0" {
+		t.Errorf("tagged despite the refusal: %q", tags)
+	}
+
+	work.write("package.json", strings.Replace(shipReleaseConfig, `{ "assets": ["CHANGELOG.md"] }`, `{ "assets": ["CHANGELOG.md", "src/**/*.csproj"] }`, 1))
+	work.commit("chore: commit the csproj in releases")
+	work.git("push", "-q", "origin", "main")
+	if code, stdout, stderr := runRelease("--yes", "--json"); code != 0 {
+		t.Fatalf("covered: exit %d\nstdout %s\nstderr %s", code, stdout, stderr)
+	}
+	if files := origin.git("show", "--name-only", "--format=", "v1.1.0"); files != "CHANGELOG.md\nsrc/Api/Api.csproj" {
+		t.Errorf("release commit holds %q", files)
+	}
+}

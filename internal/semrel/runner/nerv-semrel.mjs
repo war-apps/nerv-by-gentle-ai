@@ -95,6 +95,7 @@ import {
   defaultConfig,
   failureResult,
   finish,
+  gitAssets,
   isPackage,
   makeFilter,
   neededPackages,
@@ -156,7 +157,15 @@ async function plan({ cacheDir, cwd }) {
   }
 
   neededPackages(options).forEach((p) => packages.add(p));
-  return { ok: true, packages: [...packages].sort(), unresolved, configFile: path.relative(cwd, found.filepath) || found.filepath };
+  return {
+    ok: true,
+    packages: [...packages].sort(),
+    unresolved,
+    configFile: path.relative(cwd, found.filepath) || found.filepath,
+    // What the configuration's @semantic-release/git commits (nerv pipeline
+    // release checks its version files against it).
+    ...gitAssets(options.plugins),
+  };
 }
 
 // loadKnownFiles reads the per-run cache of commit files (hash -> files)

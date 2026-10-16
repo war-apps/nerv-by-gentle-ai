@@ -384,6 +384,11 @@ func (s *shipRun) execute(ctx context.Context) ([]shipOutcome, error) {
 	if err := s.expect.check(results); err != nil {
 		return nil, err
 	}
+	if s.releaseOnly {
+		if err := checkVersionFilesCommitted(results, s.versionFiles); err != nil {
+			return nil, err
+		}
+	}
 	s.results = results
 	return s.release(ctx)
 }
@@ -754,6 +759,30 @@ func (s *shipRun) writeVersionFiles(r semrel.ProjectResult) error {
 		}
 	}
 	return nil
+}
+
+// checkVersionFilesCommitted refuses, before anything is released, version
+// files that the repository's own semantic-release configuration would not
+// commit: it has no @semantic-release/git, or its assets do not cover them
+// (the built-in configuration gets them as extra assets).
+func checkVersionFilesCommitted(results []semrel.ProjectResult, files []string) error {
+	if len(files) == 0 || len(results) == 0 || results[0].SemanticReleaseConfig != semrel.ConfigRepository {
+		return nil
+	}
+	r := results[0]
+	if !r.GitPlugin {
+		return refuse("the repository's semantic-release configuration (%s) has no @semantic-release/git, so pipeline.release.version_files would not enter the release commit: add the plugin with those files in its assets, or drop version_files", r.SemanticReleaseConfigFile)
+	}
+	var missing []string
+	for _, f := range files {
+		if !semrel.AssetsCover(r.GitAssets, f) {
+			missing = append(missing, fmt.Sprintf("%q", f))
+		}
+	}
+	if len(missing) == 0 {
+		return nil
+	}
+	return refuse("the @semantic-release/git assets of %s do not include %s, so the version files would not enter the release commit: add them to its assets, or drop them from pipeline.release.version_files", r.SemanticReleaseConfigFile, strings.Join(missing, ", "))
 }
 
 // checkVersionFilesOnOrigin refuses version files that origin's branch does

@@ -336,3 +336,19 @@ export function defaultConfig(branches, { github = true, assets = [] } = {}) {
     ],
   };
 }
+
+// gitAssets lists what a plugin list's @semantic-release/git entries commit:
+// gitPlugin false when there is none; each entry's assets (the plugin's
+// defaults when unset, none for false, an object's path), in order.
+export function gitAssets(plugins) {
+  const out = { gitPlugin: false, gitAssets: [] };
+  for (const p of Array.isArray(plugins) ? plugins : []) {
+    const [name, options = {}] = Array.isArray(p) ? p : [p, {}];
+    if (name !== GIT_PLUGIN) continue;
+    out.gitPlugin = true;
+    if (options.assets === false) continue;
+    const assets = options.assets == null ? DEFAULT_GIT_ASSETS : [].concat(options.assets);
+    for (const a of assets) out.gitAssets.push(a && typeof a === "object" ? a.path : a);
+  }
+  return out;
+}

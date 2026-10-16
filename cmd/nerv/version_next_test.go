@@ -276,7 +276,7 @@ func TestVersionNext_JSONSeveralProjectsIsAnArray(t *testing.T) {
 	if err := json.Unmarshal([]byte(stdout), &got); err != nil {
 		t.Fatalf("stdout is not a JSON array: %v (%q)", err, stdout)
 	}
-	if len(got) != 2 || got[0] != f.results[0] || got[1] != f.results[1] {
+	if len(got) != 2 || !reflect.DeepEqual(got[0], f.results[0]) || !reflect.DeepEqual(got[1], f.results[1]) {
 		t.Errorf("got %+v", got)
 	}
 }

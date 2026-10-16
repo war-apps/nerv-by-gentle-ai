@@ -320,10 +320,11 @@ func (w *Workspace) Release(ctx context.Context, req ReleaseRequest) (ProjectRes
 		return ProjectResult{}, err
 	}
 	script := filepath.Join(scriptDir, runnerMain)
-	configFile, err := e.checkPlan(ctx, script, w.dir, env, cacheDir, specs)
+	plan, err := e.checkPlan(ctx, script, w.dir, env, cacheDir, specs)
 	if err != nil {
 		return ProjectResult{}, err
 	}
+	configFile := plan.ConfigFile
 	var defaults []defaultBranch
 	if configFile == "" {
 		if defaults, err = w.local.defaultBranches(); err != nil {
@@ -366,7 +367,7 @@ func (w *Workspace) Release(ctx context.Context, req ReleaseRequest) (ProjectRes
 		fmt.Fprintf(req.Output, "nerv ship: warning: the release: section sets each project's changelog, but the semantic-release configuration has no @semantic-release/changelog plugin: no changelog is written (add the plugin, and @semantic-release/git to commit it)\n")
 	}
 	r := normalize(p.Name, w.branch, resp)
-	configSource(&r, configFile)
+	configSource(&r, plan)
 	if !r.NewReleasePublished {
 		return r, fmt.Errorf("project %s: %w: computed %s, semantic-release released nothing (see its log); nothing was tagged", p.Name, ErrVersionMismatch, expected)
 	}

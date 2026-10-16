@@ -40,6 +40,11 @@ type ProjectResult struct {
 	// SemanticReleaseConfigFile is the repository's configuration file,
 	// repository-relative (empty for the built-in default).
 	SemanticReleaseConfigFile string `json:"semantic_release_config_file,omitempty"`
+
+	// GitPlugin reports that the repository's own configuration has
+	// @semantic-release/git, and GitAssets what it commits (not printed).
+	GitPlugin bool     `json:"-"`
+	GitAssets []string `json:"-"`
 }
 
 // Output is one named action output.
@@ -118,6 +123,10 @@ type runnerResponse struct {
 	// ConfigFile is the repository's semantic-release configuration file,
 	// found as semantic-release finds it; empty when there is none.
 	ConfigFile string `json:"configFile"`
+	// GitPlugin and GitAssets: the configuration's @semantic-release/git
+	// entries and their assets.
+	GitPlugin bool     `json:"gitPlugin"`
+	GitAssets []string `json:"gitAssets"`
 	// run mode
 	Released    bool     `json:"released"`
 	NextRelease *release `json:"nextRelease"`
