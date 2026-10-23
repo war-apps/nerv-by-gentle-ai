@@ -52,8 +52,8 @@ Branch: `feature/ship-deploy-plugins`, cut from `feature/tasks-plugin-split` at 
 
 | ID | Specs | Route | Status | Commit |
 |---|---|---|---|---|
-| T1 | S2, S3 | inline | pending | — |
-| T2 | S4, S5 | inline | pending | — |
+| T1 | S2, S3 | delegated writer, in parallel with T2 (Writer trigger (a): independent units with disjoint surfaces, each over 100 lines; also the context backstop) | in progress | — |
+| T2 | S4, S5 | delegated writer, in parallel with T1 (same trigger) | in progress | — |
 | T3 | S6, S7, S8 | inline | pending | — |
 | T4 | S1, S9 | inline | pending | — |
 
@@ -77,4 +77,9 @@ Forecast: well over 400 lines (about 11.5k lines of Go move or are rewritten), s
   - There is no compose or script build mode today.
   - Ship, pipeline and deploy have no coupling to the orchestrator, the agents or the config catalogue.
   - The dim repos keep their semantic-release config as JSON under `package.json` `release`.
-- **Next step:** T1.
+- **L4** (2026-10-23): seam between T1 and T2.
+  - T1 exposes `versioning.Compute(ctx, versioning.Request) ([]versioning.Result, error)`.
+    - `Result` carries the same fields as `semrel.ProjectResult`'s 12 action outputs, plus `ChangelogSection` and `Bump`.
+    - `Request` holds `RepoDir`, `Branch`, `Projects`, `Config` and `Offline`.
+  - T2 consumes the version through an interface (`VersionSource`) that can be fed an explicit version or a computed one. It keeps the existing semrel-backed source until T4 wires in the engine.
+- **Next step:** T1 and T2, in parallel.
