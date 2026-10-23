@@ -128,4 +128,8 @@ Forecast: well over 400 lines (about 11.5k lines of Go move or are rewritten), s
 - **L8** (2026-10-23): T6 decision (parent).
   - The runtime folder stays `.nerv/`, which becomes runtime only (artifacts, lock, logs). It is never committed.
   - The user config path is `os.UserConfigDir()/ai-workflow/config.yml`: `~/.config/ai-workflow/config.yml` on Linux, `%AppData%\ai-workflow\config.yml` on Windows.
+- **L9** (2026-10-23): the T1 verifier ran more than 30 probe groups. Everything matched except the notes ordering of typographic punctuation, symbols and emoji, which was a blocker because dim.comprobantes.api has 40 such subjects.
+  - **Fix:** 26d33ef. `localeCompare` now uses `golang.org/x/text/collate` CLDR root, a new dependency (risk item 5), with the verifier's regression tests. RED observed, then GREEN.
+  - **Advisories:** `presetConfig.types` (custom section titles) is not translated, and the importer warns. The order follows ICU root, not the es_ES locale.
+  - **Importer on the dim repos:** it warns that `hotfix/*` with `prerelease: true` is invalid and needs a fixed id such as `beta`, that `npm` and `exec` (`bump-csproj.sh`, `set-release-outputs.sh`) are not translatable, and that `git`/`github` go to deploy.
 - **Next step:** T6 (running) and the T2 verifier. The user's L5 decisions are "ODD + agentes NERV encima (Recommended)", "Se mantiene, renombrado (Recommended)" and "Subcomando nerv migrate (Recommended)". Then T6.
