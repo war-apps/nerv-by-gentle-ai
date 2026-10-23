@@ -94,7 +94,7 @@ carries "Do NOT delegate" in its own file and has no Agent tool access.
 ## Orchestrator lock
 
 Ikari alone holds this lock — no agent reads or writes it. File:
-`.nerv/locks/{feature}.lock` (runtime, never committed), YAML: `{session_id,
+`.nerv/locks/{feature}.lock` (runtime, never committed: Ikari first creates `.nerv/.gitignore` with `*` when it is missing, as a fresh clone has none), YAML: `{session_id,
 host, started_at, heartbeat_at, phase, step, waiting_on, pid: null}`
 (`session_id` = the UUID segment of this session's scratchpad path, `host`
 = machine name, `waiting_on` = `agent` while a launch runs, `user` while a

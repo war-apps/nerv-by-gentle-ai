@@ -100,6 +100,8 @@ herself, since the log is append-only and curated by Fuyutsuki.
 
 ### Engram mode
 
+These modes cover the artifacts below only. The ODD document `odd/tasks/{feature}.md` is always a file plus its Engram copy under `odd/{feature}/tasks`, whatever the store.
+
 ```
 mem_save(
   title: "nerv/{feature}/{artifact}",
@@ -131,8 +133,9 @@ not happen and never roll back a write that did succeed.
 
 ### None mode
 
-Return the result inline only. Do not write any files and do not call
-`mem_save`.
+Return the result inline only. Do not write any other file and do not call
+`mem_save`, except the ODD document `odd/tasks/{feature}.md` and its
+`odd/{feature}/tasks` copy, which are always written.
 
 ### Knowledge-base mirror (decision artifacts only)
 
