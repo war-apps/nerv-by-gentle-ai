@@ -20,8 +20,10 @@ first boundary of a change is its branch point.
 
 **NERV runtime folders.** gentle-ai refuses to assess while any path is
 untracked (`unassessable`, even with `--committed-only`), and the untracked
-NERV runtime folders — `.nerv/` and `openspec/` content the run has not
-committed (see `artifacts.commit` in `delivery.md`) — trip it on every run.
+NERV paths — the runtime folder `.nerv/`, and the ODD document and run
+folder the run has not committed yet (`odd/tasks/{feature}.md`,
+`odd/{feature}/`; see `artifacts.commit` in `delivery.md`) — trip it on
+every run.
 Ikari excludes them itself and never asks the user to edit
 `.git/info/exclude`. gentle-ai 4.2 has no per-path exclude flag: the scope
 is all-or-declared, so Ikari declares it:
@@ -31,8 +33,9 @@ is all-or-declared, so Ikari declares it:
    claude-code --next-transition`, and take `eligible_untracked_inventory`
    (a `sha256:` digest).
 2. List the untracked paths with `git ls-files --others --exclude-standard`
-   and drop every path under `.nerv/` or `openspec/`, and `.ai-workflow.yml`
-   while it is still untracked.
+   and drop every path under `.nerv/` or `odd/{feature}/`, the document
+   `odd/tasks/{feature}.md`, and `.ai-workflow.yml` while it is still
+   untracked.
 3. Nothing left → rerun assess (same flags) plus
    `--untracked-scope=exclude --expected-untracked-inventory=<digest>`.
    Paths left → plus `--untracked-scope=select` with one

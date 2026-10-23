@@ -156,7 +156,7 @@ Every event carries:
 event: run.started
 task_ref: TW-49076279        # may be empty only on run.started
 repo: dim.comprobantes.api   # repository root folder name
-change: <openspec change name>
+feature: <ODD feature name>
 branch: feature/tw-49076279-...
 worktree: /abs/path/or/empty
 session_id: <uuid>
@@ -194,10 +194,10 @@ The dispatcher never asks the user anything itself. When a choice is needed, it 
 
 ### 6.4 The pending-event list (S9)
 
-The orchestrator appends every envelope to `openspec/changes/<change>/nerv/task-events.yaml`, one list item per envelope. An envelope with `result` `blocked` or `failed` and `replay: true` stays **pending**.
+The orchestrator appends every envelope to `odd/<feature>/nerv/task-events.yaml`, one list item per envelope. An envelope with `result` `blocked` or `failed` and `replay: true` stays **pending**.
 
-- The run summary lists the pending envelopes under "Task events pending", along with the `/task:replay <change>` command.
-- `/task:replay <change>` dispatches every pending envelope again, in order, and marks each one `replayed: <ISO time>` with its new result.
+- The run summary lists the pending envelopes under "Task events pending", along with the `/task:replay <feature>` command.
+- `/task:replay <feature>` dispatches every pending envelope again, in order, and marks each one `replayed: <ISO time>` with its new result.
 
 ## 7. Composite operations (owned by this plugin)
 

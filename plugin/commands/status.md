@@ -31,13 +31,13 @@ short and imperative — this is a status check, not a narrative.
      informational note only.
    Never block on either case.
 
-4. **Active changes.** If `openspec/changes/` exists in the repo, for each
-   active change directory read its directory and list which of `proposal.md`, `specs/`,
-   `design.md` and `tasks.md` exist, plus the checked state of `tasks.md`
-   (`[x]` of total), alongside which NERV-owned artifacts are present under that change's
-   `nerv/` subfolder (for example `nerv/run-summary.md`). If no changes
-   exist, say so plainly. For each active change, also read
-   `nerv/.orchestrator.lock` if present (read-only — never refresh or
+4. **Active features.** If `odd/tasks/` exists in the repo, list each ODD
+   feature document `odd/tasks/<feature>.md` whose run folder
+   `odd/<feature>/nerv/state.yaml` has no `closed_at`: its `S#` count, its
+   `## Tasks` rows by `Status` (`done` of total), and which NERV-owned
+   artifacts are present in `odd/<feature>/nerv/` (for example
+   `run-summary.md`). If no feature is active, say so plainly. For each
+   active feature, also read `.nerv/locks/<feature>.lock` if present (read-only — never refresh or
    delete it from this command) and print `lock: session <session_id>,
    step <step>, waiting_on <waiting_on> — fresh (heartbeat <N.N>m ago)`,
    `… — held: parked on a user gate (heartbeat <N.N>m ago)` when
@@ -47,7 +47,7 @@ short and imperative — this is a status check, not a narrative.
    unreadable — treated as held`. Fresh means `heartbeat_at` is under 15
    minutes old and `waiting_on` is not `user` (see the Orchestrator lock
    section of `nerv-orchestrator/SKILL.md`). A lock past that age is
-   stale, not active: never describe its change as running, even when
+   stale, not active: never describe its feature as running, even when
    `heartbeat_at` equals `started_at` (a run that never refreshed it).
 
 5. **Model/effort table.** Resolve every `nerv:<role>` launch's

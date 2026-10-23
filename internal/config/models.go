@@ -88,7 +88,7 @@ func Roles() RoleCatalogue {
 	// mode). casper and kaji (the compiler) claim none, so no role judges
 	// work it authored or compiles.
 	info := map[string]RoleInfo{
-		"misato":    {"Misato Katsuragi", "authors the plan (proposal, design, tasks)", nil, ""},
+		"misato":    {"Misato Katsuragi", "authors the plan (specs, design and tasks in the ODD document)", nil, ""},
 		"ritsuko":   {"Ritsuko Akagi", "intelligence, test planning, end-of-run docs", nil, ""},
 		"hyuga":     {"Makoto Hyuga", "task criticality, dependency waves, tracking", nil, ""},
 		"melchior":  {"Melchior-Magi 1", "MAGI vote: structure and security; security audit", []string{"jd-judge-b", "review-risk"}, "jd-judge-b"},

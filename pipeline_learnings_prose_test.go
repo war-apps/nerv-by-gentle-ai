@@ -52,17 +52,18 @@ func TestS20_LaunchDiscipline(t *testing.T) {
 		"Ikari never freezes a round itself",
 		"appends it verbatim",
 		"appended_by: ikari",
-		"absolute and scoped to the change",
+		"absolute and scoped to the feature",
 		"`nerv/audit/commits-round-N.txt`",
 		"never adds wording the user did not approve")
 	assertPluginContains(t, pipelineFullRef, "`nerv/audit/commits-round-N.txt`")
 	assertPluginContains(t, "agents/aoba.md", "commits-round-N.txt")
 }
 
-// S21: archive robustness — RENAMED deltas, a LIGHT close, a lock heartbeat.
-func TestS21_ArchiveRobustness(t *testing.T) {
-	assertPluginContains(t, "agents/ritsuko.md", "## RENAMED Requirements", "old name → new name")
-	assertPluginContains(t, pipelineLightRef, "9. Close and archive", "Archive duty")
+// S21: close robustness — a LIGHT close on the ODD document with no
+// archive, and a lock heartbeat (the RENAMED-delta rule went with OpenSpec
+// in odd/tasks/ship-deploy-plugins.md, S10).
+func TestS21_CloseRobustness(t *testing.T) {
+	assertPluginContains(t, pipelineLightRef, "| 9. Close |", "There is no archive", "docs: close nerv run for {feature}")
 	assertPluginContains(t, orchestratorCore,
 		"at every phase transition",
 		"report it as stale, not active")
@@ -77,7 +78,7 @@ func TestS22_ArtifactsThatGitIgnores(t *testing.T) {
 		"the artifacts stay local",
 		"no archive commit")
 	assertPluginContains(t, "agents/aoba.md",
-		"`.orchestrator.lock` is never staged",
+		"The orchestrator lock `.nerv/locks/{feature}.lock` is never staged",
 		"git check-ignore")
 	assertPluginContains(t, rddRelayRef,
 		"--untracked-scope=select",

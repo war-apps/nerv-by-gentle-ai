@@ -1,41 +1,42 @@
 # NERV Artifact Schemas
 
 One definition per NERV-owned artifact, referenced by every agent instead of
-repeating the shape inline. gentle-ai-owned filenames (`state.yaml`,
-`exploration.md`, `proposal.md`, `specs/{domain}/spec.md`, `design.md`,
-`tasks.md`) are NERV-owned too: gentle-ai 4.x retired SDD/OpenSpec, so
-the `openspec/changes/` layout is defined by NERV and stays where status
-and resume read it. Files under `nerv/` are the NERV-specific additions. All
-of them live under `openspec/changes/{change}/nerv/`, except `state.yaml`,
-which lives at `openspec/changes/{change}/state.yaml` and carries the
-`nerv:` block. Engram topic key for every artifact:
-`nerv/{change}/{artifact}` (artifact = file name without extension).
+repeating the shape inline. Every run is tracked on gentle-ai's ODD feature
+document, `odd/tasks/{feature}.md` (header, `## Specs`, `## Tasks`,
+`## Log`; Engram mirror `odd/{feature}/tasks`); which role writes which
+section is defined in `nerv-orchestrator/references/odd-document.md` and
+summarized in `## ODD document sections authored by NERV roles` below. The
+NERV governance files below live in the run folder `odd/{feature}/nerv/`
+and are committed with the feature per `artifacts.commit`; every `nerv/...`
+locator is relative to `odd/{feature}/`. The orchestrator lock is the one
+exception: it lives in the runtime folder, `.nerv/locks/{feature}.lock`,
+and is never committed. Engram topic key for every run-folder artifact:
+`nerv/{feature}/{artifact}` (artifact = file name without extension).
 
-## state.yaml (extended)
+## state.yaml
 
-- Purpose: change state, extended with the NERV path decision so
-  a resumed session knows which pipeline governed the change without
+- Purpose: the run's state, with the NERV path decision so a resumed
+  session knows which pipeline governed the feature without
   re-classifying.
-- Author: Ikari (the `nerv:` block only — the rest of the file is
-  never hand-edited by NERV agents).
-- Location: `openspec/changes/{change}/state.yaml`.
-- Engram key: `nerv/{change}/state` (mirror of the `nerv:` block only).
+- Author: Ikari only; never hand-edited by NERV agents.
+- Location: `nerv/state.yaml` (`odd/{feature}/nerv/state.yaml`).
+- Engram key: `nerv/{feature}/state` (mirror of the `nerv:` block only).
+- `feature` is the feature name, the `{feature}` of every locator.
 - `task_ref` holds `{PREFIX}-{id}`, e.g. `TW-49132010`, taken from the
   `run.started` envelope the task plugin returns at Preflight, or `null`
   when the change has no task (the task plugin is not installed, or its
   envelopes carry no `task_ref`).
-- `closed_at` is `null` until the change closes, then set once by Ikari at
+- `closed_at` is `null` until the feature closes, then set once by Ikari at
   Close (DIRECT's or LIGHT's Close step, or FULL's step 19), the same
-  write that deletes
-  `nerv/.orchestrator.lock`.
+  write that deletes `.nerv/locks/{feature}.lock`.
 - The merged configuration's `models` section (per-role `model`/`effort`,
   resolved as described in `nerv-orchestrator/SKILL.md`'s Configuration
   resolution) is not mirrored into `state.yaml`; it is resolved fresh each
   session.
 
 ```yaml
-dependsOn: []
 nerv:
+  feature: "tw-49132010-short-slug"
   path: light                     # direct | light | full
   classification_reason: "single domain, no critical path, under budget"
   task_ref: "TW-49132010"         # or null when no task
@@ -43,15 +44,15 @@ nerv:
   closed_at: null                 # set once, at Close
 ```
 
-## .orchestrator.lock (Ikari)
+## Orchestrator lock (Ikari)
 
 - Purpose: concurrency guard — detects a second NERV session resuming the
-  same change while the first is still alive, so Resume never races an
+  same feature while the first is still alive, so Resume never races an
   active run.
 - Author: Ikari only; no other agent reads or writes this file. Never
   persisted to Engram or committed to git — local, ephemeral, machine-scoped
-  state (Ikari adds it to `.git/info/exclude` on creation).
-- Location: `openspec/changes/{change}/nerv/.orchestrator.lock`.
+  state in the runtime folder `.nerv/`, which ignores itself.
+- Location: `.nerv/locks/{feature}.lock`.
 - Engram key: none.
 
 ```yaml
@@ -81,10 +82,10 @@ after every envelope; deleted at close or on an explicit stop.
   mapping trigger fired.
 - Author: Ritsuko (LIGHT micro-intel dispatch).
 - Location: `nerv/exploration-light.md`.
-- Engram key: `nerv/{change}/exploration-light`.
+- Engram key: `nerv/{feature}/exploration-light`.
 
 ```markdown
-# Exploration (light) — {change}
+# Exploration (light) — {feature}
 
 ## Touched files
 - {path} — {why it is touched}
@@ -108,10 +109,10 @@ after every envelope; deleted at close or on an explicit stop.
   evidence reproduced independently (never trusted from a self-report).
 - Author: Maya.
 - Location: `nerv/maya-report.md`.
-- Engram key: `nerv/{change}/maya-report`.
+- Engram key: `nerv/{feature}/maya-report`.
 
 ```markdown
-# Maya report — {change}
+# Maya report — {feature}
 
 ## Mode
 {full|reduced} — reduced scope: {touched tests + lint/build only, list them}
@@ -170,10 +171,10 @@ table.
 - Author: Aoba in FULL; Ikari itself in DIRECT and LIGHT (the Agents table
   then lists only the agents actually launched, possibly none).
 - Location: `nerv/run-summary.md`.
-- Engram key: `nerv/{change}/run-summary`.
+- Engram key: `nerv/{feature}/run-summary`.
 
 ```markdown
-# Run summary — {change}
+# Run summary — {feature}
 
 ## Work done
 {short narrative}
@@ -208,7 +209,7 @@ unsaved: one line per mirror (topic key, error); else omit}
 ## Task events pending
 {only when the task plugin is installed and some envelope in
 nerv/task-events.yaml is pending: one line per envelope (event, provider,
-error), then: replay them with `/task:replay {change}`}
+error), then: replay them with `/task:replay {feature}`}
 ```
 
 ## task-events.yaml (Ikari, append-only)
@@ -221,7 +222,7 @@ error), then: replay them with `/task:replay {change}`}
 - Shape: one list item per envelope, verbatim from the dispatcher
   (`{event, provider, result, task_ref, data, error, replay}`), plus the
   `payload` it was dispatched with. An envelope with `result` `blocked` or
-  `failed` and `replay: true` is **pending** until `/task:replay {change}`
+  `failed` and `replay: true` is **pending** until `/task:replay {feature}`
   marks it `replayed: <ISO time>` with its new result.
 
 ```yaml
@@ -230,7 +231,7 @@ error), then: replay them with `/task:replay {change}`}
   result: ok                      # ok | skipped | blocked | failed | needs_input
   task_ref: "TW-49132010"
   data: {stage: "<provider stage>", timer: started}
-  payload: {task_ref: "", repo: "<repo>", change: "{change}", branch: "<branch>", worktree: "", session_id: "<uuid>", data: {}, disabled_events: []}
+  payload: {task_ref: "", repo: "<repo>", feature: "{feature}", branch: "<branch>", worktree: "", session_id: "<uuid>", data: {}, disabled_events: []}
 ```
 
 ## deliberation-log.md (Ikari, append-only)
@@ -240,11 +241,11 @@ error), then: replay them with `/task:replay {change}`}
 - Author: Ikari, appending inline after each event (a mechanical
   single-file write, not delegated).
 - Location: `nerv/deliberation-log.md`.
-- Engram key: `nerv/{change}/deliberation-log` (re-saved in full on each
+- Engram key: `nerv/{feature}/deliberation-log` (re-saved in full on each
   append, since Engram upserts overwrite rather than append).
 
 ```markdown
-# Deliberation log — {change}
+# Deliberation log — {feature}
 
 - {ts} | {phase} | {actor} | preflight_answer | {payload_ref}
 - {ts} | {phase} | {actor} | classification | {payload_ref}
@@ -280,16 +281,16 @@ FULL adds these event types to the same append-only log, same shape
 
 - `corner_case_relayed` — Ikari relayed Ritsuko's corner-case questions to
   the user as one grouped blocking prompt.
-- `corner_case_answer` — the user's answer was recorded into
-  `test-plan.md`'s `## Answers`.
+- `corner_case_answer` — the user's answer was recorded verbatim into
+  the test plan's `### Answers` in the ODD document's `## Log`.
 - `vote_cast` — one MAGI member's vote for one task in one round (one
   entry per member per task).
 - `escalation_criticality` — a MAGI member escalated a task's criticality
   to `critical` (escalation is one-way, never down).
 - `vote_result` — a task's round concluded: `approved` or `rejected`,
   with the applied rule (`unanimous` or `majority-2:1`).
-- `veto_evaluated` — Fuyutsuki ruled on one item from `design.md`'s
-  `## New skills, scripts and commands`.
+- `veto_evaluated` — Fuyutsuki ruled on one item from the design Log
+  entry's `### New skills, scripts and commands`.
 - `plan_gate_relayed` — Ikari presented the plan-approval summary (tasks,
   criticality, votes, veto rulings, test-plan summary) to the user.
 - `plan_gate_decision` — the user's plan-approval decision.
@@ -303,60 +304,65 @@ FULL adds these event types to the same append-only log, same shape
   Payload carries `unfreezes: task_ids[]` — the frozen task(s), if any,
   the ruling reopened via `unfrozen_by_ruling`.
 
-## Change artifacts authored by NERV roles
+## ODD document sections authored by NERV roles
 
-These keep their historical OpenSpec filenames, location, and shape — status
-and resume read them in place — and are authored by NERV roles:
+The ODD document `odd/tasks/{feature}.md` replaces the former per-change
+plan files; its sections are authored by NERV roles (full table in
+`nerv-orchestrator/references/odd-document.md`):
 
-- `exploration.md` — Ritsuko (MODE: intel). Full FULL-path exploration;
-  written before `tasks.md` exists, so it never references a task id.
-- `specs/{domain}/spec.md` — Ritsuko (MODE: test-plan). WHAT the change
-  must do, as scenarios, in the OpenSpec spec shape; written alongside
-  `nerv/test-plan.md`, also before `tasks.md` exists.
-- `proposal.md`, `design.md`, `tasks.md` — Misato.
-  - `design.md` MUST contain a `## New skills, scripts and commands`
-    section listing every new skill, script, or command the plan
-    introduces, or the single word `none`. This is Fuyutsuki's input —
-    the plan gatekeeper (FULL pipeline step 3) verifies the section
-    exists before the change proceeds to criticality.
-  - `tasks.md` tasks carry stable ids (`T1`, `T2`, ...), a `pilot:
-    rei|shinji|asuka|toji` field, and a `depends_on: []` field, each per
-    task. A task ratcheted in from a DIRECT- or LIGHT-path diff additionally carries
-    `status: implemented-pre-plan` alongside its `id`/`pilot`/
-    `depends_on` fields, and MAGI votes on it exactly like any other task
-    — there is no free pass for pre-plan work.
+- Header, `L1` and the seeded `S#` — Ikari, from the user's request
+  verbatim, plus the TDD mode and runner.
+- `nerv/exploration.md` — Ritsuko (MODE: intel). Full FULL-path
+  exploration, written by Ikari verbatim to the run folder with a one-line
+  `## Log` pointer; written before `## Tasks` exists, so it never
+  references a task id.
+- The test plan — Ritsuko (MODE: test-plan), one `## Log` entry (shape
+  below), written by Ikari verbatim.
+- `## Specs` (scope, acceptance criteria, checks, marked assumptions),
+  `## Tasks`, and the design `## Log` entry — Misato.
+  - The design entry MUST contain a `### New skills, scripts and
+    commands` heading listing every new skill, script, or command the
+    plan introduces, or the single word `none`. This is Fuyutsuki's input
+    — the plan gatekeeper (FULL pipeline step 3) verifies it exists
+    before the feature proceeds to criticality.
+  - `## Tasks` rows carry stable ids (`T1`, `T2`, ...), the linked `S#`,
+    a `Pilot` (`rei|shinji|asuka|toji`) and `Depends on`, each per task.
+    A task ratcheted in from a DIRECT- or LIGHT-path diff carries
+    `Status` `implemented-pre-plan`, and MAGI votes on it exactly like any
+    other task — there is no free pass for pre-plan work.
+- `Criticality`, `MAGI`, `Status` and `Commit` columns — Ikari's
+  bookkeeping, copied from `nerv/criticality.md`, `nerv/votes.md` and the
+  commits.
 
-## test-plan.md (Ritsuko)
+### The test plan (Ritsuko, in the `## Log`)
 
-- Purpose: FULL-path scenario plan — cases to create or modify, plus the
-  corner-case interview Ritsuko cannot resolve alone. The corner-case
-  answers gate Misato's plan (FULL pipeline step 2).
-- Author: Ritsuko (MODE: test-plan). Written before `tasks.md` exists, so
-  cases are not linked to task ids; Misato's own `tasks.md` maps tasks to
-  the relevant cases when the plan is written.
-- Location: `nerv/test-plan.md`.
-- Engram key: `nerv/{change}/test-plan`.
+- Purpose: FULL-path scenario plan — cases to create or modify per `S#`,
+  plus the corner-case interview Ritsuko cannot resolve alone. The
+  corner-case answers gate Misato's plan (FULL pipeline step 2).
+- Author: Ritsuko (MODE: test-plan), returned as text; Ikari appends it
+  verbatim as one `## Log` entry. Written before `## Tasks` exists, so
+  cases link to `S#`, not to task ids; Misato maps tasks to cases when the
+  plan is written.
+- Location: the ODD document's `## Log`, entry `L{n} test plan`.
 
 ```markdown
-# Test plan — {change}
+- **L{n}** ({date}): test plan (Ritsuko).
+  | S# | file | case | layer | expected behavior |
+  |---|---|---|---|---|
+  | S1 | {path} | {case name} | unit\|integration\|e2e | {expected behavior} |
 
-## Cases
-| file | case | layer | expected behavior |
-|---|---|---|---|
-| {path} | {case name} | unit\|integration\|e2e | {expected behavior} |
+  ### Corner-case questions
+  1. {question} — options: {option a} / {option b} / ...
 
-## Corner-case questions
-1. {question} — options: {option a} / {option b} / ...
-2. {question} — options: {option a} / {option b} / ...
-
-## Answers
-1. {the user's answer, recorded verbatim by Ikari after relaying the
-   question as part of one grouped blocking prompt}
-2. {...}
+  ### Answers
+  1. {the user's answer, recorded verbatim by Ikari after relaying the
+     question as part of one grouped blocking prompt}
 ```
 
-`## Answers` starts empty when Ritsuko writes the file; Ikari fills it
-after the user responds, never before, never on the user's behalf.
+`### Answers` starts empty when the entry is written; Ikari fills it after
+the user responds, never before, never on the user's behalf. An answer
+that changes a requirement also gets its own verbatim `## Log` entry, and
+Misato rewrites only the affected `S#`.
 
 ## criticality.md (Hyuga)
 
@@ -364,10 +370,10 @@ after the user responds, never before, never on the user's behalf.
   (unanimous for `critical`, 2-of-3 for `standard`).
 - Author: Hyuga (dispatch a).
 - Location: `nerv/criticality.md`.
-- Engram key: `nerv/{change}/criticality`.
+- Engram key: `nerv/{feature}/criticality`.
 
 ```markdown
-# Criticality — {change}
+# Criticality — {feature}
 
 | task_id | criticality | rationale | path_signals |
 |---|---|---|---|
@@ -387,10 +393,10 @@ value for that round.
   JSON outputs it receives from one parallel batch.
 - Author: Ikari.
 - Location: `nerv/votes.md`.
-- Engram key: `nerv/{change}/votes`.
+- Engram key: `nerv/{feature}/votes`.
 
 ```markdown
-# Votes — {change}
+# Votes — {feature}
 
 ## Round {n}
 
@@ -433,40 +439,40 @@ exactly one JSON object:
           "claim": "...",
           "category": "...",
           "evidence_class": "deterministic",
-          "proof_refs": ["design.md:42"]
+          "proof_refs": ["odd/tasks/{feature}.md:42"]
         }
       ],
       "escalation": null
     }
   ],
-  "evidence": ["design.md read in full", "tasks.md T1 read"]
+  "evidence": ["ODD document design entry read in full", "## Tasks T1 read"]
 }
 ```
 
-Lens assignment: Balthasar reviews design.md and tasks.md for SOLID/KISS/
-YAGNI/DRY and pattern fit; Melchior reviews design.md for architecture,
-design, dead code, duplication, and security; Casper reviews spec.md,
-tasks.md, and proposal.md for docs, comments, scope, commit hygiene, and
-plan consistency. Every member votes every task in scope from its own
+Lens assignment: Balthasar reviews the design entry and `## Tasks` for
+SOLID/KISS/YAGNI/DRY and pattern fit; Melchior reviews the design entry
+for architecture, design, dead code, duplication, and security; Casper
+reviews `## Specs`, `## Tasks`, and the test plan for docs, comments,
+scope, commit hygiene, and plan consistency. Every member votes every task in scope from its own
 lens; Ikari merges the three objects into the table above.
 
 ## veto-ruling.md (Fuyutsuki)
 
-- Purpose: governance verdict on every item `design.md` declared under
-  `## New skills, scripts and commands`.
+- Purpose: governance verdict on every item the design Log entry declared
+  under `### New skills, scripts and commands`.
 - Author: Fuyutsuki.
 - Location: `nerv/veto-ruling.md`.
-- Engram key: `nerv/{change}/veto-ruling`.
+- Engram key: `nerv/{feature}/veto-ruling`.
 
 ```markdown
-# Veto ruling — {change}
+# Veto ruling — {feature}
 
 | item | verdict | reason |
 |---|---|---|
 | {skill\|script\|command name} | approve\|veto | {reason} |
 ```
 
-When `design.md` declares `none`, this file records a single line stating
+When the design entry declares `none`, this file records a single line stating
 `none` instead of an empty table. Any `veto` reopens only the owning task
 (frozen siblings stay frozen); cap 2 revision rounds, then the user
 decides: drop the item, or abandon the task.
@@ -474,13 +480,13 @@ decides: drop the item, or abandon the task.
 ## waves.md (Hyuga)
 
 - Purpose: implementation ordering — groups frozen tasks into waves with
-  their dependencies and pilot assignment. Never mutates `tasks.md`.
+  their dependencies and pilot assignment. Never edits the ODD document.
 - Author: Hyuga (dispatch b).
 - Location: `nerv/waves.md`.
-- Engram key: `nerv/{change}/waves`.
+- Engram key: `nerv/{feature}/waves`.
 
 ```markdown
-# Waves — {change}
+# Waves — {feature}
 
 | wave_id | task_ids | depends_on | pilot_assignments |
 |---|---|---|---|
@@ -500,16 +506,16 @@ one parallel batch during implementation (FULL pipeline step 11).
   re-derives the boundary by guesswork.
 - Author: Aoba. Never hand-edited after generation.
 - Location: `nerv/audit/diff-round-N.patch`, `nerv/audit/round-N.yaml`.
-- Engram key: `nerv/{change}/audit-diff-round-N`,
-  `nerv/{change}/audit-round-N`.
+- Engram key: `nerv/{feature}/audit-diff-round-N`,
+  `nerv/{feature}/audit-round-N`.
 
 ```
-git diff <base>..HEAD > openspec/changes/{change}/nerv/audit/diff-round-N.patch
+git diff <base>..HEAD > odd/{feature}/nerv/audit/diff-round-N.patch
 ```
 
 ```yaml
 round: 1
-base: "a1b2c3d"          # the change's branch point for round 1,
+base: "a1b2c3d"          # the feature's branch point for round 1,
                           # the previous round's HEAD for round N>1
 head: "e4f5g6h"
 created_at: "2026-09-24T15:10:00Z"
@@ -524,14 +530,14 @@ created_at: "2026-09-24T15:10:00Z"
   edited).
 - Location: `nerv/audit/pass-<name>-round-N.json`, `<name>` one of
   `melchior`, `balthasar`, `casper`, `gendo`.
-- Engram key: `nerv/{change}/audit-pass-<name>-round-N`.
+- Engram key: `nerv/{feature}/audit-pass-<name>-round-N`.
 
 #### Legacy pass names
 
 A round started before the `melchior`/`gendo` rename and resumed after it
 may hold `pass-melchor-round-N.json` and `pass-kaji-audit-round-N.json`
-(Engram `nerv/{change}/audit-pass-melchor-round-N` and
-`nerv/{change}/audit-pass-kaji-audit-round-N`). Whoever reads a round's
+(Engram `nerv/{feature}/audit-pass-melchor-round-N` and
+`nerv/{feature}/audit-pass-kaji-audit-round-N`). Whoever reads a round's
 passes (Kaji, or Ikari on resume) reads the legacy name only when the new
 one is absent and counts it as the `melchior` or `gendo` pass
 respectively, whatever its own `pass` field says; nothing is renamed or
@@ -542,8 +548,8 @@ rewritten.
 Each of `nerv:melchior`, `nerv:balthasar`, `nerv:casper` (MODE: audit),
 and `nerv:gendo` is
 launched in one parallel batch, blind to the other three, over the frozen
-`diff-round-N.patch` plus the plan artifacts (`proposal.md`, `design.md`,
-`tasks.md`, `specs/`, `nerv/test-plan.md`). Its final text is exactly one JSON object, no prose
+`diff-round-N.patch` plus the ODD document (`## Specs`, `## Tasks`, and the
+design and test-plan `## Log` entries). Its final text is exactly one JSON object, no prose
 before or after it (a `## Key Learnings` block may follow):
 
 ```json
@@ -558,10 +564,10 @@ before or after it (a `## Key Learnings` block may follow):
       "claim": "Divide has no test for a zero divisor",
       "evidence_class": "deterministic",
       "causal_disposition": "introduced",
-      "proof_refs": ["diff-round-1.patch:Calculator.cs hunk", "nerv/test-plan.md"]
+      "proof_refs": ["diff-round-1.patch:Calculator.cs hunk", "odd/tasks/{feature}.md test plan"]
     }
   ],
-  "evidence": ["diff-round-1.patch read in full", "nerv/test-plan.md read"]
+  "evidence": ["diff-round-1.patch read in full", "test plan read"]
 }
 ```
 
@@ -587,11 +593,11 @@ hardening); Balthasar — SOLID, KISS, YAGNI, DRY, pattern fit, plus
 readability (misleading names, unexplained constants, complexity,
 intention, review size and context; `WARNING` at most unless the obscured
 behavior is a proven correctness failure); Casper — plan conformance
-(every task in `tasks.md` delivered as specified and nothing extra,
+(every task in `## Tasks` delivered as specified and nothing extra,
 BASE..HEAD), commit hygiene (atomic, conventional, correct scopes), and
 TDD commit order (the RED commit precedes the GREEN commit for every
 task, checked in git history); `gendo` — implemented tests vs
-`nerv/test-plan.md` (missing cases, weakened assertions), reliability
+the test plan (missing cases, weakened assertions), reliability
 beyond the plan (invalid inputs, failure paths, contracts, boundaries,
 regressions, determinism), correctness and edge cases in the changed
 implementation, and resilience and performance (fallbacks and graceful
@@ -611,10 +617,10 @@ Ikari writes the validated object to its locator.
   `nerv:fuyutsuki` runs in `MODE: refute`.
 - Location: `nerv/audit-report.md` (one file, reused and extended each
   round — round N's compile carries forward unresolved items from N-1).
-- Engram key: `nerv/{change}/audit-report`.
+- Engram key: `nerv/{feature}/audit-report`.
 
 ```markdown
-# Audit report — {change}
+# Audit report — {feature}
 
 ## Round {n}
 
@@ -671,10 +677,10 @@ regardless of its original severity.
   residual accepted at the re-audit cap.
 - Author: `nerv:hyuga` (dispatch c).
 - Location: `nerv/issue-ranking.md`.
-- Engram key: `nerv/{change}/issue-ranking`.
+- Engram key: `nerv/{feature}/issue-ranking`.
 
 ```markdown
-# Issue ranking — {change}
+# Issue ranking — {feature}
 
 ## Round {n}
 
@@ -714,10 +720,10 @@ re-audit cap (2).
   open.
 - Author: `nerv:ritsuko` (MODE: docs).
 - Location: `nerv/issue-resolutions.md`.
-- Engram key: `nerv/{change}/issue-resolutions`.
+- Engram key: `nerv/{feature}/issue-resolutions`.
 
 ```markdown
-# Issue resolutions — {change}
+# Issue resolutions — {feature}
 
 | issue_id | severity | resolution | commit | notes |
 |---|---|---|---|---|
@@ -725,7 +731,7 @@ re-audit cap (2).
 | balthasar-unchecked-divisor | Important | deferred | - | residual_accepted at re-audit cap round 2 |
 ```
 
-Ritsuko reads in authority order — persisted `tasks.md` > Ikari's launch
+Ritsuko reads in authority order — the persisted `## Tasks` > Ikari's launch
 facts > `nerv/maya-report.md` — to resolve which commit closed which
 issue; a mismatch between sources is reported, never silently resolved by
 guessing.
@@ -736,10 +742,10 @@ guessing.
   models, and skill resolution — for audit and reproducibility.
 - Author: `nerv:ritsuko` (MODE: docs).
 - Location: `nerv/agent-config.md`.
-- Engram key: `nerv/{change}/agent-config`.
+- Engram key: `nerv/{feature}/agent-config`.
 
 ```markdown
-# Agent config — {change}
+# Agent config — {feature}
 
 | phase | agent | model | effort | skill_resolution |
 |---|---|---|---|---|
@@ -779,9 +785,6 @@ The audit-and-closure stage adds these event types to
   cap instead of a further round (payload: round, accepted findings).
 - `docs_written` — Ritsuko wrote `issue-resolutions.md`, `agent-config.md`,
   and any repo doc deltas.
-- `archived` — Aoba's Archive duty moved the change to
-  `openspec/changes/archive/YYYY-MM-DD-{change}/` (payload:
-  `{archive_path, composed_specs[]}`).
 - `log_curated` — Fuyutsuki appended the `## Summary` block to
   `nerv/deliberation-log.md` (MODE: curate).
 
@@ -807,7 +810,7 @@ payload_ref}`):
 - `resume` — a NERV session resumed an interrupted change (payload:
   `{from_step, took_over_from}` — `took_over_from` carries the stale
   session's `session_id` on a takeover, or is absent on a normal resume).
-- `lock_refused` — a resume attempt found a fresh `.orchestrator.lock` held
+- `lock_refused` — a resume attempt found a fresh orchestrator lock (`.nerv/locks/{feature}.lock`) held
   by another session and the user chose to wait rather than take over
   (payload: the other session's `session_id` and `heartbeat_at`).
 
@@ -824,7 +827,7 @@ the shared Engram project `nerv` — the knowledge base every NERV run
 reads for precedent, regardless of which repo produced it (see `##
 Configuration resolution` in `nerv-orchestrator/SKILL.md` and sections B
 and C of `nerv-phase-common.md`). Topic-key scheme:
-`nerv/kb/{repo}/{change}/{artifact}`, where `{repo}` is the basename of
+`nerv/kb/{repo}/{feature}/{artifact}`, where `{repo}` is the basename of
 the git toplevel.
 
 | artifact | mirrored by |
@@ -834,7 +837,7 @@ the git toplevel.
 | ruling-* and the `## Decisions` extract from a plan/design decision | Misato |
 | audit-report | Kaji |
 
-Per-change artifacts (`nerv/{change}/{artifact}`, or their
-`openspec/changes/{change}/nerv/...` file) keep going to the repo's own
+Per-feature artifacts (`nerv/{feature}/{artifact}`, or their
+`odd/{feature}/nerv/...` file) keep going to the repo's own
 Engram project exactly as documented per artifact above; the knowledge-
 base mirror is an additional write, never a substitute for it.

@@ -43,7 +43,7 @@ declaration (tier plus trigger evidence, see SKILL.md Classification). FULL adds
 also defined in `nerv-artifacts.md`: `patch_frozen`, `audit_pass`,
 `dedupe_merge`, `refuter_result`, `ranking_issued`, `issue_gate_relayed`,
 `issue_gate_decision`, `fix_routed`, `reaudit`, `residual_accepted`,
-`docs_written`, `archived`, `log_curated`. The task plugin adds
+`docs_written`, `log_curated`. The task plugin adds
 `task_event` (payload `{event, provider, result, task_ref}`, defined in
 `nerv-artifacts.md`), logged once per envelope `task:dispatcher` returns —
 `run.started`, `verification.started` (Maya's full-gate start in FULL, the
@@ -79,11 +79,12 @@ and logs one `kb_mirror_flushed` event per mirror (payload: topic key,
 result). A mirror that still fails never stops the run: the run summary
 lists it under `## KB mirrors unflushed` (topic key and error).
 
-**Close ordering.** The close commit (`docs: close nerv run for {change}`)
+**Close ordering.** The close commit (`docs: close nerv run for {feature}`)
 is the run's last write. Ikari appends the `stop` event before launching
 it, so the committed log is complete; the close commit's own hash is
 reported in the run's final message, never appended to the log
-afterwards. After close, `git status` must show nothing under the change
-(J4/J6 check): a `commit_recorded` or `stop` line appended after the close
+afterwards. After close, `git status` must show nothing under
+`odd/tasks/{feature}.md` or `odd/{feature}/` (J4/J6 check; with
+`artifacts.commit: never` they stay untracked by design): a `commit_recorded` or `stop` line appended after the close
 commit is a protocol violation, not a known limitation.
 

@@ -9,15 +9,18 @@ governance veto, Hyuga's criticality, waves and ranking dispatches, all
 five pilots (`rei`, `shinji`, `asuka`, `toji`, `kaworu`),
 and the full audit-and-closure stage (Kaji, `gendo`, Fuyutsuki's
 read-only refute mode, the ranked issue gate, fix routing, the
-bounded re-audit loop, and Aoba's mechanical Archive duty). The configuration
+bounded re-audit loop). The configuration
 (`config.yml` and `.ai-workflow.yml`: two scopes, one schema, project overrides user)
 is resolved at Preflight. Task tracking later moved out of core into the
 optional task plugin (`task@nerv`): core only emits the events of
 SKILL.md `## Task events` through `task:dispatcher`, and only when that
 agent is available.
 Phase 5 hardening ships the orchestrator lock (concurrency guard, heartbeat
-staleness), safe resume, close-time `tasks.md`/`state.yaml` bookkeeping, the
-`artifacts.commit` policy, and RDD's untracked-path recovery path.
+staleness), safe resume, close-time bookkeeping, the `artifacts.commit`
+policy, and RDD's untracked-path recovery path. Later, NERV stopped using
+its own plan files and archive step and moved onto gentle-ai's ODD
+feature document (`odd/tasks/{feature}.md`), with its governance files in
+`odd/{feature}/nerv/` and the lock in `.nerv/locks/`.
 Routing tiers (after Phase 5) mirror gentle-ai's Work Routing Ladder:
 DIRECT (Ikari inline, one mechanical file), LIGHT (an explorer only when
 the mapping trigger fires, one pilot in `MODE: solo`, Maya only when the

@@ -18,7 +18,7 @@
 - **"Task events pending" in the run summary.** A provider answered
   `blocked` or `failed` (for example, missing MCP tools); the run went on
   without it. Fix the cause named in the envelope's `error`, then run
-  `/task:replay <change>`.
+  `/task:replay <feature>`.
 - **Interactive gates can't be driven by `claude -p`.** Non-interactive
   harness runs (`bench/journeys.md`'s default variant) pre-answer every
   blocking prompt in the launch context; the interactive variants exist
@@ -30,7 +30,7 @@
   issue list.
 - **Reviewed-boundary bookkeeping is per branch.** The "last reviewed
   commit" that RDD assessment walks forward from is tracked per branch,
-  not per change or per worktree; rebasing or cherry-picking across
+  not per feature or per worktree; rebasing or cherry-picking across
   branches can make that boundary stale.
 
 ## Troubleshooting
@@ -67,18 +67,18 @@
   detached review worktree (`git worktree add --detach`; lineages share
   the same `.git`), and keep individual commits near the ~400-line
   delivery-budget heuristic so each fits.
-- **Looking for gentle-ai's archive agent.** gentle-ai 4.x retired SDD, so
-  there is none. Nerv by Gentle-AI archives mechanically — Aoba runs `git mv`
-  plus `nerv spec-compose` per delta spec.
+- **Looking for an archive step or `openspec/changes/`.** There is none any
+  more: Nerv by Gentle-AI tracks every run on gentle-ai's ODD feature
+  document (`odd/tasks/<feature>.md`) and keeps its governance files in
+  `odd/<feature>/nerv/`. A feature closes in place: its `## Tasks` rows
+  carry their commits and its `## Log` records the close. An `openspec/`
+  folder left from an older release is no longer read; `nerv migrate`
+  converts the changes still in progress.
 - **An agent reports `partial` because `mem_save` was rejected** ("session
-  registration could not be confirmed"). The change is not blocked: the
+  registration could not be confirmed"). The feature is not blocked: the
   agent hands the knowledge-base mirror back, Ikari saves it at close, and
   the run summary lists any mirror still unflushed under `## KB mirrors
   unflushed`.
-- **The archive blocks on `nerv spec-compose` after a requirement was
-  renamed.** The delta needs a `## RENAMED Requirements` block (`###
-  Requirement: Old → New` plus a `(Reason: ...)` line); Ritsuko writes it
-  when her spec delta renames a heading.
 - **A lock says a run is active, but nobody is working.** A lock whose
   heartbeat is 15 minutes old or more (and not parked on a user gate) is
   stale, not active; `/nerv:status` says so and a resume may proceed.
@@ -95,7 +95,7 @@
 - **`issue.deferred` or `/task:start` blocks with "tasklist not found."** A
   stale `tasks.providers.teamwork.tasklist_id` (or `project_id`) in
   the configuration. Fix the config (project or user scope), then replay the
-  pending envelope with `/task:replay <change>`; the task plugin never
+  pending envelope with `/task:replay <feature>`; the task plugin never
   silently creates the task elsewhere.
 - **Old `/task:*` copies in `~/.claude/commands/task/`.** An older release
   copied the commands there. The `task` plugin now serves them itself;

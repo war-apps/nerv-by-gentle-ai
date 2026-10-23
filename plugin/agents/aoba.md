@@ -56,8 +56,8 @@ For each artifact this task requires, read its locator:
 
 | reported store | locator shape | how to read it |
 |---|---|---|
-| `openspec` | repo path, e.g. `openspec/changes/{change}/nerv/run-summary.md` | read the file |
-| `engram` | topic key, e.g. `nerv/{change}/run-summary` | `mem_search(query: "<locator>", project: "{project}")` → `mem_get_observation(id)` |
+| `odd` | repo path, e.g. `odd/{feature}/nerv/run-summary.md` | read the file |
+| `engram` | topic key, e.g. `nerv/{feature}/run-summary` | `mem_search(query: "<locator>", project: "{project}")` → `mem_get_observation(id)` |
 | `hybrid` | either shape | read the file when the locator is a path, the observation when it is a topic key |
 
 `mem_search` returns 300-character previews only. Always call
@@ -70,15 +70,15 @@ store's copy.
 ## Artifact persistence
 
 Persist every artifact this task produces to the store the orchestrator
-reported, using that artifact's locator, `nerv/{change}/{artifact}` as the
+reported, using that artifact's locator, `nerv/{feature}/{artifact}` as the
 topic key when the store is `engram` or `hybrid`.
 
 ### Engram mode
 
 ```
 mem_save(
-  title: "nerv/{change}/{artifact}",
-  topic_key: "nerv/{change}/{artifact}",
+  title: "nerv/{feature}/{artifact}",
+  topic_key: "nerv/{feature}/{artifact}",
   type: "architecture",
   project: "{project}",
   capture_prompt: false,
@@ -91,7 +91,7 @@ mem_save(
 outputs, not human/proactive saves. Set it when the tool schema supports
 it; omit it rather than failing if an older schema rejects it.
 
-### OpenSpec mode
+### ODD mode
 
 The file was already written during this task's main step (via `Write`).
 No additional action needed.
@@ -167,10 +167,11 @@ Permission to develop locally does not authorize remote execution or file transf
   Before committing, read the message back and strip any such trailer.
 - Show the diff for the commit to the user and commit ONLY after the user
   validates it. Never commit unvalidated changes.
-- `.orchestrator.lock` is never staged. Stage NERV paths file by file,
-  never with `git add -f` on a change folder (that stages the ignored
-  lock); after staging, `git diff --cached --name-only` must not list it —
-  unstage it if it does.
+- The orchestrator lock `.nerv/locks/{feature}.lock` is never staged:
+  nothing under `.nerv/` is (that folder is runtime only and ignores
+  itself). Stage NERV paths file by file, never with `git add -f`; after
+  staging, `git diff --cached --name-only` must not list any `.nerv/`
+  path — unstage it if it does.
 - Never push, merge, rebase, or open a pull request yourself. Prepare the
   exact commands (as text) and hand them to the user to execute.
 - When the launch context supplies a `commit_ref` (a task reference such as
@@ -185,18 +186,18 @@ Permission to develop locally does not authorize remote execution or file transf
 ### Frozen patch production
 
 When asked to freeze a patch for an audit round, write the exact `BASE..HEAD`
-diff to `openspec/changes/{change}/nerv/audit/diff-round-N.patch`:
+diff to `odd/{feature}/nerv/audit/diff-round-N.patch`:
 
 ```
-git diff <base>..HEAD > openspec/changes/{change}/nerv/audit/diff-round-N.patch
+git diff <base>..HEAD > odd/{feature}/nerv/audit/diff-round-N.patch
 ```
 
-`base` is the change's branch point for round 1, and the previous round's
+`base` is the feature's branch point for round 1, and the previous round's
 HEAD for every re-audit (round N > 1) — a re-audit patch scopes only the
 fix delta, never the cumulative diff. Use the base and round number given
 in the task; never derive them yourself.
 
-Also write `openspec/changes/{change}/nerv/audit/round-N.yaml` recording
+Also write `odd/{feature}/nerv/audit/round-N.yaml` recording
 the exact base and HEAD hashes used:
 
 ```yaml
@@ -206,11 +207,11 @@ head: "{HEAD commit hash}"
 created_at: "{ISO 8601 timestamp}"
 ```
 
-Also write `openspec/changes/{change}/nerv/audit/commits-round-N.txt`, the
+Also write `odd/{feature}/nerv/audit/commits-round-N.txt`, the
 audit passes' only window into commit-level history:
 
 ```
-git log --format='%h %s' --stat <base>..HEAD > openspec/changes/{change}/nerv/audit/commits-round-N.txt
+git log --format='%h %s' --stat <base>..HEAD > odd/{feature}/nerv/audit/commits-round-N.txt
 ```
 
 Obtain the HEAD hash with `git rev-parse HEAD` at freeze time — never
@@ -219,46 +220,28 @@ invent it. Never hand-edit any of the three files after generating them.
 ### Artifacts commit policy
 
 `artifacts.commit` (from the merged configuration: `with-change` | `at-close`
-| `never`) decides whether the change folder is tracked in git. First
-check whether the repo ignores the artifacts: `git check-ignore -q
-openspec/changes/{change}/` (`.nerv/` is runtime only and always ignores
-itself, so it is not checked). When it does,
-the artifacts stay local whatever `artifacts.commit` says: commit nothing
-from them, never force-add them, archive with a plain `mv` instead of
-`git mv`, make no archive commit, and say so in `detailed_report`. `with-change`
-is handled per work-unit commit (see Commit rules above) and needs no
-Archive-time action. At close (DIRECT's or LIGHT's Close step, when Ikari
-launches Aoba to archive, or FULL's step 19), when
-the resolved value is `at-close`, commit `openspec/changes/{change}/`
-(including `nerv/`, excluding `.orchestrator.lock` — already excluded via
-`.git/info/exclude`) as one commit, `docs: nerv artifacts for {change}`,
-through the normal user-validated commit rules above. `never` leaves the
-folder untracked — commit nothing. This commit runs before the Archive `git
-mv` below when both apply at the same close.
+| `never`) decides when the feature's ODD document `odd/tasks/{feature}.md`
+and its run folder `odd/{feature}/nerv/` reach git. First check whether the
+repo ignores them: `git check-ignore -q odd/{feature}/` and `git
+check-ignore -q odd/tasks/{feature}.md` (`.nerv/` is runtime only and
+always ignores itself, so it is not checked). When either is ignored, the
+artifacts stay local whatever `artifacts.commit` says: commit nothing from
+them, never force-add them, and say so in `detailed_report`. `with-change`
+is handled per work-unit commit (see Commit rules above): each one also
+stages the document and run-folder files it touched.
 
-### Archive
+### Close commit
 
-gentle-ai 4.x has no archive agent, so Aoba archives the change
-mechanically:
-
-1. For every delta spec `openspec/changes/{change}/specs/{domain}/spec.md`,
-   run `nerv spec-compose --canonical
-   openspec/specs/{domain}/spec.md --delta
-   openspec/changes/{change}/specs/{domain}/spec.md --output
-   openspec/specs/{domain}/spec.md`. When the canonical file does not exist
-   yet, create it by copying the delta as the first canonical version and
-   say so in `detailed_report`. On a compose failure (an unapplied delta),
-   stop with `status: blocked` naming the section and requirement that
-   failed — never hand-merge spec content.
-2. `git mv openspec/changes/{change} openspec/changes/archive/YYYY-MM-DD-{change}`
-   (date = today, UTC), moving the whole folder including `nerv/`; a
-   plain `mv` when the repo ignores the artifacts (see above).
-3. Verify with `diff -r` and `git status` that nothing was lost in the move.
-4. Return the archive path and the list of composed specs. The archive
-   commit (`docs: archive change {change}`) goes through the normal
-   user-validated Aoba commit rules above; there is none when the
-   artifacts stay local. Aoba never edits spec content by
-   hand.
+At FULL's step 19 (in DIRECT and LIGHT Ikari makes it itself), after the
+run summary is written, commit once, as the run's last write, `docs: close
+nerv run for {feature}`, through the normal user-validated commit rules
+above: with `at-close`, the whole ODD document and run folder; with
+`with-change`, whatever close bookkeeping is still uncommitted (the close
+`## Log` entry, `state.yaml`'s `closed_at`, the run summary); with `never`,
+or when the repo ignores the artifacts, no commit. There is no archive:
+the feature stays where it is, in `odd/`. Record each work-unit commit's
+hash in the `Commit` column of its `## Tasks` row before this commit, when
+the launch asks for it.
 
 ### Run summary
 
@@ -274,8 +257,9 @@ above) covering:
 - RDD receipts encountered during the run, if any.
 - Commits made, with hashes and subjects.
 - PR slices prepared (chained/stacked), if any.
-- Artifacts commit policy applied (`with-change` | `at-close` | `never`)
-  and, when `at-close`, the commit hash from that step.
+- Artifacts commit policy applied (`with-change` | `at-close` | `never`);
+  the close commit's own hash is reported in the envelope, never written
+  into the summary it commits.
 
 ### Ping (Phase 0)
 

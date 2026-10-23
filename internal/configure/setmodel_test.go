@@ -410,7 +410,7 @@ func TestSetModel_Batch_TwoRoles(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestSetModel_FromPhase_StateWarnings(t *testing.T) {
-	const stateWithPhases = `{"claude_phase_assignments":{"jd-judge-b":{"model":"opus","effort":"xhigh"},"sdd-apply":{"model":"sonnet","effort":"high"}}}`
+	const stateWithPhases = `{"claude_phase_assignments":{"jd-judge-b":{"model":"opus","effort":"xhigh"},"review-readability":{"model":"sonnet","effort":"high"}}}`
 
 	tests := []struct {
 		name        string
@@ -448,7 +448,7 @@ func TestSetModel_FromPhase_StateWarnings(t *testing.T) {
 					t.Fatalf("Warnings = %q, want exactly one", result.Warnings)
 				}
 				w := result.Warnings[0]
-				for _, want := range []string{"review-risk", "jd-judge-b, sdd-apply"} {
+				for _, want := range []string{"review-risk", "jd-judge-b, review-readability"} {
 					if !strings.Contains(w, want) {
 						t.Errorf("warning %q does not mention %q", w, want)
 					}

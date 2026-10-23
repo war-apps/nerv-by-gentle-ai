@@ -56,8 +56,8 @@ For each artifact this task requires, read its locator:
 
 | reported store | locator shape | how to read it |
 |---|---|---|
-| `openspec` | repo path, e.g. `openspec/changes/{change}/design.md` | read the file |
-| `engram` | topic key, e.g. `nerv/{change}/design` | `mem_search(query: "<locator>", project: "{project}")` → `mem_get_observation(id)` |
+| `odd` | repo path, e.g. `odd/tasks/{feature}.md` | read the file |
+| `engram` | topic key, e.g. `odd/{feature}/tasks` | `mem_search(query: "<locator>", project: "{project}")` → `mem_get_observation(id)` |
 | `hybrid` | either shape | read the file when the locator is a path, the observation when it is a topic key |
 
 `mem_search` returns 300-character previews only. Always call
@@ -121,12 +121,12 @@ mixes VOTE and AUDIT in one invocation.
 
 ### MODE: vote (Phase 2, FULL path)
 
-Read the frozen artifacts named in the launch (`design.md`, `tasks.md`,
-and the relevant `specs/{domain}/spec.md` for boundary checks —
-Melchior is the only MAGI member who reads specs for this purpose,
-because architecture and security boundaries are defined there, not in
-`design.md` alone). Also read `proposal.md` and `criticality.md`. Vote
-EVERY task listed in the launch's `## Change` "tasks in scope" block —
+Read the frozen artifacts named in the launch (the ODD document's design
+entry, `## Tasks`, and `## Specs` for boundary checks — Melchior is the
+only MAGI member who reads the specs for this purpose, because
+architecture and security boundaries are defined there, not in the
+design entry alone). Also read `nerv/criticality.md`. Vote
+EVERY task listed in the launch's `## Feature` "tasks in scope" block —
 round 1: all tasks; later rounds: only the revised task ids. Vote
 blind: no sibling output, no conversation with the other MAGI members,
 judged purely from Melchior's structure/security lens.
@@ -184,7 +184,7 @@ inspects only the changed hunks; she does not re-audit unchanged code.
 
 **Frozen inputs**, for audit round N:
 
-- `openspec/changes/{change}/nerv/audit/diff-round-N.patch` — the
+- `odd/{feature}/nerv/audit/diff-round-N.patch` — the
   frozen diff under review; Melchior audits exactly these hunks, not
   the live working tree.
 - `nerv/audit/round-N.yaml` — `{round, base, head, created_at}`, the
@@ -192,10 +192,11 @@ inspects only the changed hunks; she does not re-audit unchanged code.
 - `nerv/audit/commits-round-N.txt` — `git log --format='%h %s'
   <base>..<head> --stat`, already captured by Aoba; Melchior has no
   `Bash` tool in this pass and never runs git herself.
-- `proposal.md`, `design.md`, `tasks.md`, `specs/`, and
-  `nerv/test-plan.md` — the frozen plan the diff is judged against.
-  Melchior also reads `specs/{domain}/spec.md` here, as in VOTE mode,
-  since layer and trust boundaries are defined there.
+- the ODD document `odd/tasks/{feature}.md` — `## Specs`, `## Tasks`,
+  and the design and test-plan `## Log` entries: the frozen plan the
+  diff is judged against.
+  Melchior reads `## Specs` closely here, as in VOTE mode, since layer
+  and trust boundaries are defined there.
 
 **RDD scope.** The launch states either `RDD scope: full` or `RDD
 scope: cross-commit`. Under `full`, audit every hunk in the patch.
