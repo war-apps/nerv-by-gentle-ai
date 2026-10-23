@@ -1,0 +1,106 @@
+# Teamwork provider for the NERV task plugin (contract: task:task skill).
+name: teamwork
+contract_version: 1
+task_ref_prefix: TW
+
+# The local Teamwork MCP server registered as "teamwork" in ~/.claude.json.
+# The claude.ai Teamwork connector exposes different tool names and does
+# not satisfy this list: the dispatcher reports the missing tools instead.
+mcp:
+  server: teamwork
+  tools:
+    - teamwork_get_task
+    - teamwork_list_tasks
+    - teamwork_create_task
+    - teamwork_update_task
+    - teamwork_complete_task
+    - teamwork_list_workflow_stages
+    - teamwork_move_task_to_stage
+    - teamwork_log_time
+    - teamwork_update_timelog
+    - teamwork_list_timelogs
+    - teamwork_list_projects
+    - teamwork_list_tasklists
+
+# Read from tasks.providers.teamwork.<key> in nerv.yaml.
+config:
+  - key: assignee_id
+    scope: user
+    type: int
+    prompt: Your Teamwork user id (assigned on start and take, matched by /task:me)
+  - key: default_project_id
+    scope: user
+    type: int
+    prompt: Default Teamwork project id for new tasks and /task:all
+  - key: default_tasklist_id
+    scope: user
+    type: int
+    prompt: Default Teamwork tasklist id for new tasks
+  - key: project_id
+    scope: repo
+    type: int
+    prompt: Teamwork project id of this repository (overrides default_project_id)
+  - key: tasklist_id
+    scope: repo
+    type: int
+    prompt: Teamwork tasklist id of this repository (overrides default_tasklist_id)
+  - key: rounding_minutes
+    scope: user
+    type: int
+    default: "15"
+    prompt: Round every logged block up to this many minutes
+  - key: billable
+    scope: user
+    type: bool
+    default: "false"
+    prompt: Log time as billable
+  - key: stages
+    scope: user
+    type: map
+  - key: stage_variants
+    scope: user
+    type: map
+  - key: comment_labels
+    scope: user
+    type: map
+  - key: comment_rest
+    scope: user
+    type: map
+  - key: known_projects
+    scope: user
+    type: map
+
+# Default case- and accent-insensitive substrings of the board's stage
+# names; tasks.providers.teamwork.stages.<key> overrides each one.
+stages:
+  pending: PENDIENTE
+  analysis: ANALISIS
+  inDev: DESARROLLO
+  testing: TESTING
+  implemented: IMPLEMENTA
+  blocked: BLOQUEA
+  canceled: CANCEL
+
+operations:
+  getTask: procedures/get-task.md
+  assign: procedures/assign.md
+  moveStage: procedures/move-stage.md
+  logTime: procedures/log-time.md
+  updateTimelog: procedures/update-timelog.md
+  deleteTimelog: procedures/delete-timelog.md
+  listTimelogs: procedures/list-timelogs.md
+  createTask: procedures/create-task.md
+  createSubtask: procedures/create-subtask.md
+  comment: procedures/comment.md
+  complete: procedures/complete.md
+  setPriority: procedures/set-priority.md
+  listTasks: procedures/list-tasks.md
+
+events:
+  - run.started
+  - verification.started
+  - audit.ranked
+  - issue.deferred
+  - wave.started
+  - run.closed
+  - run.halted
