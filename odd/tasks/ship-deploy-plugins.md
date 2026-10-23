@@ -73,11 +73,11 @@ Branch: `feature/ship-deploy-plugins`, cut from `feature/tasks-plugin-split` at 
 | ID | Specs | Route | Status | Commit |
 |---|---|---|---|---|
 | T1 | S2, S3 | delegated writer, in parallel with T2 (Writer trigger (a): independent units with disjoint surfaces, each over 100 lines; also the context backstop) | committed (RED: 14 Compute and Import tests plus the changelog test; GREEN: `go test ./internal/versioning` ok; parity 16/16 against semantic-release 24.2.9) | see `git log -- internal/versioning` |
-| T2 | S4, S5 | delegated writer, in parallel with T1 (same trigger) | in progress | — |
+| T2 | S4, S5 | delegated writer, in parallel with T1 (same trigger) | committed; verifier running (risk: items 3 and 5) | f0254d2 |
 | T3 | S6, S7, S8 | inline | pending | — |
 | T4 | S1, S9 | inline | pending | — |
 | T5 | S10 | — | pending | — |
-| T6 | S11 | — | pending | — |
+| T6 | S11 | delegated writer (context backstop; the edit surface spans the whole tree) | in progress | — |
 | T7 | S12 | — | pending | — |
 
 - **T1:** the native version engine (`internal/versioning`), its config schema, and the semantic-release config importer. Parity tests against the behaviours listed in S2, using the dim configs as fixtures.
@@ -120,4 +120,12 @@ Forecast: well over 400 lines (about 11.5k lines of Go move or are rewritten), s
   - **Decision (parent):** ship fetches origin's tags and `refs/notes/semantic-release*` inside its throwaway clone and calls `Compute` with `Offline: true` there, so the user's repo is never written (S7).
   - **Decision (parent):** deploy must write the `refs/notes/semantic-release-<tag>` channel note when it creates a prerelease tag, otherwise prerelease numbering resets. This goes into T3.
   - **Risk: item 6.** Notes parity relies on a hand-written ICU collation approximation; re-run the parity harness when the preset changes.
-- **Next step:** T2 (running), then T6. The user's L5 decisions are "ODD + agentes NERV encima (Recommended)", "Se mantiene, renombrado (Recommended)" and "Subcomando nerv migrate (Recommended)". Then T6.
+- **L7** (2026-10-23): T2 outcome.
+  - **Checks:** `go test ./...` all ok; the `semrel_integration` ship tests ran for real.
+  - **Differential check:** only the expected differences. `nerv version next` also refuses preset keys, which matches S9 (the parent accepts this).
+  - **Git incident:** the T2 writer staged its deletions with `git rm`, and the parent's doc commit 756d248 swept them in, so HEAD did not build. The parent rebuilt its three local commits (805d3f8, d30bbe5, 2d35cf4) without the deletions and committed T2 as f0254d2. The backup branch is `backup/ship-deploy-pre-fix`. Every commit builds again.
+  - **Open:** stale preset docs in `docs/commands.md`, `docs/configuration.md` and `docs/pipeline.md`, to be fixed in T4. `--version` derives the channel from the prerelease id, not from the branch map.
+- **L8** (2026-10-23): T6 decision (parent).
+  - The runtime folder stays `.nerv/`, which becomes runtime only (artifacts, lock, logs). It is never committed.
+  - The user config path is `os.UserConfigDir()/ai-workflow/config.yml`: `~/.config/ai-workflow/config.yml` on Linux, `%AppData%\ai-workflow\config.yml` on Windows.
+- **Next step:** T6 (running) and the T2 verifier. The user's L5 decisions are "ODD + agentes NERV encima (Recommended)", "Se mantiene, renombrado (Recommended)" and "Subcomando nerv migrate (Recommended)". Then T6.
