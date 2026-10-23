@@ -82,11 +82,11 @@ Source: `~/projects/docs/nerv-learnings-from-projects-2026-10-23.md`. The number
 
 | ID | Specs | Route | Status | Commit |
 |---|---|---|---|---|
-| T1 | S6 | inline | pending | — |
+| T1 | S6 | inline | committed and verified; correction f4e4072; native review pending (it needs a clean tree) | 5747eb2, f4e4072 |
 | T2 | S3, S5, S8, S12, S14 | inline | Go part done (RED: build failed; GREEN: go test ./internal/taskprovider ok). Prose contract goes with T3 | see L7 |
-| T3 | S2, S4, S9, S10, S11, S13, S15, S17, S18 | inline | pending | — |
-| T4 | S3, S14, S15, S16 | inline | pending | — |
-| T5 | S1, S7 | inline | pending | — |
+| T3 | S2, S4, S9, S10, S11, S13, S15, S17, S18 | inline | committed (prose plugin; checks: `go test ./internal/taskprovider/` ok) | 29ac930 |
+| T4 | S3, S14, S15, S16 | inline | committed (`TestEmbeddedProviders_AreValid` ok) | a7f142a |
+| T5 | S1, S7 | delegated: two parallel writers, prose and Go (Writer trigger (a): independent units over disjoint surfaces, each well over 100 lines; also the context backstop) | committed; verifier pending (high risk: items 1, 3) | cedd28f, d86ceec, a7c2e28 |
 | T6 | S19, S20, S21, S22, S23 | inline | pending | — |
 | T7 | S24 | inline | pending | — |
 
@@ -122,3 +122,21 @@ The order is T2 → T1 → T3/T4 → T5 → T6 → T7. Every task runs inline: t
   - `Events` maps each event to the ops it needs. A manifest that subscribes to an event whose op is `not_implemented` is invalid. `run.closed` needs `moveStage` and `logTime` only, never `complete` (S13).
   - `MissingTools` accepts a bare tool name or `mcp__<server>__<tool>`, never a same-named tool from another server (S8).
   - Code is in `internal/taskprovider`.
+- **L8** (2026-10-23): T1 committed in 5747eb2.
+  - Checks: `go test ./...` all ok; RED observed for the materialize, install, CLI and release tests.
+  - Assessment: `review assess` reported `high` (configuration_change, plus escalation item 5); `review_due: true`.
+  - An independent verifier was launched before native review.
+  - Known gap: the wizard's `RefreshCache` refreshes only `nerv@nerv`, not the enabled extensions. It is revisited in T5, when the wizard is reworked.
+- **L9** (2026-10-23): the T1 verifier found 2 blockers and 4 advisories.
+  - **B1:** the embedded `task-teamwork` had no `provider.yaml`. Already fixed by a7f142a; the regression tests are now GREEN.
+  - **B2:** a failed extension uninstall was not retried. Fixed in f4e4072: extensions are uninstalled before settings.json changes.
+  - **Advisories:** advisory 1 (partial release write) fixed with two-phase prepare; advisory 2 (other `*@nerv` ids) fixed; advisory 3 (uninstall message) fixed; advisory 4 (release guard does not check extension versions) left open.
+  - The verifier's regression tests were committed in f4e4072.
+  - **Native review:** STATUS asks for an intended-untracked selection while the T5 writers have files in the tree, so the review waits until the tree is clean.
+- **L10** (2026-10-23): T5 written by two parallel writers, prose and Go.
+  - **Prose:** RED was `task_split_prose_test.go` failing on the Teamwork mentions and the missing events; now GREEN.
+  - **Go:** RED/GREEN reported per rule. The differential check against a7f142a found only the expected differences.
+  - **Integration:** the parent fixed `cmd/nerv/terminal_test.go`, which still passed `--skip-commands`. The task plugin now owns the `subtasks_per_wave` check (a7c2e28).
+  - **Checks:** `go build/vet/test ./...` all ok; `tests/hook-*.test.sh` ok.
+  - **Known environmental failure:** `tests/install-sh.test.sh` fails with exit 127 at HEAD without these changes too.
+  - **Advisories open:** `taskprovider.validValue` is duplicated in `configure.ValidateProviderValue`; `release guard` does not check extension versions.
