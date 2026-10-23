@@ -56,6 +56,9 @@ const (
 // Kinds are the output kinds.
 var Kinds = []string{KindImageTar, KindFile, KindDir}
 
+// rename is os.Rename; tests inject a failure.
+var rename = os.Rename
+
 // ErrExists is returned by Write when the version already has an artifact
 // and force is false.
 var ErrExists = errors.New("artifact already exists")
@@ -79,6 +82,10 @@ type Manifest struct {
 	Images []string `json:"images"`
 	// ReleaseFiles are the files the release changes in the repository.
 	ReleaseFiles []ReleaseFile `json:"release_files"`
+	// NotesSHA256 and ChangelogSHA256 are the sha256 of notes.md and
+	// CHANGELOG.section.md, in hex.
+	NotesSHA256     string `json:"notes_sha256"`
+	ChangelogSHA256 string `json:"changelog_section_sha256"`
 }
 
 // Output is one packaged output.
@@ -182,6 +189,7 @@ func Write(repoRoot string, in Input, force bool) (string, error) {
 			return "", err
 		}
 	}
+	m.NotesSHA256, m.ChangelogSHA256 = digest(in.Notes), digest(in.ChangelogSection)
 	for _, o := range in.Outputs {
 		rel := path.Join(OutputsDir, o.Path)
 		digest, err := copyOutput(o, filepath.Join(tmp, filepath.FromSlash(rel)))
@@ -209,16 +217,48 @@ func Write(repoRoot string, in Input, force bool) (string, error) {
 	if err := os.WriteFile(filepath.Join(tmp, ManifestFile), append(data, '\n'), 0o644); err != nil {
 		return "", err
 	}
-	if force {
-		if err := os.RemoveAll(dir); err != nil {
-			return "", fmt.Errorf("artifact: replacing %s: %w", dir, err)
-		}
-	}
-	if err := os.Rename(tmp, dir); err != nil {
+	if err := swapIn(tmp, dir, m.Version, force); err != nil {
 		return "", err
 	}
 	done = true
 	return dir, nil
+}
+
+// swapIn renames the assembled tmp to dir. With force, an existing dir is
+// first renamed aside and only removed once the new artifact is in place;
+// a failed swap puts it back, so the previous artifact survives.
+func swapIn(tmp, dir, version string, force bool) error {
+	var old string
+	if _, err := os.Lstat(dir); err == nil && force {
+		aside, err := os.MkdirTemp(filepath.Dir(dir), ".old-"+version+"-")
+		if err != nil {
+			return err
+		}
+		old = filepath.Join(aside, "artifact")
+		if err := rename(dir, old); err != nil {
+			os.Remove(aside)
+			return fmt.Errorf("artifact: replacing %s: %w", dir, err)
+		}
+		defer func() {
+			if old != "" {
+				os.RemoveAll(aside)
+			}
+		}()
+		if err := rename(tmp, dir); err != nil {
+			if rerr := rename(old, dir); rerr != nil {
+				old = ""
+				return fmt.Errorf("artifact: replacing %s: %w (the previous artifact is kept at %s)", dir, err, filepath.Join(aside, "artifact"))
+			}
+			return fmt.Errorf("artifact: replacing %s: %w", dir, err)
+		}
+		return nil
+	}
+	return rename(tmp, dir)
+}
+
+func digest(content string) string {
+	h := sha256.Sum256([]byte(content))
+	return hex.EncodeToString(h[:])
 }
 
 // checkSources refuses an input whose paths are unsafe or repeated, or
@@ -394,6 +434,11 @@ func Read(dir string) (*Manifest, error) {
 			return nil, fmt.Errorf("artifact: %s: output %s: sha256 %q is not a hex digest", dir, o.Path, o.SHA256)
 		}
 	}
+	for name, d := range map[string]string{NotesFile: m.NotesSHA256, ChangelogFile: m.ChangelogSHA256} {
+		if !digestRe.MatchString(d) {
+			return nil, fmt.Errorf("artifact: %s: %s: sha256 %q is not a hex digest", dir, name, d)
+		}
+	}
 	for _, f := range m.ReleaseFiles {
 		rest, ok := strings.CutPrefix(f.Stored, ReleaseFilesDir+"/")
 		if !localPath(f.Path) || !ok || !localPath(rest) {
@@ -406,11 +451,15 @@ func Read(dir string) (*Manifest, error) {
 	return &m, nil
 }
 
-// Verify reads the artifact at dir and checks the sha256 of every output
-// and release file.
+// Verify reads the artifact at dir and checks the sha256 of the notes, the
+// CHANGELOG section and every output and release file, and that the
+// artifact holds no file the manifest does not list.
 func Verify(dir string) (*Manifest, error) {
 	m, err := Read(dir)
 	if err != nil {
+		return nil, err
+	}
+	if err := checkListed(dir, m); err != nil {
 		return nil, err
 	}
 	check := func(rel, kind, want string) error {
@@ -430,6 +479,12 @@ func Verify(dir string) (*Manifest, error) {
 		}
 		return nil
 	}
+	if err := check(NotesFile, KindFile, m.NotesSHA256); err != nil {
+		return nil, err
+	}
+	if err := check(ChangelogFile, KindFile, m.ChangelogSHA256); err != nil {
+		return nil, err
+	}
 	for _, o := range m.Outputs {
 		if err := check(o.Path, o.Kind, o.SHA256); err != nil {
 			return nil, err
@@ -441,6 +496,38 @@ func Verify(dir string) (*Manifest, error) {
 		}
 	}
 	return m, nil
+}
+
+// checkListed refuses any file of the artifact that is not the manifest,
+// the notes, the CHANGELOG section, a listed output (or a file inside a
+// listed directory output) or a listed release file.
+func checkListed(dir string, m *Manifest) error {
+	files := map[string]bool{ManifestFile: true, NotesFile: true, ChangelogFile: true}
+	var dirs []string
+	for _, o := range m.Outputs {
+		if o.Kind == KindDir {
+			dirs = append(dirs, o.Path+"/")
+		} else {
+			files[o.Path] = true
+		}
+	}
+	for _, f := range m.ReleaseFiles {
+		files[f.Stored] = true
+	}
+	return filepath.WalkDir(dir, func(p string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			return nil
+		}
+		rel, _ := filepath.Rel(dir, p)
+		rel = filepath.ToSlash(rel)
+		if files[rel] || slices.ContainsFunc(dirs, func(prefix string) bool { return strings.HasPrefix(rel, prefix) }) {
+			return nil
+		}
+		return fmt.Errorf("artifact: %s: %s is not listed in the manifest", dir, rel)
+	})
 }
 
 // prepare creates dir under the repository's .nerv/artifacts, which gets a

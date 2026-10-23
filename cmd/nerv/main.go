@@ -28,6 +28,10 @@ Commands:
                        (see "nerv version next --help")
   ship [flags]         Build, test and package origin's code into a local
                        artifact, no git writes (see "nerv ship --help")
+  deploy --artifact <dir> [flags]
+                       Release and deploy a ship artifact: release commit,
+                       tag, push, targets, git host release
+                       (see "nerv deploy --help")
   pipeline <step>      Run a step of the Docker pipeline: validate, test
                        (see "nerv pipeline --help")
   configure [flags]    Configure NERV (non-interactive; see "nerv configure --help")
@@ -177,6 +181,12 @@ func run(args []string, stdout, stderr io.Writer, opts options) int {
 		return runSpecCompose(args[1:], stdout, stderr)
 	case "ship":
 		return runShip(args[1:], stdout, stderr, opts)
+	case "deploy":
+		return runDeploy(args[1:], stdout, stderr, opts)
+	case "deploy-ssh-compose":
+		// Hidden: the deploy-ssh-compose provider's deploy and verify
+		// operations, run by nerv deploy.
+		return runDeploySSHCompose(args[1:], stdout, stderr, opts)
 	case "pipeline":
 		return runPipeline(args[1:], stdout, stderr, opts)
 	case "release":

@@ -118,18 +118,42 @@ func (r Runner) Run(ctx context.Context, plan []Planned) ([]pipeline.Environment
 // (or at least Up without the health check) within the verify timeout, and
 // its version label equal to the released version (a leading v ignored).
 func (r Runner) Deploy(ctx context.Context, t Target) pipeline.EnvironmentDeploy {
-	res := pipeline.EnvironmentDeploy{Environment: t.Environment, Container: t.Container, Host: t.Host, Strategy: t.Strategy, ImageVersion: t.ImageVersion}
+	if err := r.Update(ctx, t); err != nil {
+		res := newResult(t)
+		res.Status, res.Error = pipeline.DeployFailed, err.Error()
+		r.printf("%s: failed: %s\n", t.Environment, res.Error)
+		return res
+	}
+	return r.Check(ctx, t)
+}
+
+func newResult(t Target) pipeline.EnvironmentDeploy {
+	return pipeline.EnvironmentDeploy{Environment: t.Environment, Container: t.Container, Host: t.Host, Strategy: t.Strategy, ImageVersion: t.ImageVersion}
+}
+
+// Update runs the host's compose script for t's container: pull, then up,
+// bounded by the update timeout.
+func (r Runner) Update(ctx context.Context, t Target) error {
+	c, script := shQuote(t.Container), shQuote(t.ComposeScript)
+	update := fmt.Sprintf("cd %s && %s pull --container %s && %s up --container %s", shQuote(t.ComposePath), script, c, script, c)
+	r.printf("%s: updating %s on %s\n", t.Environment, t.Container, t.Host)
+	if _, err := r.call(ctx, t, r.updateTimeout(), update, r.Output); err != nil {
+		return fmt.Errorf("updating %s: %v", t.Container, err)
+	}
+	return nil
+}
+
+// Check verifies t after an update: healthy (or at least Up without the
+// health check) within the verify timeout, and its version label equal to
+// the released version (a leading v ignored).
+func (r Runner) Check(ctx context.Context, t Target) pipeline.EnvironmentDeploy {
+	res := newResult(t)
 	fail := func(format string, args ...any) pipeline.EnvironmentDeploy {
 		res.Status, res.Error = pipeline.DeployFailed, fmt.Sprintf(format, args...)
 		r.printf("%s: failed: %s\n", t.Environment, res.Error)
 		return res
 	}
-	c, script := shQuote(t.Container), shQuote(t.ComposeScript)
-	update := fmt.Sprintf("cd %s && %s pull --container %s && %s up --container %s", shQuote(t.ComposePath), script, c, script, c)
-	r.printf("%s: updating %s on %s\n", t.Environment, t.Container, t.Host)
-	if _, err := r.call(ctx, t, r.updateTimeout(), update, r.Output); err != nil {
-		return fail("updating %s: %v", t.Container, err)
-	}
+	c := shQuote(t.Container)
 	health, err := r.waitHealthy(ctx, t)
 	res.Health = health
 	if err != nil {

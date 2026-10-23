@@ -1,0 +1,6 @@
+{
+  "name": "deploy-ssh-compose",
+  "version": "4.2.0",
+  "description": "SSH and docker compose target for nerv deploy: pushes the artifact's images, updates the container with the host's compose script and verifies its health and version",
+  "author": { "name": "Walter Rodriguez" }
+}
