@@ -249,8 +249,17 @@ func (v *validator) checkPresets(at string, p Project) {
 		if d.Solution != "" {
 			v.checkPath(at+".dotnet.solution", d.Solution)
 		}
-		if c := d.CoverageThreshold; math.IsNaN(c) || c < 0 || c > 100 {
-			v.addf("%s.dotnet.coverage_threshold: %v must be between 0 and 100", at, d.CoverageThreshold)
+		// A line floor alone (the number form) is reported under the key
+		// itself, as it always was.
+		if c := d.CoverageThreshold; c.Branch == 0 && c.Method == 0 {
+			v.checkPercent(at+".dotnet.coverage_threshold", c.Line)
+		} else {
+			v.checkPercent(at+".dotnet.coverage_threshold.line", c.Line)
+			v.checkPercent(at+".dotnet.coverage_threshold.branch", c.Branch)
+			v.checkPercent(at+".dotnet.coverage_threshold.method", c.Method)
+		}
+		if d.SDK != "" && !sdkVersionRe.MatchString(d.SDK) {
+			v.addf("%s.dotnet.sdk: %q is not a .NET SDK version (e.g. 8.0.100)", at, d.SDK)
 		}
 	}
 	if n := p.Node; n != nil && seen["node"] && !slices.Contains(PackageManagers, n.PackageManager) {
@@ -374,4 +383,16 @@ func sortedKeys[V any](m map[string]V) []string {
 	}
 	slices.Sort(keys)
 	return keys
+}
+
+// sdkVersionRe is a .NET SDK version as global.json takes it:
+// major.minor.patch with an optional prerelease.
+var sdkVersionRe = regexp.MustCompile(`^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$`)
+
+// checkPercent reports a coverage floor that is not a percentage (NaN fails
+// every comparison and ±Inf is no percentage either).
+func (v *validator) checkPercent(at string, c float64) {
+	if math.IsNaN(c) || c < 0 || c > 100 {
+		v.addf("%s: %v must be between 0 and 100", at, c)
+	}
 }

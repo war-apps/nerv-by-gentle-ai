@@ -63,7 +63,7 @@ func push(b bool) *bool { return &b }
 // and two docker images (api and login-broker).
 func dimProject() shipconfig.Project {
 	p := project("api", ".", "dotnet", "docker")
-	p.Dotnet = &shipconfig.Dotnet{ProjectFile: "src/Api/Dim.Comprobantes.Api.csproj", Solution: "Dim.Comprobantes.slnx", Configuration: "Release", CoverageThreshold: 80}
+	p.Dotnet = &shipconfig.Dotnet{ProjectFile: "src/Api/Dim.Comprobantes.Api.csproj", Solution: "Dim.Comprobantes.slnx", Configuration: "Release", CoverageThreshold: shipconfig.CoverageThreshold{Line: 80}}
 	p.Docker = &shipconfig.Docker{Images: []shipconfig.DockerImage{
 		{Name: "ghcr.io/org/dim.comprobantes.api", Dockerfile: "docker/Dockerfile", Context: ".", BuildArgs: map[string]string{"APP_VERSION": "${version}"}, Tags: []string{"version", "channel", "latest"}, Push: push(true)},
 		{Name: "ghcr.io/org/dim.comprobantes.api-login-broker", Dockerfile: "docker/LoginBroker.Dockerfile", Context: ".", BuildArgs: map[string]string{"APP_VERSION": "${version}", "RELEASE": "${tag}@${channel}"}, Tags: []string{"version", "channel", "latest"}, Push: push(true)},
@@ -573,7 +573,7 @@ func envOf(m map[string]string) func(string) (string, bool) {
 
 func TestExecutor_RunsStagesInOrderAndStopsAtTheFirstFailure(t *testing.T) {
 	p := dimProject()
-	p.Dotnet.CoverageThreshold = 0
+	p.Dotnet.CoverageThreshold = shipconfig.CoverageThreshold{}
 	p.Hooks = map[string][]shipconfig.Command{"after_test": {{Run: "echo after", Shell: "bash"}}}
 	plan, err := Build(t.TempDir(), p, ctxFor("1.0.0", ""))
 	if err != nil {
@@ -606,7 +606,7 @@ func TestExecutor_RunsStagesInOrderAndStopsAtTheFirstFailure(t *testing.T) {
 func TestExecutor_CoverageCheckRunsInProcess(t *testing.T) {
 	dir := t.TempDir()
 	p := project("api", ".", "dotnet")
-	p.Dotnet = &shipconfig.Dotnet{ProjectFile: "Api.csproj", Configuration: "Release", CoverageThreshold: 90}
+	p.Dotnet = &shipconfig.Dotnet{ProjectFile: "Api.csproj", Configuration: "Release", CoverageThreshold: shipconfig.CoverageThreshold{Line: 90}}
 	plan, err := Build(t.TempDir(), p, Context{Version: "1.0.0", ArtifactsDir: dir})
 	if err != nil {
 		t.Fatal(err)
@@ -715,7 +715,7 @@ func TestExecutor_LeftoversOfAnEarlierRunAreNotUsed(t *testing.T) {
 	defer srv.Close()
 	p := nugetProject()
 	p.NuGet.Source = srv.URL + "/api/v2/package"
-	p.Dotnet.CoverageThreshold = 90
+	p.Dotnet.CoverageThreshold = shipconfig.CoverageThreshold{Line: 90}
 	c := ctxFor("3.1.0", "")
 	c.ArtifactsDir = t.TempDir()
 	plan, err := Build(t.TempDir(), p, c)

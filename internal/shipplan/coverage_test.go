@@ -6,6 +6,8 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/war-apps/nerv-by-gentle-ai/internal/shipconfig"
 )
 
 // cobertura is a coverlet-style Cobertura report.
@@ -167,5 +169,128 @@ func TestCoverage_TextNeverRoundsUpToTheThreshold(t *testing.T) {
 				t.Errorf("String() = %q, want %q", c.String(), tt.wantStr)
 			}
 		})
+	}
+}
+
+// coberturaFull is a Cobertura report with branch counts and methods: each
+// entry of methods is the hit count of that method's lines.
+func coberturaFull(linesCovered, linesValid, branchesCovered, branchesValid int, methods ...[]int) string {
+	var m strings.Builder
+	for i, hits := range methods {
+		m.WriteString(`<method name="M` + itoa(i) + `" signature="()" line-rate="0" branch-rate="0" complexity="1"><lines>`)
+		for j, h := range hits {
+			m.WriteString(`<line number="` + itoa(j+1) + `" hits="` + itoa(h) + `" branch="False" />`)
+		}
+		m.WriteString(`</lines></method>`)
+	}
+	return `<?xml version="1.0" encoding="utf-8"?>
+<coverage line-rate="0" branch-rate="0" version="1.9" timestamp="1760000000" lines-covered="` + itoa(linesCovered) + `" lines-valid="` + itoa(linesValid) + `" branches-covered="` + itoa(branchesCovered) + `" branches-valid="` + itoa(branchesValid) + `">
+  <packages><package name="Api"><classes><class name="Api.C" filename="C.cs"><methods>` + m.String() + `</methods><lines /></class></classes></package></packages>
+</coverage>
+`
+}
+
+func TestCheckCoverageFloors(t *testing.T) {
+	// 2 of 3 methods covered (66.66%), 7 of 10 branches, 9 of 10 lines.
+	one := coberturaFull(9, 10, 7, 10, []int{1, 0}, []int{0, 0}, []int{0, 3})
+	tests := []struct {
+		name    string
+		floors  shipconfig.CoverageThreshold
+		files   map[string]string
+		want    string
+		wantErr string
+	}{
+		{
+			name:   "every floor met",
+			floors: shipconfig.CoverageThreshold{Line: 90, Branch: 70, Method: 66},
+			files:  map[string]string{"a/coverage.cobertura.xml": one},
+			want:   "line coverage 90.00% (9 of 10 lines, 1 report), threshold 90%; branch coverage 70.00% (7 of 10 branches, 1 report), threshold 70%; method coverage 66.66% (2 of 3 methods, 1 report), threshold 66%",
+		},
+		{
+			name:    "branch below its floor",
+			floors:  shipconfig.CoverageThreshold{Line: 80, Branch: 75},
+			files:   map[string]string{"a/coverage.cobertura.xml": one},
+			wantErr: "line coverage 90.00% (9 of 10 lines, 1 report), threshold 80%; branch coverage 70.00% (7 of 10 branches, 1 report) is below the threshold 75%",
+		},
+		{
+			name:    "method below its floor, line not checked",
+			floors:  shipconfig.CoverageThreshold{Method: 70},
+			files:   map[string]string{"a/coverage.cobertura.xml": one},
+			wantErr: "method coverage 66.66% (2 of 3 methods, 1 report) is below the threshold 70%",
+		},
+		{
+			name:   "reports are summed per metric",
+			floors: shipconfig.CoverageThreshold{Branch: 50, Method: 50},
+			files: map[string]string{
+				"a/coverage.cobertura.xml": coberturaFull(1, 1, 1, 4, []int{0}),
+				"b/coverage.cobertura.xml": coberturaFull(1, 1, 3, 4, []int{2}),
+			},
+			want: "branch coverage 50.00% (4 of 8 branches, 2 reports), threshold 50%; method coverage 50.00% (1 of 2 methods, 2 reports), threshold 50%",
+		},
+		{
+			name:   "nothing to cover is 100%, as coverlet counts it",
+			floors: shipconfig.CoverageThreshold{Branch: 100, Method: 100},
+			files:  map[string]string{"a/coverage.cobertura.xml": coberturaFull(0, 0, 0, 0)},
+			want:   "branch coverage 100.00% (0 of 0 branches, 1 report), threshold 100%; method coverage 100.00% (0 of 0 methods, 1 report), threshold 100%",
+		},
+		{
+			name:    "a branch floor needs the branch counts",
+			floors:  shipconfig.CoverageThreshold{Branch: 50},
+			files:   map[string]string{"a/coverage.cobertura.xml": `<coverage lines-covered="1" lines-valid="1"/>`},
+			wantErr: "a/coverage.cobertura.xml: branches-covered / branches-valid missing or invalid",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c, err := CheckCoverageFloors(reports(t, tt.files), tt.floors)
+			if tt.wantErr != "" {
+				if err == nil || err.Error() != tt.wantErr {
+					t.Fatalf("err = %v, want %q", err, tt.wantErr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if c.String() != tt.want {
+				t.Errorf("String() = %q, want %q", c.String(), tt.want)
+			}
+		})
+	}
+}
+
+// Previous behaviour: a line-only floor reads, and fails, exactly as the
+// scalar coverage_threshold always did, even on a report without branch
+// counts.
+func TestCheckCoverageFloors_LineOnlyIsTheScalarGate(t *testing.T) {
+	dir := reports(t, map[string]string{"a/coverage.cobertura.xml": `<coverage lines-covered="799" lines-valid="1000"/>`})
+	_, err := CheckCoverageFloors(dir, shipconfig.CoverageThreshold{Line: 80})
+	if want := "line coverage 79.90% (799 of 1000 lines, 1 report) is below the threshold 80%"; err == nil || err.Error() != want {
+		t.Fatalf("err = %v, want %q", err, want)
+	}
+	_, old := CheckCoverage(dir, 80)
+	if old == nil || old.Error() != err.Error() {
+		t.Errorf("CheckCoverage = %v, want the same error", old)
+	}
+}
+
+func TestBuild_CoverageFloorsDescribeEveryFloor(t *testing.T) {
+	p := project("api", ".", "dotnet")
+	p.Dotnet = &shipconfig.Dotnet{ProjectFile: "Api.csproj", Configuration: "Release", CoverageThreshold: shipconfig.CoverageThreshold{Line: 80, Method: 85}}
+	plan, err := Build(t.TempDir(), p, ctxFor("1.0.0", ""))
+	if err != nil {
+		t.Fatal(err)
+	}
+	cov := filepath.Join(artifacts, "api", "coverage")
+	if got, want := line(stepOf(t, plan, "dotnet:coverage")), "coverage|dotnet:coverage|check line coverage >= 80%, method coverage >= 85% in "+cov; got != want {
+		t.Errorf("coverage step = %q, want %q", got, want)
+	}
+	// A branch-only floor still collects coverage in the test step.
+	p.Dotnet.CoverageThreshold = shipconfig.CoverageThreshold{Branch: 60}
+	if plan, err = Build(t.TempDir(), p, ctxFor("1.0.0", "")); err != nil {
+		t.Fatal(err)
+	}
+	if got := line(stepOf(t, plan, "dotnet:test")); !strings.Contains(got, "--collect XPlat Code Coverage") {
+		t.Errorf("test step = %q, want it to collect coverage", got)
 	}
 }

@@ -123,7 +123,10 @@ func (p *Plan) Publish() *Stage {
 // Rules: a stage's commands are its override in stages:, which replaces
 // every preset's commands for that stage, or else the commands of each
 // enabled preset in the order of presets:. A stage with no command is
-// skipped together with its before_/after_ hooks. Hooks of the lifecycle
+// skipped together with its before_/after_ hooks. The restore stage starts
+// with the setup steps (submodules: true, dotnet.sdk), which count as its
+// commands. With dotnet.shared_host the overrides of the dotnet stages get
+// the build-server environment under their own. Hooks of the lifecycle
 // keys are returned in Plan.Hooks.
 func Build(repoRoot string, project shipconfig.Project, c Context) (*Plan, error) {
 	if c.Version == "" {
@@ -158,12 +161,17 @@ func Build(repoRoot string, project shipconfig.Project, c Context) (*Plan, error
 	for _, stage := range shipconfig.Stages {
 		cmds := b.steps[stage]
 		if override, ok := project.Stages[stage]; ok {
+			override.Env = b.sharedHostEnv(stage, override)
 			cmds = []Step{{Name: stage, Stage: stage, Command: override}}
 		}
-		if len(cmds) == 0 {
+		var steps []Step
+		if stage == "restore" {
+			steps = b.setupSteps()
+		}
+		if len(cmds) == 0 && len(steps) == 0 {
 			continue
 		}
-		steps := b.hooks("before_" + stage)
+		steps = append(steps, b.hooks("before_"+stage)...)
 		steps = append(steps, cmds...)
 		steps = append(steps, b.hooks("after_"+stage)...)
 		plan.Stages = append(plan.Stages, Stage{Name: stage, Steps: b.withArtifacts(steps)})

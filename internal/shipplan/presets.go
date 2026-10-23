@@ -41,15 +41,15 @@ func (b *builder) dotnet() error {
 	b.add("lint", Step{Name: "dotnet:lint", Command: noServers(), Exec: []string{"dotnet", "format", target, "--verify-no-changes"}})
 	b.add("build", Step{Name: "dotnet:build", Command: noServers(), Exec: []string{"dotnet", "build", target, "-c", cfg, "--no-restore", DisableBuildServers, version}})
 	test := []string{"dotnet", "test", target, "-c", cfg, "--no-build", DisableBuildServers}
-	if threshold := d.CoverageThreshold; threshold > 0 {
+	if floors := d.CoverageThreshold; floors.Enabled() {
 		dir := filepath.Join(b.artifacts, "coverage")
 		b.resetDirs = append(b.resetDirs, dir)
 		test = append(test, "--collect", "XPlat Code Coverage", "--results-directory", dir)
 		b.add("coverage", Step{
 			Name:     "dotnet:coverage",
-			Describe: fmt.Sprintf("check line coverage >= %s%% in %s", strconv.FormatFloat(threshold, 'f', -1, 64), dir),
+			Describe: fmt.Sprintf("check %s in %s", describeFloors(floors), dir),
 			Func: func(context.Context, func(string) (string, bool)) (string, error) {
-				c, err := CheckCoverage(dir, threshold)
+				c, err := CheckCoverageFloors(dir, floors)
 				if err != nil {
 					return "", err
 				}
@@ -62,6 +62,81 @@ func (b *builder) dotnet() error {
 		b.add("package", Step{Name: "dotnet:pack", Command: noServers(), Exec: []string{"dotnet", "pack", d.ProjectFile, "-c", cfg, "--no-build", DisableBuildServers, version, "-o", b.packagesDir()}})
 	}
 	return nil
+}
+
+// describeFloors is the floors checked, e.g. "line coverage >= 80%,
+// method coverage >= 85%".
+func describeFloors(f shipconfig.CoverageThreshold) string {
+	var parts []string
+	for _, m := range []struct {
+		name string
+		v    float64
+	}{{"line", f.Line}, {"branch", f.Branch}, {"method", f.Method}} {
+		if m.v > 0 {
+			parts = append(parts, fmt.Sprintf("%s coverage >= %s%%", m.name, strconv.FormatFloat(m.v, 'f', -1, 64)))
+		}
+	}
+	return strings.Join(parts, ", ")
+}
+
+// sharedHostStages are the stages whose overrides get the build-server
+// environment with dotnet.shared_host: the stages the dotnet preset runs
+// dotnet in.
+var sharedHostStages = []string{"restore", "lint", "build", "test", "package"}
+
+// sharedHostEnv returns override's env with the build-server environment
+// under it (override's keys win), when dotnet.shared_host applies to
+// stage; otherwise override's env unchanged.
+func (b *builder) sharedHostEnv(stage string, override shipconfig.Command) map[string]string {
+	d := b.project.Dotnet
+	if d == nil || !d.SharedHost || !b.enabled("dotnet") || !slices.Contains(sharedHostStages, stage) {
+		return override.Env
+	}
+	env := DotnetBuildServerEnv()
+	maps.Copy(env, override.Env)
+	return env
+}
+
+// setupSteps are the steps that prepare the release clone before the
+// restore stage's hooks and commands: the submodules, then the SDK pin.
+func (b *builder) setupSteps() []Step {
+	var out []Step
+	if b.project.Submodules {
+		out = append(out, Step{Name: "git:submodules", Exec: []string{"git", "submodule", "update", "--init", "--recursive"}})
+	}
+	if d := b.project.Dotnet; d != nil && d.SDK != "" && b.enabled("dotnet") {
+		version, root := d.SDK, b.root
+		out = append(out, Step{
+			Name:     "dotnet:sdk",
+			Describe: fmt.Sprintf("write global.json pinning the .NET SDK to %s (rollForward latestFeature)", version),
+			Func: func(context.Context, func(string) (string, bool)) (string, error) {
+				return writeGlobalJSON(root, version)
+			},
+		})
+	}
+	for i := range out {
+		out[i].Stage = "restore"
+	}
+	return out
+}
+
+// writeGlobalJSON writes root/global.json pinning the .NET SDK to version
+// with rollForward latestFeature, replacing any global.json there.
+func writeGlobalJSON(root, version string) (string, error) {
+	type sdk struct {
+		Version     string `json:"version"`
+		RollForward string `json:"rollForward"`
+	}
+	data, err := json.MarshalIndent(struct {
+		SDK sdk `json:"sdk"`
+	}{sdk{version, "latestFeature"}}, "", "  ")
+	if err != nil {
+		return "", err
+	}
+	if err := os.WriteFile(filepath.Join(root, "global.json"), append(data, '\n'), 0o644); err != nil {
+		return "", fmt.Errorf("writing global.json: %w", err)
+	}
+	return "global.json pins the .NET SDK to " + version + " (rollForward latestFeature)", nil
 }
 
 // packagesDir is where dotnet pack writes and nuget push reads.
