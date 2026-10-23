@@ -72,7 +72,7 @@ Branch: `feature/ship-deploy-plugins`, cut from `feature/tasks-plugin-split` at 
 
 | ID | Specs | Route | Status | Commit |
 |---|---|---|---|---|
-| T1 | S2, S3 | delegated writer, in parallel with T2 (Writer trigger (a): independent units with disjoint surfaces, each over 100 lines; also the context backstop) | in progress | — |
+| T1 | S2, S3 | delegated writer, in parallel with T2 (Writer trigger (a): independent units with disjoint surfaces, each over 100 lines; also the context backstop) | committed (RED: 14 Compute and Import tests plus the changelog test; GREEN: `go test ./internal/versioning` ok; parity 16/16 against semantic-release 24.2.9) | see `git log -- internal/versioning` |
 | T2 | S4, S5 | delegated writer, in parallel with T1 (same trigger) | in progress | — |
 | T3 | S6, S7, S8 | inline | pending | — |
 | T4 | S1, S9 | inline | pending | — |
@@ -114,4 +114,10 @@ Forecast: well over 400 lines (about 11.5k lines of Go move or are rewritten), s
   > * sacar sdd y usemos el modo de gentle-ai
   > * cambiemos la configuracion dejemosla en un archivo .ai-workflow.yml en el root del proyecto, se mantiene la configuracion por proyecto
   > * crear scripts de migracion entre la version anterior y esta
-- **Next step:** T1 and T2, in parallel. The user's L5 decisions are "ODD + agentes NERV encima (Recommended)", "Se mantiene, renombrado (Recommended)" and "Subcomando nerv migrate (Recommended)". Then T6.
+- **L6** (2026-10-23): T1 outcome and decisions.
+  - **Parity:** 16/16 scenarios match semantic-release 24.2.9 field by field, including the notes.
+  - **Not supported:** maintenance branches (`1.x`, range), addChannel, `extends`, and presets other than conventionalcommits. The importer warns about each.
+  - **Decision (parent):** ship fetches origin's tags and `refs/notes/semantic-release*` inside its throwaway clone and calls `Compute` with `Offline: true` there, so the user's repo is never written (S7).
+  - **Decision (parent):** deploy must write the `refs/notes/semantic-release-<tag>` channel note when it creates a prerelease tag, otherwise prerelease numbering resets. This goes into T3.
+  - **Risk: item 6.** Notes parity relies on a hand-written ICU collation approximation; re-run the parity harness when the preset changes.
+- **Next step:** T2 (running), then T6. The user's L5 decisions are "ODD + agentes NERV encima (Recommended)", "Se mantiene, renombrado (Recommended)" and "Subcomando nerv migrate (Recommended)". Then T6.
