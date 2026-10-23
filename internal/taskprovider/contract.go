@@ -36,8 +36,10 @@ var Operations = []string{
 // one to its own stage name through its stages block and config.
 var StageKeys = []string{"pending", "analysis", "inDev", "testing", "implemented", "blocked", "canceled"}
 
-// Results are the outcomes a provider reports for one event.
-var Results = []string{"ok", "skipped", "blocked", "failed"}
+// Results are the outcomes the dispatcher reports per provider for one
+// event; needs_input carries a question the orchestrator relays verbatim
+// before dispatching again.
+var Results = []string{"ok", "skipped", "blocked", "failed", "needs_input"}
 
 // Events maps each event the pipeline emits to the operations a provider
 // must implement to handle it. run.closed never completes the task: that

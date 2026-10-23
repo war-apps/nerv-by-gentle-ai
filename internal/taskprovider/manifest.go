@@ -21,8 +21,10 @@ const ManifestFile = "provider.yaml"
 // ~/.claude/nerv/nerv.yaml or the repository's .nerv/nerv.yaml.
 var ConfigScopes = []string{"user", "repo"}
 
-// ConfigTypes are the value types a provider config key may hold.
-var ConfigTypes = []string{"string", "int", "bool"}
+// ConfigTypes are the value types a provider config key may hold. Only the
+// scalar ones (string, int, bool) are prompted by nerv configure; map and
+// list keys are edited in nerv.yaml and need no prompt.
+var ConfigTypes = []string{"string", "int", "bool", "map", "list"}
 
 var (
 	nameRe   = regexp.MustCompile(`^[a-z][a-z0-9-]*$`)
@@ -58,6 +60,12 @@ type ConfigKey struct {
 	Type    string `yaml:"type"`
 	Default string `yaml:"default"`
 	Prompt  string `yaml:"prompt"`
+}
+
+// Scalar reports whether the key holds a string, int or bool, the types
+// nerv configure prompts for.
+func (c ConfigKey) Scalar() bool {
+	return c.Type == "string" || c.Type == "int" || c.Type == "bool"
 }
 
 // Parse decodes and validates a provider.yaml. Unknown fields are errors,
@@ -159,10 +167,10 @@ func (m *Manifest) validate() []string {
 		}
 		if !slices.Contains(ConfigTypes, c.Type) {
 			add("%s.type %q must be one of %s", at, c.Type, strings.Join(ConfigTypes, ", "))
-		} else if c.Default != "" && !validValue(c.Type, c.Default) {
+		} else if c.Default != "" && c.Scalar() && !validValue(c.Type, c.Default) {
 			add("%s.default %q is not a valid %s", at, c.Default, c.Type)
 		}
-		if strings.TrimSpace(c.Prompt) == "" {
+		if strings.TrimSpace(c.Prompt) == "" && c.Scalar() {
 			add("%s.prompt is required", at)
 		}
 	}
