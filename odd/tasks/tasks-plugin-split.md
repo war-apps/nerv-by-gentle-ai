@@ -155,4 +155,20 @@ The order is T2 → T1 → T3/T4 → T5 → T6 → T7. Every task runs inline: t
   - `dotnet.shared_host` and `dotnet.sdk` are two keys, because the SDK version is per repo. A project gets `submodules: true`. `coverage_threshold` gets a map form `{line, branch, method}`, and the number form stays the line floor.
   - `docs/release-commands.md` was updated by the parent.
   - **Risk: item 3.** The exported `shipconfig.Dotnet.CoverageThreshold` changed type; behaviour stays the same for existing configs.
-- **Next step:** native review of the branch, with the user's consent (they asked for "Revisar este cambio" once; the first START never began because of untracked files).
+- **L14** (2026-10-23): delivery.
+  - **Chain.** The whole branch exceeded the native review's lens budget (`lens_context_budget_exceeded`). The user chose "feature-branch-chain (Recommended)", then "Sí, partir y rebasear (Recommended)" for slice 4 and "Partir y rebasear (Recommended)" for slice 5.
+  - **Rewrite.** The local, unpushed history was rewritten: cedd28f became c48900d (4a) + 4eb326a (4b), and fbcef1d became 8ecff2a (5a) + 40bf6ff (5b). The final tree is identical to the pre-split HEAD (checked with `git diff --quiet`). The backup branches are `backup/tasks-plugin-split-pre-split` and `backup/tasks-plugin-split-pre-split5`.
+  - **Chain branches:** `tasks-split/01-contract-installer`, `02-task-plugins`, `03-install-fixes`, `04a-install-legacy`, `04b-core-config`, `05a-core-orchestrator`, `05b-docs`, `06-learnings`.
+  - **Native review:** every review was granted by the user, and every receipt below was acknowledged.
+    - Slices 01, 02, 03, 04a and 05a were approved.
+    - Slice 06 was approved together with 05b (5b alone assessed `under_budget`).
+    - **Exception:** 04b (4eb326a, about 3.5k tightly coupled lines that only build together) still exceeds the lens budget. It has no native receipt; it is covered by the independent T5 verifier (L11).
+  - **Advisory follow-ups (non-blocking):**
+    - `selectExtensions` adds a zero-value extension when a requirement is not shipped (R1-001, slice 01);
+    - Teamwork REST procedures repeat their boilerplate, and `comment_rest` is misnamed for non-comment calls (slice 02);
+    - `run.closed` ops are understated in the skill (slice 02);
+    - an empty `task_ref` on later events; an unbounded `needs_input` loop; a legacy `tasks.provider` silently ignored (slice 05a);
+    - `dotnet.sdk` overwrites an existing `global.json` without a note; a `run.started` skip suppresses later events even if the config changes mid-run (slice 06);
+    - `release guard` does not check extension versions;
+    - `validValue` is duplicated.
+  - **Delivery** (push, PRs and the draft tracker PR for the chain) is the user's decision.
