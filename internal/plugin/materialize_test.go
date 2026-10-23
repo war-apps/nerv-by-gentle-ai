@@ -391,3 +391,22 @@ func TestEmbeddedExtensions_ShareTheCorePluginVersion(t *testing.T) {
 		}
 	}
 }
+
+func TestExtensions_DeployProvidersRequireTheDeployPlugin(t *testing.T) {
+	ext := sampleExtensions()
+	ext["deploy-acme/.claude-plugin/plugin.json"] = &fstest.MapFile{Data: []byte(`{"name":"deploy-acme","version":"1.2.3","description":"Acme host"}`)}
+	ext["deploy-acme/deploy-provider.yaml"] = &fstest.MapFile{Data: []byte("name: acme\n")}
+	exts, err := plugin.Extensions(ext)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range exts {
+		if e.Name == "deploy-acme" {
+			if !e.Provider || len(e.Requires) != 1 || e.Requires[0] != "deploy" {
+				t.Fatalf("deploy-acme = %+v, want a provider requiring deploy", e)
+			}
+			return
+		}
+	}
+	t.Fatal("deploy-acme not listed")
+}

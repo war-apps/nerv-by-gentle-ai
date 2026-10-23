@@ -261,3 +261,20 @@ func TestUninstall_RemovesEnabledExtensions(t *testing.T) {
 		}
 	}
 }
+
+// A requested provider whose requirement is not shipped is refused instead
+// of enabling a nameless "@nerv" plugin.
+func TestInstall_RequirementNotShippedIsRefused(t *testing.T) {
+	home := t.TempDir()
+	seedInstalledPlugins(t, home, pluginVersion(t))
+	ext := fakeExtensions()
+	v, _ := version.PluginVersion(nerv.PluginFS())
+	ext["deploy-acme/.claude-plugin/plugin.json"] = &fstest.MapFile{Data: []byte(`{"name":"deploy-acme","version":"` + v + `"}`)}
+	ext["deploy-acme/deploy-provider.yaml"] = &fstest.MapFile{Data: []byte("name: acme\n")}
+	var stdout bytes.Buffer
+	deps := install.Deps{Home: home, FS: nerv.PluginFS(), ExtensionsFS: ext, Runner: baseRunner(), Now: fixedNow, LookPath: lookPathAll, Stdout: &stdout}
+	err := install.Install(context.Background(), deps, install.Options{NoSkills: true, Extensions: []string{"deploy-acme"}})
+	if err == nil || !strings.Contains(err.Error(), `"deploy"`) {
+		t.Fatalf("Install() error = %v, want a refusal naming the missing deploy plugin", err)
+	}
+}
