@@ -8,7 +8,7 @@ Nerv by Gentle-AI has two command surfaces: Claude Code slash commands
 
 | Command | What it does |
 |---|---|
-| `/nerv:configure` | Configure NERV through guided questions (git, tasks, skills, models, repo, commands) |
+| `/nerv:configure` | Configure NERV through guided questions (git, skills, models, repo) |
 | `/nerv:init` | Bootstrap NERV for the current repository (writes `.nerv/nerv.yaml`) |
 | `/nerv:status` | Show NERV activation, config resolution, and change status (read-only) |
 | `/nerv:version` | Show the next release version of the repository (or of each project) |
@@ -16,10 +16,37 @@ Nerv by Gentle-AI has two command surfaces: Claude Code slash commands
 | `/nerv:release-setup` | Write the `release:` section of `.nerv/nerv.yaml` from what the repository has, asking only what it cannot detect |
 | `/nerv:pipeline` | Run the Docker pipeline (validate, test, release, docker, sync, deploy): dry run first, the real run only after your explicit yes |
 
+### Task plugin commands (`/task:*`)
+
+The `/task:*` commands belong to the optional task plugin (`task@nerv`),
+not to core. Claude Code serves them from the installed plugin, so nothing
+is copied to `~/.claude/commands/task/`. Each one runs the task plugin's
+contract against the configured provider plugins.
+
+| Command | What it does |
+|---|---|
+| `/task:all` | List all pending tasks from all work sources (assigned to me AND unassigned), with running timers and tracked time |
+| `/task:analysis` | Move a task to the analysis stage and start a local timer on it |
+| `/task:blocked` | Mark a task as blocked - asks the mandatory cause, saves it as a task comment, moves it to blocked, stops this session's timer and logs the time |
+| `/task:canceled` | Cancel a task - asks the mandatory cause, saves it as a task comment, moves it to canceled, stops this session's timer and logs the time |
+| `/task:clear` | Discard a task's local timer WITHOUT logging time (asks for confirmation first) |
+| `/task:close` | Close a task - stop this session's timer, consolidate the timelog, move it to implemented and complete it |
+| `/task:done` | Mark a task as implemented - moves it to implemented, stops this session's timer and consolidates the timelog (does NOT complete the task; use /task:close for that) |
+| `/task:me` | List my pending tasks from all work sources (only assigned to me), with running timers and tracked time |
+| `/task:pending` | Move a task to the pending stage |
+| `/task:priority` | Change a task's priority (High, Medium or Low) |
+| `/task:replay` | Re-dispatch the task events a NERV run could not deliver (blocked or failed with replay: true) |
+| `/task:start` | Start working on a task - local timer, assigns it to me, moves it to the inDev stage, offers a worktree (creates the task if needed) |
+| `/task:stop` | Stop working on a task and log its time (coupled blocks merge into one timelog; a gap starts a fresh timelog dated at the new block) |
+| `/task:stopAll` | Stop tracking on ALL started tasks - stops every timer and logs time as /task:stop would for each |
+| `/task:take` | Take a task - assign it to me (creating it if needed) WITHOUT starting timers or moving stages |
+| `/task:testing` | Move a task to the testing stage |
+| `/task:timers` | Show the local timers of a task (or all running timers), with their session |
+
 ### /nerv:configure
 
-Walks through the sections you name — `git`, `tasks`, `skills`, `models`,
-`repo`, `commands`, or `all` — reading the current state first and writing
+Walks through the sections you name — `git`, `skills`, `models`, `repo`,
+or `all` — reading the current state first and writing
 only the changes you confirm. Use it any time you want to change
 `nerv.yaml` without hand-editing YAML.
 
@@ -38,8 +65,7 @@ only the changes you confirm. Use it any time you want to change
 ### /nerv:init
 
 Sets up NERV in a repository that doesn't have it yet: asks only for the
-keys that aren't already resolved (task provider, Teamwork project/tasklist,
-base branch), writes `.nerv/nerv.yaml`, creates `openspec/config.yaml`
+keys that aren't already resolved (the base branch), writes `.nerv/nerv.yaml`, creates `openspec/config.yaml`
 (`strict_tdd` and the test runner) and the `openspec/specs/` and
 `openspec/changes/archive/` folders when they are missing, and refreshes
 the skill registry with `gentle-ai skill-registry refresh`. An existing
@@ -154,7 +180,6 @@ terminal, or when --answers is given):
   --skip-skills             Skip the required-skills install offer
   --skip-models             Skip the per-role models editor
   --skip-repos              Skip the repository init loop
-  --skip-commands           Skip the Teamwork /task:* commands install
   --no-refresh              Skip the closing apply-models/cache-refresh step
 
 Otherwise, exactly one mode flag is required:
@@ -163,18 +188,15 @@ Otherwise, exactly one mode flag is required:
   --set-model role=spec     Set a role's model/effort override (repeatable);
                              spec is model[/effort], from:<phase>, or default
   --init-repo <path>        Initialize a repository for NERV
-  --install-commands        Install the /task:* Teamwork slash commands
 
 With --init-repo:
   --repo-base <branch>      Base branch override
-  --repo-provider <name>    Tasks provider override (teamwork | none)
-  --repo-project-id <id>    Teamwork project id override
-  --repo-tasklist-id <id>   Teamwork tasklist id override
+  --repo-provider-config <provider>.<key>=<value>
+                            Write tasks.providers.<provider>.<key> into the
+                            repository's .nerv/nerv.yaml (repeatable)
 
-If `.nerv/nerv.yaml` already exists it is not recreated; `--init-repo` only
-removes the task providers that no longer exist (`github-projects`, `jira`)
-from it, after a `.bak-configure-<yyyyMMdd-HHmmss>` backup, and says so. A file
-with nothing to remove is left untouched.
+If `.nerv/nerv.yaml` already exists it is not recreated, and an existing
+`tasks:` block in it is left untouched.
 
 Other flags:
   --json                    Print the result as JSON (ignored by --print, which always does)
@@ -186,12 +208,23 @@ nerv configure --print --json
 ```
 
 ```
-nerv configure --set git.base_branch=develop --set tasks.provider=teamwork
+nerv configure --set git.base_branch=develop --set git.worktree=ask
 ```
 
 ```
 nerv configure --set-model aoba=opus/high
 ```
+
+```
+nerv configure --init-repo . --repo-base develop --repo-provider-config teamwork.project_id=1271726 --repo-provider-config teamwork.tasklist_id=3951970
+```
+
+When `task@nerv` is enabled, the wizard's "Task providers" section prompts
+each enabled provider's scalar config keys, read from its `provider.yaml`,
+plus `tasks.provider` when more than one provider is enabled. It replaces
+the former tasks, Teamwork and commands sections, and the flags
+`--repo-provider`, `--repo-project-id`, `--repo-tasklist-id`,
+`--install-commands` and `--skip-commands` are gone.
 
 ### nerv version next
 
@@ -272,7 +305,9 @@ keeps the ones already enabled up to date, and, when stdin is a terminal,
 offers the others: first the task plugin (`task@nerv`, the `/task:*`
 commands), then, only if it is installed, its providers
 (`task-teamwork@nerv`). A provider named in `--with` brings the task plugin
-with it. See the README's "Install" section for the shell one-liners and
+with it. Copies of the `/task:*` commands that an older release put in
+`~/.claude/commands/task/` are reported, and removed only after you
+confirm. See the README's "Install" section for the shell one-liners and
 environment variables (`NERV_CHANNEL`, `NERV_INSTALL_DIR`,
 `NERV_NO_INSTALL`, `NERV_VERSION`); the install script itself is
 [`../scripts/install.sh`](../scripts/install.sh).
@@ -436,12 +471,13 @@ current repository is set up. See
 
 ## Not commands: skills and agents
 
-`nerv-orchestrator` and `nerv-tasks` are Claude Code **skills**, not
-commands you type. The SessionStart activation header has the session
+`nerv-orchestrator` is a Claude Code **skill**, not a command you
+type. The SessionStart activation header has the session
 invoke the orchestrator skill with the Skill tool in repos where NERV is
 enabled, and it governs how the session
 routes work to the named agents (Ikari, Misato, the MAGI, the pilots,
-Hyuga, Kaji, and so on); `nerv-tasks` is the provider-agnostic task-tracking
-port that only the Hyuga agent calls. You never invoke either by name —
+Hyuga, Kaji, and so on). The task plugin's `task` skill and its
+`task:dispatcher` agent work the same way: the orchestrator launches the
+dispatcher only when the task plugin is installed. You never invoke them by name —
 see [integration.md#roles](integration.md#roles) for what each agent does
 and when it runs.

@@ -6,9 +6,19 @@
   test plan and code disagree on; a scenario the user explicitly declined
   during the corner-case interview is a recorded decision, not a missing
   case, and will not surface as a finding.
-- **Teamwork is the only task-tracker adapter.** `tasks.provider` accepts
-  `teamwork` or `none`; adding another provider is documented under "Adding a
-  provider" in `plugin/skills/nerv-tasks/SKILL.md`.
+- **Teamwork is the only task provider shipped today.** Task tracking is the
+  optional `task@nerv` plugin, and `task-teamwork@nerv` is its only provider
+  plugin. Another provider is a new plugin with a valid `provider.yaml`; see
+  "Adding a provider" in [integration.md](integration.md#task-plugin).
+- **No task question, no timer, no task event.** The task plugin is not
+  installed: the orchestrator emits task events only when the agent type
+  `task:dispatcher` is available. Install it with `nerv install --with task`
+  (or `--with task-teamwork`) and restart Claude Code. A `tasks:` block in
+  `nerv.yaml` alone does nothing; core ignores it and never deletes it.
+- **"Task events pending" in the run summary.** A provider answered
+  `blocked` or `failed` (for example, missing MCP tools); the run went on
+  without it. Fix the cause named in the envelope's `error`, then run
+  `/task:replay <change>`.
 - **Interactive gates can't be driven by `claude -p`.** Non-interactive
   harness runs (`bench/journeys.md`'s default variant) pre-answer every
   blocking prompt in the launch context; the interactive variants exist
@@ -70,11 +80,15 @@
   purpose — Nerv by Gentle-AI commits never carry AI attribution trailers; a
   gatekeeper
   check greps the commit message for this before it lands.
-- **`createTask` blocks with "tasklist not found."** A stale
-  `tasks.providers.teamwork.tasklist_id` (or `project_id`) in `nerv.yaml`.
-  Fix the config (project or user scope) and re-run; the preflight is
-  designed to stop and re-ask rather than silently create the task
-  elsewhere.
+- **`issue.deferred` or `/task:start` blocks with "tasklist not found."** A
+  stale `tasks.providers.teamwork.tasklist_id` (or `project_id`) in
+  `nerv.yaml`. Fix the config (project or user scope), then replay the
+  pending envelope with `/task:replay <change>`; the task plugin never
+  silently creates the task elsewhere.
+- **Old `/task:*` copies in `~/.claude/commands/task/`.** An older release
+  copied the commands there. The `task` plugin now serves them itself;
+  `nerv install` reports the old copies and removes them only after you
+  confirm.
 - **Extra reviewer sessions appear on every tool use.** That's the
   `security-guidance` plugin's own hook (installed independently), not
   Nerv by Gentle-AI. Nerv by Gentle-AI's own review relay only runs after an

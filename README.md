@@ -10,7 +10,7 @@
   <a href="https://yaml.org/"><img alt="YAML config" src="https://img.shields.io/badge/YAML-nerv.yaml-CB171E?style=for-the-badge&logo=yaml&logoColor=white"></a>
   <a href="https://github.com/Gentleman-Programming/gentle-ai"><img alt="OpenSpec RDD" src="https://img.shields.io/badge/OpenSpec-RDD-0aa?style=for-the-badge"></a>
   <a href="https://github.com/Gentleman-Programming/engram"><img alt="Engram memory" src="https://img.shields.io/badge/Engram-memory-2d3748?style=for-the-badge"></a>
-  <a href="https://www.teamwork.com/"><img alt="Teamwork MCP" src="https://img.shields.io/badge/Teamwork-MCP_adapter-FF22B1?style=for-the-badge&logo=teamwork&logoColor=white"></a>
+  <a href="https://www.teamwork.com/"><img alt="Teamwork task provider" src="https://img.shields.io/badge/Teamwork-task_provider-FF22B1?style=for-the-badge&logo=teamwork&logoColor=white"></a>
   <a href="https://skills.sh/"><img alt="skills.sh" src="https://img.shields.io/badge/skills.sh-manifest-333?style=for-the-badge"></a>
   <a href="https://git-scm.com/"><img alt="git" src="https://img.shields.io/badge/git-gitflow-F05032?style=for-the-badge&logo=git&logoColor=white"></a>
 </p>
@@ -47,6 +47,24 @@ see or touch it.
 
 See [docs/integration.md](docs/integration.md) for the full layering,
 activation, and pipeline diagrams.
+
+## Core and optional plugins
+
+The marketplace ships three plugins:
+
+| Plugin | Required | What it does |
+|---|---|---|
+| `nerv@nerv` | yes | Core: adapts gentle-ai's agents to the NERV pipeline. It holds no task, timer or tracker logic. |
+| `task@nerv` | no | The task plugin: the `/task:*` commands, local timers, and the `task:dispatcher` agent that turns pipeline events into tracker operations. |
+| `task-teamwork@nerv` | no | A task provider for Teamwork, shipped as its own plugin with a `provider.yaml` manifest. |
+
+When the task plugin is installed, the orchestrator emits pipeline events
+(`run.started`, `verification.started`, `audit.ranked`, `issue.deferred`,
+`wave.started`, `run.closed`, `run.halted`) to `task:dispatcher`, which
+answers one envelope per provider. When it is not installed, core emits
+nothing, asks no task question and logs nothing. See
+[docs/integration.md](docs/integration.md#task-plugin) for the event
+table, the envelope, the per-event switches and `/task:replay`.
 
 ## Requirements
 
@@ -137,6 +155,13 @@ Re-run the install method you used (the `scripts/install.sh` one-liner, or
 run `nerv install` again to refresh the plugin cache and re-apply
 configuration.
 
+**Upgrading from a release with built-in tasks.** An existing `tasks:`
+block in `~/.claude/nerv/nerv.yaml` or `.nerv/nerv.yaml` keeps working once
+the task plugin is installed; without it, core ignores the block and never
+deletes it. Copies of the `/task:*` commands that an older release put in
+`~/.claude/commands/task/` are reported by `nerv install` and removed only
+after you confirm. See [docs/configuration.md](docs/configuration.md#tasks-task-plugin).
+
 ### Uninstall
 
 ```bash
@@ -167,16 +192,15 @@ only the answers you confirm.
 
 **Activation per repository.** A repo opts in by writing
 `.nerv/nerv.yaml` with `enabled: true` — run
-`nerv configure --init-repo <path>` (with `--repo-base`, `--repo-provider`,
-and, for Teamwork, `--repo-project-id`/`--repo-tasklist-id`), or `/nerv:init`
-from inside Claude Code for the same thing through guided questions.
-Running `--init-repo` on a repo that already has `.nerv/nerv.yaml` also
-removes the task providers that no longer exist (`github-projects`, `jira`)
-from it, with a backup; any other content is left as written.
+`nerv configure --init-repo <path>` (with `--repo-base`, and a repeatable
+`--repo-provider-config <provider>.<key>=<value>` for task-provider
+settings), or `/nerv:init` from inside Claude Code for the same thing
+through guided questions. Running `--init-repo` on a repo that already has
+`.nerv/nerv.yaml` leaves its content as written.
 `/nerv:status` reports the resolved config and, while a run is in progress,
 the orchestrator lock state.
 
-The wizard walks through six sections:
+The wizard walks through these sections:
 
 1. **Prerequisites** — informational checks for `gentle-ai` (major version
    4 required), `engram` (optional), and `claude` (required for the cache
@@ -190,16 +214,13 @@ The wizard walks through six sections:
    `~/.claude/CLAUDE.md`). `nerv skills --dry-run --json` previews the same
    check without the wizard.
 3. **User config** — asks `git` (base branch, worktree policy, worktree
-   pattern, branch and commit-ref patterns), `tasks` (provider,
-   ask-when-missing, subtasks-per-wave, timer store, rounding minutes, and — when the
-   provider is Teamwork — the ref prefix, assignee id, default
-   project/tasklist ids, and the seven workflow-stage names), `skills`
-   (one comma-separated stack per consuming role), `critical_paths`, and
-   `artifacts.commit`, then writes `~/.claude/nerv/nerv.yaml`, backing up
-   any existing file first. A field left unchanged (Enter keeps the shown
-   value) is never rewritten at all; a whole block (`git:`, `tasks:`,
-   `skills:`, `artifacts:`, or the `providers.teamwork` sub-block) is only
-   generated fresh when it is missing from the file entirely. Anything the
+   pattern, branch and commit-ref patterns), `skills` (one comma-separated
+   stack per consuming role), `critical_paths`, and `artifacts.commit`,
+   then writes `~/.claude/nerv/nerv.yaml`, backing up any existing file
+   first. A field left unchanged (Enter keeps the shown value) is never
+   rewritten at all; a whole block (`git:`, `skills:`, `artifacts:`) is
+   only generated fresh when it is missing from the file entirely. An
+   existing `tasks:` block is never rewritten or removed. Anything the
    wizard has no field for — extra keys, `known_projects:`, `sources:`,
    `sources_howto:`, or anything else you added by hand — is never dropped
    or regenerated.
@@ -208,10 +229,11 @@ The wizard walks through six sections:
 5. **Repos** (`--skip-repos`) — optionally writes `.nerv/nerv.yaml` in one
    or more local git repositories, leaving an already-initialized repo
    untouched.
-6. **Slash commands** (`--skip-commands`) — optionally copies the Teamwork
-   procedures under `plugin/skills/nerv-tasks/providers/teamwork/procedures/`
-   into `~/.claude/commands/task/` as the 16 `/task:*` commands, never
-   overwriting a file that already exists there.
+6. **Task providers** — shown only when `task@nerv` is enabled. It prompts
+   each enabled provider's scalar config keys, read from its
+   `provider.yaml`, plus `tasks.provider` when more than one provider is
+   enabled. The `/task:*` commands are served by the `task` plugin itself,
+   so nothing is copied to `~/.claude/commands/task/`.
 
 The closing step (`--no-refresh` to skip) applies the resolved `models:`
 block to the plugin cache and refreshes it.
@@ -226,8 +248,8 @@ registry when they are missing; the wizard itself only writes `.nerv/nerv.yaml`.
 
 Outside the wizard, the plugin stays self-contained apart from these
 requirements: **gentle-ai 4.x** installed and configured (`gentle-ai
-install`), **Claude Code** with the **Teamwork MCP** configured when the
-Teamwork task-tracker adapter is used, and **Engram** (optional — used for
+install`), **Claude Code** (plus, for the optional `task-teamwork`
+provider, the Teamwork MCP server it declares), and **Engram** (optional — used for
 the shared `nerv` knowledge base and per-repo memory detection).
 
 ## Manual setup
@@ -242,8 +264,7 @@ Non-interactive configuration:
 nerv configure --print --json
 nerv configure --set key=value --set key2=value2 --json
 nerv configure --set-model role=model[/effort] --set-model role2=from:<gentle-ai-phase> --json
-nerv configure --init-repo <path> --repo-base <branch> --repo-provider <provider> [--repo-project-id <id> --repo-tasklist-id <id>]
-nerv configure --install-commands
+nerv configure --init-repo <path> --repo-base <branch> [--repo-provider-config <provider>.<key>=<value> ...]
 ```
 
 `--set` and `--set-model` are repeatable flags — pass every changed key of
@@ -294,7 +315,8 @@ for the manual journey suite and the `claude plugin eval` corpus.
 Every Nerv by Gentle-AI setting lives in `nerv.yaml`, in two scope copies
 (user `~/.claude/nerv/nerv.yaml` and project `<repo>/.nerv/nerv.yaml`,
 project overriding user key by key) with sections for skills, per-role
-model/effort overrides, critical paths, artifacts, git, and tasks.
+model/effort overrides, critical paths, artifacts and git. The `tasks:`
+section belongs to the optional task plugin; core ignores it.
 
 See [docs/configuration.md](docs/configuration.md) for the full schema,
 example YAML, and how to configure per-role models and effort (wizard,
@@ -306,7 +328,8 @@ example YAML, and how to configure per-role models and effort (wizard,
   Claude Code slash commands and the `nerv` CLI, with usage and examples.
 - [docs/integration.md](docs/integration.md) — how Nerv by Gentle-AI
   integrates with gentle-ai, the agent roles table, and operations
-  (activation, artifacts, task tracker, Engram project detection).
+  (activation, artifacts, the task plugin and its events, Engram project
+  detection).
 - [docs/configuration.md](docs/configuration.md) — the `nerv.yaml`
   configuration schema and how to configure per-role models and effort.
 - [docs/releases.md](docs/releases.md) — versioning, release channels,

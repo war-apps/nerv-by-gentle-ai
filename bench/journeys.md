@@ -8,12 +8,13 @@ outcomes that must hold. Run them after every phase and before any push.
 
 - gentle-ai 4.x installed (tested against 4.0.0); plugin `nerv@nerv` installed from the committed
   HEAD under test (`claude plugin uninstall nerv@nerv && claude plugin install nerv@nerv`).
+  The task plugin (`task@nerv`) is **not** installed, except where J5 and its variants say so, so no
+  task event runs.
 - Scratch repo with a real test runner. Reference layout: .NET 10 class
   library `src/Calc` + xUnit project `tests/Calc.Tests`, solution `Bench.slnx`,
   one passing test (`Calculator.Add`).
 - `.nerv/nerv.yaml` with `enabled: true`, `git.worktree: never`,
-  `git.base_branch: main`, `tasks.provider: none`, `tasks.ask_when_missing: false`,
-  skills `testing: [tdd]`, `code: [dotnet-best-practices]`.
+  `git.base_branch: main`, skills `testing: [tdd]`, `code: [dotnet-best-practices]`.
 - `openspec/config.yaml` with `strict_tdd: true` and
   `rules.apply.test_command: dotnet test`; `.atl/skill-registry.md` refreshed
   with `gentle-ai skill-registry refresh --cwd <repo>`.
@@ -94,7 +95,7 @@ launched (the `classification-direct` eval case covers the
 classification slice).
 
 Interactive variant: same request without the pre-answered context. Expected
-extra gates: the grouped preflight question (task, worktree, branch, base),
+extra gates: the grouped preflight question (worktree, branch, base),
 one commit-validation stop per commit, and the RDD consent envelope after the
 first commit when the clone-local switch is not disabled.
 
@@ -134,7 +135,7 @@ name: `multiply-and-ci`.
 Setup: same scratch repo, `gentle-ai review mode disable --scope clone --cwd
 <repo>` (RDD off in the bench clone — the global switch stays as the user
 set it), `.nerv/nerv.yaml` unchanged from the Common setup above
-(`tasks.provider: none`, `tasks.ask_when_missing: false`).
+(no task plugin installed).
 
 Prompt (piped to `claude -p --max-turns 200 --allowedTools 'Agent,Bash(git
 *),Bash(dotnet *),Bash(gentle-ai *),Read,Write,Edit,Glob,Grep'`):
@@ -367,7 +368,7 @@ any), `ranking_issued`, `issue_gate_relayed`, `issue_gate_decision`,
 expected in this journey since round 2 resolves clean under the cap.
 
 Non-interactive prompt gates pre-answered, matching J3's list plus two
-audit-stage additions: task/worktree/branch/base (J1), corner-case
+audit-stage additions: worktree/branch/base (J1), corner-case
 questions answered conservatively (J3), plan approval pre-granted (J3),
 every Aoba commit pre-validated (J1/J3), **issue gate: approve the NOW set
 exactly as ranked**, and **at the re-audit cap: accept the residual and
@@ -375,15 +376,20 @@ close** (not exercised in the expected happy path above, but must be
 present in the harness prompt so the run does not stall if round 2 finds
 something new).
 
-## J5: task tracker and single config (Phase 4)
+## J5: task plugin events and single config
 
-Interactive-first journey: the grouped preflight question needs a human
-answer (task/worktree/branch/base), so this journey runs interactively by
-default; a non-interactive variant follows with the same question
+Interactive-first journey: the task question comes back from the task
+plugin as `needs_input`, and the grouped preflight question
+(worktree/branch/base) needs a human answer, so this journey runs
+interactively by default; a non-interactive variant follows with both
 pre-answered in the prompt, matching J1/J3's harness-context style.
 
 Setup:
 
+- `task@nerv` and `task-teamwork@nerv` installed (`nerv install --with
+  task-teamwork`), and Claude Code restarted, so the agent type
+  `task:dispatcher` is available. The Teamwork MCP server that
+  `task-teamwork`'s `provider.yaml` declares is configured.
 - Bench repo `.nerv/nerv.yaml`:
   ```yaml
   enabled: true
@@ -416,59 +422,59 @@ session."
 
 Expected, in order:
 
-1. With no active timer, the run opens with **one grouped question**:
-   Task (create with title/source/list/priority, existing id, or none),
-   Worktree (skipped — `git.worktree: never`), Branch name, Base branch
-   (`main`). Answer: create a task titled "Add Calculator.Modulo", source
-   `teamwork`, list = the configured TEST tasklist, priority `medium`.
-2. After "create": the task exists in Teamwork, assigned to the user
-   (`assignee_id` from the user-scope file), in the `inDev` stage
-   (`DESARROLLO`); a local timer keyed by `{taskId, sessionId}` exists in
-   `~/.claude/work/timers.json`; the branch carries `tw-{id}` (from
-   `git.branch_pattern` with `{prefix}` = `tw`); commits carry `(TW-{id})`
-   (`commit_ref` from `git.commit_ref_pattern`).
+1. After classification, Ikari launches `task:dispatcher` with `EVENT:
+   run.started`. With no task ref, the envelope is `needs_input` and Ikari
+   relays its task question verbatim. Answer: create a task titled "Add
+   Calculator.Modulo" in the configured TEST tasklist, priority `medium`.
+   Ikari dispatches `run.started` again with the answer in `data`.
+2. The task exists in Teamwork, assigned to the user (`assignee_id` from
+   the user-scope file), in the `inDev` stage (`DESARROLLO`); a local timer
+   keyed by `{taskRef, sessionId}` exists in `~/.claude/work/timers.json`.
+   Then the grouped preflight question asks Branch name (carrying `tw-{id}`
+   from `git.branch_pattern` with `{prefix}` = `tw`) and Base branch
+   (`main`); Worktree is skipped (`git.worktree: never`). Commits carry
+   `(TW-{id})` (`commit_ref` from `git.commit_ref_pattern`).
 3. `openspec/changes/{change}/state.yaml`'s `nerv` block has
-   `task_ref: "TW-{id}"`.
-4. Second run (same session, same task): preflight is **silent** — the
-   timer is active and `tasks.provider` resolves, so no question is asked.
-5. Maya's full gate start (FULL), or the work unit's verification start
-   (DIRECT and LIGHT), triggers
-   `nerv:hyuga` `DISPATCH: tracker` (`moveStage`, stage `testing`) — the
-   task moves to `TESTING` in Teamwork.
-6. Close: `nerv:hyuga` `DISPATCH: tracker` (`close`) produces exactly one
-   Teamwork timelog with real start and end (from the local timer's
-   `startedAt` to now), rounded to 30 minutes per the existing
-   `/task:stop` rule; the task lands in `IMPLEMENTA` (Implementado) and is
-   completed. With `done` instead, the task is only moved to `IMPLEMENTA`
-   and left open (not completed).
-7. `nerv/deliberation-log.md` carries one `tracker_event` entry
-   (`{op, taskRef, result}`) per tracker op executed in this run
-   (`createTask`, `start`, `moveStage`, `close` or `done`).
-8. `/task:me` run by hand afterward renders the same unified table as
-   before this migration — same columns, same stage/priority emoji — with
-   sheet sources from `tasks.sources` included alongside the Teamwork
-   rows.
-9. `tasks.provider: none` variant (separate run, `.nerv/nerv.yaml`
-   overridden to `tasks.provider: none`): no tracker call is made at all
-   (`nerv:hyuga` is never launched with `DISPATCH: tracker`), but the
-   grouped preflight question still asks Worktree and Branch name (the
-   Task group offers only "work without a task").
+   `task_ref: "TW-{id}"`, taken from the `run.started` envelope.
+4. Maya's full gate start (FULL), or the work unit's verification start
+   (DIRECT and LIGHT), emits `verification.started` — the task moves to
+   `TESTING` in Teamwork.
+5. Close emits `run.closed`: exactly one Teamwork timelog with real start
+   and end (from the local timer's `startedAt`), rounded per the
+   provider's `rounding_minutes`; the task lands in `IMPLEMENTA`
+   (Implementado) and stays **open** — `run.closed` never completes it.
+   `/task:close` run by hand afterward completes it.
+6. `nerv/task-events.yaml` holds every envelope of the run, and
+   `nerv/deliberation-log.md` carries one `task_event` entry
+   (`{event, provider, result, task_ref}`) per envelope.
+7. `/task:me` run by hand afterward renders the unified table — same
+   columns, same stage/priority emoji — with sheet sources from
+   `tasks.sources` included alongside the Teamwork rows.
+8. Per-event switch variant: with `tasks.events.verification.started: off`
+   in the bench repo file, step 4's envelope is `skipped` with `reason:
+   switched off` and the task stays in `DESARROLLO`.
+9. Missing-tools variant: with the Teamwork MCP server removed (or only the
+   claude.ai Teamwork connector available), `run.started` answers `blocked`
+   naming the missing tools; the run goes on without halting or retrying,
+   and the run summary lists the envelope under "Task events pending" with
+   `/task:replay <change>`. After restoring the server, `/task:replay
+   <change>` re-dispatches it and marks it `replayed`.
 10. Halted-run variant: a pilot signals a block mid-run (e.g. an
     unresolvable dependency). Ikari asks the user for the mandatory cause
-    first — the run never blocks silently or invents one — then
-    `nerv:hyuga` `DISPATCH: tracker` (`block`) runs with it; the resulting
-    comment on the task reads `BLOQUEADA: <cause>`, matching
-    `/task:blocked`'s own comment format, and the local timer is stopped
-    and logged same as `close`/`done`.
+    first — the run never blocks silently or invents one — then emits
+    `run.halted` with the cause in `data`; the resulting comment on the
+    task reads `BLOQUEADA: <cause>`, matching `/task:blocked`'s own comment
+    format, the task moves to the blocked stage and the local timer is
+    stopped and logged.
 
-Non-interactive variant: same setup, with the grouped question
-pre-answered in the prompt (task: create with title/source/list/priority
+Non-interactive variant: same setup, with the task and the grouped
+question pre-answered in the prompt (task: create with title/list/priority
 given up front; worktree: skipped since `git.worktree: never`; branch and
 base pre-stated), piped like J1
 (`claude -p --max-turns 60 --allowedTools 'Agent,Bash(git *),Bash(dotnet
 *),Bash(gentle-ai *),Read,Write,Edit,Glob,Grep,mcp__teamwork__*'`).
-Expected outcomes 1-10 above hold identically, except step 1 is silent
-(pre-answered, not asked) and no interactive prompt is shown.
+Expected outcomes 1-10 above hold identically, except no interactive prompt
+is shown.
 
 ## J6: Resume and concurrent orchestrator (Phase 5)
 
@@ -480,7 +486,7 @@ frozen tasks or re-running closed waves.
 
 Setup: same scratch repo as J3, fresh branch `feature/power-resume` off
 `main` (`Calculator` has `Add`/`Subtract`/`Multiply`/`Divide` from
-J1/J3/J4), `.nerv/nerv.yaml` as in Common setup, `tasks.provider: none`,
+J1/J3/J4), `.nerv/nerv.yaml` as in Common setup (no task plugin),
 `gentle-ai review mode disable --scope clone --cwd <repo>`. Change name:
 `power-resume`. Request: add a `Power(int base, int exponent)` method to
 `Calculator` in src/Calc/Calculator.cs, using the same J3-style FULL
@@ -557,37 +563,32 @@ commit pre-validated).
    in the committed log and no `commit_recorded` line for the close
    commit itself exists (its hash is in the session's final message).
 
-### Variant: tracker `none` (J5 companion)
+### Variant: task plugin absent (J5 companion)
 
-Same as J5's `tasks.provider: none` variant, run standalone (not chained
-off J3/J6's change) to confirm the grouped preflight question still asks
-what it should when there is no tracker at all. Setup: fresh branch,
-`.nerv/nerv.yaml` with `tasks.provider: none`, no active timer, no active
-task. Interactive session, prompt: "Add a `Modulo` method..." (as J5).
-Expected: **one grouped question** is still asked — Task (offers only
-"work without a task", since the provider is `none`), Worktree (per
-`git.worktree`), Branch name, Base branch — and `nerv:hyuga` is never
-launched with `DISPATCH: tracker` for any step of the run (no
-`tracker_event` entries in `nerv/deliberation-log.md`). This is the
-grouped-question shape already covered by J5 step 9; this variant exists
-standalone so it can run without Teamwork access at all.
+Run standalone (not chained off J3/J6's change) to confirm a run without
+the task plugin stays free of task steps. Setup: fresh branch, `task@nerv`
+not installed (no `task:dispatcher` agent type), `.nerv/nerv.yaml` still
+carrying the J5 `tasks:` block, no active timer. Interactive session,
+prompt: "Add a `Modulo` method..." (as J5). Expected: the grouped
+question asks only Worktree (per `git.worktree`), Branch name and Base
+branch — no task question; no agent is launched for task events, no
+`task_event` entry appears in `nerv/deliberation-log.md`, no
+`nerv/task-events.yaml` is created, and the `tasks:` block is left in
+`.nerv/nerv.yaml` untouched. The `task-plugin-absent-no-events` eval case
+covers the preflight slice of this variant.
 
 ### Variant: missing-config preflight
 
 Interactive only (the grouped question cannot be exercised
-non-interactively). Setup: fresh branch in the scratch repo,
-`.nerv/nerv.yaml` present with `enabled: true` but **no `tasks:` block at
-all** (not even `provider: none` — the key is absent), and no local timer
-referenced in `~/.claude/work/timers.json` for this session. Prompt: "Add
-a `Sqrt(double x)` method to `Calculator`... Follow the NERV orchestrator
+non-interactively). Setup: fresh branch in the scratch repo, the task
+plugin installed as in J5, `.nerv/nerv.yaml` present with `enabled: true`
+but **no `tasks:` block at all**, and no local timer referenced in
+`~/.claude/work/timers.json` for this session. Prompt: "Add a
+`Sqrt(double x)` method to `Calculator`... Follow the NERV orchestrator
 protocol injected in this session."
 
-Expected: with no active timer and no `tasks.provider` to resolve
-implicitly, the preflight cannot stay silent — the grouped question
-(Task, Worktree, Branch, Base) is asked exactly as in J5 step 1, with the
-Task group falling back to "work without a task" / "create" options
-since no provider is configured. This confirms the preflight's silence
-condition genuinely requires both an active timer/task **and** a
-resolvable `tasks.provider` — a config missing the whole `tasks:` block
-is equivalent to `tasks.provider: none` for gating purposes, not a silent
-default.
+Expected: `run.started` is still emitted; with `ask_when_missing`
+defaulting to `true` and only one provider installed, the dispatcher
+returns `needs_input` with the task question, which Ikari relays verbatim.
+Choosing "work without a task" leaves `task_ref` empty, so the branch
+proposal omits `{prefix}-{id}` and commits carry no task suffix.
