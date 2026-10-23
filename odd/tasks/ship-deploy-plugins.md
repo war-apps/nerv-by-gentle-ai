@@ -42,7 +42,27 @@ Branch: `feature/ship-deploy-plugins`, cut from `feature/tasks-plugin-split` at 
   - The first providers are `deploy-github` (tag, push and release) and `deploy-ssh-compose` (today's SSH, Infisical and compose deploy).
   - Adding another host or target, such as GitLab or Gitea, is another plugin, with no change to `deploy`.
 - **S9. Migration.** A repository using today's `release:` and `pipeline:` sections must be told exactly what to change, by the setup command. Assumption: the old sections stop being read, and a run with them refuses with a message pointing to the setup command.
+- **S10. Remove SDD and use the gentle-ai mode.** The user asked: "sacar sdd y usemos el modo de gentle-ai". User decision: "ODD + agentes NERV encima (Recommended)".
+  - Remove NERV's OpenSpec-style artifact flow: `openspec/` changes, proposal, design, spec deltas, archive and `nerv spec-compose`.
+  - Track work with gentle-ai's ODD feature document (`odd/tasks/<feature>.md`) and native RDD review.
+  - The NERV agents and their governance (Misato, MAGI, Maya, Kaji, Aoba and the rest) remain, reading and writing the ODD document instead of openspec.
+- **S11. Configuration file.** The user asked: "cambiemos la configuracion dejemosla en un archivo .ai-workflow.yml en el root del proyecto, se mantiene la configuracion por proyecto". User decision: "Se mantiene, renombrado (Recommended)".
+  - Project config is `<repo>/.ai-workflow.yml`.
+  - User config is `~/.config/ai-workflow/config.yml`, holding personal settings such as models and provider user ids.
+  - The same key-by-key merge applies, with the project winning.
+  - Core, `task`, `ship`, `deploy` and their providers all read from these two files.
+- **S12. Migration.** The user asked: "crear scripts de migracion entre la version anterior y esta". User decision: "Subcomando nerv migrate (Recommended)".
+  - `nerv migrate` in Go, cross-platform, with `--dry-run` showing every change before writing, backups and tests.
+  - Run once per repo, plus once for the user config.
+  - It covers:
+    - moving `.nerv/nerv.yaml` and `~/.claude/nerv/nerv.yaml` to the S11 files;
+    - translating `release:` and `pipeline:` into the ship and deploy config;
+    - importing semantic-release (S3);
+    - converting `openspec/` (S10);
+    - installing the plugins the repo used (`task`, `ship`, `deploy` and their providers).
 - **Assumptions to confirm during the work:**
+  - Runtime files (the artifacts, the orchestrator lock, the deliberation logs) stay in a git-ignored runtime folder. Its name (`.nerv/` or `.ai-workflow/`) is decided in T6.
+  - `openspec/changes` still in progress become ODD feature documents, and archived ones stay where they are, read-only.
   - The Go engines stay in the `nerv` binary, under new subcommands, and the plugins are their only callers.
   - `nerv pipeline` is folded into ship (validate, test) and deploy (release, docker push, sync back-merge, deploy).
   - Artifact layout: `.nerv/artifacts/<project>/<version>/` holding `manifest.json` (project, version, channel, base commit, the files changed by the release, the outputs), the notes, the CHANGELOG section, and the packages or image references.
@@ -56,10 +76,17 @@ Branch: `feature/ship-deploy-plugins`, cut from `feature/tasks-plugin-split` at 
 | T2 | S4, S5 | delegated writer, in parallel with T1 (same trigger) | in progress | — |
 | T3 | S6, S7, S8 | inline | pending | — |
 | T4 | S1, S9 | inline | pending | — |
+| T5 | S10 | — | pending | — |
+| T6 | S11 | — | pending | — |
+| T7 | S12 | — | pending | — |
 
 - **T1:** the native version engine (`internal/versioning`), its config schema, and the semantic-release config importer. Parity tests against the behaviours listed in S2, using the dim configs as fixtures.
 - **T2:** the build modes, compose and script, with presets removed. The artifact writer, and ship reworked to produce the artifact with no git writes.
 - **T3:** the deploy contract (manifest and operations), the deploy runner (release commit, tag, push, publish, deploy), and the `deploy-github` and `deploy-ssh-compose` providers.
+- **T5:** remove SDD/openspec from the orchestrator, the agents, `internal/specs` and the docs; the agents work on the ODD document.
+- **T6:** central config loader for `.ai-workflow.yml` plus `~/.config/ai-workflow/config.yml`, used by every package and plugin.
+- **T7:** `nerv migrate`.
+- **Order:** T1/T2 → T6 → T3 → T5 → T4 → T7.
 - **T4:** the plugins `ship`, `deploy`, `deploy-github` and `deploy-ssh-compose`, with their agents and commands; installer suggestions and requirements; removal from core; migration messages; docs.
 
 Forecast: well over 400 lines (about 11.5k lines of Go move or are rewritten), so it will be delivered as chained slices.
@@ -82,4 +109,9 @@ Forecast: well over 400 lines (about 11.5k lines of Go move or are rewritten), s
     - `Result` carries the same fields as `semrel.ProjectResult`'s 12 action outputs, plus `ChangelogSection` and `Bump`.
     - `Request` holds `RepoDir`, `Branch`, `Projects`, `Config` and `Offline`.
   - T2 consumes the version through an interface (`VersionSource`) that can be fed an explicit version or a computed one. It keeps the existing semrel-backed source until T4 wires in the engine.
-- **Next step:** T1 and T2, in parallel.
+- **L5** (2026-10-23, user, verbatim):
+  > otros puntos que quiero cambiar para tenerlos en cuenta:
+  > * sacar sdd y usemos el modo de gentle-ai
+  > * cambiemos la configuracion dejemosla en un archivo .ai-workflow.yml en el root del proyecto, se mantiene la configuracion por proyecto
+  > * crear scripts de migracion entre la version anterior y esta
+- **Next step:** T1 and T2, in parallel. The user's L5 decisions are "ODD + agentes NERV encima (Recommended)", "Se mantiene, renombrado (Recommended)" and "Subcomando nerv migrate (Recommended)". Then T6.
