@@ -55,25 +55,36 @@ tasks:                              # read only by the optional task plugin (tas
       stages: { inDev: DESARROLLO, testing: TESTING, implemented: IMPLEMENTA, blocked: BLOQUEA, canceled: CANCEL, pending: PENDIENTE, analysis: ANALISIS }
   sources:                          # extra work sources for listings (replaces ~/.claude/work/sources.md)
     - { name: erp-proveedores, type: google-sheets, ... }
-release:                            # project scope only, never merged with the user file; see release-commands.md
+ship:                               # ship plugin; project scope only, never merged with the user file; see release-commands.md
   projects:
-    - { name: api, path: . }
-pipeline:                           # project scope only, never merged with the user file; see pipeline.md
-  dotnet: { solution: App.slnx }
-  images:
-    - { name: ghcr.io/acme/app }
+    - { name: api, path: ., build: { mode: compose, file: docker-compose.yml, images: ["ghcr.io/acme/app:${version}"] } }
+deploy:                             # deploy plugin; see deploy.md
+  host: github
+  targets:
+    - { name: staging, provider: ssh-compose, config: { environment: staging } }
 ```
 
-`release:` configures the release commands (`nerv version next` and
-`nerv ship`, also `/nerv:version` and `/nerv:ship`): projects, dependencies,
-tag formats, presets, stages and hooks. Its full reference is
-[release-commands.md](release-commands.md#configuration-release).
+`ship:` configures the ship plugin (`nerv version next` and `nerv ship`,
+also `/ship:version`, `/ship:setup` and `/ship:build`): the version engine
+(branches and channels, release rules, note keywords, tag format,
+changelog), the projects and their dependencies, and each project's
+`build.mode` (`compose` or `script`; there are no presets) with its
+stages, hooks and coverage. Its full reference is
+[release-commands.md](release-commands.md#configuration-ship).
 
-`pipeline:` configures the standalone Docker pipeline modelled on
-dim.comprobantes.api's CI/CD (validate, test, release, docker, sync and an
-optional deploy): the solution, branches, registry, images, sync and deploy
-data source. Its full reference is [pipeline.md](pipeline.md); the
-`nerv pipeline` commands that run it come in later releases.
+`deploy:` configures the deploy plugin (`nerv deploy`, `/deploy:run`,
+`/deploy:setup`): the git host provider, the targets with their provider
+config, and the release commit's message and remote. Provider keys with
+`scope: user` (credentials, local paths) go in the user file under
+`deploy.providers.<provider>.`. Its full reference is
+[deploy.md](deploy.md#configuration).
+
+The old `release:` and `pipeline:` sections are no longer read: a command
+that finds one refuses and points to `/ship:setup` (or `/deploy:setup`).
+`nerv migrate` translates them, and `nerv ship setup --import` imports a
+semantic-release config; see
+[release-commands.md](release-commands.md#migrating-from-release-and-semantic-release)
+and [pipeline.md](pipeline.md).
 
 `models:` assigns a per-role `model` and `effort` override, with project
 overriding user key by key like every other section — each entry is an

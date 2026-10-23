@@ -11,10 +11,6 @@ Nerv by Gentle-AI has two command surfaces: Claude Code slash commands
 | `/nerv:configure` | Configure NERV through guided questions (git, skills, models, repo) |
 | `/nerv:init` | Bootstrap NERV for the current repository (writes `.ai-workflow.yml`) |
 | `/nerv:status` | Show NERV activation, config resolution, and change status (read-only) |
-| `/nerv:version` | Show the next release version of the repository (or of each project) |
-| `/nerv:ship` | Release the repository from origin: dry run first, the real release only after your explicit yes |
-| `/nerv:release-setup` | Write the `release:` section of `.ai-workflow.yml` from what the repository has, asking only what it cannot detect |
-| `/nerv:pipeline` | Run the Docker pipeline (validate, test, release, docker, sync, deploy): dry run first, the real run only after your explicit yes |
 
 ### Task plugin commands (`/task:*`)
 
@@ -42,6 +38,30 @@ contract against the configured provider plugins.
 | `/task:take` | Take a task - assign it to me (creating it if needed) WITHOUT starting timers or moving stages |
 | `/task:testing` | Move a task to the testing stage |
 | `/task:timers` | Show the local timers of a task (or all running timers), with their session |
+
+### Ship plugin commands (`/ship:*`)
+
+The optional ship plugin (`ship@nerv`) versions, builds and packages; its
+agents are `ship:versioner` and `ship:builder`. Reference:
+[release-commands.md](release-commands.md).
+
+| Command | What it does |
+|---|---|
+| `/ship:version` | Show the next release version of the repository (or of each project), computed by the native engine |
+| `/ship:setup` | Write the `ship:` section of `.ai-workflow.yml`: import an existing semantic-release config (`nerv ship setup --import`), ask each project's `build.mode` (`compose` or `script`) and its stage commands or compose file |
+| `/ship:build` | Build, test and package origin's code into a local artifact: dry run first, the real run only after your explicit yes; never writes to git |
+
+### Deploy plugin commands (`/deploy:*`)
+
+The optional deploy plugin (`deploy@nerv`, which requires `ship`) releases
+an artifact; its agent is `deploy:deployer`, and its git hosts and targets
+are provider plugins (`deploy-github`, `deploy-ssh-compose`). Reference:
+[deploy.md](deploy.md).
+
+| Command | What it does |
+|---|---|
+| `/deploy:run` | Release and deploy the latest local artifact, or the one you name: dry run first, then the release commit, tag, push, targets and git host release only after your explicit yes |
+| `/deploy:setup` | Write the `deploy:` section (host, targets, git) and suggest the provider plugins to install |
 
 ### /nerv:configure
 
@@ -76,66 +96,6 @@ repository.
 /nerv:init
 ```
 
-### /nerv:version
-
-Runs `nerv version next --json` with the arguments you give (`--branch`,
-`--project`, `--offline`, ...) and shows, per project, whether there is a
-new release, the next version, its channel and tag, and the last release.
-By default it reads origin's release tags and notes with your git
-credentials; add `--offline` to use the local ones only.
-
-```
-/nerv:version --branch develop
-```
-
-### /nerv:ship
-
-Always rehearses first with `nerv ship --dry-run --json` (the pipeline runs
-in a throwaway clone; nothing is tagged or published) and shows, per
-project, the version, channel, tag and last version, and the plan's
-stages. Then it asks you; only on your explicit yes does it run `nerv ship
---yes --json` and report the result, with the recovery advice of a failed
-project. `--branch` and `--project` pass through. It releases what is on
-origin: push or pull first when your branch differs.
-
-```
-/nerv:ship --branch develop --project api
-```
-
-### /nerv:release-setup
-
-Sets up the `release:` section used by `/nerv:version` and `/nerv:ship`.
-It detects the repository's semantic-release configuration, .NET projects
-and solutions, Dockerfiles and CI docker steps, `package.json` scripts,
-release scripts and monorepo layout; proposes a complete section; asks
-only what it cannot detect, one question at a time; writes the section
-into `.ai-workflow.yml` without touching the rest of the file; and
-validates it with `nerv version next --offline`. An existing section is
-shown first and never overwritten without asking. `--project <name>` adds
-or edits one project. It never commits, pushes or releases. See
-[release-commands.md](release-commands.md#interactive-setup).
-
-```
-/nerv:release-setup
-```
-
-### /nerv:pipeline
-
-Runs the Docker pipeline of the `pipeline:` section with `nerv pipeline
-run`: a dry run first (validate and test in the working tree, the release
-computed on origin, the images built, the merge-backs previewed, the
-deploys listed without connecting), then a summary of the version, images,
-merge-backs and environments, and the real run only after your explicit
-yes, bound to the approved version (`--expect`). It never releases,
-pushes or deploys without that yes; approving all but the deploy runs the
-steps up to sync one at a time. `--from <step>` or `--only <step>` narrows
-the run. See [pipeline.md](pipeline.md#getting-started).
-
-```
-/nerv:pipeline
-/nerv:pipeline --from docker
-```
-
 ### /nerv:status
 
 Read-only report of NERV's state for the current repo: activation,
@@ -154,9 +114,10 @@ isn't taking effect.
 | Command | What it does |
 |---|---|
 | `nerv version` | Print the binary and plugin versions |
-| `nerv version next` | Compute the next release version with semantic-release |
-| `nerv ship` | Release the repository from origin: pipeline, semantic-release, publish |
-| `nerv pipeline <step>` | Run a step of the Docker pipeline (`validate`, `test`, `release`, `docker`) |
+| `nerv version next` | Compute the next release version with the native engine (ship plugin) |
+| `nerv ship` | Build, test and package origin's code into a local artifact; no git writes (ship plugin) |
+| `nerv ship setup --import` | Import an existing semantic-release config into the `ship:` section |
+| `nerv deploy` | Release and deploy a ship artifact: release commit, tag, push, targets, git host release (deploy plugin) |
 | `nerv configure` | Configure NERV non-interactively (or run the wizard) |
 | `nerv install` | Install NERV (plugin, cache, skills, Engram KB) |
 | `nerv uninstall` | Uninstall NERV |
@@ -230,11 +191,11 @@ the former tasks, Teamwork and commands sections, and the flags
 ### nerv version next
 
 Computes the next semantic version of the repository, or of each project of
-its `release:` section, with the repository's own semantic-release
-configuration in dry-run mode, and prints the 12 outputs of
-`cycjimmy/semantic-release-action` as text, JSON or GitHub Actions output
-lines. Flags, formats, monorepo key naming and exit codes:
-[release-commands.md](release-commands.md#nerv-version-next).
+its `ship:` section, with nerv's native engine (no semantic-release, node or
+npm), and prints the 12 outputs of `cycjimmy/semantic-release-action` as
+text, JSON or GitHub Actions output lines. Its flags and outputs are the
+ones it had with semantic-release. Flags, formats, monorepo key naming and
+exit codes: [release-commands.md](release-commands.md#nerv-version-next).
 
 ```
 nerv version next --branch develop --json
@@ -244,57 +205,55 @@ nerv version next --branch develop --json
 nerv version next --offline --format env >> "$GITHUB_OUTPUT"
 ```
 
-### nerv pipeline
-
-Runs one step of the Docker pipeline configured in the `pipeline:` section
-(a standalone copy of dim.comprobantes.api's CI/CD): `validate` (`dotnet
-restore`, `dotnet format --verify-no-changes`) and `test` (restore, build
-with `-warnaserror`, `dotnet test` with coverage and a trx logger, results
-in `.nerv/artifacts/pipeline/test`, and the runsettings coverage thresholds
-enforced by nerv, since coverlet's collector ignores them; a passing run
-is recorded in `.nerv/artifacts/pipeline/test.json`); both run in your
-working tree. `release` releases what is on origin as `nerv ship` does,
-without building or publishing (version files, release commit, tag;
-outputs in `.nerv/artifacts/pipeline/release.json`); `docker` builds, tags
-and pushes every image from the released commit (results in
-`.nerv/artifacts/pipeline/docker.json`); `sync` merges the released branch
-back as dim's sync jobs (main or `release/*` into develop, main into every
-`release/*`; conflicts aborted and reported, committed as you; only after
-passing test and docker records of the release; results in
-`.nerv/artifacts/pipeline/sync.json`); `deploy` updates the release's
-environments over SSH as dim's `/update-deploy` (selected by their
-`DOCKER_IMAGE_VERSION` or by branch, data from environment variables or
-Infisical; health and version verified; results in
-`.nerv/artifacts/pipeline/deploy.json`); `run` runs every step in that
-order, stopping at the first that does not pass (summary in
-`.nerv/artifacts/pipeline/run.json`). Details:
-[pipeline.md](pipeline.md#running-the-steps).
-
-```
-nerv pipeline validate
-nerv pipeline test --json
-nerv pipeline release --dry-run
-nerv pipeline docker --dry-run
-nerv pipeline sync --dry-run
-nerv pipeline deploy --dry-run
-nerv pipeline run --dry-run
-```
-
 ### nerv ship
 
-A full local release of what is on origin, in a throwaway clone: dotnet
-project file, pipeline (restore to package), semantic-release for real
-(release commit, CHANGELOG, tag, GitHub release), then publish (docker,
-NuGet, npm) and the lifecycle hooks, per project in dependency order. It
-asks for confirmation (`--yes` to skip; required without a terminal);
-`--dry-run` builds without releasing or publishing. Flow, credentials,
-failure handling and exit codes:
+Builds, tests and packages what is on origin, in a throwaway clone, in each
+project's build mode (`compose` or `script`), per project in dependency
+order, and leaves the artifact `.nerv/artifacts/<project>/<version>/`. It
+never writes to git. It asks for confirmation (`--yes` to skip; required
+without a terminal); `--dry-run` runs every stage and writes no artifact;
+`--expect <project>=<version>` packages only the approved versions;
+`--version <semver>` skips the computation and takes the channel from the
+branch's `branches` entry. Flow, failure handling and exit codes:
 [release-commands.md](release-commands.md#nerv-ship).
 
 ```
 nerv ship --dry-run
 nerv ship --branch develop --project api
 ```
+
+### nerv ship setup --import
+
+Translates an existing JSON or YAML semantic-release config (`package.json`
+`release`, `.releaserc.json`, `.releaserc.yaml`/`.yml`) into the `ship:`
+section, once, and lists every part it cannot translate (the `npm` and
+`exec` plugins, `presetConfig.types`, `extends`, maintenance branches). A
+`.js` config is reported, never imported. `--dry-run` prints the result and
+writes nothing. See
+[release-commands.md](release-commands.md#importing-a-semantic-release-config).
+
+```
+nerv ship setup --import --dry-run
+nerv ship setup --import
+```
+
+### nerv deploy
+
+Releases and deploys an artifact `nerv ship` left: it preflights every
+target's tools and data before any push, then makes the release commit, the
+annotated tag and the channel note, pushes them atomically, runs each
+target's publish, deploy and verify, and creates the git host release.
+`--dry-run` prepares the release in a clone and shows the steps; `--target`
+selects targets; `--rebase` re-applies the release on origin's moved branch.
+See [deploy.md](deploy.md).
+
+```
+nerv deploy --artifact .nerv/artifacts/api/1.4.0 --dry-run
+nerv deploy --artifact .nerv/artifacts/api/1.4.0 --yes
+```
+
+`nerv pipeline` was removed: its steps moved to ship and deploy
+([pipeline.md](pipeline.md)).
 
 ### nerv install
 
@@ -303,10 +262,13 @@ Materializes the embedded plugin, registers it in Claude Code's
 assignments, ensures the Engram "nerv" knowledge base, and installs
 skills. It also installs the optional extension plugins named by `--with`,
 keeps the ones already enabled up to date, and, when stdin is a terminal,
-offers the others: first the task plugin (`task@nerv`, the `/task:*`
-commands), then, only if it is installed, its providers
-(`task-teamwork@nerv`). A provider named in `--with` brings the task plugin
-with it. Copies of the `/task:*` commands that an older release put in
+offers the others, in this order: the task plugin (`task@nerv`, the
+`/task:*` commands), then, only if it is installed, its providers
+(`task-teamwork@nerv`); the ship plugin (`ship@nerv`); the deploy plugin
+(`deploy@nerv`), which requires `ship`; then, only if deploy is installed,
+the deploy providers (`deploy-github@nerv`, `deploy-ssh-compose@nerv`). A
+provider named in `--with` brings its plugin with it, and `deploy` brings
+`ship`. Copies of the `/task:*` commands that an older release put in
 `~/.claude/commands/task/` are reported, and removed only after you
 confirm. See the README's "Install" section for the shell one-liners and
 environment variables (`NERV_CHANNEL`, `NERV_INSTALL_DIR`,
@@ -330,6 +292,10 @@ nerv install
 
 ```
 nerv install --with task-teamwork
+```
+
+```
+nerv install --with ship,deploy,deploy-github
 ```
 
 ```
@@ -447,6 +413,9 @@ enabled, and it governs how the session
 routes work to the named agents (Ikari, Misato, the MAGI, the pilots,
 Hyuga, Kaji, and so on). The task plugin's `task` skill and its
 `task:dispatcher` agent work the same way: the orchestrator launches the
-dispatcher only when the task plugin is installed. You never invoke them by name —
+dispatcher only when the task plugin is installed. The ship plugin's `ship` skill
+with its `ship:versioner` and `ship:builder` agents, and the deploy
+plugin's `deploy` skill with its `deploy:deployer` agent, are loaded and
+launched by their own `/ship:*` and `/deploy:*` commands. You never invoke them by name —
 see [integration.md#roles](integration.md#roles) for what each agent does
 and when it runs.
