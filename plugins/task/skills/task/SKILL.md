@@ -179,7 +179,7 @@ For each event, the dispatcher works through these steps:
 ```yaml
 - event: run.started
   provider: teamwork
-  result: ok | skipped | blocked | failed
+  result: ok | skipped | blocked | failed | needs_input
   task_ref: TW-49076279
   data: {stage: "En Desarrollo", timer: started}
   error: "<exact error text>"   # when blocked or failed
