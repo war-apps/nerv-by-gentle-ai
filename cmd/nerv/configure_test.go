@@ -5,12 +5,12 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 	"testing"
 	"time"
 
 	nerv "github.com/war-apps/nerv-by-gentle-ai"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/config"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/env/envtest"
 )
 
@@ -56,11 +56,11 @@ func TestRunConfigure_NoModeFlag_Terminal_RunsWizard(t *testing.T) {
 	// Real blank lines (not an exhausted reader — see wizard.ErrInputClosed)
 	// for every user-config prompt, so every value keeps its current
 	// default and the wizard completes instead of aborting.
-	opts.Stdin = strings.NewReader(strings.Repeat("\n", 28))
+	opts.Stdin = strings.NewReader(strings.Repeat("\n", 12))
 
 	code := run([]string{
 		"configure",
-		"--skip-skills", "--skip-models", "--skip-repos", "--skip-commands", "--no-refresh",
+		"--skip-skills", "--skip-models", "--skip-repos", "--no-refresh",
 	}, &stdout, &stderr, opts)
 
 	if code != 0 {
@@ -94,7 +94,7 @@ func TestRunConfigure_Answers_DrivesWizard(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	code := run([]string{
 		"configure", "--answers", answersPath,
-		"--skip-skills", "--skip-models", "--skip-repos", "--skip-commands", "--no-refresh",
+		"--skip-skills", "--skip-models", "--skip-repos", "--no-refresh",
 	}, &stdout, &stderr, testOptions(home))
 
 	if code != 0 {
@@ -123,7 +123,7 @@ func TestRunConfigure_Answers_MissingFileActsEmpty(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	code := run([]string{
 		"configure", "--answers", filepath.Join(home, "nonexistent-answers.txt"),
-		"--skip-skills", "--skip-models", "--skip-repos", "--skip-commands", "--no-refresh",
+		"--skip-skills", "--skip-models", "--skip-repos", "--no-refresh",
 	}, &stdout, &stderr, testOptions(home))
 
 	if code != 1 {
@@ -142,7 +142,7 @@ func TestRunConfigure_MultipleModes_UsageErrorExit2(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	home := t.TempDir()
 
-	code := run([]string{"configure", "--print", "--install-commands"}, &stdout, &stderr, testOptions(home))
+	code := run([]string{"configure", "--print", "--set", "git.worktree=ask"}, &stdout, &stderr, testOptions(home))
 
 	if code != 2 {
 		t.Fatalf("exit code = %d, want 2", code)
@@ -228,98 +228,6 @@ func TestRunConfigure_Set_HappyPathThenNoop(t *testing.T) {
 	}
 }
 
-// A write that strips legacy provider settings says so on one line; the JSON
-// summary lists them; a write with nothing to strip prints nothing extra.
-func TestRunConfigure_Set_ReportsRemovedLegacyProviders(t *testing.T) {
-	home := t.TempDir()
-	configPath := filepath.Join(home, ".claude", "nerv", "nerv.yaml")
-	if err := os.MkdirAll(filepath.Dir(configPath), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	legacy := "enabled: true\ngit:\n  worktree: ask\ntasks:\n  provider: jira   # old\n  providers:\n    teamwork:\n      task_ref_prefix: tw\n    jira: { site: x }\n"
-	if err := os.WriteFile(configPath, []byte(legacy), 0o644); err != nil {
-		t.Fatal(err)
-	}
-
-	var stdout, stderr bytes.Buffer
-	code := run([]string{"configure", "--set", "git.worktree=always"}, &stdout, &stderr, testOptions(home))
-	if code != 0 {
-		t.Fatalf("exit code = %d, want 0 (stderr=%q)", code, stderr.String())
-	}
-	const want = "Removed legacy task provider settings: tasks.provider (jira), tasks.providers.jira\n"
-	if strings.Count(stdout.String(), "Removed legacy task provider settings") != 1 || !strings.Contains(stdout.String(), want) {
-		t.Errorf("stdout missing the single line %q:\n%s", want, stdout.String())
-	}
-
-	var again bytes.Buffer
-	code = run([]string{"configure", "--set", "git.worktree=never", "--json"}, &again, &stderr, testOptions(home))
-	if code != 0 {
-		t.Fatalf("exit code = %d, want 0", code)
-	}
-	if strings.Contains(again.String(), "removed") {
-		t.Errorf("a write with nothing to strip mentions removals: %s", again.String())
-	}
-}
-
-// --json carries the stripped settings in a "removed" array, in file order.
-func TestRunConfigure_Set_JSONListsRemovedLegacyProviders(t *testing.T) {
-	home := t.TempDir()
-	configPath := filepath.Join(home, ".claude", "nerv", "nerv.yaml")
-	if err := os.MkdirAll(filepath.Dir(configPath), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	legacy := "enabled: true\ngit:\n  worktree: ask\ntasks:\n  provider: jira\n  providers:\n    teamwork:\n      task_ref_prefix: tw\n    jira: { site: x }\n"
-	if err := os.WriteFile(configPath, []byte(legacy), 0o644); err != nil {
-		t.Fatal(err)
-	}
-
-	var stdout, stderr bytes.Buffer
-	code := run([]string{"configure", "--set", "git.worktree=always", "--json"}, &stdout, &stderr, testOptions(home))
-	if code != 0 {
-		t.Fatalf("exit code = %d, want 0 (stderr=%q)", code, stderr.String())
-	}
-	var got struct {
-		Removed []string `json:"removed"`
-	}
-	if err := json.Unmarshal(stdout.Bytes(), &got); err != nil {
-		t.Fatalf("stdout not valid JSON: %v (%q)", err, stdout.String())
-	}
-	want := []string{"tasks.provider (jira)", "tasks.providers.jira"}
-	if !slices.Equal(got.Removed, want) {
-		t.Errorf("removed = %v, want %v", got.Removed, want)
-	}
-}
-
-// Setting a key to the value it already has changes nothing, so the legacy
-// settings stay and nothing is reported.
-func TestRunConfigure_Set_SameValueDoesNotCleanLegacyProviders(t *testing.T) {
-	home := t.TempDir()
-	configPath := filepath.Join(home, ".claude", "nerv", "nerv.yaml")
-	if err := os.MkdirAll(filepath.Dir(configPath), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	legacy := "enabled: true\ngit:\n  worktree: ask\ntasks:\n  provider: jira\n"
-	if err := os.WriteFile(configPath, []byte(legacy), 0o644); err != nil {
-		t.Fatal(err)
-	}
-
-	var stdout, stderr bytes.Buffer
-	if code := run([]string{"configure", "--set", "git.worktree=ask"}, &stdout, &stderr, testOptions(home)); code != 0 {
-		t.Fatalf("exit code = %d, want 0 (stderr=%q)", code, stderr.String())
-	}
-	if strings.Contains(stdout.String(), "Removed legacy") {
-		t.Errorf("a no-op set reported a cleanup:\n%s", stdout.String())
-	}
-	after, _ := os.ReadFile(configPath)
-	if string(after) != legacy {
-		t.Errorf("file changed on a no-op set: %q", after)
-	}
-}
-
-// ---------------------------------------------------------------------------
-// --set with an unknown key: exit 1, message on stdout.
-// ---------------------------------------------------------------------------
-
 func TestRunConfigure_Set_UnknownKeyExit1(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	home := t.TempDir()
@@ -369,57 +277,208 @@ func TestRunConfigure_HomeFlag_NoLongerAccepted(t *testing.T) {
 	}
 }
 
-// --init-repo on an existing project file cleans the removed task providers:
-// one informational line in the human output, a "removed" array in --json.
-func TestRunConfigure_InitRepo_CleansExistingLegacyProjectConfig(t *testing.T) {
+// tasksFixture is a nerv.yaml carrying a tasks: block written by an earlier
+// release, with the Teamwork stages inline map and the settings of a provider
+// that no longer exists. Core owns none of it and must keep every byte.
+const tasksFixture = "enabled: true\n" +
+	"git:\n" +
+	"  base_branch: develop              # default base\n" +
+	"  worktree: ask\n" +
+	"tasks:\n" +
+	"  provider: jira                    # teamwork | none\n" +
+	"  rounding_minutes: 15\n" +
+	"  providers:\n" +
+	"    teamwork:\n" +
+	"      assignee_id: 686035\n" +
+	"      stages: { inDev: DESARROLLO, testing: TESTING, implemented: IMPLEMENTA, blocked: BLOQUEA, canceled: CANCEL, pending: PENDIENTE, analysis: ANALISIS }\n" +
+	"    jira: { site: x }\n" +
+	"artifacts:\n" +
+	"  commit: at-close\n"
+
+func tasksBlock(t *testing.T, path string) string {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	block, found := config.Parse(string(data)).Block("tasks")
+	if !found {
+		t.Fatalf("%s lost its tasks: block:\n%s", path, data)
+	}
+	return block
+}
+
+// S7: a full nerv configure round trip (--set, --set-model, the wizard and
+// --init-repo over an existing project file) leaves a tasks: block's bytes
+// exactly as they were.
+func TestRunConfigure_RoundTrip_PreservesTasksBlock(t *testing.T) {
 	home := t.TempDir()
+	configPath := filepath.Join(home, ".claude", "nerv", "nerv.yaml")
+	if err := os.MkdirAll(filepath.Dir(configPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(configPath, []byte(tasksFixture), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	want, _ := config.Parse(tasksFixture).Block("tasks")
+
+	answersPath := filepath.Join(home, "answers.txt")
+	if err := os.WriteFile(answersPath, []byte("release\n"+strings.Repeat("\n", 30)), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	for _, args := range [][]string{
+		{"configure", "--set", "git.base_branch=main"},
+		{"configure", "--set-model", "hyuga=opus/xhigh"},
+		{"configure", "--answers", answersPath, "--skip-skills", "--skip-models", "--skip-repos", "--no-refresh"},
+	} {
+		var stdout, stderr bytes.Buffer
+		if code := run(args, &stdout, &stderr, testOptions(home)); code != 0 {
+			t.Fatalf("%v: exit code = %d, want 0 (stdout=%q)", args, code, stdout.String())
+		}
+		if got := tasksBlock(t, configPath); got != want {
+			t.Errorf("%v changed the tasks: block:\ngot:\n%s\nwant:\n%s", args, got, want)
+		}
+	}
+	if data, _ := os.ReadFile(configPath); !strings.Contains(string(data), "base_branch: release") {
+		t.Errorf("the round trip did not write its own change:\n%s", data)
+	}
+
 	repo := t.TempDir()
-	legacy := "enabled: true\ntasks:\n  provider: jira\n  providers:\n    teamwork:\n      project_id: 1\n    jira: { site: x }\n"
 	projectPath := filepath.Join(repo, ".nerv", "nerv.yaml")
 	if err := os.MkdirAll(filepath.Dir(projectPath), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(projectPath, []byte(legacy), 0o644); err != nil {
+	if err := os.WriteFile(projectPath, []byte(tasksFixture), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	opts := testOptions(home)
 	opts.Runner = &envtest.FakeRunner{Responses: map[string]envtest.Response{
 		"git -C " + repo + " rev-parse --show-toplevel": {Stdout: repo + "\n"},
 	}}
+	var stdout, stderr bytes.Buffer
+	if code := run([]string{"configure", "--init-repo", repo}, &stdout, &stderr, opts); code != 0 {
+		t.Fatalf("--init-repo: exit code = %d, want 0 (stdout=%q)", code, stdout.String())
+	}
+	if data, _ := os.ReadFile(projectPath); string(data) != tasksFixture {
+		t.Errorf("--init-repo rewrote an existing project file:\n%s", data)
+	}
+}
+
+// S1: the task flags are gone; like any unknown flag they exit 2 with the
+// usage text, and the usage no longer names them.
+func TestRunConfigure_RemovedTaskFlags_Exit2(t *testing.T) {
+	home := t.TempDir()
+	repo := t.TempDir()
+	for _, args := range [][]string{
+		{"--init-repo", repo, "--repo-provider", "teamwork"},
+		{"--init-repo", repo, "--repo-project-id", "1"},
+		{"--init-repo", repo, "--repo-tasklist-id", "1"},
+		{"--install-commands"},
+		{"--skip-commands", "--no-refresh"},
+	} {
+		var stdout, stderr bytes.Buffer
+		code := run(append([]string{"configure"}, args...), &stdout, &stderr, testOptions(home))
+		if code != 2 {
+			t.Errorf("%v: exit code = %d, want 2 (stdout=%q)", args, code, stdout.String())
+		}
+		if !strings.Contains(stderr.String(), "Usage: nerv configure") {
+			t.Errorf("%v: expected the usage text on stderr, got %q", args, stderr.String())
+		}
+	}
+	for _, removed := range []string{"--repo-provider ", "--repo-project-id", "--repo-tasklist-id", "--install-commands", "--skip-commands", "Teamwork"} {
+		if strings.Contains(configureUsage, removed) {
+			t.Errorf("configureUsage still mentions %q", removed)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(repo, ".nerv")); err == nil {
+		t.Error("a refused invocation wrote the repository config")
+	}
+}
+
+func initRepoOptions(home, repo string) options {
+	opts := testOptions(home)
+	opts.ExtensionsFS = nerv.ExtensionsFS()
+	opts.Runner = &envtest.FakeRunner{Responses: map[string]envtest.Response{
+		"git -C " + repo + " rev-parse --show-toplevel": {Stdout: repo + "\n"},
+	}}
+	return opts
+}
+
+// S3: --repo-provider-config writes tasks.providers.<provider>.<key> into the
+// new project file, keeping --repo-base and the rest of the file as before.
+func TestRunConfigure_InitRepo_ProviderConfig_WritesProviderKeys(t *testing.T) {
+	home := t.TempDir()
+	repo := t.TempDir()
 
 	var stdout, stderr bytes.Buffer
-	if code := run([]string{"configure", "--init-repo", repo, "--json"}, &stdout, &stderr, opts); code != 0 {
-		t.Fatalf("exit code = %d, want 0 (stderr=%q)", code, stderr.String())
+	code := run([]string{"configure", "--init-repo", repo, "--repo-base", "main",
+		"--repo-provider-config", "teamwork.project_id=111",
+		"--repo-provider-config", "teamwork.tasklist_id=222",
+	}, &stdout, &stderr, initRepoOptions(home, repo))
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0 (stdout=%q stderr=%q)", code, stdout.String(), stderr.String())
 	}
-	var got struct {
-		Removed []string `json:"removed"`
-	}
-	if err := json.Unmarshal(stdout.Bytes(), &got); err != nil {
-		t.Fatalf("stdout not valid JSON: %v (%q)", err, stdout.String())
-	}
-	if want := []string{"tasks.provider (jira)", "tasks.providers.jira"}; !slices.Equal(got.Removed, want) {
-		t.Errorf("removed = %v, want %v", got.Removed, want)
-	}
-
-	// Cleaned already: the human run prints no removal line.
-	var human bytes.Buffer
-	if code := run([]string{"configure", "--init-repo", repo}, &human, &stderr, opts); code != 0 {
-		t.Fatalf("exit code = %d, want 0", code)
-	}
-	if strings.Contains(human.String(), "Removed legacy") {
-		t.Errorf("a clean file reports a removal:\n%s", human.String())
-	}
-
-	// And the human output of a cleaning run carries the single line.
-	if err := os.WriteFile(projectPath, []byte(legacy), 0o644); err != nil {
+	data, err := os.ReadFile(filepath.Join(repo, ".nerv", "nerv.yaml"))
+	if err != nil {
 		t.Fatal(err)
 	}
-	var cleaning bytes.Buffer
-	if code := run([]string{"configure", "--init-repo", repo}, &cleaning, &stderr, opts); code != 0 {
-		t.Fatalf("exit code = %d, want 0", code)
+	doc := config.Parse(string(data))
+	for key, want := range map[string]string{
+		"enabled":                              "true",
+		"git.base_branch":                      "main",
+		"tasks.providers.teamwork.project_id":  "111",
+		"tasks.providers.teamwork.tasklist_id": "222",
+	} {
+		if got, _ := doc.Scalar(key); got != want {
+			t.Errorf("%s = %q, want %q:\n%s", key, got, want, data)
+		}
 	}
-	const line = "Removed legacy task provider settings: tasks.provider (jira), tasks.providers.jira\n"
-	if strings.Count(cleaning.String(), "Removed legacy task provider settings") != 1 || !strings.Contains(cleaning.String(), line) {
-		t.Errorf("stdout missing the single line %q:\n%s", line, cleaning.String())
+	if _, found := doc.Scalar("tasks.provider"); found {
+		t.Errorf("tasks.provider written without being asked:\n%s", data)
+	}
+}
+
+// S3: --repo-provider-config is refused (exit 1, naming the problem, writing
+// nothing) for a provider with no embedded manifest, a key outside its
+// config, or a value that is not valid for the key's type; used without
+// --init-repo it is a usage error.
+func TestRunConfigure_InitRepo_ProviderConfig_Refusals(t *testing.T) {
+	cases := []struct {
+		entry, want string
+	}{
+		{"jira.site=x", "Unknown task provider 'jira'"},
+		{"teamwork.bogus=1", "Unknown key 'bogus' for task provider 'teamwork'"},
+		{"teamwork.project_id=abc", "Invalid value 'abc' for tasks.providers.teamwork.project_id: expected int"},
+		{"teamwork.billable=maybe", "Invalid value 'maybe' for tasks.providers.teamwork.billable: expected bool"},
+		{"teamwork.stages=x", "Invalid value 'x' for tasks.providers.teamwork.stages: expected map"},
+		{"teamwork=1", "Invalid --repo-provider-config entry 'teamwork=1'"},
+		{"teamwork.project_id", "Invalid --repo-provider-config entry 'teamwork.project_id'"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.entry, func(t *testing.T) {
+			home := t.TempDir()
+			repo := t.TempDir()
+			var stdout, stderr bytes.Buffer
+			code := run([]string{"configure", "--init-repo", repo, "--repo-provider-config", tc.entry}, &stdout, &stderr, initRepoOptions(home, repo))
+			if code != 1 {
+				t.Fatalf("exit code = %d, want 1 (stdout=%q)", code, stdout.String())
+			}
+			if !strings.Contains(stdout.String(), tc.want) {
+				t.Errorf("stdout = %q, want it to contain %q", stdout.String(), tc.want)
+			}
+			if _, err := os.Stat(filepath.Join(repo, ".nerv")); err == nil {
+				t.Error("a refused entry wrote the repository config")
+			}
+		})
+	}
+
+	home := t.TempDir()
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"configure", "--set", "git.worktree=ask", "--repo-provider-config", "teamwork.project_id=1"}, &stdout, &stderr, initRepoOptions(home, home))
+	if code != 2 {
+		t.Errorf("without --init-repo: exit code = %d, want 2 (stdout=%q)", code, stdout.String())
+	}
+	if !strings.Contains(stderr.String(), "--repo-provider-config requires --init-repo") {
+		t.Errorf("stderr = %q, want the --init-repo requirement", stderr.String())
 	}
 }

@@ -16,7 +16,6 @@ func TestResolve_JoinsEveryPathUnderHome(t *testing.T) {
 		UserConfig:       filepath.Join(home, ".claude", "nerv", "nerv.yaml"),
 		State:            filepath.Join(home, ".gentle-ai", "state.json"),
 		SkillsDir:        filepath.Join(home, ".claude", "skills"),
-		CommandsDir:      filepath.Join(home, ".claude", "commands", "task"),
 		Settings:         filepath.Join(home, ".claude", "settings.json"),
 		Marketplace:      filepath.Join(home, ".nerv", "marketplace"),
 		InstalledPlugins: filepath.Join(home, ".claude", "plugins", "installed_plugins.json"),

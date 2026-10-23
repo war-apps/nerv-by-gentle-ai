@@ -7,7 +7,6 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 
 	"github.com/war-apps/nerv-by-gentle-ai/internal/atomicfile"
@@ -15,35 +14,30 @@ import (
 )
 
 // InitRepoRequest is --init-repo's parameters: the target directory plus
-// the optional per-repo overrides (base branch, task provider, project id,
-// tasklist id).
+// the optional per-repo overrides (base branch, and task provider settings
+// as "<provider>.<key>=<value>" entries checked against the embedded
+// provider manifests in Deps.ExtensionsFS).
 type InitRepoRequest struct {
-	Path       string
-	Base       string
-	Provider   string
-	ProjectID  string
-	TasklistID string
+	Path           string
+	Base           string
+	ProviderConfig []string
 }
 
 // InitRepo initializes path for NERV by writing <toplevel>/.nerv/nerv.yaml
-// (config.FormatProjectFile) — never overwriting an existing project
-// config, reporting that case as a warning rather than an error. An existing
-// config is rewritten only to strip the settings of the removed task
-// providers (backed up first, reported in Result.Removed); otherwise it is
-// left untouched. path must
-// exist and be inside a git working tree (resolved with
-// "git -C <path> rev-parse --show-toplevel"); either failure is a
-// refusal.
+// (config.FormatProjectFile, plus each ProviderConfig entry under
+// tasks.providers.<provider>.<key>) — never overwriting or editing an
+// existing project config, reporting that case as a warning rather than an
+// error. path must exist and be inside a git working tree (resolved with
+// "git -C <path> rev-parse --show-toplevel"); either failure, like an
+// invalid ProviderConfig entry, is a refusal.
 func InitRepo(deps Deps, req InitRepoRequest) (Result, error) {
 	if _, err := os.Stat(req.Path); err != nil {
 		return Result{}, &RefusalError{Err: fmt.Errorf("Path not found: %s", req.Path)}
 	}
 
-	if req.Provider != "" {
-		allowed, _ := config.AllowedValues("tasks.provider")
-		if !slices.Contains(allowed, req.Provider) {
-			return Result{}, &RefusalError{Err: fmt.Errorf("Invalid --repo-provider '%s'. Allowed: %s.", req.Provider, strings.Join(allowed, ", "))}
-		}
+	settings, err := ParseProviderConfig(deps.ExtensionsFS, req.ProviderConfig)
+	if err != nil {
+		return Result{}, err
 	}
 
 	stdout, _, exitCode, err := deps.Runner.Run(context.Background(), "git", "-C", req.Path, "rev-parse", "--show-toplevel")
@@ -56,43 +50,15 @@ func InitRepo(deps Deps, req InitRepoRequest) (Result, error) {
 
 	warnings := emptyStrings()
 	written := emptyStrings()
+	changes := emptyChanges()
 	changed := false
 
-	var backup *string
-	var removed []string
-
 	if _, statErr := os.Stat(repoConfigPath); statErr == nil {
-		existing, readErr := os.ReadFile(repoConfigPath)
-		cleaned, names := config.StripRemovedTaskProviders(existing)
-		if readErr != nil {
-			// An existing but unreadable config keeps the old, non-fatal
-			// "already initialized" outcome; only the cleanup is skipped.
-			warnings = append(warnings, fmt.Sprintf("%s already initialized; left untouched (could not read it to clean legacy settings: %v).", repoConfigPath, readErr))
-		} else if len(names) == 0 {
-			warnings = append(warnings, fmt.Sprintf("%s already initialized; left untouched.", repoConfigPath))
-		} else {
-			b, err := atomicfile.Save(repoConfigPath, cleaned, atomicfile.Options{
-				Now:          deps.Now(),
-				BackupSuffix: "bak-configure-",
-			})
-			if err != nil {
-				return Result{}, err
-			}
-			if b != "" {
-				backup = &b
-			}
-			removed = names
-			written = append(written, repoConfigPath)
-			changed = true
-		}
+		warnings = append(warnings, fmt.Sprintf("%s already initialized; left untouched.", repoConfigPath))
 	} else if errors.Is(statErr, fs.ErrNotExist) {
-		text := config.FormatProjectFile(config.ProjectValues{
-			BaseBranch: req.Base,
-			Provider:   req.Provider,
-			ProjectID:  req.ProjectID,
-			TasklistID: req.TasklistID,
-		})
-		if _, err := atomicfile.Save(repoConfigPath, []byte(text), atomicfile.Options{}); err != nil {
+		doc := config.Parse(config.FormatProjectFile(config.ProjectValues{BaseBranch: req.Base}))
+		changes = applyProviderSettings(doc, settings)
+		if _, err := atomicfile.Save(repoConfigPath, []byte(doc.String()), atomicfile.Options{}); err != nil {
 			return Result{}, err
 		}
 		written = append(written, repoConfigPath)
@@ -103,11 +69,10 @@ func InitRepo(deps Deps, req InitRepoRequest) (Result, error) {
 
 	return Result{
 		Changed:    changed,
-		Changes:    emptyChanges(),
+		Changes:    changes,
 		Written:    written,
 		Warnings:   warnings,
 		ConfigPath: repoConfigPath,
-		Backup:     backup,
-		Removed:    removed,
+		Backup:     nil,
 	}, nil
 }

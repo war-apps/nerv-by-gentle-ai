@@ -4,11 +4,12 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 	"testing"
 	"time"
 
+	nerv "github.com/war-apps/nerv-by-gentle-ai"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/config"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/configure"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/env/envtest"
 )
@@ -26,10 +27,10 @@ func gitToplevelRunner(repoPath string) *envtest.FakeRunner {
 
 func TestInitRepo_CreatesProjectConfig(t *testing.T) {
 	repoDir := t.TempDir()
-	deps := configure.Deps{Runner: gitToplevelRunner(repoDir), Now: func() time.Time { return time.Now() }}
+	deps := configure.Deps{Runner: gitToplevelRunner(repoDir), Now: func() time.Time { return time.Now() }, ExtensionsFS: nerv.ExtensionsFS()}
 
 	result, err := configure.InitRepo(deps, configure.InitRepoRequest{
-		Path: repoDir, Base: "develop", Provider: "teamwork", ProjectID: "111", TasklistID: "222",
+		Path: repoDir, Base: "develop", ProviderConfig: []string{"teamwork.project_id=111", "teamwork.tasklist_id=222"},
 	})
 	if err != nil {
 		t.Fatalf("InitRepo() error = %v", err)
@@ -50,11 +51,14 @@ func TestInitRepo_CreatesProjectConfig(t *testing.T) {
 	if !strings.Contains(text, "base_branch: develop") {
 		t.Error("missing base_branch")
 	}
-	if !strings.Contains(text, "project_id: 111") {
-		t.Error("missing project_id")
-	}
-	if !strings.Contains(text, "tasklist_id: 222") {
-		t.Error("missing tasklist_id")
+	doc := config.Parse(text)
+	for key, want := range map[string]string{
+		"tasks.providers.teamwork.project_id":  "111",
+		"tasks.providers.teamwork.tasklist_id": "222",
+	} {
+		if got, _ := doc.Scalar(key); got != want {
+			t.Errorf("%s = %q, want %q:\n%s", key, got, want, text)
+		}
 	}
 	if result.ConfigPath != repoConfigPath {
 		t.Errorf("ConfigPath = %q, want %q", result.ConfigPath, repoConfigPath)
@@ -143,52 +147,40 @@ func TestInitRepo_PathNotFound_Refused(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// initrepo with an invalid --repo-provider: refused.
+// initrepo with an invalid provider config entry: refused before anything is
+// written, naming the problem.
 // ---------------------------------------------------------------------------
 
-func TestInitRepo_InvalidProvider_Refused(t *testing.T) {
-	repoDir := t.TempDir()
-	deps := configure.Deps{Runner: gitToplevelRunner(repoDir), Now: func() time.Time { return time.Now() }}
-
-	_, err := configure.InitRepo(deps, configure.InitRepoRequest{Path: repoDir, Provider: "bogus-provider"})
-	if err == nil {
-		t.Fatal("InitRepo() error = nil, want a refusal")
+func TestInitRepo_InvalidProviderConfig_Refused(t *testing.T) {
+	cases := map[string]string{
+		"jira.site=x":             "Unknown task provider 'jira' in --repo-provider-config: no embedded manifest (available: teamwork).",
+		"teamwork.bogus=1":        "Unknown key 'bogus' for task provider 'teamwork'.",
+		"teamwork.project_id=1.5": "Invalid value '1.5' for tasks.providers.teamwork.project_id: expected int.",
+		"=1":                      "Invalid --repo-provider-config entry '=1'; expected <provider>.<key>=<value>.",
 	}
-	var refusal *configure.RefusalError
-	if !errors.As(err, &refusal) {
-		t.Fatalf("error = %v, want *RefusalError", err)
-	}
-	if !strings.Contains(err.Error(), "bogus-provider") {
-		t.Errorf("error message %q does not name the provider", err.Error())
-	}
-
-	if _, statErr := os.Stat(filepath.Join(repoDir, ".nerv", "nerv.yaml")); statErr == nil {
-		t.Error("file was created despite the invalid provider")
-	}
-}
-
-// The removed stub providers are refused like any other unknown value.
-func TestInitRepo_RemovedStubProviders_Refused(t *testing.T) {
-	for _, provider := range []string{"github-projects", "jira"} {
-		t.Run(provider, func(t *testing.T) {
+	for entry, want := range cases {
+		t.Run(entry, func(t *testing.T) {
 			repoDir := t.TempDir()
-			deps := configure.Deps{Runner: gitToplevelRunner(repoDir), Now: func() time.Time { return time.Now() }}
+			deps := configure.Deps{Runner: gitToplevelRunner(repoDir), Now: func() time.Time { return time.Now() }, ExtensionsFS: nerv.ExtensionsFS()}
 
-			_, err := configure.InitRepo(deps, configure.InitRepoRequest{Path: repoDir, Provider: provider})
+			_, err := configure.InitRepo(deps, configure.InitRepoRequest{Path: repoDir, ProviderConfig: []string{entry}})
 			var refusal *configure.RefusalError
 			if !errors.As(err, &refusal) {
 				t.Fatalf("error = %v, want *RefusalError", err)
 			}
-			if !strings.Contains(err.Error(), provider) {
-				t.Errorf("error message %q does not name the provider", err.Error())
+			if !strings.Contains(err.Error(), want) {
+				t.Errorf("error = %q, want it to contain %q", err.Error(), want)
+			}
+			if _, statErr := os.Stat(filepath.Join(repoDir, ".nerv", "nerv.yaml")); statErr == nil {
+				t.Error("file was created despite the invalid entry")
 			}
 		})
 	}
 }
 
 // ---------------------------------------------------------------------------
-// initrepo against an existing project config: the removed task providers are
-// cleaned (with a backup and a Removed report); a clean file is untouched.
+// S7: initrepo against an existing project config leaves it untouched, a
+// tasks: block written by an earlier release included.
 // ---------------------------------------------------------------------------
 
 const legacyProjectConfig = "enabled: true\n" +
@@ -199,12 +191,6 @@ const legacyProjectConfig = "enabled: true\n" +
 	"      project_id: 111\n" +
 	"    github-projects: { owner: x }\n" +
 	"    jira: { site: x }\n"
-
-const cleanedProjectConfig = "enabled: true\n" +
-	"tasks:\n" +
-	"  providers:\n" +
-	"    teamwork:\n" +
-	"      project_id: 111\n"
 
 func writeProjectConfig(t *testing.T, repoDir, content string) string {
 	t.Helper()
@@ -218,12 +204,12 @@ func writeProjectConfig(t *testing.T, repoDir, content string) string {
 	return path
 }
 
-func TestInitRepo_ExistingLegacyConfig_IsCleanedWithBackup(t *testing.T) {
+func TestInitRepo_ExistingConfigWithTasksBlock_IsUntouchedWithoutBackup(t *testing.T) {
 	repoDir := t.TempDir()
 	path := writeProjectConfig(t, repoDir, legacyProjectConfig)
-	deps := configure.Deps{Runner: gitToplevelRunner(repoDir), Now: func() time.Time { return time.Date(2026, 10, 2, 9, 0, 0, 0, time.UTC) }}
+	deps := configure.Deps{Runner: gitToplevelRunner(repoDir), Now: func() time.Time { return time.Now() }, ExtensionsFS: nerv.ExtensionsFS()}
 
-	result, err := configure.InitRepo(deps, configure.InitRepoRequest{Path: repoDir})
+	result, err := configure.InitRepo(deps, configure.InitRepoRequest{Path: repoDir, ProviderConfig: []string{"teamwork.project_id=222"}})
 	if err != nil {
 		t.Fatalf("InitRepo() error = %v", err)
 	}
@@ -232,53 +218,11 @@ func TestInitRepo_ExistingLegacyConfig_IsCleanedWithBackup(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if string(got) != cleanedProjectConfig {
-		t.Errorf("file =\n%s\nwant\n%s", got, cleanedProjectConfig)
+	if string(got) != legacyProjectConfig {
+		t.Errorf("existing file was rewritten:\n%s", got)
 	}
-	if !result.Changed {
-		t.Error("Changed = false, want true")
-	}
-	if len(result.Written) != 1 || result.Written[0] != path {
-		t.Errorf("Written = %v, want [%s]", result.Written, path)
-	}
-	want := []string{"tasks.provider (jira)", "tasks.providers.github-projects", "tasks.providers.jira"}
-	if !slices.Equal(result.Removed, want) {
-		t.Errorf("Removed = %v, want %v", result.Removed, want)
-	}
-	if result.Backup == nil {
-		t.Fatal("Backup = nil, want the backup path")
-	}
-	backup, err := os.ReadFile(*result.Backup)
-	if err != nil {
-		t.Fatalf("backup not written: %v", err)
-	}
-	if string(backup) != legacyProjectConfig {
-		t.Errorf("backup does not hold the original file:\n%s", backup)
-	}
-	if !strings.HasPrefix(*result.Backup, path+".bak-configure-") {
-		t.Errorf("Backup = %q, want the %q convention", *result.Backup, path+".bak-configure-<timestamp>")
-	}
-}
-
-func TestInitRepo_ExistingCleanConfig_IsUntouchedWithoutBackup(t *testing.T) {
-	repoDir := t.TempDir()
-	path := writeProjectConfig(t, repoDir, cleanedProjectConfig)
-	deps := configure.Deps{Runner: gitToplevelRunner(repoDir), Now: func() time.Time { return time.Now() }}
-
-	result, err := configure.InitRepo(deps, configure.InitRepoRequest{Path: repoDir})
-	if err != nil {
-		t.Fatalf("InitRepo() error = %v", err)
-	}
-
-	got, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if string(got) != cleanedProjectConfig {
-		t.Errorf("clean file was rewritten:\n%s", got)
-	}
-	if result.Changed || len(result.Written) != 0 || len(result.Removed) != 0 || result.Backup != nil {
-		t.Errorf("result = %+v, want nothing changed, written, removed or backed up", result)
+	if result.Changed || len(result.Written) != 0 || result.Backup != nil {
+		t.Errorf("result = %+v, want nothing changed, written or backed up", result)
 	}
 	if len(result.Warnings) == 0 {
 		t.Error("Warnings is empty, want the already-initialized warning")
@@ -303,8 +247,8 @@ func TestInitRepo_UnreadableExistingConfig_WarnsInsteadOfFailing(t *testing.T) {
 	if err != nil {
 		t.Fatalf("InitRepo() error = %v, want a warning instead of a failure", err)
 	}
-	if result.Changed || len(result.Written) != 0 || len(result.Removed) != 0 {
-		t.Errorf("result = %+v, want nothing changed, written or removed", result)
+	if result.Changed || len(result.Written) != 0 {
+		t.Errorf("result = %+v, want nothing changed or written", result)
 	}
 	if len(result.Warnings) == 0 {
 		t.Error("Warnings is empty, want one naming the unreadable config")

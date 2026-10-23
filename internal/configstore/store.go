@@ -7,7 +7,6 @@
 package configstore
 
 import (
-	"bytes"
 	"errors"
 	"io/fs"
 	"os"
@@ -40,35 +39,26 @@ func (Store) Load(path string) (*config.Document, bool, error) {
 }
 
 // Save persists doc to path when its text differs from previous (the bytes
-// Load returned earlier in the same run): a no-op — no write, no backup, nothing
-// removed — when they are identical, even if the file carries removed task
-// provider settings. Otherwise, when a file already exists at path,
+// Load returned earlier in the same run): a no-op — no write, no backup —
+// when they are identical. Otherwise, when a file already exists at path,
 // it is copied to a timestamped "<path>.bak-configure-<yyyyMMdd-HHmmss>"
 // backup first — the same suffix and format for every "nerv configure
 // --set"/"--set-model" write, regardless of which one touched the file;
 // when it does not exist yet, Save creates path's parent directory
 // instead. The new content is then written atomically (temp file +
-// rename).
-//
-// A write that does happen also strips the settings of the removed task
-// providers (config.StripRemovedTaskProviders) from the text, leaving every
-// other byte as it was; removed names what went, and is nil when nothing did.
-// The backup keeps the file as it was before the cleanup.
-func (Store) Save(path string, doc *config.Document, previous []byte, now time.Time) (written bool, backup string, removed []string, err error) {
+// rename). Every byte doc does not change is written back as it was,
+// including blocks core does not manage, such as a tasks: block.
+func (Store) Save(path string, doc *config.Document, previous []byte, now time.Time) (written bool, backup string, err error) {
 	if doc.String() == string(previous) {
-		return false, "", nil, nil
-	}
-	newText, removed := config.StripRemovedTaskProviders([]byte(doc.String()))
-	if bytes.Equal(newText, previous) {
-		return false, "", nil, nil
+		return false, "", nil
 	}
 
-	backup, err = atomicfile.Save(path, newText, atomicfile.Options{
+	backup, err = atomicfile.Save(path, []byte(doc.String()), atomicfile.Options{
 		Now:          now,
 		BackupSuffix: "bak-configure-",
 	})
 	if err != nil {
-		return false, "", nil, err
+		return false, "", err
 	}
-	return true, backup, removed, nil
+	return true, backup, nil
 }

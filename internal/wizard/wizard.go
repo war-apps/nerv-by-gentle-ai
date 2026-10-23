@@ -1,18 +1,18 @@
 // Package wizard implements the interactive half of "nerv configure": the
 // terminal setup wizard, driven over an injected io.Reader/io.Writer so it
 // can be scripted in tests (and via a real --answers file) exactly the
-// same way. It walks prerequisites, required-skills, user-config, models,
-// repos, slash-commands, and apply-and-refresh sections in order, with
+// same way. It walks prerequisites, required-skills, user-config, task
+// providers, models, repos, and apply-and-refresh sections in order, with
 // the per-role models editor folded directly into the models section
 // instead of shelling out to a separate command.
 //
 // Every nerv.yaml write goes through configure.Store, config.SetManagedValue
 // (via configure.Set), or config.SetModelsBlock — the same primitives
 // "nerv configure --set"/"--set-model" already use — so there is exactly
-// one place in the whole program that ever writes nerv.yaml text. Repo
-// initialization and the Teamwork commands install likewise reuse
-// configure.InitRepo and configure.InstallCommands rather than
-// reimplementing their file writes.
+// one place in the whole program that ever writes nerv.yaml text. Task
+// provider settings go through configure.SetProviderSettings, the same
+// format-preserving editor, and repo initialization reuses
+// configure.InitRepo rather than reimplementing its file write.
 package wizard
 
 import (
@@ -30,20 +30,20 @@ import (
 type Deps = configure.Deps
 
 // Options are the wizard's --skip-skills/--skip-models/--skip-repos/
-// --skip-commands/--no-refresh flags plus the resolved Paths the section
-// functions read and write.
+// --no-refresh flags plus the resolved Paths the section functions read
+// and write.
 type Options struct {
 	// Paths is the resolved set of filesystem locations the wizard reads
 	// and writes (see configure.ResolvePaths).
 	Paths configure.Paths
-	// SettingsPath overrides the Claude Code settings.json path used by
-	// the closing "apply and refresh" step's install.Deps. Empty means
+	// SettingsPath overrides the Claude Code settings.json path the Task
+	// providers section reads (which extension plugins are enabled) and
+	// the closing "apply and refresh" step's install.Deps uses. Empty means
 	// the default "<Home>/.claude/settings.json".
 	SettingsPath string
 	SkipSkills   bool
 	SkipModels   bool
 	SkipRepos    bool
-	SkipCommands bool
 	NoRefresh    bool
 }
 
@@ -51,16 +51,17 @@ type Options struct {
 // print the closing restart reminder.
 type Summary struct {
 	// Changed is true when any section actually wrote something (user
-	// config, the models block, a repo's .nerv/nerv.yaml, or the
-	// Teamwork commands).
+	// config, task provider settings, the models block, or a repo's
+	// .nerv/nerv.yaml).
 	Changed bool
 }
 
 // Run drives the interactive NERV setup wizard end to end: prerequisites,
-// the optional required-skills install, user-scope config (git, tasks,
-// skills stacks, critical paths, artifacts), the optional per-role models
-// editor, the optional per-repo .nerv/nerv.yaml init loop, the optional
-// Teamwork /task:* commands install, and the closing apply/refresh step.
+// the optional required-skills install, user-scope config (git, skills
+// stacks, critical paths, artifacts), the task provider settings when the
+// task plugin is enabled, the optional per-role models editor, the
+// optional per-repo .nerv/nerv.yaml init loop, and the closing
+// apply/refresh step.
 //
 // Run prints its closing "Restart Claude Code..." line only when
 // Summary.Changed is true, rather than unconditionally — nothing worth
@@ -87,6 +88,15 @@ func Run(deps Deps, in io.Reader, out io.Writer, opts Options) (Summary, error) 
 	}
 	summary.Changed = summary.Changed || uc.Changed
 
+	taskEnabled, providers := taskPlugins(deps, opts, out)
+	if taskEnabled {
+		changed, err := runTaskProvidersSection(deps, opts.Paths, providers, s, out)
+		if err != nil {
+			return summary, err
+		}
+		summary.Changed = summary.Changed || changed
+	}
+
 	if !opts.SkipModels {
 		changed, err := runModelsSection(deps, opts.Paths, s, out)
 		if err != nil {
@@ -96,15 +106,7 @@ func Run(deps Deps, in io.Reader, out io.Writer, opts Options) (Summary, error) 
 	}
 
 	if !opts.SkipRepos {
-		changed, err := runReposSection(deps, opts.Paths, s, out, uc.BaseBranch, uc.Provider)
-		if err != nil {
-			return summary, err
-		}
-		summary.Changed = summary.Changed || changed
-	}
-
-	if !opts.SkipCommands {
-		changed, err := runCommandsSection(deps, opts.Paths, s, out)
+		changed, err := runReposSection(deps, s, out, uc.BaseBranch, providers)
 		if err != nil {
 			return summary, err
 		}
@@ -160,10 +162,11 @@ func toolLine(found bool, yes, no string) string {
 	return no
 }
 
-// runApplyAndRefreshSection is Section 5: optionally applies the resolved
-// models: block to the plugin cache (install.ApplyModels) and refreshes
-// the "claude plugin" cache (install.RefreshCache) — the same tail
-// install.Install itself runs after registering settings.json.
+// runApplyAndRefreshSection is the closing section: optionally applies the
+// resolved models: block to the plugin cache (install.ApplyModels) and
+// refreshes the "claude plugin" cache (install.RefreshCache, which also
+// refreshes the enabled extension plugins) — the same tail install.Install
+// itself runs after registering settings.json.
 func runApplyAndRefreshSection(ctx context.Context, deps Deps, opts Options, s *session, out io.Writer) error {
 	fmt.Fprintln(out)
 	apply, err := s.yesNo("Apply models to the plugin cache and refresh it now?", true)
@@ -178,6 +181,7 @@ func runApplyAndRefreshSection(ctx context.Context, deps Deps, opts Options, s *
 		Home:         deps.Home,
 		SettingsPath: opts.SettingsPath,
 		FS:           deps.FS,
+		ExtensionsFS: deps.ExtensionsFS,
 		Runner:       deps.Runner,
 		Now:          deps.Now,
 		LookPath:     deps.LookPath,

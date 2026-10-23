@@ -371,3 +371,37 @@ func TestRunInstall_WithUnknownExtension_Exits1(t *testing.T) {
 		t.Errorf("expected the unknown name reported, got:\n%s", stdout.String())
 	}
 }
+
+// S7: on a terminal, nerv install asks before deleting the old /task:*
+// copies and deletes them on yes; elsewhere it only reports them.
+func TestRunInstall_LegacyCommands_AskOnTerminalReportOtherwise(t *testing.T) {
+	for _, terminal := range []bool{true, false} {
+		home := t.TempDir()
+		seedInstalledPluginsForCLI(t, home)
+		dir := filepath.Join(home, ".claude", "commands", "task")
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		copyPath := filepath.Join(dir, "start.md")
+		if err := os.WriteFile(copyPath, []byte("old\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		opts := testOptions(home)
+		opts.Runner = baseInstallRunner()
+		opts.IsTerminal = func() bool { return terminal }
+		opts.Stdin = strings.NewReader("y\n")
+
+		var stdout, stderr bytes.Buffer
+		if code := run([]string{"install", "--no-skills", "--no-configure"}, &stdout, &stderr, opts); code != 0 {
+			t.Fatalf("terminal=%v: exit code = %d, want 0; stdout:\n%s", terminal, code, stdout.String())
+		}
+		_, statErr := os.Stat(copyPath)
+		asked := strings.Contains(stdout.String(), "Remove these 1 old copies? [y/N]")
+		if terminal && (!asked || !os.IsNotExist(statErr)) {
+			t.Errorf("terminal: asked=%v, copy still there=%v; stdout:\n%s", asked, statErr == nil, stdout.String())
+		}
+		if !terminal && (asked || statErr != nil || !strings.Contains(stdout.String(), "can be removed")) {
+			t.Errorf("not a terminal: asked=%v, stat=%v; stdout:\n%s", asked, statErr, stdout.String())
+		}
+	}
+}

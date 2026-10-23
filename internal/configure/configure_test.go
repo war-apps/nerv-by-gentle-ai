@@ -46,10 +46,6 @@ func TestResolvePaths_Defaults(t *testing.T) {
 	if paths.SkillsDir != wantSkills {
 		t.Errorf("SkillsDir = %q, want %q", paths.SkillsDir, wantSkills)
 	}
-	wantCommands := filepath.Join(home, ".claude", "commands", "task")
-	if paths.CommandsDir != wantCommands {
-		t.Errorf("CommandsDir = %q, want %q", paths.CommandsDir, wantCommands)
-	}
 }
 
 func TestResolvePaths_ConfigOverride(t *testing.T) {
