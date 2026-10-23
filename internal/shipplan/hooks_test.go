@@ -13,10 +13,9 @@ import (
 )
 
 func TestExecutor_RunHooksRunsOneLifecycleKeyInOrder(t *testing.T) {
-	p := project("api", ".")
+	p := scriptProject()
 	p.Hooks = map[string][]shipconfig.Command{
 		"prepare": {{Run: "echo one", Shell: "bash"}, {Run: "echo two", Shell: "bash"}},
-		"success": {{Run: "echo done", Shell: "bash"}},
 	}
 	plan, err := Build(t.TempDir(), p, ctxFor("1.0.0", ""))
 	if err != nil {
@@ -68,22 +67,18 @@ func (c *countingRunner) Run(ctx context.Context, s shiprun.Step, v shiprun.Vars
 }
 
 func TestStepFailure_IndexIsThePositionInItsStage(t *testing.T) {
-	p := dimProject()
-	p.Docker.Images = p.Docker.Images[:1]
-	p.Hooks = map[string][]shipconfig.Command{"before_publish": {{Run: "echo login", Shell: "bash"}}}
+	p := composeProject()
+	p.Hooks = map[string][]shipconfig.Command{"before_package": {{Run: "echo login", Shell: "bash"}}}
 	plan, err := Build(t.TempDir(), p, ctxFor("1.0.0", ""))
 	if err != nil {
 		t.Fatal(err)
 	}
-	pushLatest := "docker:push ghcr.io/org/dim.comprobantes.api:latest"
-	r := &fakeRunner{fail: map[string]error{pushLatest: errors.New("denied")}}
-	err = (Executor{Steps: r}).RunPublish(context.Background(), plan, shiprun.Vars{Project: "api"})
+	saveWorker := "compose:save ghcr.io/acme/worker:-v1.0.0"
+	r := &fakeRunner{fail: map[string]error{saveWorker: errors.New("no such image")}}
+	err = (Executor{Steps: r}).Run(context.Background(), plan, shiprun.Vars{Project: "api"})
 	var f *StepFailure
-	if !errors.As(err, &f) || f.Stage != PublishStage || f.Step != pushLatest || f.Index != 2 {
-		t.Fatalf("RunPublish = %v (%+v), want index 2 (before_publish, the version push, then latest)", err, f)
-	}
-	if done := plan.Publish().Steps[:f.Index]; done[0].Name != "before_publish" || !strings.HasSuffix(done[1].Name, ":1.0.0") {
-		t.Errorf("steps before the failure: %v", done)
+	if !errors.As(err, &f) || f.Stage != "package" || f.Step != saveWorker || f.Index != 2 {
+		t.Fatalf("Run = %v (%+v), want index 2 (before_package, the api save, then the worker save)", err, f)
 	}
 }
 

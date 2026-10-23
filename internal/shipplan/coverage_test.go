@@ -273,24 +273,3 @@ func TestCheckCoverageFloors_LineOnlyIsTheScalarGate(t *testing.T) {
 		t.Errorf("CheckCoverage = %v, want the same error", old)
 	}
 }
-
-func TestBuild_CoverageFloorsDescribeEveryFloor(t *testing.T) {
-	p := project("api", ".", "dotnet")
-	p.Dotnet = &shipconfig.Dotnet{ProjectFile: "Api.csproj", Configuration: "Release", CoverageThreshold: shipconfig.CoverageThreshold{Line: 80, Method: 85}}
-	plan, err := Build(t.TempDir(), p, ctxFor("1.0.0", ""))
-	if err != nil {
-		t.Fatal(err)
-	}
-	cov := filepath.Join(artifacts, "api", "coverage")
-	if got, want := line(stepOf(t, plan, "dotnet:coverage")), "coverage|dotnet:coverage|check line coverage >= 80%, method coverage >= 85% in "+cov; got != want {
-		t.Errorf("coverage step = %q, want %q", got, want)
-	}
-	// A branch-only floor still collects coverage in the test step.
-	p.Dotnet.CoverageThreshold = shipconfig.CoverageThreshold{Branch: 60}
-	if plan, err = Build(t.TempDir(), p, ctxFor("1.0.0", "")); err != nil {
-		t.Fatal(err)
-	}
-	if got := line(stepOf(t, plan, "dotnet:test")); !strings.Contains(got, "--collect XPlat Code Coverage") {
-		t.Errorf("test step = %q, want it to collect coverage", got)
-	}
-}

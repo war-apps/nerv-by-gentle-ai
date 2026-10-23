@@ -1,12 +1,13 @@
 ---
-description: Set up the release section of .nerv/nerv.yaml interactively — detects the repository's semantic-release config, projects, Dockerfiles and scripts, asks only what it cannot detect, writes the section and validates it with nerv version next
+description: Set up the release section of .nerv/nerv.yaml interactively — detects the repository's semantic-release config, projects, compose files, Dockerfiles and scripts, picks each project's build mode (compose or script), asks only what it cannot detect, writes the section and validates it with nerv version next
 argument-hint: [--project <name>]
 ---
 
 # /nerv:release-setup
 
 Build the `release:` section of `<repo>/.nerv/nerv.yaml` for `nerv version
-next` and `nerv ship`: detect what the repository already has, propose a
+next` and `nerv ship` (with each project's `build.mode`): detect what the
+repository already has, propose a
 complete section, ask only what cannot be detected (one question at a
 time), write it, and prove it with `nerv version next --offline`. It never
 commits, pushes or releases.
@@ -55,11 +56,12 @@ built or run.
 | Look at | To learn |
 |---|---|
 | `.releaserc`, `.releaserc.{json,yaml,yml,js,cjs,mjs}`, `release.config.{js,cjs,mjs}`, `package.json` `release` | Whether semantic-release is configured; its `branches` (channels); every plugin, `extends` and `preset` it names; `@semantic-release/changelog` `changelogFile`; `@semantic-release/git` `assets`; `@semantic-release/npm` `npmPublish`; `@semantic-release/exec` commands. |
-| `.github/workflows/*.yml` | The semantic-release version and plugin versions CI installs; docker build steps (image names, registry, Dockerfiles, context, build args, tag rules); test and coverage steps; extra build flags (e.g. `-warnaserror`). |
+| `.github/workflows/*.yml` | The semantic-release version and plugin versions CI installs; the build, test, coverage and package commands CI runs (the script stages), with their flags (e.g. `-warnaserror`); docker build steps (image names, registry, Dockerfiles, context, build args). |
+| `docker-compose*.yml`, `compose*.yaml` | Whether compose builds the project: its services with a `build:` key and their `image:` names (the `build.images`), and a service that runs the tests (the `build.test_service`). |
 | `*.csproj`, `*.sln`, `*.slnx` | dotnet projects: the deployable one (the one CI versions or a bump script edits), packable libraries (`<IsPackable>`, `<PackageId>`, `dotnet pack` in CI), test projects (not release targets). |
 | `Dockerfile`, `*.Dockerfile`, `docker/` | Images and their `ARG`s (e.g. `APP_VERSION`). |
-| `package.json` (each project) | Scripts `lint` / `build` / `test` (the node preset runs only those); the package manager from `packageManager`, else the lockfile (`pnpm-lock.yaml`, `yarn.lock`, `package-lock.json`); whether it is published (`private`). |
-| Release scripts (`scripts/*`, exec commands, CI steps) | Steps a preset now covers (a bump-csproj script: the dotnet preset writes `<Version>` and `<PackageReleaseNotes>`) and steps it does not (candidates for hooks). |
+| `package.json` (each project) | Scripts `lint` / `build` / `test` (candidates for the script stages); the package manager from `packageManager`, else the lockfile (`pnpm-lock.yaml`, `yarn.lock`, `package-lock.json`), for the restore command (`npm ci`, `pnpm install --frozen-lockfile`, ...). |
+| Release scripts (`scripts/*`, exec commands, CI steps) | Steps nerv ship covers (a bump-csproj script: `build.version_files` writes `<Version>` and `<PackageReleaseNotes>`), steps that become stages, and the rest (candidates for hooks). Publishing steps (docker push, nuget push, npm publish) are not ship's: they belong to `nerv deploy`. |
 | Layout and `git log --format=%s -200` | Monorepo or not: several deployable units in separate folders, and the conventional-commit scopes used per folder. |
 
 Classify every package the semantic-release configuration names:
@@ -96,37 +98,47 @@ choice (why this project file, why a stage override, why a hook). Rules:
   plugins); set it only to use another file. A single project keeps the
   changelog plugin's own `changelogFile`: leave `changelog` unset unless
   it should override it.
-- **Presets** in pipeline order: `dotnet` (with `project_file`, the
-  `solution` CI builds, `coverage_threshold` when CI enforces coverage:
-  a number for a line floor alone, `{ line: 80, branch: 70, method: 85 }`
-  for coverlet's line, branch and method floors; `sdk` when CI or a
-  `global.json` pins the .NET SDK; `shared_host: true` when the stage
-  overrides need the no-build-server environment), `node` (with
-  `package_manager`), `docker`, `nuget` (only
-  for packable projects), `npm` (only when `@semantic-release/npm` does
-  not already publish: `npmPublish: false` or the plugin absent).
-  Never a settings block without its preset.
-- **Docker images**: `name` with the registry (`ghcr.io/<owner>/<repo>`
-  lowercase when CI derives it from the repository), `dockerfile`,
-  `context`, `build_args` using `${version}`, `${channel}` or `${tag}`
-  only, and `tags` mirroring CI (default `[version, channel, latest]`). A
-  build arg CI computes at run time (e.g. resolved from the network)
-  cannot be expressed: leave it out (the Dockerfile's default applies) and
-  say so, or propose a `package`/`publish` stage override.
-- **Stage overrides** only for flags CI uses that the preset does not
-  (`-warnaserror`, `--settings coverlet.runsettings`, `--logger trx`),
-  copying the preset's command and adding them (preset commands in
-  `docs/release-commands.md` → Preset commands). A `test` override with a
-  coverage threshold must still write the cobertura reports to
-  `$NERV_RELEASE_ARTIFACTS_DIR/coverage`. Do not copy the build-server
+- **`build.mode`** for every project; it is required and has no default.
+  `compose` when a compose file builds the project's images (with `file`,
+  `test_service` when a service runs the tests, and `images` listing the
+  `image:` names it builds, with `${version}` where the tag is the
+  version); otherwise `script`. Both fit (a compose file and plain build
+  commands): that is a question (step 4).
+- **Script stages** (`stages:`) copy the commands CI runs, one per stage
+  (`restore`, `lint`, `build`, `test`, `coverage`, `package`), with CI's
+  flags; leave out a stage CI does not run. The `package` stage writes
+  what the artifact must hold to `$NERV_RELEASE_OUTPUTS_DIR` (`dotnet pack
+  -o "$NERV_RELEASE_OUTPUTS_DIR"`, `npm pack --pack-destination
+  "$NERV_RELEASE_OUTPUTS_DIR"`, `docker save -o
+  "$NERV_RELEASE_OUTPUTS_DIR/<name>.tar" <image>` after a `docker build`).
+  Never a publish step (push, publish, upload): there is no `publish`
+  stage, and publishing belongs to `nerv deploy`. In compose mode only
+  `restore`, `lint` and `coverage` may be written.
+- **`build.version_files`**: the `.csproj` (or `.props`) files CI or a bump
+  script versions.
+- **`build.coverage`** when CI enforces coverage: `{ line: 80 }`, or
+  `{ line: 80, branch: 70, method: 85 }` for coverlet's floors; the test
+  stage must write the Cobertura reports to `$NERV_RELEASE_COVERAGE_DIR`
+  (e.g. `--collect "XPlat Code Coverage" --results-directory
+  "$NERV_RELEASE_COVERAGE_DIR"`), or set `coverage.dir` to where a compose
+  test service writes them through a bind mount.
+- **`build.shared_host: true`** (script mode) when dotnet runs on a shared
+  host where reused build servers crash it; do not copy the build-server
   `env` block (`MSBUILDDISABLENODEREUSE`, `UseSharedCompilation`,
-  `DOTNET_CLI_USE_MSBUILD_SERVER`) into each override: set
-  `dotnet.shared_host: true` once instead.
+  `DOTNET_CLI_USE_MSBUILD_SERVER`) into each stage. A pinned .NET SDK
+  becomes a `before_restore` hook writing `global.json`.
+- **An existing section with `presets:`** (or `dotnet:`, `node:`,
+  `docker:`, `nuget:`, `npm:`, a `publish` stage, `publish` or `success`
+  hooks): rewrite it as `docs/release-commands.md` → Migrating from the
+  presets says, and list what was moved where; publishing settings are
+  dropped and noted for `nerv deploy`.
 - **`submodules: true`** on the project when the repository has a
   `.gitmodules` file: the release clone has no submodules otherwise. Do
   not add a `git submodule update` hook for it.
-- **Hooks** for repository-specific steps no preset covers, with the right
-  `shell` (`bash` for `.sh`, `pwsh` for `.ps1`, `node` for `.js`). A script
+- **Hooks** for repository-specific steps no stage covers, with the right
+  `shell` (`bash` for `.sh`, `pwsh` for `.ps1`, `node` for `.js`): around a
+  stage (`before_<stage>`, `after_<stage>`), `prepare` (after the
+  pipeline, before the artifact) or `fail`. A script
   the repository's own semantic-release configuration already runs (an
   exec `prepareCmd`) keeps running there: do not duplicate it as a hook.
 - **`depends_on`** only when one project consumes another's package or
@@ -138,14 +150,15 @@ Ask ONE question at a time, each with a recommended default, then STOP and
 wait for the answer before the next one. Never assume an answer. Skip any
 question the detection already answered. Typical questions:
 
-- the image registry and name, when CI does not show it;
-- the NuGet `source` and the **name** of the environment variable holding
-  its API key (default `NUGET_API_KEY`) — never ask for the key itself and
-  never write it anywhere;
-- the coverage threshold, when CI enforces none or a non-line one;
+- the build mode, when both `compose` and `script` fit;
+- the compose test service, when no service clearly runs the tests;
+- the image names, when the compose file or CI does not show them;
+- what the `package` stage must leave in the artifact, when CI packages
+  nothing detectable;
+- the coverage floors, when CI enforces none or a non-line one;
 - `depends_on` between projects, and its `bump` (`patch`, `minor`, `none`);
-- whether a detected script stays a hook or is dropped because a preset
-  covers it;
+- whether a detected script stays a hook, becomes a stage, or is dropped
+  because nerv ship covers it;
 - the exact version of a plugin that must go into `extra_plugins`.
 
 After the answers, show the final section again in full and ask once
@@ -176,11 +189,10 @@ create a minimal one: in `package.json` `release` when there is a
 ```
 
 Adjust branch names to the repository's (`master`, no `release/rc`) and
-add to the git `assets` every file the release commit must hold (the
-dotnet `project_file`, each project's CHANGELOG, `package.json` when
-`@semantic-release/npm` bumps it). Create it only on an explicit yes, and
-say it must be committed and pushed: `nerv ship` uses the semantic-release
-configuration on origin's branch (only `.nerv/nerv.yaml` is read locally).
+add to the git `assets` each project's CHANGELOG. Create it only on an
+explicit yes, and say it must be committed and pushed: `nerv ship` computes
+the versions with the semantic-release configuration on origin's branch
+(only `.nerv/nerv.yaml` is read locally).
 
 ## 6. Write and validate
 
@@ -206,9 +218,10 @@ Tell the user, without doing any of it:
 1. Review `.nerv/nerv.yaml`: `nerv ship` uses this local file as it is,
    committed or not. Committing it is recommended so the team shares it,
    but not required. If step 5 created a semantic-release configuration,
-   commit and push that: the release uses origin's.
+   commit and push that: the versions are computed from origin's.
 2. Then run `/nerv:ship` — it always rehearses with a dry run first and
-   releases only after an explicit yes.
+   packages the artifact only after an explicit yes; it never commits,
+   tags or pushes.
 
 Never commit, push, run `nerv ship` or edit any file other than
 `.nerv/nerv.yaml` and, on an explicit yes, the semantic-release

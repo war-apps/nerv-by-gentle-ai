@@ -22,8 +22,6 @@ type Executor struct {
 	// Output receives the summary line of in-process checks, prefixed
 	// "[<project>:<step>] " like shiprun's output; nil discards it.
 	Output io.Writer
-	// LookupEnv reads the steps' Secrets; nil means os.LookupEnv.
-	LookupEnv func(string) (string, bool)
 }
 
 // StepFailure is the first step of a run that failed.
@@ -42,20 +40,14 @@ func (e *StepFailure) Error() string {
 
 func (e *StepFailure) Unwrap() error { return e.Err }
 
-// Run runs the plan's pipeline (every stage but publish) in order and stops
-// at the first failing step, returning a *StepFailure. Before anything
-// runs it checks that every secret the plan will need is set: the
-// publish stage's too (so a missing key fails before the build), except
-// in a dry run, which never publishes. Then it empties the plan's
+// Run runs the plan's stages in order and stops at the first failing step,
+// returning a *StepFailure. Before anything runs it empties the plan's
 // ResetDirs, so a report or package of an earlier run is never used.
 func (e Executor) Run(ctx context.Context, plan *Plan, vars shiprun.Vars) error {
-	if err := e.checkSecrets(plan); err != nil {
-		return err
-	}
 	if err := resetDirs(plan); err != nil {
 		return err
 	}
-	return e.run(ctx, plan.Pipeline(), vars)
+	return e.run(ctx, plan.Stages, vars)
 }
 
 // resetDirs removes and recreates each of the plan's ResetDirs, after
@@ -80,22 +72,8 @@ func resetDirs(plan *Plan) error {
 	return nil
 }
 
-// RunPublish runs the publish stage (T6 calls it inside semantic-release's
-// publish step). In a dry run it runs nothing and returns nil: the stage is
-// only listed (Render).
-func (e Executor) RunPublish(ctx context.Context, plan *Plan, vars shiprun.Vars) error {
-	pub := plan.Publish()
-	if plan.Context.DryRun || pub == nil {
-		return nil
-	}
-	if err := e.checkSecrets(plan); err != nil {
-		return err
-	}
-	return e.run(ctx, []Stage{*pub}, vars)
-}
-
-// RunHooks runs the plan's hooks of one lifecycle key (prepare, publish,
-// success, fail) in order and stops at the first failure, a *StepFailure
+// RunHooks runs the plan's hooks of one lifecycle key (prepare, fail) in
+// order and stops at the first failure, a *StepFailure
 // whose Stage is the key. No hook for the key is no error. It runs in a dry
 // run too: the caller decides which keys a dry run reaches.
 func (e Executor) RunHooks(ctx context.Context, plan *Plan, key string, vars shiprun.Vars) error {
@@ -104,25 +82,6 @@ func (e Executor) RunHooks(ctx context.Context, plan *Plan, key string, vars shi
 		return nil
 	}
 	return e.run(ctx, []Stage{{Name: key, Steps: hooks}}, vars)
-}
-
-// checkSecrets fails when a secret of a step that may run is not set or
-// empty, naming the step and the variable (never a value).
-func (e Executor) checkSecrets(plan *Plan) error {
-	stages := plan.Stages
-	if plan.Context.DryRun {
-		stages = plan.Pipeline()
-	}
-	for _, st := range stages {
-		for _, s := range st.Steps {
-			for _, name := range s.Secrets {
-				if v, ok := e.lookupEnv(name); !ok || v == "" {
-					return fmt.Errorf("step %s: environment variable %s is not set (it holds the secret the step needs)", s.Name, name)
-				}
-			}
-		}
-	}
-	return nil
 }
 
 func (e Executor) run(ctx context.Context, stages []Stage, vars shiprun.Vars) error {
@@ -142,7 +101,7 @@ func (e Executor) step(ctx context.Context, s Step, vars shiprun.Vars, probe *Bu
 		return err
 	}
 	if s.Func != nil {
-		summary, err := s.Func(ctx, e.lookupEnv)
+		summary, err := s.Func(ctx)
 		if err != nil {
 			return err
 		}
@@ -158,11 +117,4 @@ func (e Executor) step(ctx context.Context, s Step, vars shiprun.Vars, probe *Bu
 		fmt.Fprintf(e.Output, "[%s:%s] %s\n", vars.Project, s.Name, note)
 	}
 	return e.Steps.Run(ctx, rs, vars)
-}
-
-func (e Executor) lookupEnv(name string) (string, bool) {
-	if e.LookupEnv != nil {
-		return e.LookupEnv(name)
-	}
-	return os.LookupEnv(name)
 }

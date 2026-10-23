@@ -24,13 +24,14 @@ const DisableBuildServers = "--disable-build-servers"
 // MinBuildServersSDK is the first .NET SDK that accepts DisableBuildServers.
 const MinBuildServersSDK = "7.0.100"
 
-// DotnetBuildServerEnv is the environment of the dotnet preset's steps,
+// DotnetBuildServerEnv is the build-server-safe dotnet environment,
 // whatever the SDK: no MSBuild node reuse, no shared compilation
 // (VBCSCompiler), no MSBuild server. On shared hosts (the team's T2) reused
 // servers made dotnet die mid-release with "Internal CLR error
 // (0x80131506)". internal/pipeline starts its commands from it too and
-// applies pipeline.dotnet.env over it. Stage overrides (stages:) never get
-// it. A fresh map on every call.
+// applies pipeline.dotnet.env over it; nerv ship gives it to the script
+// stages restore, lint, build, test and package only with
+// build.shared_host. A fresh map on every call.
 func DotnetBuildServerEnv() map[string]string {
 	return map[string]string{
 		"MSBUILDDISABLENODEREUSE":       "1",

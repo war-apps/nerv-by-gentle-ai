@@ -3,14 +3,13 @@ package shipplan
 import (
 	"context"
 	"errors"
-	"net/http"
-	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
 
+	"github.com/war-apps/nerv-by-gentle-ai/internal/artifact"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/shipconfig"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/shiprun"
 )
@@ -53,139 +52,6 @@ func assertLines(t *testing.T, got, want []string) {
 	}
 }
 
-func project(name, path string, presets ...string) shipconfig.Project {
-	return shipconfig.Project{Name: name, Path: path, Presets: presets}
-}
-
-func push(b bool) *bool { return &b }
-
-// dimProject is shaped like dim.comprobantes.api's CI: dotnet with coverage
-// and two docker images (api and login-broker).
-func dimProject() shipconfig.Project {
-	p := project("api", ".", "dotnet", "docker")
-	p.Dotnet = &shipconfig.Dotnet{ProjectFile: "src/Api/Dim.Comprobantes.Api.csproj", Solution: "Dim.Comprobantes.slnx", Configuration: "Release", CoverageThreshold: shipconfig.CoverageThreshold{Line: 80}}
-	p.Docker = &shipconfig.Docker{Images: []shipconfig.DockerImage{
-		{Name: "ghcr.io/org/dim.comprobantes.api", Dockerfile: "docker/Dockerfile", Context: ".", BuildArgs: map[string]string{"APP_VERSION": "${version}"}, Tags: []string{"version", "channel", "latest"}, Push: push(true)},
-		{Name: "ghcr.io/org/dim.comprobantes.api-login-broker", Dockerfile: "docker/LoginBroker.Dockerfile", Context: ".", BuildArgs: map[string]string{"APP_VERSION": "${version}", "RELEASE": "${tag}@${channel}"}, Tags: []string{"version", "channel", "latest"}, Push: push(true)},
-	}}
-	return p
-}
-
-func TestBuild_DotnetAndDockerLikeDim(t *testing.T) {
-	plan, err := Build(t.TempDir(), dimProject(), ctxFor("2.9.0-alpha.3", "alpha"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	cov := filepath.Join(artifacts, "api", "coverage")
-	api, broker := "ghcr.io/org/dim.comprobantes.api", "ghcr.io/org/dim.comprobantes.api-login-broker"
-	assertLines(t, lines(plan), []string{
-		"restore|dotnet:restore|dotnet restore Dim.Comprobantes.slnx --disable-build-servers",
-		"lint|dotnet:lint|dotnet format Dim.Comprobantes.slnx --verify-no-changes",
-		"build|dotnet:build|dotnet build Dim.Comprobantes.slnx -c Release --no-restore --disable-build-servers -p:Version=2.9.0-alpha.3",
-		"test|dotnet:test|dotnet test Dim.Comprobantes.slnx -c Release --no-build --disable-build-servers --collect XPlat Code Coverage --results-directory " + cov,
-		"coverage|dotnet:coverage|check line coverage >= 80% in " + cov,
-		"package|docker:build " + api + "|docker build -f docker/Dockerfile -t " + api + ":2.9.0-alpha.3 -t " + api + ":alpha --build-arg APP_VERSION=2.9.0-alpha.3 --label org.opencontainers.image.version=2.9.0-alpha.3 --label org.opencontainers.image.revision=abc123 .",
-		"package|docker:build " + broker + "|docker build -f docker/LoginBroker.Dockerfile -t " + broker + ":2.9.0-alpha.3 -t " + broker + ":alpha --build-arg APP_VERSION=2.9.0-alpha.3 --build-arg RELEASE=v2.9.0-alpha.3@alpha --label org.opencontainers.image.version=2.9.0-alpha.3 --label org.opencontainers.image.revision=abc123 .",
-		"publish|docker:push " + api + ":2.9.0-alpha.3|docker push " + api + ":2.9.0-alpha.3",
-		"publish|docker:push " + api + ":alpha|docker push " + api + ":alpha",
-		"publish|docker:push " + broker + ":2.9.0-alpha.3|docker push " + broker + ":2.9.0-alpha.3",
-		"publish|docker:push " + broker + ":alpha|docker push " + broker + ":alpha",
-	})
-	if got := plan.Stages[3].Steps[0].Exec[8]; got != "XPlat Code Coverage" {
-		t.Errorf("the collector name is one argument, got %q", got)
-	}
-	var names []string
-	for _, st := range plan.Pipeline() {
-		names = append(names, st.Name)
-	}
-	if want := []string{"restore", "lint", "build", "test", "coverage", "package"}; !slices.Equal(names, want) {
-		t.Errorf("Pipeline() = %v, want %v", names, want)
-	}
-	if pub := plan.Publish(); pub == nil || pub.Name != "publish" || len(pub.Steps) != 4 {
-		t.Errorf("Publish() = %+v, want the four pushes", pub)
-	}
-}
-
-func TestBuild_DotnetWithoutCoverageOrNuget(t *testing.T) {
-	p := project("lib", "lib", "dotnet")
-	p.Dotnet = &shipconfig.Dotnet{ProjectFile: "lib/Lib.csproj", Configuration: "Debug"}
-	plan, err := Build(t.TempDir(), p, ctxFor("1.0.0", ""))
-	if err != nil {
-		t.Fatal(err)
-	}
-	assertLines(t, lines(plan), []string{
-		"restore|dotnet:restore|dotnet restore lib/Lib.csproj --disable-build-servers",
-		"lint|dotnet:lint|dotnet format lib/Lib.csproj --verify-no-changes",
-		"build|dotnet:build|dotnet build lib/Lib.csproj -c Debug --no-restore --disable-build-servers -p:Version=1.0.0",
-		"test|dotnet:test|dotnet test lib/Lib.csproj -c Debug --no-build --disable-build-servers",
-	})
-	if plan.Publish() != nil {
-		t.Error("Publish() should be nil without publishers")
-	}
-}
-
-func TestBuild_DockerTagRules(t *testing.T) {
-	tests := []struct {
-		name    string
-		channel string
-		tags    []string
-		push    bool
-		want    []string // image tags, in order
-	}{
-		{"default channel: version and latest", "", []string{"version", "channel", "latest"}, true, []string{"1.4.0", "latest"}},
-		{"named default channel: no channel tag", "default", []string{"version", "channel", "latest"}, true, []string{"1.4.0", "latest"}},
-		{"prerelease channel: version and channel", "rc", []string{"version", "channel", "latest"}, true, []string{"1.4.0", "rc"}},
-		{"only latest on a prerelease: no tag", "alpha", []string{"latest"}, true, nil},
-		{"tag order follows the config", "beta", []string{"channel", "version"}, true, []string{"beta", "1.4.0"}},
-		{"no push: built, not pushed", "", []string{"version"}, false, []string{"1.4.0"}},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			p := project("web", "web", "docker")
-			p.Docker = &shipconfig.Docker{Images: []shipconfig.DockerImage{{Name: "reg/web", Dockerfile: "web/Dockerfile", Context: "web", Tags: tt.tags, Push: push(tt.push)}}}
-			plan, err := Build(t.TempDir(), p, Context{Version: "1.4.0", Channel: tt.channel, ArtifactsDir: artifacts})
-			if err != nil {
-				t.Fatal(err)
-			}
-			var built []string
-			for i, a := range plan.Stages[0].Steps[0].Exec {
-				if a == "-t" {
-					built = append(built, strings.TrimPrefix(plan.Stages[0].Steps[0].Exec[i+1], "reg/web:"))
-				}
-			}
-			if !slices.Equal(built, tt.want) {
-				t.Errorf("tags = %v, want %v", built, tt.want)
-			}
-			var pushed []string
-			if pub := plan.Publish(); pub != nil {
-				for _, s := range pub.Steps {
-					pushed = append(pushed, strings.TrimPrefix(s.Exec[2], "reg/web:"))
-				}
-			}
-			wantPushed := tt.want
-			if !tt.push {
-				wantPushed = nil
-			}
-			if !slices.Equal(pushed, wantPushed) {
-				t.Errorf("pushed = %v, want %v", pushed, wantPushed)
-			}
-		})
-	}
-}
-
-func TestBuild_DockerTagMustBeValid(t *testing.T) {
-	p := project("web", "web", "docker")
-	p.Docker = &shipconfig.Docker{Images: []shipconfig.DockerImage{{Name: "reg/web", Dockerfile: "Dockerfile", Context: ".", Tags: []string{"version", "channel"}, Push: push(true)}}}
-	for _, c := range []Context{
-		{Version: "1.0.0+build.5", ArtifactsDir: artifacts},
-		{Version: "1.0.0-hotfix-x.1", Channel: "hotfix/x", ArtifactsDir: artifacts},
-	} {
-		if _, err := Build(t.TempDir(), p, c); err == nil || !strings.Contains(err.Error(), "not a valid docker tag") {
-			t.Errorf("Build(%+v) = %v, want an invalid docker tag error", c, err)
-		}
-	}
-}
-
 func writeFile(t *testing.T, root, rel, content string) {
 	t.Helper()
 	p := filepath.Join(root, filepath.FromSlash(rel))
@@ -197,336 +63,223 @@ func writeFile(t *testing.T, root, rel, content string) {
 	}
 }
 
-func TestBuild_Node(t *testing.T) {
-	tests := []struct {
-		name  string
-		pm    string
-		files map[string]string
-		want  []string
-	}{
-		{
-			name:  "npm with every script",
-			pm:    "npm",
-			files: map[string]string{"web/package.json": `{"scripts":{"lint":"eslint .","build":"vite build","test":"vitest run","dev":"vite"}}`},
-			want: []string{
-				"restore|node:restore|npm ci",
-				"lint|node:lint|npm run lint",
-				"build|node:build|npm run build",
-				"test|node:test|npm run test",
-			},
-		},
-		{
-			name:  "pnpm with only a build script",
-			pm:    "pnpm",
-			files: map[string]string{"web/package.json": `{"scripts":{"build":"tsc"}}`},
-			want: []string{
-				"restore|node:restore|pnpm install --frozen-lockfile",
-				"build|node:build|pnpm run build",
-			},
-		},
-		{
-			name:  "yarn classic",
-			pm:    "yarn",
-			files: map[string]string{"web/package.json": `{"packageManager":"yarn@1.22.22","scripts":{"test":"jest"}}`},
-			want: []string{
-				"restore|node:restore|yarn install --frozen-lockfile",
-				"test|node:test|yarn run test",
-			},
-		},
-		{
-			name:  "yarn berry by packageManager",
-			pm:    "yarn",
-			files: map[string]string{"web/package.json": `{"packageManager":"yarn@4.5.0+sha512.abc"}`},
-			want:  []string{"restore|node:restore|yarn install --immutable"},
-		},
-		{
-			name:  "yarn berry by .yarnrc.yml",
-			pm:    "yarn",
-			files: map[string]string{"web/package.json": `{}`, "web/.yarnrc.yml": "nodeLinker: node-modules\n"},
-			want:  []string{"restore|node:restore|yarn install --immutable"},
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			root := t.TempDir()
-			for rel, c := range tt.files {
-				writeFile(t, root, rel, c)
-			}
-			p := project("web", "web", "node")
-			p.Node = &shipconfig.Node{PackageManager: tt.pm}
-			plan, err := Build(root, p, ctxFor("1.0.0", ""))
-			if err != nil {
-				t.Fatal(err)
-			}
-			assertLines(t, lines(plan), tt.want)
-			for _, st := range plan.Stages {
-				for _, s := range st.Steps {
-					if s.Command.Workdir != "web" {
-						t.Errorf("%s runs in %q, want the project path", s.Name, s.Command.Workdir)
-					}
-				}
-			}
-		})
-	}
+func bash(run string) shipconfig.Command { return shipconfig.Command{Run: run, Shell: "bash"} }
+
+// scriptProject is a script-mode project with every stage.
+func scriptProject() shipconfig.Project {
+	return shipconfig.Project{Name: "api", Path: ".", Build: &shipconfig.Build{Mode: shipconfig.ModeScript},
+		Stages: map[string]shipconfig.Command{
+			"restore":  bash("dotnet restore"),
+			"lint":     bash("dotnet format --verify-no-changes"),
+			"build":    bash("dotnet build -c Release"),
+			"test":     bash("dotnet test --no-build"),
+			"coverage": bash("reportgenerator"),
+			"package":  bash(`dotnet pack -o "$NERV_RELEASE_OUTPUTS_DIR"`),
+		}}
 }
 
-func TestBuild_NodeNeedsAReadablePackageJSON(t *testing.T) {
-	root := t.TempDir()
-	p := project("web", "web", "node")
-	p.Node = &shipconfig.Node{PackageManager: "npm"}
-	if _, err := Build(root, p, ctxFor("1.0.0", "")); err == nil || !strings.Contains(err.Error(), filepath.Join("web", "package.json")) {
-		t.Errorf("missing package.json: Build = %v", err)
-	}
-	writeFile(t, root, "web/package.json", `{"scripts": [}`)
-	if _, err := Build(root, p, ctxFor("1.0.0", "")); err == nil || !strings.Contains(err.Error(), "package.json") {
-		t.Errorf("invalid package.json: Build = %v", err)
-	}
+// composeProject is a compose-mode project with a test service and two
+// images.
+func composeProject() shipconfig.Project {
+	return shipconfig.Project{Name: "api", Path: "api", Build: &shipconfig.Build{
+		Mode: shipconfig.ModeCompose, File: "api/docker-compose.yml", TestService: "tests",
+		Images: []string{"ghcr.io/acme/api:${version}", "ghcr.io/acme/worker:${channel}-${tag}"},
+	}}
 }
 
-func nugetProject() shipconfig.Project {
-	p := project("sdk", "sdk", "dotnet", "nuget")
-	p.Dotnet = &shipconfig.Dotnet{ProjectFile: "sdk/Sdk.csproj", Configuration: "Release"}
-	p.NuGet = &shipconfig.NuGet{Source: "https://nuget.example/v3/index.json", APIKeyEnv: "MY_NUGET_KEY"}
-	return p
-}
-
-func TestBuild_NuGet(t *testing.T) {
-	plan, err := Build(t.TempDir(), nugetProject(), ctxFor("3.1.0", ""))
-	if err != nil {
-		t.Fatal(err)
-	}
-	pkgs := filepath.Join(artifacts, "sdk", "nuget")
-	got := lines(plan)
-	assertLines(t, got[len(got)-2:], []string{
-		"package|dotnet:pack|dotnet pack sdk/Sdk.csproj -c Release --no-build --disable-build-servers -p:Version=3.1.0 -o " + pkgs,
-		"publish|nuget:push|push " + filepath.Join(pkgs, "*.nupkg") + " (and *.snupkg) to https://nuget.example/v3/index.json with the API key from $MY_NUGET_KEY, skipping packages already there",
-	})
-}
-
-func TestBuild_NuGetNeedsPackages(t *testing.T) {
-	p := project("sdk", "sdk", "nuget")
-	p.NuGet = &shipconfig.NuGet{Source: shipconfig.DefaultNuGetSource, APIKeyEnv: "NUGET_API_KEY"}
-	if _, err := Build(t.TempDir(), p, ctxFor("1.0.0", "")); err == nil || !strings.Contains(err.Error(), "nuget preset needs the dotnet preset") {
-		t.Errorf("Build = %v, want the nuget-without-packages error", err)
-	}
-	p.Stages = map[string]shipconfig.Command{"package": {Run: "./pack.sh", Shell: "bash"}}
-	if _, err := Build(t.TempDir(), p, ctxFor("1.0.0", "")); err != nil {
-		t.Errorf("with a package override: Build = %v", err)
-	}
-}
-
-func TestPlan_NuGetKeyNeverOnACommandLineOrInTheListing(t *testing.T) {
-	feed := &fakeFeed{}
-	srv := httptest.NewServer(feed)
-	defer srv.Close()
-	p := nugetProject()
-	p.NuGet.Source = srv.URL + "/v3/index.json"
-	c := ctxFor("3.1.0", "")
-	c.ArtifactsDir = t.TempDir()
-	plan, err := Build(t.TempDir(), p, c)
-	if err != nil {
-		t.Fatal(err)
-	}
-	writeFile(t, c.ArtifactsDir, "sdk/nuget/Sdk.3.1.0.nupkg", "zip")
-	r := &fakeRunner{}
-	var out strings.Builder
-	e := Executor{Steps: r, Output: &out, LookupEnv: envOf(map[string]string{"MY_NUGET_KEY": testKey})}
-	if err := e.RunPublish(context.Background(), plan, shiprun.Vars{Project: "sdk"}); err != nil {
-		t.Fatal(err)
-	}
-	if len(r.steps) != 0 {
-		t.Errorf("the push started processes: %v", r.names())
-	}
-	if len(feed.got) != 2 || feed.got[1].key != testKey {
-		t.Errorf("the feed did not get the key in its header: %+v", feed.got)
-	}
-	for _, text := range []string{plan.Render(), out.String()} {
-		if strings.Contains(text, testKey) {
-			t.Errorf("the key leaked into %q", text)
-		}
-	}
-	if !strings.Contains(plan.Render(), "$MY_NUGET_KEY") {
-		t.Errorf("Render does not name the variable:\n%s", plan.Render())
-	}
+func stepOf(t *testing.T, plan *Plan, name string) Step {
+	t.Helper()
 	for _, st := range plan.Stages {
 		for _, s := range st.Steps {
-			if slices.Contains(s.Exec, testKey) || strings.Contains(s.Name, testKey) {
-				t.Errorf("step %s holds the key", s.Name)
+			if s.Name == name {
+				return s
 			}
 		}
 	}
-
-	feed.status, feed.body = http.StatusForbidden, "bad key "+testKey
-	err = e.RunPublish(context.Background(), plan, shiprun.Vars{Project: "sdk"})
-	if err == nil || strings.Contains(err.Error(), testKey) {
-		t.Errorf("RunPublish error = %v: want a failure without the key", err)
-	}
+	t.Fatalf("no step %q in %v", name, lines(plan))
+	return Step{}
 }
 
-func TestExecutor_MissingSecretStopsBeforeAnything(t *testing.T) {
-	plan, err := Build(t.TempDir(), nugetProject(), ctxFor("3.1.0", ""))
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, env := range []map[string]string{{}, {"MY_NUGET_KEY": ""}} {
-		r := &fakeRunner{}
-		e := Executor{Steps: r, LookupEnv: envOf(env)}
-		err := e.Run(context.Background(), plan, shiprun.Vars{Project: "sdk"})
-		if err == nil || !strings.Contains(err.Error(), "MY_NUGET_KEY is not set") || !strings.Contains(err.Error(), "nuget:push") {
-			t.Errorf("Run = %v, want the missing key named", err)
-		}
-		if len(r.steps) != 0 {
-			t.Errorf("steps ran before the key check: %v", r.names())
-		}
-	}
-	// A dry run never pushes, so it does not need the key.
-	dry := ctxFor("3.1.0", "")
-	dry.DryRun = true
-	plan, _ = Build(t.TempDir(), nugetProject(), dry)
-	r := &fakeRunner{}
-	if err := (Executor{Steps: r, LookupEnv: envOf(nil)}).Run(context.Background(), plan, shiprun.Vars{}); err != nil {
-		t.Errorf("dry run Run = %v", err)
-	}
-}
-
-func TestBuild_Npm(t *testing.T) {
-	tests := []struct {
-		name    string
-		npm     shipconfig.Npm
-		channel string
-		want    string
-	}{
-		{"default channel", shipconfig.Npm{Access: "public"}, "", "npm publish --access public"},
-		{"prerelease channel is the dist-tag", shipconfig.Npm{Access: "public"}, "next", "npm publish --access public --tag next"},
-		{"dist_tag and registry", shipconfig.Npm{Access: "restricted", DistTag: "beta", Registry: "https://npm.example/"}, "alpha", "npm publish --access restricted --tag beta --registry https://npm.example/"},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			p := project("cli", "packages/cli", "npm")
-			n := tt.npm
-			p.Npm = &n
-			plan, err := Build(t.TempDir(), p, ctxFor("2.0.0", tt.channel))
-			if err != nil {
-				t.Fatal(err)
-			}
-			assertLines(t, lines(plan), []string{"publish|npm:publish|" + tt.want})
-			if wd := plan.Stages[0].Steps[0].Command.Workdir; wd != "packages/cli" {
-				t.Errorf("workdir = %q", wd)
-			}
-		})
-	}
-}
-
-func TestBuild_StageOverrideReplacesEveryPresetCommand(t *testing.T) {
-	root := t.TempDir()
-	writeFile(t, root, "package.json", `{"scripts":{"build":"vite build"}}`)
-	p := project("app", ".", "dotnet", "node")
-	p.Dotnet = &shipconfig.Dotnet{ProjectFile: "App.csproj", Configuration: "Release"}
-	p.Node = &shipconfig.Node{PackageManager: "npm"}
-	p.Stages = map[string]shipconfig.Command{"build": {Run: "make all", Shell: "bash", Workdir: "src", Timeout: "10m"}}
-	plan, err := Build(root, p, ctxFor("1.0.0", ""))
-	if err != nil {
-		t.Fatal(err)
-	}
-	var build *Stage
-	for i := range plan.Stages {
-		if plan.Stages[i].Name == "build" {
-			build = &plan.Stages[i]
-		}
-	}
-	if build == nil {
-		t.Fatal("no build stage")
-	}
-	assertLines(t, []string{line(build.Steps[0])}, []string{"build|build|bash: make all"})
-	if len(build.Steps) != 1 || build.Steps[0].Command.Workdir != "src" || build.Steps[0].Command.Timeout != "10m" {
-		t.Errorf("build stage = %+v, want only the override, as configured", build.Steps)
-	}
-	// The other stages keep both presets' commands, in preset order.
-	assertLines(t, lines(plan)[:2], []string{
-		"restore|dotnet:restore|dotnet restore App.csproj --disable-build-servers",
-		"restore|node:restore|npm ci",
-	})
-}
-
-func TestBuild_HooksWrapStagesAndEmptyStagesAreSkipped(t *testing.T) {
-	p := project("api", ".", "dotnet")
-	p.Dotnet = &shipconfig.Dotnet{ProjectFile: "Api.csproj", Configuration: "Release"}
-	p.Stages = map[string]shipconfig.Command{"publish": {Run: "./deploy.sh", Shell: "bash"}}
+func TestBuild_ScriptModeRunsTheProjectsStagesInOrder(t *testing.T) {
+	p := scriptProject()
+	p.Submodules = true
+	delete(p.Stages, "lint")
 	p.Hooks = map[string][]shipconfig.Command{
-		"before_test":     {{Run: "echo one", Shell: "bash"}, {Run: "echo two", Shell: "pwsh"}},
-		"after_test":      {{Run: "node report.mjs", Shell: "node"}},
-		"before_package":  {{Run: "echo never", Shell: "bash"}}, // no package commands: skipped
-		"after_coverage":  {{Run: "echo never", Shell: "bash"}},
-		"before_publish":  {{Run: "echo login", Shell: "bash"}},
-		"prepare":         {{Run: "./bump.sh", Shell: "bash"}},
-		"success":         {{Run: "echo ok", Shell: "bash"}},
-		"before_restore":  nil,
-		"after_restore":   {},
-		"publish":         {{Run: "echo lifecycle", Shell: "bash"}},
-		"fail":            {{Run: "echo fail", Shell: "bash"}},
-		"before_lint":     {{Run: "echo lint", Shell: "bash"}},
-		"after_build":     {{Run: "echo built", Shell: "bash"}},
-		"before_coverage": {{Run: "echo never", Shell: "bash"}},
+		"before_test":    {bash("echo one"), {Run: "echo two", Shell: "pwsh"}},
+		"after_test":     {{Run: "node report.mjs", Shell: "node"}},
+		"before_lint":    {bash("echo never")}, // no lint command: skipped
+		"after_build":    {bash("echo built")},
+		"prepare":        {bash("./bump.sh")},
+		"fail":           {bash("echo fail")},
+		"before_restore": nil,
 	}
 	plan, err := Build(t.TempDir(), p, ctxFor("1.0.0", ""))
 	if err != nil {
 		t.Fatal(err)
 	}
+	if plan.Mode != shipconfig.ModeScript {
+		t.Errorf("mode %q", plan.Mode)
+	}
 	assertLines(t, lines(plan), []string{
-		"restore|dotnet:restore|dotnet restore Api.csproj --disable-build-servers",
-		"before_lint|before_lint|bash: echo lint",
-		"lint|dotnet:lint|dotnet format Api.csproj --verify-no-changes",
-		"build|dotnet:build|dotnet build Api.csproj -c Release --no-restore --disable-build-servers -p:Version=1.0.0",
+		"restore|git:submodules|git submodule update --init --recursive",
+		"restore|restore|bash: dotnet restore",
+		"build|build|bash: dotnet build -c Release",
 		"after_build|after_build|bash: echo built",
 		"before_test|before_test|bash: echo one",
 		"before_test|before_test|pwsh: echo two",
-		"test|dotnet:test|dotnet test Api.csproj -c Release --no-build --disable-build-servers",
+		"test|test|bash: dotnet test --no-build",
 		"after_test|after_test|node: node report.mjs",
-		"before_publish|before_publish|bash: echo login",
-		"publish|publish|bash: ./deploy.sh",
+		"coverage|coverage|bash: reportgenerator",
+		`package|package|bash: dotnet pack -o "$NERV_RELEASE_OUTPUTS_DIR"`,
 	})
-	for _, key := range []string{"prepare", "publish", "success", "fail"} {
+	for _, key := range []string{"prepare", "fail"} {
 		if len(plan.Hooks[key]) != 1 || plan.Hooks[key][0].Stage != key {
 			t.Errorf("lifecycle hook %s = %+v", key, plan.Hooks[key])
 		}
 	}
+	if len(plan.Images) != 0 {
+		t.Errorf("script mode images %v", plan.Images)
+	}
 }
 
-func TestBuild_ArtifactsDirIsGivenToEveryStep(t *testing.T) {
-	p := dimProject()
-	p.Stages = map[string]shipconfig.Command{"lint": {Run: "true", Shell: "bash", Env: map[string]string{"A": "1"}}}
-	p.Hooks = map[string][]shipconfig.Command{"after_test": {{Run: "true", Shell: "bash"}}, "prepare": {{Run: "true", Shell: "bash"}}}
+func TestBuild_ScriptModeStageKeepsItsSettings(t *testing.T) {
+	p := scriptProject()
+	p.Stages["build"] = shipconfig.Command{Run: "make all", Shell: "bash", Workdir: "src", Timeout: "10m"}
 	plan, err := Build(t.TempDir(), p, ctxFor("1.0.0", ""))
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := filepath.Join(artifacts, "api")
-	all := plan.Hooks["prepare"]
-	for _, st := range plan.Stages {
-		all = append(all, st.Steps...)
+	if s := stepOf(t, plan, "build"); s.Command.Workdir != "src" || s.Command.Timeout != "10m" || s.Command.Run != "make all" {
+		t.Errorf("build step %+v, want the stage as configured", s.Command)
 	}
-	for _, s := range all {
-		if s.Func != nil {
-			continue
+}
+
+// Without shared_host a stage runs only with its own env (plus NERV's
+// directories); with it, the dotnet stages get the build-server env under
+// their own.
+func TestBuild_ScriptSharedHost(t *testing.T) {
+	for _, shared := range []bool{false, true} {
+		p := scriptProject()
+		p.Build.SharedHost = shared
+		p.Stages["lint"] = shipconfig.Command{Run: "dotnet format", Shell: "bash", Env: map[string]string{"UseSharedCompilation": "true"}}
+		plan, err := Build(t.TempDir(), p, ctxFor("1.0.0", ""))
+		if err != nil {
+			t.Fatal(err)
 		}
-		if got := s.Command.Env[ArtifactsEnv]; got != want {
-			t.Errorf("%s: %s = %q, want %q", s.Name, ArtifactsEnv, got, want)
+		for _, name := range []string{"restore", "lint", "build", "test", "coverage", "package"} {
+			env := stepOf(t, plan, name).Command.Env
+			for k, v := range DotnetBuildServerEnv() {
+				want := shared && name != "coverage"
+				if name == "lint" && k == "UseSharedCompilation" {
+					if env[k] != "true" {
+						t.Errorf("shared_host %v: lint's own %s lost: %v", shared, k, env)
+					}
+					continue
+				}
+				if got := env[k] == v; got != want {
+					t.Errorf("shared_host %v: stages.%s has %s=%q, want present=%v", shared, name, k, env[k], want)
+				}
+			}
+		}
+		if p.Stages["lint"].Env["MSBUILDDISABLENODEREUSE"] != "" {
+			t.Error("Build changed the configuration's env map")
 		}
 	}
-	if p.Stages["lint"].Env[ArtifactsEnv] != "" {
-		t.Error("Build changed the configuration's env map")
+}
+
+func TestBuild_ComposeMode(t *testing.T) {
+	p := composeProject()
+	p.Stages = map[string]shipconfig.Command{"lint": bash("hadolint api/Dockerfile")}
+	p.Hooks = map[string][]shipconfig.Command{"after_build": {bash("echo built")}}
+	plan, err := Build(t.TempDir(), p, ctxFor("1.4.0-rc.1", "beta"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	out := filepath.Join(artifacts, "api", "outputs")
+	assertLines(t, lines(plan), []string{
+		"lint|lint|bash: hadolint api/Dockerfile",
+		"build|compose:build|docker compose -f api/docker-compose.yml build",
+		"after_build|after_build|bash: echo built",
+		"test|compose:test|docker compose -f api/docker-compose.yml run --rm tests",
+		"package|compose:save ghcr.io/acme/api:1.4.0-rc.1|docker save -o " + filepath.Join(out, "ghcr.io_acme_api_1.4.0-rc.1.tar") + " ghcr.io/acme/api:1.4.0-rc.1",
+		"package|compose:save ghcr.io/acme/worker:beta-v1.4.0-rc.1|docker save -o " + filepath.Join(out, "ghcr.io_acme_worker_beta-v1.4.0-rc.1.tar") + " ghcr.io/acme/worker:beta-v1.4.0-rc.1",
+	})
+	if want := []Image{
+		{Ref: "ghcr.io/acme/api:1.4.0-rc.1", Tar: "ghcr.io_acme_api_1.4.0-rc.1.tar"},
+		{Ref: "ghcr.io/acme/worker:beta-v1.4.0-rc.1", Tar: "ghcr.io_acme_worker_beta-v1.4.0-rc.1.tar"},
+	}; !slices.Equal(plan.Images, want) {
+		t.Errorf("images %+v, want %+v", plan.Images, want)
+	}
+	// No test service: no test stage; the default channel has no channel.
+	p.Build.TestService = ""
+	if plan, err = Build(t.TempDir(), p, ctxFor("1.4.0", "")); err != nil {
+		t.Fatal(err)
+	}
+	if slices.ContainsFunc(plan.Stages, func(s Stage) bool { return s.Name == "test" }) {
+		t.Errorf("a test stage without test_service: %v", lines(plan))
+	}
+	if plan.Images[1].Ref != "ghcr.io/acme/worker:-v1.4.0" {
+		t.Errorf("worker ref %q on the default channel", plan.Images[1].Ref)
+	}
+}
+
+func TestBuild_ComposeImageRefMustBeValid(t *testing.T) {
+	p := composeProject()
+	p.Build.Images = []string{"ghcr.io/acme/api:${channel}"}
+	if _, err := Build(t.TempDir(), p, ctxFor("1.0.0", "a b")); err == nil || !strings.Contains(err.Error(), "image") {
+		t.Errorf("Build = %v, want a refusal of the expanded reference", err)
+	}
+}
+
+func TestBuild_RequiresABuildMode(t *testing.T) {
+	for _, b := range []*shipconfig.Build{nil, {}, {Mode: "make"}} {
+		p := shipconfig.Project{Name: "api", Path: ".", Build: b}
+		if _, err := Build(t.TempDir(), p, ctxFor("1.0.0", "")); err == nil || !strings.Contains(err.Error(), "build.mode") {
+			t.Errorf("build %+v: Build = %v, want a refusal naming build.mode", b, err)
+		}
+	}
+}
+
+func TestBuild_DirectoriesAreGivenToEveryStep(t *testing.T) {
+	for _, p := range []shipconfig.Project{scriptProject(), composeProject()} {
+		if p.Stages == nil {
+			p.Stages = map[string]shipconfig.Command{}
+		}
+		p.Stages["lint"] = shipconfig.Command{Run: "true", Shell: "bash", Env: map[string]string{"A": "1"}}
+		p.Hooks = map[string][]shipconfig.Command{"after_test": {bash("true")}, "prepare": {bash("true")}}
+		plan, err := Build(t.TempDir(), p, ctxFor("1.0.0", ""))
+		if err != nil {
+			t.Fatal(err)
+		}
+		dir := filepath.Join(artifacts, "api")
+		all := plan.Hooks["prepare"]
+		for _, st := range plan.Stages {
+			all = append(all, st.Steps...)
+		}
+		for _, s := range all {
+			if s.Func != nil {
+				continue
+			}
+			if s.Command.Env[ArtifactsEnv] != dir || s.Command.Env[OutputsEnv] != filepath.Join(dir, "outputs") {
+				t.Errorf("%s %s: env %v", p.Build.Mode, s.Name, s.Command.Env)
+			}
+		}
+		if p.Stages["lint"].Env[ArtifactsEnv] != "" {
+			t.Error("Build changed the configuration's env map")
+		}
+		if plan.OutputsDir != filepath.Join(dir, "outputs") || !slices.Contains(plan.ResetDirs, plan.OutputsDir) {
+			t.Errorf("outputs dir %s, reset %v", plan.OutputsDir, plan.ResetDirs)
+		}
 	}
 }
 
 func TestBuild_ContextIsChecked(t *testing.T) {
-	p := project("x", ".", "npm")
-	p.Npm = &shipconfig.Npm{Access: "public"}
 	for _, c := range []Context{
 		{ArtifactsDir: artifacts},
 		{Version: "1.0.0"},
 		{Version: "1.0.0", ArtifactsDir: "relative/dir"},
 	} {
-		if _, err := Build(t.TempDir(), p, c); err == nil {
+		if _, err := Build(t.TempDir(), scriptProject(), c); err == nil {
 			t.Errorf("Build(%+v) = nil error", c)
 		}
 	}
@@ -567,14 +320,9 @@ func (f *fakeRunner) names() []string {
 	return n
 }
 
-func envOf(m map[string]string) func(string) (string, bool) {
-	return func(k string) (string, bool) { v, ok := m[k]; return v, ok }
-}
-
 func TestExecutor_RunsStagesInOrderAndStopsAtTheFirstFailure(t *testing.T) {
-	p := dimProject()
-	p.Dotnet.CoverageThreshold = shipconfig.CoverageThreshold{}
-	p.Hooks = map[string][]shipconfig.Command{"after_test": {{Run: "echo after", Shell: "bash"}}}
+	p := composeProject()
+	p.Hooks = map[string][]shipconfig.Command{"after_test": {bash("echo after")}}
 	plan, err := Build(t.TempDir(), p, ctxFor("1.0.0", ""))
 	if err != nil {
 		t.Fatal(err)
@@ -583,118 +331,28 @@ func TestExecutor_RunsStagesInOrderAndStopsAtTheFirstFailure(t *testing.T) {
 	if err := (Executor{Steps: r}).Run(context.Background(), plan, shiprun.Vars{Project: "api"}); err != nil {
 		t.Fatal(err)
 	}
-	api, broker := "ghcr.io/org/dim.comprobantes.api", "ghcr.io/org/dim.comprobantes.api-login-broker"
-	if want := []string{"dotnet:restore", "dotnet:lint", "dotnet:build", "dotnet:test", "after_test", "docker:build " + api, "docker:build " + broker}; !slices.Equal(r.names(), want) {
-		t.Errorf("ran %v, want %v (publish is not part of Run)", r.names(), want)
+	if want := []string{"compose:build", "compose:test", "after_test", "compose:save ghcr.io/acme/api:1.0.0", "compose:save ghcr.io/acme/worker:-v1.0.0"}; !slices.Equal(r.names(), want) {
+		t.Errorf("ran %v, want %v", r.names(), want)
 	}
-	if r.steps[0].Stage != "restore" || r.steps[4].Stage != "after_test" || r.steps[0].Exec[0] != "dotnet" {
+	if r.steps[0].Stage != "build" || r.steps[2].Stage != "after_test" || r.steps[0].Exec[0] != "docker" {
 		t.Errorf("shiprun steps lack their stage or argv: %+v", r.steps[:1])
 	}
 
+	// The test service's exit code is the test result.
 	stepErr := errors.New("exit code 1")
-	r = &fakeRunner{fail: map[string]error{"dotnet:build": stepErr}}
+	r = &fakeRunner{fail: map[string]error{"compose:test": stepErr}}
 	err = (Executor{Steps: r}).Run(context.Background(), plan, shiprun.Vars{Project: "api"})
 	var f *StepFailure
-	if !errors.As(err, &f) || f.Stage != "build" || f.Step != "dotnet:build" || !errors.Is(err, stepErr) {
-		t.Fatalf("Run = %v, want a StepFailure at build/dotnet:build", err)
+	if !errors.As(err, &f) || f.Stage != "test" || f.Step != "compose:test" || !errors.Is(err, stepErr) {
+		t.Fatalf("Run = %v, want a StepFailure at test/compose:test", err)
 	}
-	if want := []string{"dotnet:restore", "dotnet:lint", "dotnet:build"}; !slices.Equal(r.names(), want) {
+	if want := []string{"compose:build", "compose:test"}; !slices.Equal(r.names(), want) {
 		t.Errorf("ran %v after the failure, want %v", r.names(), want)
 	}
 }
 
-func TestExecutor_CoverageCheckRunsInProcess(t *testing.T) {
-	dir := t.TempDir()
-	p := project("api", ".", "dotnet")
-	p.Dotnet = &shipconfig.Dotnet{ProjectFile: "Api.csproj", Configuration: "Release", CoverageThreshold: shipconfig.CoverageThreshold{Line: 90}}
-	plan, err := Build(t.TempDir(), p, Context{Version: "1.0.0", ArtifactsDir: dir})
-	if err != nil {
-		t.Fatal(err)
-	}
-	// The test step writes the report, as dotnet test does.
-	report := func(covered int) *writingRunner {
-		return &writingRunner{root: dir, t: t, writes: map[string]map[string]string{
-			"dotnet:test": {"api/coverage/0a/coverage.cobertura.xml": cobertura(covered, 100)}}}
-	}
-	var out strings.Builder
-	r := report(85)
-	err = (Executor{Steps: r, Output: &out}).Run(context.Background(), plan, shiprun.Vars{Project: "api"})
-	var f *StepFailure
-	if !errors.As(err, &f) || f.Stage != "coverage" || f.Step != "dotnet:coverage" || !strings.Contains(err.Error(), "85.00%") {
-		t.Fatalf("Run = %v, want the coverage check failure", err)
-	}
-	if slices.Contains(r.names(), "dotnet:coverage") {
-		t.Error("the check was sent to the process runner")
-	}
-
-	out.Reset()
-	if err := (Executor{Steps: report(95), Output: &out}).Run(context.Background(), plan, shiprun.Vars{Project: "api"}); err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(out.String(), "[api:dotnet:coverage] line coverage 95.00% (95 of 100 lines, 1 report), threshold 90%") {
-		t.Errorf("output = %q", out.String())
-	}
-}
-
-func TestExecutor_PublishIsNotRunInADryRun(t *testing.T) {
-	c := ctxFor("1.0.0", "")
-	c.DryRun = true
-	plan, err := Build(t.TempDir(), dimProject(), c)
-	if err != nil {
-		t.Fatal(err)
-	}
-	r := &fakeRunner{}
-	if err := (Executor{Steps: r}).RunPublish(context.Background(), plan, shiprun.Vars{}); err != nil {
-		t.Fatal(err)
-	}
-	if len(r.steps) != 0 {
-		t.Errorf("dry run published: %v", r.names())
-	}
-	if !strings.Contains(plan.Render(), "publish (not run: dry run)") {
-		t.Errorf("Render does not mark the skipped publish:\n%s", plan.Render())
-	}
-}
-
-func TestPlan_Render(t *testing.T) {
-	p := dimProject()
-	p.Docker.Images = p.Docker.Images[:1]
-	p.Hooks = map[string][]shipconfig.Command{
-		"after_test": {{Run: "scripts/report.ps1", Shell: "pwsh", Workdir: "tools"}},
-		"prepare":    {{Run: "echo a\necho b", Shell: "bash"}},
-	}
-	plan, err := Build(t.TempDir(), p, ctxFor("1.0.0", ""))
-	if err != nil {
-		t.Fatal(err)
-	}
-	cov := filepath.Join(artifacts, "api", "coverage")
-	want := `api 1.0.0 (default channel, tag v1.0.0)
-  restore
-    dotnet:restore  dotnet restore Dim.Comprobantes.slnx --disable-build-servers
-  lint
-    dotnet:lint  dotnet format Dim.Comprobantes.slnx --verify-no-changes
-  build
-    dotnet:build  dotnet build Dim.Comprobantes.slnx -c Release --no-restore --disable-build-servers -p:Version=1.0.0
-  test
-    dotnet:test  dotnet test Dim.Comprobantes.slnx -c Release --no-build --disable-build-servers --collect "XPlat Code Coverage" --results-directory ` + cov + `
-    after_test  [pwsh in tools] scripts/report.ps1
-  coverage
-    dotnet:coverage  check line coverage >= 80% in ` + cov + `
-  package
-    docker:build ghcr.io/org/dim.comprobantes.api  docker build -f docker/Dockerfile -t ghcr.io/org/dim.comprobantes.api:1.0.0 -t ghcr.io/org/dim.comprobantes.api:latest --build-arg APP_VERSION=1.0.0 --label org.opencontainers.image.version=1.0.0 --label org.opencontainers.image.revision=abc123 .
-  publish (runs after semantic-release tags the release)
-    docker:push ghcr.io/org/dim.comprobantes.api:1.0.0  docker push ghcr.io/org/dim.comprobantes.api:1.0.0
-    docker:push ghcr.io/org/dim.comprobantes.api:latest  docker push ghcr.io/org/dim.comprobantes.api:latest
-  hooks (prepare: before semantic-release; publish, success: after the publish stage; fail: on a failure once semantic-release started)
-    prepare  [bash] echo a
-        echo b
-`
-	if got := plan.Render(); got != want {
-		t.Errorf("Render =\n%s\nwant\n%s", got, want)
-	}
-}
-
 // writingRunner is a fakeRunner that writes files when a step runs:
-// step name -> (artifacts-relative path -> content).
+// step name -> (root-relative path -> content).
 type writingRunner struct {
 	fakeRunner
 	root   string
@@ -709,13 +367,100 @@ func (w *writingRunner) Run(ctx context.Context, s shiprun.Step, v shiprun.Vars)
 	return w.fakeRunner.Run(ctx, s, v)
 }
 
+func TestExecutor_CoverageCheckRunsInProcess(t *testing.T) {
+	dir := t.TempDir()
+	p := scriptProject()
+	p.Build.Coverage = &shipconfig.Coverage{Line: 90}
+	plan, err := Build(t.TempDir(), p, Context{Version: "1.0.0", ArtifactsDir: dir})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cov := filepath.Join(dir, "api", "coverage")
+	if s := stepOf(t, plan, "test"); s.Command.Env[CoverageEnv] != cov {
+		t.Errorf("test step %s = %q, want %s", CoverageEnv, s.Command.Env[CoverageEnv], cov)
+	}
+	if got, want := line(stepOf(t, plan, "coverage:check")), "coverage|coverage:check|check line coverage >= 90% in "+cov; got != want {
+		t.Errorf("check step %q, want %q", got, want)
+	}
+	// The test step writes the report, as dotnet test does.
+	report := func(covered int) *writingRunner {
+		return &writingRunner{root: dir, t: t, writes: map[string]map[string]string{
+			"test": {"api/coverage/0a/coverage.cobertura.xml": cobertura(covered, 100)}}}
+	}
+	var out strings.Builder
+	r := report(85)
+	err = (Executor{Steps: r, Output: &out}).Run(context.Background(), plan, shiprun.Vars{Project: "api"})
+	var f *StepFailure
+	if !errors.As(err, &f) || f.Stage != "coverage" || f.Step != "coverage:check" || !strings.Contains(err.Error(), "85.00%") {
+		t.Fatalf("Run = %v, want the coverage check failure", err)
+	}
+	if slices.Contains(r.names(), "coverage:check") {
+		t.Error("the check was sent to the process runner")
+	}
+	out.Reset()
+	if err := (Executor{Steps: report(95), Output: &out}).Run(context.Background(), plan, shiprun.Vars{Project: "api"}); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), "[api:coverage:check] line coverage 95.00% (95 of 100 lines, 1 report), threshold 90%") {
+		t.Errorf("output = %q", out.String())
+	}
+}
+
+// A configured coverage dir is searched in the release clone (a compose
+// test service writes its reports through a bind mount) and not reset; a
+// project without a coverage command still gets the check.
+func TestBuild_CoverageDirInTheClone(t *testing.T) {
+	root := t.TempDir()
+	p := composeProject()
+	p.Build.Coverage = &shipconfig.Coverage{Dir: "api/coverage", Line: 80, Method: 85}
+	plan, err := Build(root, p, ctxFor("1.0.0", ""))
+	if err != nil {
+		t.Fatal(err)
+	}
+	cov := filepath.Join(root, "api", "coverage")
+	if got, want := line(stepOf(t, plan, "coverage:check")), "coverage|coverage:check|check line coverage >= 80%, method coverage >= 85% in "+cov; got != want {
+		t.Errorf("check step %q, want %q", got, want)
+	}
+	if slices.Contains(plan.ResetDirs, cov) {
+		t.Errorf("the clone's coverage dir is reset: %v", plan.ResetDirs)
+	}
+}
+
+func TestPlan_Render(t *testing.T) {
+	p := composeProject()
+	p.Build.Images = p.Build.Images[:1]
+	p.Build.Coverage = &shipconfig.Coverage{Line: 80}
+	p.Hooks = map[string][]shipconfig.Command{
+		"after_test": {{Run: "scripts/report.ps1", Shell: "pwsh", Workdir: "tools"}},
+		"prepare":    {bash("echo a\necho b")},
+	}
+	plan, err := Build(t.TempDir(), p, ctxFor("1.0.0", ""))
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := filepath.Join(artifacts, "api")
+	want := `api 1.0.0 (default channel, tag v1.0.0, build mode compose)
+  build
+    compose:build  docker compose -f api/docker-compose.yml build
+  test
+    compose:test  docker compose -f api/docker-compose.yml run --rm tests
+    after_test  [pwsh in tools] scripts/report.ps1
+  coverage
+    coverage:check  check line coverage >= 80% in ` + filepath.Join(dir, "coverage") + `
+  package
+    compose:save ghcr.io/acme/api:1.0.0  docker save -o ` + filepath.Join(dir, "outputs", "ghcr.io_acme_api_1.0.0.tar") + ` ghcr.io/acme/api:1.0.0
+  hooks (prepare: after the pipeline, before the artifact is written; fail: when a stage or hook fails)
+    prepare  [bash] echo a
+        echo b
+`
+	if got := plan.Render(); got != want {
+		t.Errorf("Render =\n%s\nwant\n%s", got, want)
+	}
+}
+
 func TestExecutor_LeftoversOfAnEarlierRunAreNotUsed(t *testing.T) {
-	feed := &fakeFeed{}
-	srv := httptest.NewServer(feed)
-	defer srv.Close()
-	p := nugetProject()
-	p.NuGet.Source = srv.URL + "/api/v2/package"
-	p.Dotnet.CoverageThreshold = shipconfig.CoverageThreshold{Line: 90}
+	p := scriptProject()
+	p.Build.Coverage = &shipconfig.Coverage{Line: 90}
 	c := ctxFor("3.1.0", "")
 	c.ArtifactsDir = t.TempDir()
 	plan, err := Build(t.TempDir(), p, c)
@@ -723,22 +468,22 @@ func TestExecutor_LeftoversOfAnEarlierRunAreNotUsed(t *testing.T) {
 		t.Fatal(err)
 	}
 	// An earlier run left a report with no coverage and an older package.
-	writeFile(t, c.ArtifactsDir, "sdk/coverage/old/coverage.cobertura.xml", cobertura(0, 1000))
-	writeFile(t, c.ArtifactsDir, "sdk/nuget/Sdk.3.0.0.nupkg", "old")
+	writeFile(t, c.ArtifactsDir, "api/coverage/old/coverage.cobertura.xml", cobertura(0, 1000))
+	writeFile(t, c.ArtifactsDir, "api/outputs/Api.3.0.0.nupkg", "old")
 	writeFile(t, c.ArtifactsDir, "other-project/keep.txt", "not ours")
 	r := &writingRunner{root: c.ArtifactsDir, t: t, writes: map[string]map[string]string{
-		"dotnet:test": {"sdk/coverage/new/coverage.cobertura.xml": cobertura(95, 100)},
-		"dotnet:pack": {"sdk/nuget/Sdk.3.1.0.nupkg": "new"},
+		"test":    {"api/coverage/new/coverage.cobertura.xml": cobertura(95, 100)},
+		"package": {"api/outputs/Api.3.1.0.nupkg": "new"},
 	}}
-	e := Executor{Steps: r, LookupEnv: envOf(map[string]string{"MY_NUGET_KEY": testKey})}
-	if err := e.Run(context.Background(), plan, shiprun.Vars{Project: "sdk"}); err != nil {
+	if err := (Executor{Steps: r}).Run(context.Background(), plan, shiprun.Vars{Project: "api"}); err != nil {
 		t.Fatalf("Run = %v (the old report must not count)", err)
 	}
-	if err := e.RunPublish(context.Background(), plan, shiprun.Vars{Project: "sdk"}); err != nil {
+	outputs, err := plan.Outputs()
+	if err != nil {
 		t.Fatal(err)
 	}
-	if len(feed.got) != 1 || string(feed.got[0].body) != "new" {
-		t.Errorf("pushed %d packages, want only the new one: %+v", len(feed.got), feed.got)
+	if len(outputs) != 1 || outputs[0].Path != "Api.3.1.0.nupkg" {
+		t.Errorf("outputs %+v, want only the new package", outputs)
 	}
 	if _, err := os.Stat(filepath.Join(c.ArtifactsDir, "other-project", "keep.txt")); err != nil {
 		t.Errorf("another project's artifacts were removed: %v", err)
@@ -761,36 +506,43 @@ func TestExecutor_ResetsOnlyInsideTheArtifactsRoot(t *testing.T) {
 	}
 }
 
-func TestBuild_NpmRefusesCmdMetacharacters(t *testing.T) {
-	tests := []struct {
-		name    string
-		npm     shipconfig.Npm
-		channel string
-		field   string
-	}{
-		{"dist_tag with &", shipconfig.Npm{Access: "public", DistTag: "beta&calc"}, "", "npm.dist_tag"},
-		{"registry with a query", shipconfig.Npm{Access: "public", Registry: "https://npm.example/?a=1&b=2"}, "", "npm.registry"},
-		{"channel with a pipe", shipconfig.Npm{Access: "public"}, "alpha|x", "the release channel"},
-		{"percent", shipconfig.Npm{Access: "public", DistTag: "%PATH%"}, "", "npm.dist_tag"},
-		{"caret", shipconfig.Npm{Access: "public", DistTag: "a^b"}, "", "npm.dist_tag"},
-		{"redirect", shipconfig.Npm{Access: "public", Registry: "https://x>out"}, "", "npm.registry"},
-		{"quote", shipconfig.Npm{Access: "public", DistTag: `a"b`}, "", "npm.dist_tag"},
-		{"newline", shipconfig.Npm{Access: "public", DistTag: "a\nb"}, "", "npm.dist_tag"},
+func TestPlan_OutputsListsWhatThePackageStageLeft(t *testing.T) {
+	c := ctxFor("1.0.0", "")
+	c.ArtifactsDir = t.TempDir()
+	script, err := Build(t.TempDir(), scriptProject(), c)
+	if err != nil {
+		t.Fatal(err)
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			p := project("cli", "cli", "npm")
-			n := tt.npm
-			p.Npm = &n
-			_, err := Build(t.TempDir(), p, ctxFor("1.0.0", tt.channel))
-			if err == nil || !strings.Contains(err.Error(), tt.field) || !strings.Contains(err.Error(), "cmd.exe") {
-				t.Errorf("Build = %v, want a refusal naming %s", err, tt.field)
-			}
-		})
+	if got, err := script.Outputs(); err != nil || len(got) != 0 {
+		t.Errorf("script mode before any run: %+v %v", got, err)
 	}
-	p := project("cli", "cli", "npm")
-	p.Npm = &shipconfig.Npm{Access: "restricted", DistTag: "next-1.x_beta", Registry: "https://npm.pkg.github.com/@org"}
-	if _, err := Build(t.TempDir(), p, ctxFor("1.0.0", "rc")); err != nil {
-		t.Errorf("ordinary values refused: %v", err)
+	p := composeProject()
+	p.Build.Images = p.Build.Images[:1]
+	plan, err := Build(t.TempDir(), p, c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	out := plan.OutputsDir
+	writeFile(t, out, "ghcr.io_acme_api_1.0.0.tar", "image")
+	writeFile(t, out, "site/index.html", "<html>")
+	writeFile(t, out, "notes.txt", "x")
+	got, err := plan.Outputs()
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []artifact.OutputSource{
+		{Path: "ghcr.io_acme_api_1.0.0.tar", Kind: artifact.KindImageTar, From: filepath.Join(out, "ghcr.io_acme_api_1.0.0.tar")},
+		{Path: "notes.txt", Kind: artifact.KindFile, From: filepath.Join(out, "notes.txt")},
+		{Path: "site", Kind: artifact.KindDir, From: filepath.Join(out, "site")},
+	}
+	if !slices.Equal(got, want) {
+		t.Errorf("outputs\n %+v\nwant\n %+v", got, want)
+	}
+	// A saved image missing from the outputs is an error.
+	if err := os.Remove(filepath.Join(out, "ghcr.io_acme_api_1.0.0.tar")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := plan.Outputs(); err == nil || !strings.Contains(err.Error(), "ghcr.io/acme/api:1.0.0") {
+		t.Errorf("missing image tar: %v", err)
 	}
 }

@@ -16,6 +16,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/war-apps/nerv-by-gentle-ai/internal/artifact"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/refusal"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/semrel"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/shipconfig"
@@ -25,45 +26,52 @@ import (
 
 const shipUsage = `Usage: nerv ship [flags]
 
-Releases the repository (or each project of the release: section of
-.nerv/nerv.yaml) from your machine, as the CI release would: in a fresh
-temporary clone of origin's branch, for each project with a new release in
-dependency order, it writes the dotnet project file, runs the pipeline
-(restore, lint, build, test, coverage, package) and the prepare hooks, runs
-semantic-release for real with the repository's own configuration (release
-commit, CHANGELOG, tag, GitHub release), then the publish stage (docker,
-nuget, npm) and the publish and success hooks. Your repository is never
-modified, and only what origin has is released: a local branch ahead of or
-behind origin is refused. The release: section is your local
-.nerv/nerv.yaml, committed or not; the code is origin's.
+Builds, tests and packages each project of the release: section of
+.nerv/nerv.yaml from your machine, as the CI build would, and leaves a local
+artifact for nerv deploy. In a fresh temporary clone of origin's branch, for
+each project with a new release in dependency order, it writes the version
+into build.version_files and the CHANGELOG section into the project's
+CHANGELOG (in the clone only), runs the pipeline of the project's
+build.mode (compose or script: restore, lint, build, test, coverage,
+package) and the prepare hooks, then writes the artifact
+.nerv/artifacts/<project>/<version>/ in your repository: manifest.json, the
+notes, the CHANGELOG section, the outputs and the changed release files.
+
+nerv ship never writes to git: no commit, no tag, no push; nerv deploy does
+that from the artifact. Your repository is never modified (only its
+.nerv/artifacts/, which ignores itself), and only what origin has is built:
+a local branch ahead of or behind origin is refused. The release: section is
+your local .nerv/nerv.yaml, committed or not; the code is origin's.
 
 Flags:
   --cwd <dir>              A directory inside the repository (default ".")
-  --branch <name>          Branch to release (default: the current one)
+  --branch <name>          Branch to build (default: the current one)
   --project <name>         Only this project of the release: section
+  --version <semver>       Use this version instead of computing it (with
+                            several projects, --project is required); it
+                            must be newer than the project's last tag
   --dry-run                Run the pipeline and the prepare hooks in the
-                            clone, but never semantic-release or publish
-  --yes                    Release without asking for confirmation
+                            clone, but write no artifact
+  --force                  Replace an existing artifact of the same version
+  --yes                    Package without asking for confirmation
   --fetch-timeout <dur>    Bound for each read of origin (default 60s)
   --expect <project>=<version>
-                           Release only if the computed versions are exactly
-                            these (repeat once per releasing project, as the
-                            dry run printed them); anything else is refused
+                           Package only if the versions are exactly these
+                            (repeat once per releasing project, as the dry
+                            run printed them); anything else is refused
                             before any stage runs
   --json                   Print the final summary as JSON
 
-Credentials stay with git (ssh keys, credential helpers), docker and the
-environment (NUGET_API_KEY, NPM_TOKEN); GH_TOKEN, when not set, is read
-with "gh auth token" and given to semantic-release through its environment
-only. Progress goes to stderr, the final summary to stdout. Exit codes: 0
-released (also when there is nothing to release, and a dry run), 1 refused
+Progress goes to stderr, the final summary to stdout. Exit codes: 0
+packaged (also when there is nothing to release, and a dry run), 1 refused
 (invalid configuration, unknown project, local branch not equal to origin's,
-no confirmation), 2 a step or the environment failed, 128 + the signal
-when interrupted.
+an existing artifact without --force, no confirmation), 2 a step or the
+environment failed, 128 + the signal when interrupted.
 `
 
 // shipWorkspace is the release clone nerv ship works in; *semrel.Workspace
-// is the real one.
+// is the real one. CheckPush, Release and TagOnOrigin are used by nerv
+// pipeline release only.
 type shipWorkspace interface {
 	Dir() string
 	// Config is the user's local release: section (nil when none), the one
@@ -83,11 +91,13 @@ type shipWorkspace interface {
 
 // Statuses of a project in the final summary.
 const (
-	shipReleased   = "released"
+	shipPackaged   = "packaged"
 	shipDryRun     = "dry-run"
 	shipNoRelease  = "no-release"
 	shipFailed     = "failed"
 	shipNotStarted = "not-started"
+	// shipReleased is nerv pipeline release's: semantic-release released it.
+	shipReleased = "released"
 )
 
 // shipOutcome is what happened to one project (the --json summary).
@@ -99,18 +109,16 @@ type shipOutcome struct {
 	Channel     string `json:"channel,omitempty"`
 	Tag         string `json:"tag,omitempty"`
 	LastVersion string `json:"last_version,omitempty"`
-	// Tagged reports that the release tag is on origin.
-	Tagged bool `json:"tagged"`
-	// Published lists the publish-stage steps that completed (preset steps
-	// such as docker:push <image>:<tag> or nuget:push, a publish override,
-	// before_/after_publish hooks).
-	Published []string `json:"published"`
-	Error     string   `json:"error,omitempty"`
+	// Artifact is the artifact directory written (status packaged).
+	Artifact string `json:"artifact,omitempty"`
+	// Tagged reports that nerv pipeline release's tag is on origin.
+	Tagged bool   `json:"tagged,omitempty"`
+	Error  string `json:"error,omitempty"`
 	// Action is what the user must do after a failure.
 	Action string `json:"action,omitempty"`
 }
 
-// shipRun is one nerv ship invocation.
+// shipRun is one nerv ship (or nerv pipeline release) invocation.
 type shipRun struct {
 	opts           options
 	stdout, stderr io.Writer
@@ -119,24 +127,29 @@ type shipRun struct {
 	dryRun, yes    bool
 	timeout        time.Duration
 	expect         expectations
+	// version is --version (empty: computed); force is --force.
+	version string
+	force   bool
 
-	ws shipWorkspace
-	// computed are every computed result, the dependencies of --project
-	// included: Release needs them for depends_on. results are the
-	// projects to ship (only --project's when given).
-	computed []semrel.ProjectResult
-	results  []semrel.ProjectResult
-	exec     shipplan.Executor
-	tokenEnv []string
+	top  string
+	ws   shipWorkspace
+	exec shipplan.Executor
+	// configSource is where the computed versions' semantic-release
+	// configuration came from (semrel.ConfigRepository or ConfigBuiltIn);
+	// empty with --version.
+	configSource, configFile string
 
-	// releaseOnly is nerv pipeline release: the same release (origin's
-	// state, checks, confirmation, semantic-release, version guard) without
-	// ship's build, publish or hooks; versionFiles are written instead of
-	// the dotnet preset's project file. released is what semantic-release
-	// released.
+	// nerv pipeline release: the same release (origin's state, checks,
+	// confirmation, semantic-release, version guard) without ship's build,
+	// artifact or hooks; versionFiles are written before semantic-release.
+	// computed are every computed result, results the projects to release,
+	// released what semantic-release released.
 	releaseOnly  bool
 	versionFiles []string
+	computed     []semrel.ProjectResult
+	results      []semrel.ProjectResult
 	released     semrel.ProjectResult
+	tokenEnv     []string
 }
 
 func runShip(args []string, stdout, stderr io.Writer, opts options) int {
@@ -146,7 +159,9 @@ func runShip(args []string, stdout, stderr io.Writer, opts options) int {
 	fs.StringVar(&s.cwd, "cwd", ".", "")
 	fs.StringVar(&s.branch, "branch", "", "")
 	fs.StringVar(&s.project, "project", "", "")
+	fs.StringVar(&s.version, "version", "", "")
 	fs.BoolVar(&s.dryRun, "dry-run", false, "")
+	fs.BoolVar(&s.force, "force", false, "")
 	fs.BoolVar(&s.yes, "yes", false, "")
 	fs.DurationVar(&s.timeout, "fetch-timeout", semrel.DefaultFetchTimeout, "")
 	s.expect = expectations{}
@@ -165,6 +180,9 @@ func runShip(args []string, stdout, stderr io.Writer, opts options) int {
 	if s.timeout <= 0 {
 		return shipUsageError(stderr, fmt.Sprintf("--fetch-timeout %s: must be positive", s.timeout))
 	}
+	if s.version != "" && !shipplan.ValidVersion(s.version) {
+		return shipUsageError(stderr, fmt.Sprintf("--version %q: not a semantic version such as 1.4.0 or 1.4.0-rc.1", s.version))
+	}
 
 	signalCtx := opts.SignalContext
 	if signalCtx == nil {
@@ -174,10 +192,7 @@ func runShip(args []string, stdout, stderr io.Writer, opts options) int {
 	defer stop()
 
 	outcomes, err := s.execute(ctx)
-	doc := shipDocument{Status: successStatus(outcomes, s.dryRun), Projects: outcomes}
-	if len(s.results) > 0 {
-		doc.SemanticReleaseConfig = s.results[0].SemanticReleaseConfig
-	}
+	doc := shipDocument{Status: successStatus(outcomes, s.dryRun), Projects: outcomes, SemanticReleaseConfig: s.configSource}
 	code := 0
 	if err != nil {
 		code, doc.Status, doc.Error = classifyShipError(ctx, received(), stderr, err)
@@ -195,15 +210,16 @@ func runShip(args []string, stdout, stderr io.Writer, opts options) int {
 }
 
 // shipDocument is the --json summary, printed on every run that gets past
-// the flags: the run's status (released, dry-run, nothing-to-release,
+// the flags: the run's status (packaged, dry-run, nothing-to-release,
 // refused, declined, failed, interrupted), its error, and each project's
 // outcome (empty when the run stopped before computing them).
 type shipDocument struct {
 	Status string `json:"status"`
 	Error  string `json:"error,omitempty"`
-	// SemanticReleaseConfig is where the semantic-release configuration came
-	// from: "repository" or "default" (the built-in one); empty before the
-	// versions are computed.
+	// SemanticReleaseConfig is where the semantic-release configuration
+	// that computed the versions came from: "repository" or "default" (the
+	// built-in one); empty with --version and before the versions are
+	// computed.
 	SemanticReleaseConfig string        `json:"semantic_release_config,omitempty"`
 	Projects              []shipOutcome `json:"projects"`
 }
@@ -216,11 +232,14 @@ func successStatus(outcomes []shipOutcome, dryRun bool) string {
 	if dryRun {
 		return "dry-run"
 	}
-	return "released"
+	return shipPackaged
 }
 
 // errDeclined is the answer "no" to the confirmation.
 var errDeclined = errors.New("cancelled: nothing was released")
+
+// errShipDeclined is the answer "no" to nerv ship's confirmation.
+var errShipDeclined = fmt.Errorf("%w (no artifact was written)", errDeclined)
 
 // classifyShipError prints err on stderr and returns the exit code, the run
 // status and the error text: 128 + the signal (interrupted), 1 for a
@@ -272,18 +291,12 @@ func (e expectations) Set(v string) error {
 	return nil
 }
 
-// check refuses unless the releasing projects and their versions are
-// exactly the expected ones: no other version, no missing release, no
-// release that was not expected.
-func (e expectations) check(results []semrel.ProjectResult) error {
+// check refuses unless the releasing projects and their versions (project
+// -> version) are exactly the expected ones: no other version, no missing
+// release, no release that was not expected.
+func (e expectations) check(computed map[string]string) error {
 	if len(e) == 0 {
 		return nil
-	}
-	computed := map[string]string{}
-	for _, r := range results {
-		if r.NewReleasePublished {
-			computed[r.Project] = r.NewReleaseVersion
-		}
 	}
 	var problems []string
 	for _, name := range slices.Sorted(maps.Keys(e)) {
@@ -315,17 +328,23 @@ func refuse(format string, args ...any) error {
 	return &refusal.Error{Err: fmt.Errorf(format, args...)}
 }
 
-// execute runs the release and returns the projects' outcomes (nil when it
-// stopped before knowing them).
+// execute builds (or, for nerv pipeline release, releases) and returns the
+// projects' outcomes (nil when it stopped before knowing them).
 func (s *shipRun) execute(ctx context.Context) ([]shipOutcome, error) {
 	top, err := gitTopLevel(ctx, s.opts.Runner, s.cwd)
 	if err != nil {
 		return nil, err
 	}
+	s.top = top
 	// Refuse an invalid configuration or an unknown --project before
 	// reading origin.
 	if _, err := requestShape(top, s.project); err != nil {
 		return nil, err
+	}
+	if !s.releaseOnly {
+		if err := s.checkShipConfig(top); err != nil {
+			return nil, err
+		}
 	}
 	local, err := s.localBranch(ctx, top)
 	if err != nil {
@@ -341,7 +360,7 @@ func (s *shipRun) execute(ctx context.Context) ([]shipOutcome, error) {
 	}
 	ws, err := open(ctx, semrel.WorkspaceOptions{RepoRoot: top, Branch: s.branch, FetchTimeout: s.timeout})
 	if errors.Is(err, semrel.ErrNoOrigin) {
-		return nil, refuse("the repository has no origin remote: nerv ship releases what is on origin")
+		return nil, refuse("the repository has no origin remote: nerv ship %s what is on origin", s.verb())
 	}
 	if err != nil {
 		return nil, err
@@ -356,44 +375,53 @@ func (s *shipRun) execute(ctx context.Context) ([]shipOutcome, error) {
 
 	switch head := ws.OriginHead(); {
 	case head == "":
-		return nil, refuse("branch %s is not on origin: push it first (nerv ship releases what is on origin)", s.branch)
+		return nil, refuse("branch %s is not on origin: push it first (nerv ship %s what is on origin)", s.branch, s.verb())
 	case head != local:
-		return nil, refuse("your local %s (%s) is not origin/%s (%s): nerv ship releases what is on origin and never pushes your commits; push or pull first",
-			s.branch, short(local), s.branch, short(head))
+		return nil, refuse("your local %s (%s) is not origin/%s (%s): nerv ship %s what is on origin and never pushes your commits; push or pull first",
+			s.branch, short(local), s.branch, short(head), s.verb())
 	}
 
 	// Refuse a local section naming paths origin's branch lacks before
-	// semantic-release plans anything with it.
+	// anything is planned with it.
 	if err := checkPathsOnOrigin(ws.Config(), ws.Dir(), s.branch); err != nil {
 		return nil, err
 	}
-	if err := checkVersionFilesOnOrigin(s.versionFiles, ws.Dir(), s.branch); err != nil {
-		return nil, err
-	}
-	// Every project is computed, even with --project: Compute returns only
-	// the requested project, and Release needs the dependencies' results to
-	// apply depends_on.
-	results, err := ws.Compute(ctx, "")
-	if err != nil {
-		return nil, err
-	}
-	s.computed = results
-	if s.project != "" {
-		results = slices.DeleteFunc(slices.Clone(results), func(r semrel.ProjectResult) bool { return r.Project != s.project })
-	}
-	if err := s.expect.check(results); err != nil {
-		return nil, err
-	}
 	if s.releaseOnly {
-		if err := checkVersionFilesCommitted(results, s.versionFiles); err != nil {
-			return nil, err
-		}
+		return s.pipelineRelease(ctx)
 	}
-	s.results = results
-	return s.release(ctx)
+	return s.shipProjects(ctx)
 }
 
-// localBranch resolves the branch to release (default: the current one) and
+// verb is what the run does with origin's branch, for messages: nerv ship
+// builds it, nerv pipeline release releases it.
+func (s *shipRun) verb() string {
+	if s.releaseOnly {
+		return "releases"
+	}
+	return "builds"
+}
+
+// checkShipConfig refuses, before origin is read, a repository nerv ship
+// cannot build: no release: section, a project without build.mode, or
+// --version with several projects and no --project.
+func (s *shipRun) checkShipConfig(top string) error {
+	rel, err := shipconfig.Load(top)
+	if errors.Is(err, shipconfig.ErrNotConfigured) {
+		return refuse("the repository has no release: section in .nerv/nerv.yaml: nerv ship needs one, with build.mode (compose or script) for each project; see docs/release-commands.md")
+	}
+	if err != nil {
+		return err
+	}
+	if err := rel.CheckBuild(); err != nil {
+		return err
+	}
+	if s.version != "" && s.project == "" && len(rel.Projects) > 1 {
+		return refuse("--version %s: the release: section declares %d projects, each with its own version: pass --project too", s.version, len(rel.Projects))
+	}
+	return nil
+}
+
+// localBranch resolves the branch to build (default: the current one) and
 // returns its local commit.
 func (s *shipRun) localBranch(ctx context.Context, top string) (string, error) {
 	if s.branch == "" {
@@ -423,81 +451,11 @@ func short(sha string) string {
 	return sha
 }
 
-// shipItem is one releasing project with its configuration and plan.
-type shipItem struct {
-	result  semrel.ProjectResult
-	project shipconfig.Project
-	plan    *shipplan.Plan
-	outcome *shipOutcome
-}
-
-// release plans every releasing project, shows the plans, asks for
-// confirmation and ships them in order, stopping at the first failure.
-func (s *shipRun) release(ctx context.Context) ([]shipOutcome, error) {
-	rel := s.ws.Config()
-	outcomes := make([]shipOutcome, len(s.results))
-	var items []shipItem
-	for i, r := range s.results {
-		outcomes[i] = shipOutcome{Project: r.Project, Branch: r.Branch, Status: shipNoRelease, LastVersion: r.LastReleaseVersion, Published: []string{}}
-		if !r.NewReleasePublished {
-			continue
-		}
-		o := &outcomes[i]
-		o.Status, o.Version, o.Channel, o.Tag = shipNotStarted, r.NewReleaseVersion, r.NewReleaseChannel, r.NewReleaseGitTag
-		p, err := projectConfig(rel, r.Project)
-		if err != nil {
-			return nil, err
-		}
-		pctx := shipplan.Context{
-			Version: r.NewReleaseVersion, Channel: r.NewReleaseChannel, Tag: r.NewReleaseGitTag, GitHead: r.NewReleaseGitHead,
-			DryRun: s.dryRun, ArtifactsDir: s.ws.ArtifactsDir(),
-		}
-		// A release-only run has no stages or hooks: an empty plan.
-		plan := &shipplan.Plan{Project: r.Project, Context: pctx}
-		if !s.releaseOnly {
-			if plan, err = shipplan.Build(s.ws.Dir(), p, pctx); err != nil {
-				return nil, refuse("project %s: %v", r.Project, err)
-			}
-		}
-		items = append(items, shipItem{result: r, project: p, plan: plan, outcome: o})
-	}
-	s.list(items)
-	if len(items) == 0 {
-		return outcomes, nil
-	}
-	if err := s.confirm(len(items)); err != nil {
-		return nil, err
-	}
-	if !s.dryRun {
-		if err := s.ws.CheckPush(ctx); err != nil {
-			return nil, err
-		}
-		s.tokenEnv = s.githubTokenEnv(ctx)
-	}
-	steps := s.opts.ShipSteps
-	if steps == nil {
-		steps = func(root string, out io.Writer) shipplan.StepRunner {
-			return &shiprun.Runner{RepoRoot: root, Output: out}
-		}
-	}
-	s.exec = shipplan.Executor{Steps: steps(s.ws.Dir(), s.stderr), Output: s.stderr}
-	for _, it := range items {
-		fmt.Fprintf(s.stderr, "nerv ship: %s %s\n", it.result.Project, it.result.NewReleaseVersion)
-		if err := s.ship(ctx, it); err != nil {
-			it.outcome.Status = shipFailed
-			it.outcome.Error = err.Error()
-			fmt.Fprintf(s.stderr, "nerv ship: %s failed: %v\n%s\n", it.result.Project, err, it.outcome.Action)
-			return outcomes, fmt.Errorf("project %s failed (see above)", it.result.Project)
-		}
-	}
-	return outcomes, nil
-}
-
 // checkPathsOnOrigin refuses when a path the local release: section names
-// (project path, shared path without glob characters, dotnet project file
-// and solution, Dockerfile and docker context, stage and hook workdirs)
-// does not exist in the release clone: the configuration is the user's
-// local one, but the code is origin's branch.
+// (project path, shared path without glob characters, compose file,
+// version file, stage and hook workdirs) does not exist in the release
+// clone: the configuration is the user's local one, but the code is
+// origin's branch.
 func checkPathsOnOrigin(rel *shipconfig.Release, clone, branch string) error {
 	if rel == nil {
 		return nil
@@ -520,14 +478,10 @@ func checkPathsOnOrigin(rel *shipconfig.Release, clone, branch string) error {
 		for _, sp := range p.SharedPaths {
 			check(p.Name, "shared_paths", sp)
 		}
-		if d := p.Dotnet; d != nil {
-			check(p.Name, "dotnet.project_file", d.ProjectFile)
-			check(p.Name, "dotnet.solution", d.Solution)
-		}
-		if d := p.Docker; d != nil {
-			for _, img := range d.Images {
-				check(p.Name, "docker.images.dockerfile", img.Dockerfile)
-				check(p.Name, "docker.images.context", img.Context)
+		if b := p.Build; b != nil {
+			check(p.Name, "build.file", b.File)
+			for _, f := range b.VersionFiles {
+				check(p.Name, "build.version_files", f)
 			}
 		}
 		for _, stage := range slices.Sorted(maps.Keys(p.Stages)) {
@@ -546,21 +500,553 @@ func checkPathsOnOrigin(rel *shipconfig.Release, clone, branch string) error {
 		branch, strings.Join(missing, "; "))
 }
 
-// projectConfig is the release: section's project, or, for a repository
-// without the section, the whole repository with no presets.
-func projectConfig(rel *shipconfig.Release, name string) (shipconfig.Project, error) {
-	if rel == nil {
-		return shipconfig.Project{Name: name, Path: "."}, nil
-	}
-	p, ok := rel.Project(name)
-	if !ok {
-		return shipconfig.Project{}, fmt.Errorf("project %q is not in the release: section", name)
-	}
-	return p, nil
+// shipItem is one releasing project with its version, configuration and
+// plan.
+type shipItem struct {
+	version shipplan.Version
+	project shipconfig.Project
+	plan    *shipplan.Plan
+	outcome *shipOutcome
 }
 
-// list prints what will be released, with each plan, on stderr.
-func (s *shipRun) list(items []shipItem) {
+// shipProjects gets each project's version, plans every releasing one,
+// shows the plans, asks for confirmation and builds them in dependency
+// order, stopping at the first failure.
+func (s *shipRun) shipProjects(ctx context.Context) ([]shipOutcome, error) {
+	rel := s.ws.Config()
+	if rel == nil {
+		return nil, refuse("the repository has no release: section in .nerv/nerv.yaml")
+	}
+	ordered, err := rel.TopoOrder()
+	if err != nil {
+		return nil, err
+	}
+	ordered = slices.DeleteFunc(ordered, func(p shipconfig.Project) bool { return s.project != "" && p.Name != s.project })
+	src := s.versionSource()
+	versions := make([]shipplan.Version, len(ordered))
+	releasing := map[string]string{}
+	for i, p := range ordered {
+		if versions[i], err = src.Next(ctx, p.Name); err != nil {
+			return nil, err
+		}
+		if versions[i].Releasing() {
+			releasing[p.Name] = versions[i].Version
+		}
+	}
+	if err := s.expect.check(releasing); err != nil {
+		return nil, err
+	}
+
+	outcomes := make([]shipOutcome, len(ordered))
+	var items []shipItem
+	for i, p := range ordered {
+		v := versions[i]
+		outcomes[i] = shipOutcome{Project: p.Name, Branch: s.branch, Status: shipNoRelease, LastVersion: v.LastVersion}
+		if !v.Releasing() {
+			continue
+		}
+		o := &outcomes[i]
+		o.Status, o.Version, o.Channel, o.Tag = shipNotStarted, v.Version, v.Channel, v.Tag
+		if dir := artifact.Dir(s.top, p.Name, v.Version); !s.dryRun && !s.force {
+			if _, err := os.Lstat(dir); err == nil {
+				return nil, refuse("project %s %s: the artifact %s already exists: pass --force to replace it (nothing was run)", p.Name, v.Version, dir)
+			}
+		}
+		pctx := shipplan.Context{Version: v.Version, Channel: v.Channel, Tag: v.Tag, GitHead: v.BaseCommit, DryRun: s.dryRun, ArtifactsDir: s.ws.ArtifactsDir()}
+		plan, err := shipplan.Build(s.ws.Dir(), p, pctx)
+		if err != nil {
+			return nil, refuse("project %s: %v", p.Name, err)
+		}
+		items = append(items, shipItem{version: v, project: p, plan: plan, outcome: o})
+	}
+	s.listShip(ordered, versions, items)
+	if len(items) == 0 {
+		return outcomes, nil
+	}
+	if err := s.confirm(len(items), "Package", errShipDeclined, "to package without asking (or --dry-run to rehearse)"); err != nil {
+		return nil, err
+	}
+	steps := s.opts.ShipSteps
+	if steps == nil {
+		steps = func(root string, out io.Writer) shipplan.StepRunner {
+			return &shiprun.Runner{RepoRoot: root, Output: out}
+		}
+	}
+	s.exec = shipplan.Executor{Steps: steps(s.ws.Dir(), s.stderr), Output: s.stderr}
+	for _, it := range items {
+		fmt.Fprintf(s.stderr, "nerv ship: %s %s\n", it.project.Name, it.version.Version)
+		if err := s.shipOne(ctx, it); err != nil {
+			it.outcome.Status = shipFailed
+			it.outcome.Error = err.Error()
+			fmt.Fprintf(s.stderr, "nerv ship: %s failed: %v\n%s\n", it.project.Name, err, it.outcome.Action)
+			return outcomes, fmt.Errorf("project %s failed (see above)", it.project.Name)
+		}
+	}
+	return outcomes, nil
+}
+
+// versionSource is --version's explicit source, or the semantic-release
+// computation in the release clone.
+func (s *shipRun) versionSource() shipplan.VersionSource {
+	if s.version != "" {
+		return &explicitVersion{s: s}
+	}
+	return &semrelVersions{s: s}
+}
+
+// semrelVersions computes every project's next version once with
+// semantic-release in the release clone (every project, so depends_on
+// applies with --project too). T4 replaces it with internal/versioning.
+type semrelVersions struct {
+	s       *shipRun
+	results map[string]semrel.ProjectResult
+}
+
+func (v *semrelVersions) Next(ctx context.Context, project string) (shipplan.Version, error) {
+	if v.results == nil {
+		results, err := v.s.ws.Compute(ctx, "")
+		if err != nil {
+			return shipplan.Version{}, err
+		}
+		v.results = map[string]semrel.ProjectResult{}
+		for _, r := range results {
+			v.results[r.Project] = r
+		}
+		if len(results) > 0 {
+			v.s.configSource, v.s.configFile = results[0].SemanticReleaseConfig, results[0].SemanticReleaseConfigFile
+		}
+	}
+	r, ok := v.results[project]
+	if !ok {
+		return shipplan.Version{}, fmt.Errorf("semantic-release computed no result for project %s", project)
+	}
+	out := shipplan.Version{LastTag: r.LastReleaseGitTag, LastVersion: r.LastReleaseVersion}
+	if !r.NewReleasePublished {
+		return out, nil
+	}
+	out.Version, out.Channel, out.Tag = r.NewReleaseVersion, r.NewReleaseChannel, r.NewReleaseGitTag
+	out.Notes, out.ChangelogSection = r.NewReleaseNotes, r.NewReleaseNotes
+	out.BaseCommit = r.NewReleaseGitHead
+	if out.BaseCommit == "" {
+		out.BaseCommit = v.s.ws.OriginHead()
+	}
+	return out, nil
+}
+
+// explicitVersion is --version: the version is not computed. The tag
+// follows the project's tag_format, the channel is the prerelease's first
+// identifier (empty for a stable version), and the version must be newer
+// than every tag of the project in the release clone (origin's tags).
+type explicitVersion struct{ s *shipRun }
+
+func (v *explicitVersion) Next(ctx context.Context, project string) (shipplan.Version, error) {
+	s := v.s
+	p, ok := s.ws.Config().Project(project)
+	if !ok {
+		return shipplan.Version{}, fmt.Errorf("project %q is not in the release: section", project)
+	}
+	out, _, code, err := s.opts.Runner.Run(ctx, "git", "-C", s.ws.Dir(), "tag", "--list")
+	if err != nil || code != 0 {
+		return shipplan.Version{}, fmt.Errorf("listing the tags of the release clone: git tag exited %d: %v", code, err)
+	}
+	last, lastTag := "", ""
+	for _, tag := range strings.Fields(out) {
+		tv, ok := shipplan.VersionFromTag(p.TagFormat, tag)
+		if !ok {
+			continue
+		}
+		if c, _ := shipplan.CompareVersions(tv, last); last == "" || c > 0 {
+			last, lastTag = tv, tag
+		}
+	}
+	if last != "" {
+		if c, _ := shipplan.CompareVersions(s.version, last); c <= 0 {
+			return shipplan.Version{}, refuse("--version %s: project %s already has %s (tag %s); the version must be newer than the last one", s.version, project, last, lastTag)
+		}
+	}
+	channel, _, _ := strings.Cut(shipplan.Prerelease(s.version), ".")
+	return shipplan.Version{
+		Version: s.version, Channel: channel, Tag: shipplan.TagFor(p.TagFormat, s.version),
+		ChangelogSection: fmt.Sprintf("## %s (%s)\n", s.version, time.Now().UTC().Format("2006-01-02")),
+		LastTag:          lastTag, LastVersion: last, BaseCommit: s.ws.OriginHead(),
+	}, nil
+}
+
+// listShip prints what will be packaged, with each plan, on stderr.
+func (s *shipRun) listShip(ordered []shipconfig.Project, versions []shipplan.Version, items []shipItem) {
+	what := fmt.Sprintf("%d project(s) to package", len(items))
+	if s.dryRun {
+		what += " (dry run: the pipeline runs, no artifact is written)"
+	}
+	fmt.Fprintf(s.stderr, "nerv ship: %s from origin/%s (%s)\n", what, s.branch, short(s.ws.OriginHead()))
+	switch {
+	case s.version != "":
+		fmt.Fprintf(s.stderr, "nerv ship: version %s from --version (not computed)\n", s.version)
+	case s.configSource != "":
+		r := semrel.ProjectResult{SemanticReleaseConfig: s.configSource, SemanticReleaseConfigFile: s.configFile}
+		fmt.Fprintf(s.stderr, "nerv ship: semantic-release config: %s\n", configSourceText(r))
+	}
+	for i, p := range ordered {
+		if !versions[i].Releasing() {
+			fmt.Fprintf(s.stderr, "%s: no new release (last %s)\n", p.Name, orNone(versions[i].LastVersion))
+		}
+	}
+	for _, it := range items {
+		fmt.Fprint(s.stderr, it.plan.Render())
+		if v := it.version; v.LastVersion != "" {
+			fmt.Fprintf(s.stderr, "  last release %s (tag %s)\n", v.LastVersion, v.LastTag)
+		} else {
+			fmt.Fprintln(s.stderr, "  last release: none")
+		}
+		if !s.dryRun {
+			fmt.Fprintf(s.stderr, "  artifact %s\n", artifact.Dir(s.top, it.project.Name, it.version.Version))
+		}
+	}
+}
+
+func orNone(s string) string {
+	if s == "" {
+		return "none"
+	}
+	return s
+}
+
+// confirm asks before a real run on an interactive terminal ("<verb> N
+// project(s)? [y/N]"); --yes skips it, and without a terminal --yes is
+// required (the refusal says what --yes does). A dry run never asks; "no"
+// is declined.
+func (s *shipRun) confirm(n int, verb string, declined error, yesDoes string) error {
+	if s.dryRun || s.yes {
+		return nil
+	}
+	if s.opts.IsTerminal == nil || !s.opts.IsTerminal() || s.opts.Stdin == nil {
+		return refuse("confirmation needed but stdin is not an interactive terminal: pass --yes %s", yesDoes)
+	}
+	fmt.Fprintf(s.stderr, "%s %d project(s)? [y/N]: ", verb, n)
+	line, sawNewline := readAnswer(s.opts.Stdin)
+	if !sawNewline {
+		fmt.Fprintln(s.stderr)
+	}
+	if answer := strings.ToLower(strings.TrimSpace(line)); answer != "y" && answer != "yes" {
+		return &refusal.Error{Err: declined}
+	}
+	return nil
+}
+
+// shipOne builds one project: the release files in the clone, the
+// pipeline, the prepare hooks, then the artifact. A dry run stops after
+// the prepare hooks. The outcome records what happened and, on failure,
+// what the user must do; a failure runs the fail hooks.
+func (s *shipRun) shipOne(ctx context.Context, it shipItem) error {
+	v, o, name := it.version, it.outcome, it.project.Name
+	notes := filepath.Join(s.ws.NotesDir(), name+".md")
+	if err := os.WriteFile(notes, []byte(v.Notes), 0o600); err != nil {
+		return err
+	}
+	vars := shiprun.Vars{
+		Project: name, ProjectPath: it.project.Path, Version: v.Version, Channel: v.Channel,
+		Tag: v.Tag, GitHead: v.BaseCommit, LastVersion: v.LastVersion, NotesFile: notes,
+		Branch: s.branch, DryRun: s.dryRun,
+	}
+	failed := func(err error, hooks bool) error {
+		o.Action = "Nothing was written to your repository or to origin for " + name + ". Fix the cause. " + s.rerunAdvice(ctx)
+		if hooks {
+			s.failHooks(ctx, it, vars)
+		}
+		return err
+	}
+	files, err := s.writeReleaseFiles(it)
+	if err != nil {
+		return failed(err, false)
+	}
+	if err := s.exec.Run(ctx, it.plan, vars); err != nil {
+		return failed(err, true)
+	}
+	if err := s.exec.RunHooks(ctx, it.plan, "prepare", vars); err != nil {
+		return failed(err, true)
+	}
+	if s.dryRun {
+		o.Status = shipDryRun
+		return nil
+	}
+	outputs, err := it.plan.Outputs()
+	if err != nil {
+		return failed(err, true)
+	}
+	m := artifact.Manifest{
+		Project: name, Version: v.Version, Channel: v.Channel, Tag: v.Tag, BaseCommit: v.BaseCommit,
+		Branch: s.branch, BuildMode: it.plan.Mode, CreatedAt: time.Now().UTC().Truncate(time.Second),
+	}
+	for _, img := range it.plan.Images {
+		m.Images = append(m.Images, img.Ref)
+	}
+	dir, err := artifact.Write(s.top, artifact.Input{Manifest: m, Notes: v.Notes, ChangelogSection: v.ChangelogSection, Outputs: outputs, ReleaseFiles: files}, s.force)
+	if err != nil {
+		return failed(err, true)
+	}
+	o.Status, o.Artifact = shipPackaged, dir
+	fmt.Fprintf(s.stderr, "nerv ship: %s %s: artifact %s\n", name, v.Version, dir)
+	return nil
+}
+
+// writeReleaseFiles writes, in the release clone only, the version into
+// each of build.version_files (with the release link as the package notes
+// when origin has a public address) and the CHANGELOG section into the
+// project's changelog, and returns their new contents for the artifact.
+func (s *shipRun) writeReleaseFiles(it shipItem) ([]artifact.ReleaseFileSource, error) {
+	v, p := it.version, it.project
+	var out []artifact.ReleaseFileSource
+	read := func(rel string) error {
+		data, err := os.ReadFile(filepath.Join(s.ws.Dir(), filepath.FromSlash(rel)))
+		if err != nil {
+			return err
+		}
+		out = append(out, artifact.ReleaseFileSource{Path: rel, Content: data})
+		return nil
+	}
+	var files []string
+	if p.Build != nil {
+		files = p.Build.VersionFiles
+	}
+	link := semrel.ReleaseURL(s.ws.PublicURL(), v.Tag)
+	for _, f := range files {
+		path := filepath.Join(s.ws.Dir(), filepath.FromSlash(f))
+		var err error
+		if link == "" {
+			fmt.Fprintf(s.stderr, "nerv ship: warning: origin has no public address to link the release to; %s keeps its <PackageReleaseNotes>\n", f)
+			err = shipplan.WriteCsprojVersion(path, v.Version)
+		} else {
+			err = shipplan.WriteCsproj(path, v.Version, link)
+		}
+		if err != nil {
+			return nil, err
+		}
+		if err := read(f); err != nil {
+			return nil, err
+		}
+	}
+	if p.Changelog != "" && strings.TrimSpace(v.ChangelogSection) != "" {
+		path := filepath.Join(s.ws.Dir(), filepath.FromSlash(p.Changelog))
+		old, err := os.ReadFile(path)
+		if err != nil && !errors.Is(err, os.ErrNotExist) {
+			return nil, err
+		}
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			return nil, err
+		}
+		if err := os.WriteFile(path, []byte(prependChangelog(string(old), v.ChangelogSection)), 0o644); err != nil {
+			return nil, err
+		}
+		if err := read(p.Changelog); err != nil {
+			return nil, err
+		}
+	}
+	return out, nil
+}
+
+// prependChangelog puts section at the top of a CHANGELOG, under its
+// "# " title when it has one.
+func prependChangelog(old, section string) string {
+	section = strings.TrimRight(section, "\r\n") + "\n"
+	switch {
+	case strings.TrimSpace(old) == "":
+		return section
+	case strings.HasPrefix(old, "# "):
+		title, rest, _ := strings.Cut(old, "\n")
+		return title + "\n\n" + section + "\n" + strings.TrimLeft(rest, "\r\n")
+	}
+	return section + "\n" + old
+}
+
+// rerunAdvice says how to run nerv ship again: after a pull when origin's
+// branch moved during this run, since nerv ship refuses a local branch
+// behind origin.
+//
+// Origin is read under its own short deadline, detached from ctx, so an
+// interrupted run still gets accurate advice.
+func (s *shipRun) rerunAdvice(ctx context.Context) string {
+	rctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), rerunCheckTimeout)
+	defer cancel()
+	head, err := s.ws.BranchOnOrigin(rctx)
+	switch {
+	case err != nil:
+		return fmt.Sprintf("Check whether origin's %s moved during this run (git fetch); if it did, pull first (git pull), then run nerv ship again.", s.branch)
+	case head == "":
+		return fmt.Sprintf("Branch %s was deleted on origin during this run: check what happened before releasing it again.", s.branch)
+	case head != s.ws.OriginHead():
+		return fmt.Sprintf("Origin's %s moved during this run (a release commit was pushed): pull first (git pull), then run nerv ship again.", s.branch)
+	}
+	return "Then run nerv ship again."
+}
+
+// rerunCheckTimeout bounds the read of origin's branch for the rerun advice.
+const rerunCheckTimeout = 10 * time.Second
+
+// failHooks runs the project's fail hooks, unless the run was interrupted
+// (a second Ctrl-C must not be needed to stop nerv ship).
+func (s *shipRun) failHooks(ctx context.Context, it shipItem, vars shiprun.Vars) {
+	if it.plan == nil || len(it.plan.Hooks["fail"]) == 0 {
+		return
+	}
+	if ctx.Err() != nil {
+		fmt.Fprintf(s.stderr, "nerv ship: %s: fail hooks not run: interrupted\n", vars.Project)
+		return
+	}
+	if err := s.exec.RunHooks(ctx, it.plan, "fail", vars); err != nil {
+		fmt.Fprintf(s.stderr, "nerv ship: %s: a fail hook failed too: %v\n", vars.Project, err)
+	}
+}
+
+func listOrNothing(names []string) string {
+	if len(names) == 0 {
+		return "nothing"
+	}
+	return strings.Join(names, ", ")
+}
+
+// writeShipSummary writes the final summary in one write: the JSON
+// document, or one line per project with the action after a failure.
+func writeShipSummary(w io.Writer, asJSON, dryRun bool, doc shipDocument) error {
+	outcomes := doc.Projects
+	var b bytes.Buffer
+	if asJSON {
+		data, err := json.Marshal(doc)
+		if err != nil {
+			return err
+		}
+		b.Write(data)
+		b.WriteByte('\n')
+	} else {
+		writeShipText(&b, dryRun, outcomes)
+	}
+	if _, err := w.Write(b.Bytes()); err != nil {
+		return err
+	}
+	if f, ok := w.(interface{ Flush() error }); ok {
+		return f.Flush()
+	}
+	return nil
+}
+
+func writeShipText(b *bytes.Buffer, dryRun bool, outcomes []shipOutcome) {
+	releasing := slices.ContainsFunc(outcomes, func(o shipOutcome) bool { return o.Status != shipNoRelease })
+	if !releasing {
+		b.WriteString("nothing to release\n")
+	}
+	for _, o := range outcomes {
+		if o.Status == shipNoRelease {
+			fmt.Fprintf(b, "%s: no new release (last %s)\n", o.Project, orNone(o.LastVersion))
+			continue
+		}
+		fmt.Fprintf(b, "%s %s (tag %s): ", o.Project, o.Version, o.Tag)
+		switch o.Status {
+		case shipDryRun:
+			b.WriteString("dry run: pipeline and prepare hooks passed; nothing packaged\n")
+		case shipPackaged:
+			fmt.Fprintf(b, "packaged in %s\n", o.Artifact)
+		case shipNotStarted:
+			b.WriteString("not started\n")
+		default:
+			fmt.Fprintf(b, "failed\n  %s\n  %s\n", o.Error, o.Action)
+		}
+	}
+	if dryRun && releasing {
+		b.WriteString("dry run: no artifact was written\n")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// nerv pipeline release (internal/pipeline's release step): the real
+// semantic-release run nerv ship used to make. It stays here, unchanged,
+// until nerv pipeline is folded into ship and deploy (T3/T4 of the ship
+// and deploy plugins); nerv ship itself never runs it.
+
+// releaseItem is one project nerv pipeline release releases.
+type releaseItem struct {
+	result  semrel.ProjectResult
+	plan    *shipplan.Plan
+	outcome *shipOutcome
+}
+
+// pipelineRelease computes every project, checks --expect and the version
+// files, then releases.
+func (s *shipRun) pipelineRelease(ctx context.Context) ([]shipOutcome, error) {
+	if err := checkVersionFilesOnOrigin(s.versionFiles, s.ws.Dir(), s.branch); err != nil {
+		return nil, err
+	}
+	// Every project is computed, even with --project: Compute returns only
+	// the requested project, and Release needs the dependencies' results to
+	// apply depends_on.
+	results, err := s.ws.Compute(ctx, "")
+	if err != nil {
+		return nil, err
+	}
+	s.computed = results
+	if s.project != "" {
+		results = slices.DeleteFunc(slices.Clone(results), func(r semrel.ProjectResult) bool { return r.Project != s.project })
+	}
+	published := map[string]string{}
+	for _, r := range results {
+		if r.NewReleasePublished {
+			published[r.Project] = r.NewReleaseVersion
+		}
+	}
+	if err := s.expect.check(published); err != nil {
+		return nil, err
+	}
+	if err := checkVersionFilesCommitted(results, s.versionFiles); err != nil {
+		return nil, err
+	}
+	s.results = results
+	return s.release(ctx)
+}
+
+// release shows what will be released, asks for confirmation and releases
+// each project in order, stopping at the first failure.
+func (s *shipRun) release(ctx context.Context) ([]shipOutcome, error) {
+	outcomes := make([]shipOutcome, len(s.results))
+	var items []releaseItem
+	for i, r := range s.results {
+		outcomes[i] = shipOutcome{Project: r.Project, Branch: r.Branch, Status: shipNoRelease, LastVersion: r.LastReleaseVersion}
+		if !r.NewReleasePublished {
+			continue
+		}
+		o := &outcomes[i]
+		o.Status, o.Version, o.Channel, o.Tag = shipNotStarted, r.NewReleaseVersion, r.NewReleaseChannel, r.NewReleaseGitTag
+		pctx := shipplan.Context{
+			Version: r.NewReleaseVersion, Channel: r.NewReleaseChannel, Tag: r.NewReleaseGitTag, GitHead: r.NewReleaseGitHead,
+			DryRun: s.dryRun, ArtifactsDir: s.ws.ArtifactsDir(),
+		}
+		// A release has no stages or hooks: an empty plan.
+		items = append(items, releaseItem{result: r, plan: &shipplan.Plan{Project: r.Project, Context: pctx}, outcome: o})
+	}
+	s.listRelease(items)
+	if len(items) == 0 {
+		return outcomes, nil
+	}
+	if err := s.confirm(len(items), "Release", errDeclined, "to release without asking (or --dry-run to rehearse)"); err != nil {
+		return nil, err
+	}
+	if !s.dryRun {
+		if err := s.ws.CheckPush(ctx); err != nil {
+			return nil, err
+		}
+		s.tokenEnv = s.githubTokenEnv(ctx)
+	}
+	for _, it := range items {
+		fmt.Fprintf(s.stderr, "nerv ship: %s %s\n", it.result.Project, it.result.NewReleaseVersion)
+		if err := s.releaseOnlyStep(ctx, it); err != nil {
+			it.outcome.Status = shipFailed
+			it.outcome.Error = err.Error()
+			fmt.Fprintf(s.stderr, "nerv ship: %s failed: %v\n%s\n", it.result.Project, err, it.outcome.Action)
+			return outcomes, fmt.Errorf("project %s failed (see above)", it.result.Project)
+		}
+	}
+	return outcomes, nil
+}
+
+// listRelease prints what will be released on stderr.
+func (s *shipRun) listRelease(items []releaseItem) {
 	what := fmt.Sprintf("%d project(s) to release", len(items))
 	if s.dryRun {
 		what += " (dry run: nothing is released or published)"
@@ -585,33 +1071,6 @@ func (s *shipRun) list(items []shipItem) {
 			fmt.Fprintln(s.stderr, "  last release: none")
 		}
 	}
-}
-
-func orNone(s string) string {
-	if s == "" {
-		return "none"
-	}
-	return s
-}
-
-// confirm asks before a real release on an interactive terminal; --yes
-// skips it, and without a terminal --yes is required. A dry run never asks.
-func (s *shipRun) confirm(n int) error {
-	if s.dryRun || s.yes {
-		return nil
-	}
-	if s.opts.IsTerminal == nil || !s.opts.IsTerminal() || s.opts.Stdin == nil {
-		return refuse("confirmation needed but stdin is not an interactive terminal: pass --yes to release without asking (or --dry-run to rehearse)")
-	}
-	fmt.Fprintf(s.stderr, "Release %d project(s)? [y/N]: ", n)
-	line, sawNewline := readAnswer(s.opts.Stdin)
-	if !sawNewline {
-		fmt.Fprintln(s.stderr)
-	}
-	if answer := strings.ToLower(strings.TrimSpace(line)); answer != "y" && answer != "yes" {
-		return &refusal.Error{Err: errDeclined}
-	}
-	return nil
 }
 
 // githubTokenEnv returns GH_TOKEN for semantic-release when neither GH_TOKEN
@@ -639,83 +1098,9 @@ func (s *shipRun) githubTokenEnv(ctx context.Context) []string {
 	return []string{"GH_TOKEN=" + token}
 }
 
-// ship releases one project: dotnet project file, pipeline, prepare hooks,
-// semantic-release, publish stage, publish and success hooks. A dry run
-// stops after the prepare hooks. The outcome records what happened and,
-// on failure, what the user must do.
-func (s *shipRun) ship(ctx context.Context, it shipItem) error {
-	if s.releaseOnly {
-		return s.releaseOnlyStep(ctx, it)
-	}
-	r, o := it.result, it.outcome
-	notes := filepath.Join(s.ws.NotesDir(), r.Project+".md")
-	if err := os.WriteFile(notes, []byte(r.NewReleaseNotes), 0o600); err != nil {
-		return err
-	}
-	vars := shiprun.Vars{
-		Project: r.Project, ProjectPath: it.project.Path, Version: r.NewReleaseVersion, Channel: r.NewReleaseChannel,
-		Tag: r.NewReleaseGitTag, GitHead: r.NewReleaseGitHead, LastVersion: r.LastReleaseVersion, NotesFile: notes,
-		Branch: s.branch, DryRun: s.dryRun,
-	}
-	beforeTag := func() string {
-		return "Nothing was tagged or published for " + r.Project + ". Fix the cause. " + s.rerunAdvice(ctx)
-	}
-	if err := s.writeProjectFile(it); err != nil {
-		o.Action = beforeTag()
-		return err
-	}
-	if err := s.exec.Run(ctx, it.plan, vars); err != nil {
-		o.Action = beforeTag()
-		return err
-	}
-	if err := s.exec.RunHooks(ctx, it.plan, "prepare", vars); err != nil {
-		o.Action = beforeTag()
-		return err
-	}
-	if s.dryRun {
-		o.Status = shipDryRun
-		return nil
-	}
-
-	released, err := s.ws.Release(ctx, semrel.ReleaseRequest{Expected: r, Computed: s.computed, Env: s.tokenEnv, Output: s.stderr})
-	if err != nil {
-		s.releaseFailed(ctx, it, vars, released, err)
-		return err
-	}
-	o.Tagged = true
-	if released.NewReleaseGitHead != "" {
-		vars.GitHead = released.NewReleaseGitHead
-	}
-
-	pub := it.plan.Publish()
-	if err := s.exec.RunPublish(ctx, it.plan, vars); err != nil {
-		var f *shipplan.StepFailure
-		if errors.As(err, &f) && pub != nil {
-			o.Published = append(o.Published, stepNames(pub.Steps[:f.Index])...)
-		}
-		s.afterTagFailed(ctx, it, vars, publishSteps(it.plan, len(o.Published)))
-		return err
-	}
-	if pub != nil {
-		o.Published = append(o.Published, stepNames(pub.Steps)...)
-	}
-	if err := s.exec.RunHooks(ctx, it.plan, "publish", vars); err != nil {
-		s.afterTagFailed(ctx, it, vars, []string{"the publish hooks from the failed one on", "the success hooks"})
-		return err
-	}
-	if err := s.exec.RunHooks(ctx, it.plan, "success", vars); err != nil {
-		o.Action = fmt.Sprintf("The release %s is tagged and published; a success hook failed: run what it does by hand if you need it. Do not run nerv ship again for this release: it would compute the next version.", r.NewReleaseGitTag)
-		s.failHooks(ctx, it, vars)
-		return err
-	}
-	o.Status = shipReleased
-	return nil
-}
-
-// releaseOnlyStep is nerv pipeline release's part of ship: the version
-// files, then semantic-release, nothing else. A dry run stops before
-// writing anything.
-func (s *shipRun) releaseOnlyStep(ctx context.Context, it shipItem) error {
+// releaseOnlyStep is nerv pipeline release's step: the version files, then
+// semantic-release, nothing else. A dry run stops before writing anything.
+func (s *shipRun) releaseOnlyStep(ctx context.Context, it releaseItem) error {
 	r, o := it.result, it.outcome
 	if s.dryRun {
 		o.Status = shipDryRun
@@ -800,32 +1185,12 @@ func checkVersionFilesOnOrigin(files []string, clone, branch string) error {
 	return refuse("pipeline.release.version_files names files that are not on origin's %s: %s", branch, strings.Join(missing, ", "))
 }
 
-// writeProjectFile writes the dotnet preset's project file in the clone
-// before the pipeline, so the packages carry the version and the release
-// link, and the release commit holds the file when the repository's
-// @semantic-release/git assets list it. Without a public origin the release
-// notes element is left as it is.
-func (s *shipRun) writeProjectFile(it shipItem) error {
-	p := it.project
-	if !slices.Contains(p.Presets, "dotnet") || p.Dotnet == nil || p.Dotnet.ProjectFile == "" {
-		return nil
-	}
-	path := filepath.Join(s.ws.Dir(), filepath.FromSlash(p.Dotnet.ProjectFile))
-	link := semrel.ReleaseURL(s.ws.PublicURL(), it.result.NewReleaseGitTag)
-	if link == "" {
-		fmt.Fprintf(s.stderr, "nerv ship: warning: origin has no public address to link the release to; %s keeps its <PackageReleaseNotes>\n", p.Dotnet.ProjectFile)
-		return shipplan.WriteCsprojVersion(path, it.result.NewReleaseVersion)
-	}
-	return shipplan.WriteCsproj(path, it.result.NewReleaseVersion, link)
-}
-
 // releaseFailed records a failed semantic-release run: whether the tag
-// reached origin and what to do, then runs the fail hooks.
-func (s *shipRun) releaseFailed(ctx context.Context, it shipItem, vars shiprun.Vars, released semrel.ProjectResult, err error) {
+// reached origin and what to do.
+func (s *shipRun) releaseFailed(ctx context.Context, it releaseItem, vars shiprun.Vars, released semrel.ProjectResult, err error) {
 	o, tag := it.outcome, it.result.NewReleaseGitTag
 	if ctx.Err() != nil {
 		o.Action = fmt.Sprintf("Interrupted while semantic-release was running: check whether origin has the tag (git ls-remote --tags origin %s) and the release commit before doing anything else.", tag)
-		s.failHooks(ctx, it, vars)
 		return
 	}
 	tags := []string{tag}
@@ -846,149 +1211,15 @@ func (s *shipRun) releaseFailed(ctx context.Context, it shipItem, vars shiprun.V
 	switch {
 	case o.Tagged && errors.Is(err, semrel.ErrVersionMismatch) && tag != it.result.NewReleaseGitTag:
 		o.Action = fmt.Sprintf("semantic-release released %s (tag %s, now on origin) instead of the confirmed %s. NERV's publish stage did not run (its packages were built as %s): either publish %s by hand from the tag (git checkout %s) rebuilt as %s, or delete the tag and its release on origin if %s is wrong. Pull first (git pull); do not run nerv ship again for this release: it would compute the next version.",
-			released.NewReleaseVersion, tag, confirmed, confirmed, listOrNothing(publishSteps(it.plan, 0)), tag, released.NewReleaseVersion, released.NewReleaseVersion)
+			released.NewReleaseVersion, tag, confirmed, confirmed, listOrNothing(nil), tag, released.NewReleaseVersion, released.NewReleaseVersion)
 	case o.Tagged:
 		o.Action = fmt.Sprintf("Tag %s is on origin, but semantic-release failed after tagging (its publish or success plugins, e.g. the GitHub release): finish those by hand. NERV's publish stage did not run: publish %s by hand from the tag (git checkout %s). Do not run nerv ship again for this release: it would compute the next version.",
-			tag, listOrNothing(publishSteps(it.plan, 0)), tag)
+			tag, listOrNothing(nil), tag)
 	case checkErr != nil:
 		o.Action = fmt.Sprintf("Could not tell whether tag %s reached origin (%v): check with git ls-remote --tags origin %s before running nerv ship again.", tag, checkErr, tag)
 	case errors.Is(err, semrel.ErrVersionMismatch):
 		o.Action = "semantic-release would have released another version than the one you confirmed (origin changed?): it was stopped before the tag, nothing was tagged or published. " + s.rerunAdvice(ctx) + " (to review the new plan)"
 	default:
 		o.Action = fmt.Sprintf("No tag %s on origin: nothing was tagged or published (a prepare plugin such as @semantic-release/git may have pushed a release commit). Fix the cause. %s", tag, s.rerunAdvice(ctx))
-	}
-	s.failHooks(ctx, it, vars)
-}
-
-// rerunAdvice says how to run nerv ship again: after a pull when origin's
-// branch moved during this run (an earlier project's release commit, or one
-// a prepare plugin pushed), since nerv ship refuses a local branch behind
-// origin.
-//
-// Origin is read under its own short deadline, detached from ctx, so an
-// interrupted run still gets accurate advice.
-func (s *shipRun) rerunAdvice(ctx context.Context) string {
-	rctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), rerunCheckTimeout)
-	defer cancel()
-	head, err := s.ws.BranchOnOrigin(rctx)
-	switch {
-	case err != nil:
-		return fmt.Sprintf("Check whether origin's %s moved during this run (git fetch); if it did, pull first (git pull), then run nerv ship again.", s.branch)
-	case head == "":
-		return fmt.Sprintf("Branch %s was deleted on origin during this run: check what happened before releasing it again.", s.branch)
-	case head != s.ws.OriginHead():
-		return fmt.Sprintf("Origin's %s moved during this run (a release commit was pushed): pull first (git pull), then run nerv ship again.", s.branch)
-	}
-	return "Then run nerv ship again."
-}
-
-// rerunCheckTimeout bounds the read of origin's branch for the rerun advice.
-const rerunCheckTimeout = 10 * time.Second
-
-// afterTagFailed records a failure once the tag is on origin: what was
-// published, what was not, and what to do; then runs the fail hooks.
-func (s *shipRun) afterTagFailed(ctx context.Context, it shipItem, vars shiprun.Vars, notRun []string) {
-	o, tag := it.outcome, it.result.NewReleaseGitTag
-	o.Action = fmt.Sprintf("Tag %s and its release are on origin. Published: %s. Not run: %s. Publish the rest by hand from the tag (git checkout %s); do not run nerv ship again for this release: it would compute the next version.",
-		tag, listOrNothing(o.Published), listOrNothing(notRun), tag)
-	s.failHooks(ctx, it, vars)
-}
-
-// failHooks runs the project's fail hooks, unless the run was interrupted
-// (a second Ctrl-C must not be needed to stop nerv ship).
-func (s *shipRun) failHooks(ctx context.Context, it shipItem, vars shiprun.Vars) {
-	if len(it.plan.Hooks["fail"]) == 0 {
-		return
-	}
-	if ctx.Err() != nil {
-		fmt.Fprintf(s.stderr, "nerv ship: %s: fail hooks not run: interrupted\n", it.result.Project)
-		return
-	}
-	if err := s.exec.RunHooks(ctx, it.plan, "fail", vars); err != nil {
-		fmt.Fprintf(s.stderr, "nerv ship: %s: a fail hook failed too: %v\n", it.result.Project, err)
-	}
-}
-
-// publishSteps names the publish stage's steps from index from on, then the
-// publish hooks.
-func publishSteps(plan *shipplan.Plan, from int) []string {
-	var out []string
-	if pub := plan.Publish(); pub != nil && from < len(pub.Steps) {
-		out = stepNames(pub.Steps[from:])
-	}
-	return append(out, stepNames(plan.Hooks["publish"])...)
-}
-
-func stepNames(steps []shipplan.Step) []string {
-	out := make([]string, 0, len(steps))
-	for _, st := range steps {
-		out = append(out, st.Name)
-	}
-	return out
-}
-
-func listOrNothing(names []string) string {
-	if len(names) == 0 {
-		return "nothing"
-	}
-	return strings.Join(names, ", ")
-}
-
-// writeShipSummary writes the final summary in one write: the JSON
-// document, or one line per project with the action after a failure.
-func writeShipSummary(w io.Writer, asJSON, dryRun bool, doc shipDocument) error {
-	outcomes := doc.Projects
-	var b bytes.Buffer
-	if asJSON {
-		data, err := json.Marshal(doc)
-		if err != nil {
-			return err
-		}
-		b.Write(data)
-		b.WriteByte('\n')
-	} else {
-		writeShipText(&b, dryRun, outcomes)
-	}
-	if _, err := w.Write(b.Bytes()); err != nil {
-		return err
-	}
-	if f, ok := w.(interface{ Flush() error }); ok {
-		return f.Flush()
-	}
-	return nil
-}
-
-func writeShipText(b *bytes.Buffer, dryRun bool, outcomes []shipOutcome) {
-	releasing := slices.ContainsFunc(outcomes, func(o shipOutcome) bool { return o.Status != shipNoRelease })
-	if !releasing {
-		b.WriteString("nothing to release\n")
-	}
-	for _, o := range outcomes {
-		if o.Status == shipNoRelease {
-			fmt.Fprintf(b, "%s: no new release (last %s)\n", o.Project, orNone(o.LastVersion))
-			continue
-		}
-		fmt.Fprintf(b, "%s %s (tag %s): ", o.Project, o.Version, o.Tag)
-		switch o.Status {
-		case shipDryRun:
-			b.WriteString("dry run: pipeline and prepare hooks passed; not released\n")
-		case shipReleased:
-			b.WriteString("released")
-			if len(o.Published) > 0 {
-				fmt.Fprintf(b, "; published: %s", strings.Join(o.Published, ", "))
-			}
-			b.WriteByte('\n')
-		case shipNotStarted:
-			b.WriteString("not started\n")
-		default:
-			state := "not tagged"
-			if o.Tagged {
-				state = "tagged on origin"
-			}
-			fmt.Fprintf(b, "failed (%s); published: %s\n  %s\n  %s\n", state, listOrNothing(o.Published), o.Error, o.Action)
-		}
-	}
-	if dryRun && releasing {
-		b.WriteString("dry run: nothing was released or published\n")
 	}
 }

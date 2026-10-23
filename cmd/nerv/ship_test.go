@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -14,6 +13,7 @@ import (
 	"syscall"
 	"testing"
 
+	"github.com/war-apps/nerv-by-gentle-ai/internal/artifact"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/env/envtest"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/semrel"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/shipconfig"
@@ -23,43 +23,61 @@ import (
 
 const localHead = "1111111111111111111111111111111111111111"
 
-// shipMonorepoYAML: core and web publish and have every lifecycle hook (web
-// only fail); cli only builds; web depends on core.
+// shipMonorepoYAML: core packages a file and has prepare and fail hooks;
+// cli only builds; web depends on core and has a fail hook.
 const shipMonorepoYAML = `release:
   projects:
     - name: core
       path: core
+      build: { mode: script }
       stages:
         build: { run: "echo build core" }
-        publish: { run: "echo publish core" }
+        package: { run: "echo package core" }
       hooks:
         prepare: [{ run: "echo prepare core" }]
-        publish: [{ run: "echo publish-hook core" }]
-        success: [{ run: "echo success core" }]
         fail: [{ run: "echo fail core" }]
     - name: cli
       path: cli
+      build: { mode: script }
       stages:
         build: { run: "echo build cli" }
     - name: web
       path: web
+      build: { mode: script }
       depends_on:
         - project: core
           bump: minor
       stages:
         build: { run: "echo build web" }
-        publish: { run: "echo publish web" }
       hooks:
         fail: [{ run: "echo fail web" }]
 `
 
-const shipDotnetYAML = `release:
+// shipVersionFilesYAML is one script project at the root with a version
+// file.
+const shipVersionFilesYAML = `release:
   projects:
     - name: api
       path: .
-      presets: [dotnet]
-      dotnet:
-        project_file: src/Api/Api.csproj
+      build:
+        mode: script
+        version_files: [src/Api/Api.csproj]
+      stages:
+        build: { run: "echo build api" }
+`
+
+// shipComposeYAML is one compose project with a test service and an image.
+const shipComposeYAML = `release:
+  projects:
+    - name: api
+      path: api
+      build:
+        mode: compose
+        file: api/docker-compose.yml
+        test_service: tests
+        images: ["ghcr.io/acme/api:${version}"]
+      hooks:
+        fail: [{ run: "echo fail api" }]
 `
 
 const apiCsproj = "<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n    <Version>1.0.0</Version>\n    <PackageReleaseNotes>old notes</PackageReleaseNotes>\n  </PropertyGroup>\n</Project>\n"
@@ -86,6 +104,9 @@ type fakeWorkspace struct {
 	originErr     error
 	originCtxErrs []error
 	closed        bool
+	// removeOnClose removes the artifacts and notes directories on Close,
+	// as semrel.Workspace.Close does.
+	removeOnClose bool
 }
 
 func (w *fakeWorkspace) Dir() string { return w.dir }
@@ -104,7 +125,15 @@ func (w *fakeWorkspace) ArtifactsDir() string { return filepath.Join(w.extra, "a
 func (w *fakeWorkspace) NotesDir() string     { return filepath.Join(w.extra, "notes") }
 func (w *fakeWorkspace) OriginHead() string   { return w.head }
 func (w *fakeWorkspace) PublicURL() string    { return w.public }
-func (w *fakeWorkspace) Close() error         { w.closed = true; w.f.log("close"); return nil }
+
+func (w *fakeWorkspace) Close() error {
+	w.closed = true
+	w.f.log("close")
+	if w.removeOnClose {
+		return os.RemoveAll(w.extra)
+	}
+	return nil
+}
 
 func (w *fakeWorkspace) Compute(_ context.Context, project string) ([]semrel.ProjectResult, error) {
 	w.computed = append(w.computed, project)
@@ -160,13 +189,18 @@ type shipFixture struct {
 	opened   []semrel.WorkspaceOptions
 	events   []string
 	vars     []shiprun.Vars
+	steps    []shiprun.Step
 	failStep map[string]error
-	tty      bool
-	stdin    string
-	env      map[string]string
-	tokens   int
-	cancel   context.CancelFunc
-	signal   os.Signal
+	// outputs are the files a step writes in its $NERV_RELEASE_OUTPUTS_DIR
+	// (event -> relative path -> content); a docker save step writes its
+	// archive.
+	outputs map[string]map[string]string
+	tty     bool
+	stdin   string
+	env     map[string]string
+	tokens  int
+	cancel  context.CancelFunc
+	signal  os.Signal
 	// onFirstStep runs before the first step is recorded.
 	onFirstStep func()
 }
@@ -193,6 +227,7 @@ func newShipFixture(t *testing.T, nervYAML string) *shipFixture {
 			"git -C . rev-parse --show-toplevel":                            {Stdout: top + "\n"},
 			"git -C " + top + " symbolic-ref --short HEAD":                  {Stdout: "main\n"},
 			"git -C " + top + " rev-parse --verify --quiet refs/heads/main": {Stdout: localHead + "\n"},
+			"git -C " + clone + " tag --list":                               {Stdout: ""},
 		}},
 		env: map[string]string{},
 	}
@@ -215,7 +250,10 @@ func newShipFixture(t *testing.T, nervYAML string) *shipFixture {
 }
 
 // stepRecorder is the fake process step runner.
-type stepRecorder struct{ f *shipFixture }
+type stepRecorder struct {
+	f *shipFixture
+	t *testing.T
+}
 
 func (r stepRecorder) Run(_ context.Context, s shiprun.Step, v shiprun.Vars) error {
 	f := r.f
@@ -229,7 +267,25 @@ func (r stepRecorder) Run(_ context.Context, s shiprun.Step, v shiprun.Vars) err
 	}
 	f.log(event)
 	f.vars = append(f.vars, v)
-	return f.failStep[event]
+	f.steps = append(f.steps, s)
+	if err := f.failStep[event]; err != nil {
+		return err
+	}
+	write := func(path, content string) {
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			r.t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+			r.t.Fatal(err)
+		}
+	}
+	for rel, content := range f.outputs[event] {
+		write(filepath.Join(s.Command.Env[shipplan.OutputsEnv], filepath.FromSlash(rel)), content)
+	}
+	if len(s.Exec) > 3 && s.Exec[0] == "docker" && s.Exec[1] == "save" {
+		write(s.Exec[3], "image "+s.Exec[4])
+	}
+	return nil
 }
 
 func (f *shipFixture) options(t *testing.T) options {
@@ -247,7 +303,7 @@ func (f *shipFixture) options(t *testing.T) options {
 		if root != f.ws.dir {
 			t.Errorf("steps run in %s, want the release clone %s", root, f.ws.dir)
 		}
-		return stepRecorder{f}
+		return stepRecorder{f, t}
 	}
 	opts.GitHubToken = func(context.Context) string { f.tokens++; return "gh-tok" }
 	opts.SignalContext = func(parent context.Context) (context.Context, context.CancelFunc, func() os.Signal) {
@@ -263,6 +319,16 @@ func (f *shipFixture) run(t *testing.T, args ...string) (code int, stdout, stder
 	var out, errOut bytes.Buffer
 	code = run(append([]string{"ship"}, args...), &out, &errOut, f.options(t))
 	return code, out.String(), errOut.String()
+}
+
+func (f *shipFixture) runJSON(t *testing.T, args ...string) (int, shipDocument, string) {
+	t.Helper()
+	code, stdout, stderr := f.run(t, append(args, "--json")...)
+	var doc shipDocument
+	if err := json.Unmarshal([]byte(stdout), &doc); err != nil {
+		t.Fatalf("stdout is not one JSON document: %v\n%q\nstderr %s", err, stdout, stderr)
+	}
+	return code, doc, stderr
 }
 
 func shipResult(project, version, tag string) semrel.ProjectResult {
@@ -283,6 +349,8 @@ func (f *shipFixture) monorepoResults() {
 	}
 }
 
+// released are the projects semantic-release ran for (nerv pipeline
+// release; nerv ship never runs it).
 func (f *shipFixture) released() []string {
 	var out []string
 	for _, e := range f.events {
@@ -293,19 +361,58 @@ func (f *shipFixture) released() []string {
 	return out
 }
 
+// packaged lists the artifacts in the repository, as <project>/<version>.
+func (f *shipFixture) packaged(t *testing.T) []string {
+	t.Helper()
+	var out []string
+	root := artifact.Root(f.top)
+	projects, _ := os.ReadDir(root)
+	for _, p := range projects {
+		if !p.IsDir() {
+			continue
+		}
+		versions, _ := os.ReadDir(filepath.Join(root, p.Name()))
+		for _, v := range versions {
+			out = append(out, p.Name()+"/"+v.Name())
+		}
+	}
+	return out
+}
+
 func indexOf(events []string, e string) int { return slices.Index(events, e) }
+
+// noGitWrites fails when the run asked git for anything but reads, or
+// semantic-release or the push check ran.
+func (f *shipFixture) noGitWrites(t *testing.T) {
+	t.Helper()
+	for _, c := range f.runner.Calls {
+		args := c.Args
+		if len(args) > 2 && args[0] == "-C" {
+			args = args[2:]
+		}
+		if c.Name != "git" || len(args) == 0 {
+			continue
+		}
+		if slices.Contains([]string{"push", "commit", "notes", "update-ref"}, args[0]) || (args[0] == "tag" && !slices.Equal(args, []string{"tag", "--list"})) {
+			t.Errorf("git write: git %s", strings.Join(c.Args, " "))
+		}
+	}
+	if len(f.ws.requests) != 0 || slices.Contains(f.events, "check-push") || f.tokens != 0 {
+		t.Errorf("semantic-release %d, events %v, tokens %d: nerv ship never releases", len(f.ws.requests), f.events, f.tokens)
+	}
+}
 
 // ---------------------------------------------------------------------------
 
 func TestShip_UsageErrors(t *testing.T) {
-	for _, args := range [][]string{{"extra"}, {"--fetch-timeout", "0s"}, {"--nope"}} {
+	for _, args := range [][]string{{"extra"}, {"--fetch-timeout", "0s"}, {"--nope"}, {"--version", "1.0"}, {"--version", "v1.0.0"}} {
 		f := newShipFixture(t, shipMonorepoYAML)
-		if code, _, stderr := f.run(t, args...); code != 2 || !strings.Contains(stderr, "Usage: nerv ship") {
-			t.Errorf("%v: exit %d, stderr %q", args, code, stderr)
+		if code, _, stderr := f.run(t, args...); code != 2 || !strings.Contains(stderr, "Usage: nerv ship") || len(f.events) != 0 {
+			t.Errorf("%v: exit %d, events %v, stderr %q", args, code, f.events, stderr)
 		}
 	}
 	f := newShipFixture(t, "")
-	if code, stdout, _ := f.run(t, "--help"); code != 0 || !strings.Contains(stdout, "--dry-run") {
+	if code, stdout, _ := f.run(t, "--help"); code != 0 || !strings.Contains(stdout, "--dry-run") || !strings.Contains(stdout, "--version <semver>") || !strings.Contains(stdout, "--force") {
 		t.Errorf("--help: exit %d %q", code, stdout)
 	}
 }
@@ -326,7 +433,7 @@ func TestShip_RefusesWhenTheLocalBranchIsNotOrigins(t *testing.T) {
 			if code != 1 || !strings.Contains(stderr, tt.want) {
 				t.Errorf("exit %d, stderr %q; want 1 and %q", code, stderr, tt.want)
 			}
-			if slices.Contains(f.events, "compute") || len(f.released()) != 0 {
+			if slices.Contains(f.events, "compute") || len(f.packaged(t)) != 0 {
 				t.Errorf("events %v: nothing may run", f.events)
 			}
 			if !f.ws.closed {
@@ -367,6 +474,37 @@ func TestShip_UnknownProjectAndNoOrigin(t *testing.T) {
 	}
 }
 
+// build.mode is required, with no default; a preset key says what to
+// write instead. Each is refused before origin is read.
+func TestShip_RequiresTheBuildMode(t *testing.T) {
+	tests := []struct {
+		name, yaml string
+		want       []string
+	}{
+		{"no release section", "", []string{"no release: section", "build.mode (compose or script)"}},
+		{"no build mode", "release:\n  projects:\n    - { name: api, path: . }\n", []string{"release.projects[0].build.mode: required by nerv ship (compose or script): there is no default"}},
+		{"old preset", "release:\n  projects:\n    - name: api\n      path: .\n      presets: [dotnet]\n      dotnet: { project_file: Api.csproj }\n", []string{
+			"release.projects[0].presets: the presets were removed; set build.mode instead",
+			"release.projects[0].dotnet: the dotnet preset was removed",
+		}},
+		{"old publish stage", "release:\n  projects:\n    - name: api\n      path: .\n      build: { mode: script }\n      stages:\n        publish: { run: x }\n", []string{"publishing moved to nerv deploy"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f := newShipFixture(t, tt.yaml)
+			code, doc, _ := f.runJSON(t, "--yes")
+			if code != 1 || doc.Status != "refused" || len(f.events) != 0 {
+				t.Fatalf("exit %d, %+v, events %v", code, doc, f.events)
+			}
+			for _, w := range tt.want {
+				if !strings.Contains(doc.Error, w) {
+					t.Errorf("error lacks %q: %s", w, doc.Error)
+				}
+			}
+		})
+	}
+}
+
 func TestShip_Confirmation(t *testing.T) {
 	tests := []struct {
 		name       string
@@ -375,7 +513,7 @@ func TestShip_Confirmation(t *testing.T) {
 		stdin      string
 		wantCode   int
 		wantPrompt bool
-		wantRel    bool
+		wantPack   bool
 	}{
 		{"terminal yes", nil, true, "y\n", 0, true, true},
 		{"terminal YES", nil, true, "YES\n", 0, true, true},
@@ -395,51 +533,74 @@ func TestShip_Confirmation(t *testing.T) {
 			if code != tt.wantCode {
 				t.Errorf("exit %d, want %d; stderr:\n%s", code, tt.wantCode, stderr)
 			}
-			if got := strings.Contains(stderr, "Release 2 project(s)? [y/N]"); got != tt.wantPrompt {
+			if got := strings.Contains(stderr, "Package 2 project(s)? [y/N]"); got != tt.wantPrompt {
 				t.Errorf("prompted %v, want %v", got, tt.wantPrompt)
 			}
-			if got := len(f.released()) > 0; got != tt.wantRel {
-				t.Errorf("released %v, want %v", f.released(), tt.wantRel)
+			if got := len(f.packaged(t)) > 0; got != tt.wantPack {
+				t.Errorf("packaged %v, want %v", f.packaged(t), tt.wantPack)
 			}
-			if !tt.wantRel && slices.Contains(f.events, "check-push") {
-				t.Error("push check run without a release")
+			if !tt.wantPack && !tt.wantPrompt && tt.name != "--dry-run" && slices.ContainsFunc(f.events, func(e string) bool { return strings.Contains(e, ": echo") }) {
+				t.Errorf("steps run without confirmation: %v", f.events)
 			}
-			if tt.name == "not a terminal" && !strings.Contains(stderr, "--yes") {
-				t.Errorf("refusal does not name --yes: %s", stderr)
+			if tt.name == "not a terminal" && !strings.Contains(stderr, "--yes to package without asking") {
+				t.Errorf("refusal does not say what --yes does: %s", stderr)
 			}
 		})
 	}
 }
 
-func TestShip_ReleasesInDependencyOrderAndSkipsUnreleased(t *testing.T) {
+func TestShip_PackagesInDependencyOrderAndSkipsUnreleased(t *testing.T) {
 	f := newShipFixture(t, shipMonorepoYAML)
 	f.monorepoResults()
+	f.ws.removeOnClose = true
+	f.outputs = map[string]map[string]string{"core: echo package core": {"core.zip": "zip", "site/index.html": "<html>"}}
 	code, stdout, stderr := f.run(t, "--yes")
 	if code != 0 {
 		t.Fatalf("exit %d: %s", code, stderr)
 	}
 	want := []string{
-		"open", "compute", "check-push",
-		"core: echo build core", "core: echo prepare core", "release core",
-		"core: echo publish core", "core: echo publish-hook core", "core: echo success core",
-		"web: echo build web", "release web", "web: echo publish web",
+		"open", "compute",
+		"core: echo build core", "core: echo package core", "core: echo prepare core",
+		"web: echo build web",
 		"close",
 	}
 	if !slices.Equal(f.events, want) {
 		t.Errorf("events\n %v\nwant\n %v", f.events, want)
 	}
-	if len(f.ws.requests) != 2 || len(f.ws.requests[1].Computed) != 3 || f.ws.requests[1].Expected.NewReleaseVersion != "2.1.0" {
-		t.Errorf("release requests %+v", f.ws.requests)
+	f.noGitWrites(t)
+	if got := f.packaged(t); !slices.Equal(got, []string{"core/1.1.0", "web/2.1.0"}) {
+		t.Errorf("artifacts %v", got)
 	}
-	for _, s := range []string{"core 1.1.0", "web 2.1.0", "cli: no new release"} {
+	coreDir := artifact.Dir(f.top, "core", "1.1.0")
+	for _, s := range []string{"core 1.1.0 (tag core-v1.1.0): packaged in " + coreDir, "web 2.1.0", "cli: no new release"} {
 		if !strings.Contains(stdout, s) {
 			t.Errorf("summary lacks %q:\n%s", s, stdout)
 		}
 	}
-	for _, s := range []string{"core 1.1.0 (default channel, tag core-v1.1.0)", "last release 1.0.0", "build", "echo publish core"} {
+	for _, s := range []string{"2 project(s) to package", "core 1.1.0 (default channel, tag core-v1.1.0, build mode script)", "last release 1.0.0", "echo package core", "artifact " + coreDir, "nerv ship: core 1.1.0: artifact " + coreDir} {
 		if !strings.Contains(stderr, s) {
-			t.Errorf("plan listing lacks %q:\n%s", s, stderr)
+			t.Errorf("listing lacks %q:\n%s", s, stderr)
 		}
+	}
+	// The artifact survives the clone's removal and holds what the
+	// package stage wrote.
+	m, err := artifact.Verify(coreDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m.Project != "core" || m.Version != "1.1.0" || m.Tag != "core-v1.1.0" || m.BaseCommit != localHead || m.Branch != "main" || m.BuildMode != "script" || m.CreatedAt.IsZero() {
+		t.Errorf("manifest %+v", m)
+	}
+	if len(m.Outputs) != 2 || m.Outputs[0].Path != "outputs/core.zip" || m.Outputs[0].Kind != artifact.KindFile || m.Outputs[1].Kind != artifact.KindDir {
+		t.Errorf("outputs %+v", m.Outputs)
+	}
+	notes, _ := os.ReadFile(filepath.Join(coreDir, artifact.NotesFile))
+	section, _ := os.ReadFile(filepath.Join(coreDir, artifact.ChangelogFile))
+	if string(notes) != f.ws.results[0].NewReleaseNotes || string(section) != f.ws.results[0].NewReleaseNotes {
+		t.Errorf("notes %q, section %q", notes, section)
+	}
+	if _, err := os.Stat(f.ws.extra); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("the workspace was not removed: %v", err)
 	}
 }
 
@@ -450,7 +611,7 @@ func TestShip_StepsGetTheReleaseVariables(t *testing.T) {
 	if code, _, stderr := f.run(t, "--yes"); code != 0 {
 		t.Fatalf("exit %d: %s", code, stderr)
 	}
-	build, publish := f.vars[0], f.vars[2]
+	build := f.vars[0]
 	if build.Project != "core" || build.ProjectPath != "core" || build.Version != "1.1.0" || build.Channel != "alpha" ||
 		build.Tag != "core-v1.1.0" || build.GitHead != localHead || build.LastVersion != "1.0.0" || build.Branch != "main" || build.DryRun {
 		t.Errorf("build vars %+v", build)
@@ -462,8 +623,9 @@ func TestShip_StepsGetTheReleaseVariables(t *testing.T) {
 	if rel, err := filepath.Rel(f.ws.dir, build.NotesFile); err == nil && filepath.IsLocal(rel) {
 		t.Errorf("notes file inside the clone: %s", build.NotesFile)
 	}
-	if publish.GitHead != "release-commit-core" {
-		t.Errorf("publish runs on %q, want the released commit", publish.GitHead)
+	env := f.steps[0].Command.Env
+	if env[shipplan.OutputsEnv] != filepath.Join(f.ws.ArtifactsDir(), "core", "outputs") || env[shipplan.ArtifactsEnv] != filepath.Join(f.ws.ArtifactsDir(), "core") {
+		t.Errorf("step env %v", env)
 	}
 }
 
@@ -473,36 +635,40 @@ func TestShip_NothingToRelease(t *testing.T) {
 		{Project: "core", Branch: "main"}, {Project: "cli", Branch: "main"}, {Project: "web", Branch: "main"},
 	}
 	code, stdout, _ := f.run(t)
-	if code != 0 || !strings.Contains(stdout, "nothing to release") || len(f.released()) != 0 {
-		t.Errorf("exit %d, stdout %q, released %v", code, stdout, f.released())
+	if code != 0 || !strings.Contains(stdout, "nothing to release") || len(f.packaged(t)) != 0 {
+		t.Errorf("exit %d, stdout %q, packaged %v", code, stdout, f.packaged(t))
 	}
 }
 
-func TestShip_DryRunNeverReleasesOrPublishes(t *testing.T) {
+func TestShip_DryRunWritesNoArtifact(t *testing.T) {
 	f := newShipFixture(t, shipMonorepoYAML)
 	f.monorepoResults()
 	code, stdout, stderr := f.run(t, "--dry-run")
 	if code != 0 {
 		t.Fatalf("exit %d: %s", code, stderr)
 	}
-	want := []string{"open", "compute", "core: echo build core", "core: echo prepare core", "web: echo build web", "close"}
+	want := []string{"open", "compute", "core: echo build core", "core: echo package core", "core: echo prepare core", "web: echo build web", "close"}
 	if !slices.Equal(f.events, want) {
 		t.Errorf("events %v, want %v", f.events, want)
 	}
-	if f.tokens != 0 {
-		t.Error("a GitHub token was read for a dry run")
-	}
+	f.noGitWrites(t)
 	for _, v := range f.vars {
 		if !v.DryRun {
 			t.Errorf("vars %+v: want DryRun", v)
 		}
 	}
-	if !strings.Contains(stdout, "dry run") || !strings.Contains(stderr, "publish (not run: dry run)") {
+	if _, err := os.Stat(artifact.Root(f.top)); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("a dry run created %s: %v", artifact.Root(f.top), err)
+	}
+	if !strings.Contains(stdout, "dry run: no artifact was written") || !strings.Contains(stderr, "dry run: the pipeline runs, no artifact is written") {
 		t.Errorf("stdout %q\nstderr %q", stdout, stderr)
 	}
 }
 
-func TestShip_DotnetProjectFileGetsTheVersionAndReleaseLinkBeforeThePipeline(t *testing.T) {
+// The version files and the CHANGELOG section are written in the clone
+// before the pipeline, and their new contents are stored in the artifact;
+// the user's repository never gets them.
+func TestShip_ReleaseFilesInTheCloneAndTheArtifact(t *testing.T) {
 	tests := []struct {
 		name, public, wantNotes string
 		warn                    bool
@@ -513,166 +679,223 @@ func TestShip_DotnetProjectFileGetsTheVersionAndReleaseLinkBeforeThePipeline(t *
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			f := newShipFixture(t, shipDotnetYAML)
+			f := newShipFixture(t, shipVersionFilesYAML)
 			f.ws.public = tt.public
 			f.ws.results = []semrel.ProjectResult{shipResult("api", "1.1.0", "v1.1.0")}
-			path := filepath.Join(f.ws.dir, "src", "Api", "Api.csproj")
-			if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			csproj := filepath.Join(f.ws.dir, "src", "Api", "Api.csproj")
+			if err := os.MkdirAll(filepath.Dir(csproj), 0o755); err != nil {
 				t.Fatal(err)
 			}
-			if err := os.WriteFile(path, []byte(apiCsproj), 0o644); err != nil {
+			if err := os.WriteFile(csproj, []byte(apiCsproj), 0o644); err != nil {
 				t.Fatal(err)
 			}
-			var atFirstStep string
-			f.onFirstStep = func() { data, _ := os.ReadFile(path); atFirstStep = string(data) }
-			code, _, stderr := f.run(t, "--dry-run")
+			changelog := filepath.Join(f.ws.dir, "CHANGELOG.md")
+			if err := os.WriteFile(changelog, []byte("# Changelog\n\n## 1.0.0\n\n* first\n"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			var atFirstStep, changelogAtFirstStep string
+			f.onFirstStep = func() {
+				data, _ := os.ReadFile(csproj)
+				atFirstStep = string(data)
+				data, _ = os.ReadFile(changelog)
+				changelogAtFirstStep = string(data)
+			}
+			code, _, stderr := f.run(t, "--yes")
 			if code != 0 {
 				t.Fatalf("exit %d: %s", code, stderr)
 			}
 			if !strings.Contains(atFirstStep, "<Version>1.1.0</Version>") || !strings.Contains(atFirstStep, "<PackageReleaseNotes>"+tt.wantNotes+"</PackageReleaseNotes>") {
 				t.Errorf("csproj at the first step:\n%s", atFirstStep)
 			}
+			wantChangelog := "# Changelog\n\n## 1.1.0\n\n* api change\n\n## 1.0.0\n\n* first\n"
+			if changelogAtFirstStep != wantChangelog {
+				t.Errorf("CHANGELOG at the first step:\n%q\nwant\n%q", changelogAtFirstStep, wantChangelog)
+			}
 			if got := strings.Contains(stderr, "warning"); got != tt.warn {
 				t.Errorf("warning %v, want %v:\n%s", got, tt.warn, stderr)
 			}
-		})
-	}
-}
-
-func TestShip_VersionMismatchStopsBeforePublishing(t *testing.T) {
-	f := newShipFixture(t, shipMonorepoYAML)
-	f.monorepoResults()
-	f.ws.release = func(_ context.Context, req semrel.ReleaseRequest) (semrel.ProjectResult, error) {
-		return semrel.ProjectResult{}, fmt.Errorf("project core: %w: computed 1.1.0, semantic-release released nothing", semrel.ErrVersionMismatch)
-	}
-	code, stdout, stderr := f.run(t, "--yes")
-	if code != 2 {
-		t.Errorf("exit %d, want 2", code)
-	}
-	if slices.Contains(f.events, "core: echo publish core") || slices.Contains(f.events, "release web") {
-		t.Errorf("published or went on after the mismatch: %v", f.events)
-	}
-	if !slices.Contains(f.events, "core: echo fail core") || !slices.Contains(f.events, "tag? core-v1.1.0") {
-		t.Errorf("fail hooks or tag check missing: %v", f.events)
-	}
-	for _, s := range []string{"nothing was tagged", "not started", "stopped before the tag"} {
-		if !strings.Contains(stdout+stderr, s) {
-			t.Errorf("report lacks %q:\nstdout %s\nstderr %s", s, stdout, stderr)
-		}
-	}
-}
-
-func TestShip_FailureAfterTheTagRunsFailHooksAndSaysWhatWasPublished(t *testing.T) {
-	f := newShipFixture(t, shipMonorepoYAML)
-	f.monorepoResults()
-	f.failStep = map[string]error{"core: echo publish-hook core": errors.New("exit code 1")}
-	code, stdout, stderr := f.run(t, "--yes", "--json")
-	if code != 2 {
-		t.Errorf("exit %d, want 2; stderr:\n%s", code, stderr)
-	}
-	failAt := indexOf(f.events, "core: echo publish-hook core")
-	if failAt < 0 || indexOf(f.events, "core: echo fail core") < failAt || slices.Contains(f.events, "core: echo success core") || slices.Contains(f.events, "release web") {
-		t.Errorf("events %v", f.events)
-	}
-	var doc shipDocument
-	if err := json.Unmarshal([]byte(stdout), &doc); err != nil {
-		t.Fatalf("stdout is not JSON: %v\n%s", err, stdout)
-	}
-	outcomes := doc.Projects
-	if doc.Status != "failed" || doc.Error == "" {
-		t.Errorf("document status %q error %q", doc.Status, doc.Error)
-	}
-	byName := map[string]shipOutcome{}
-	for _, o := range outcomes {
-		byName[o.Project] = o
-	}
-	core := byName["core"]
-	if core.Status != "failed" || !core.Tagged || core.Tag != "core-v1.1.0" || !slices.Equal(core.Published, []string{"publish"}) || core.Error == "" || !strings.Contains(core.Action, "core-v1.1.0") {
-		t.Errorf("core outcome %+v", core)
-	}
-	if byName["web"].Status != "not-started" || byName["cli"].Status != "no-release" {
-		t.Errorf("outcomes %+v", outcomes)
-	}
-	if !strings.Contains(stderr, "do not run nerv ship again") {
-		t.Errorf("stderr lacks the advice:\n%s", stderr)
-	}
-}
-
-func TestShip_ReleaseFailureReportsWhetherTheTagExists(t *testing.T) {
-	for _, tagged := range []bool{false, true} {
-		t.Run(fmt.Sprint("tagged ", tagged), func(t *testing.T) {
-			f := newShipFixture(t, shipMonorepoYAML)
-			f.monorepoResults()
-			f.ws.release = func(context.Context, semrel.ReleaseRequest) (semrel.ProjectResult, error) {
-				f.ws.tags["core-v1.1.0"] = tagged
-				return semrel.ProjectResult{}, errors.New("semantic-release: EGITHUB boom")
-			}
-			code, stdout, _ := f.run(t, "--yes", "--json")
-			var doc shipDocument
-			if err := json.Unmarshal([]byte(stdout), &doc); err != nil {
+			dir := artifact.Dir(f.top, "api", "1.1.0")
+			m, err := artifact.Verify(dir)
+			if err != nil {
 				t.Fatal(err)
 			}
-			core := doc.Projects[0]
-			if code != 2 || core.Tagged != tagged || core.Status != "failed" || slices.Contains(f.events, "core: echo publish core") {
-				t.Errorf("exit %d, core %+v, events %v", code, core, f.events)
+			if len(m.ReleaseFiles) != 2 || m.ReleaseFiles[0].Path != "src/Api/Api.csproj" || m.ReleaseFiles[1].Path != "CHANGELOG.md" {
+				t.Fatalf("release files %+v", m.ReleaseFiles)
 			}
-			if !slices.Contains(f.events, "core: echo fail core") {
-				t.Errorf("fail hooks not run: %v", f.events)
+			stored, _ := os.ReadFile(filepath.Join(dir, filepath.FromSlash(m.ReleaseFiles[1].Stored)))
+			if string(stored) != wantChangelog {
+				t.Errorf("stored CHANGELOG %q", stored)
+			}
+			if _, err := os.Stat(filepath.Join(f.top, "CHANGELOG.md")); !errors.Is(err, os.ErrNotExist) {
+				t.Errorf("the user's repository got a CHANGELOG: %v", err)
 			}
 		})
 	}
 }
 
-func TestShip_PipelineFailureStopsBeforeTheRelease(t *testing.T) {
+func TestShip_AnExistingArtifactIsRefusedUnlessForced(t *testing.T) {
+	f := newShipFixture(t, shipMonorepoYAML)
+	f.monorepoResults()
+	if code, _, stderr := f.run(t, "--yes", "--project", "core"); code != 0 {
+		t.Fatalf("first run: exit %d: %s", code, stderr)
+	}
+	dir := artifact.Dir(f.top, "core", "1.1.0")
+	marker := filepath.Join(dir, "stale")
+	if err := os.WriteFile(marker, nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	f.events = nil
+	code, doc, _ := f.runJSON(t, "--yes", "--project", "core")
+	if code != 1 || doc.Status != "refused" || !strings.Contains(doc.Error, dir+" already exists: pass --force") {
+		t.Fatalf("second run: exit %d, %+v", code, doc)
+	}
+	if want := []string{"open", "compute", "close"}; !slices.Equal(f.events, want) {
+		t.Errorf("events %v, want %v: nothing may run", f.events, want)
+	}
+	// A dry run does not care.
+	if code, _, stderr := f.run(t, "--dry-run", "--project", "core"); code != 0 {
+		t.Errorf("dry run: exit %d: %s", code, stderr)
+	}
+	if code, doc, stderr := f.runJSON(t, "--yes", "--force", "--project", "core"); code != 0 || doc.Status != "packaged" {
+		t.Fatalf("--force: exit %d, %+v\n%s", code, doc, stderr)
+	}
+	if _, err := os.Stat(marker); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("--force kept the old artifact's files: %v", err)
+	}
+}
+
+func TestShip_ExplicitVersionSkipsComputing(t *testing.T) {
+	f := newShipFixture(t, shipMonorepoYAML)
+	f.runner.Responses["git -C "+f.ws.dir+" tag --list"] = envtest.Response{Stdout: "core-v1.0.0\ncore-v1.1.0-rc.2\nweb-v9.0.0\nv5.0.0\n"}
+	code, doc, stderr := f.runJSON(t, "--yes", "--project", "core", "--version", "1.1.0", "--expect", "core=1.1.0")
+	if code != 0 || doc.Status != "packaged" || doc.SemanticReleaseConfig != "" {
+		t.Fatalf("exit %d, %+v\n%s", code, doc, stderr)
+	}
+	if slices.Contains(f.events, "compute") {
+		t.Errorf("computed with --version: %v", f.events)
+	}
+	core := doc.Projects[0]
+	if len(doc.Projects) != 1 || core.Version != "1.1.0" || core.Tag != "core-v1.1.0" || core.Channel != "" || core.LastVersion != "1.1.0-rc.2" {
+		t.Errorf("outcome %+v", core)
+	}
+	if !strings.Contains(stderr, "version 1.1.0 from --version (not computed)") || !strings.Contains(stderr, "last release 1.1.0-rc.2 (tag core-v1.1.0-rc.2)") {
+		t.Errorf("listing:\n%s", stderr)
+	}
+	m, err := artifact.Read(artifact.Dir(f.top, "core", "1.1.0"))
+	if err != nil || m.BaseCommit != localHead || m.Channel != "" {
+		t.Fatalf("manifest %+v %v", m, err)
+	}
+	section, _ := os.ReadFile(filepath.Join(artifact.Dir(f.top, "core", "1.1.0"), artifact.ChangelogFile))
+	if !strings.HasPrefix(string(section), "## 1.1.0 (") {
+		t.Errorf("CHANGELOG section %q", section)
+	}
+	f.noGitWrites(t)
+
+	// A prerelease's channel is its first identifier.
+	f = newShipFixture(t, shipMonorepoYAML)
+	if code, doc, _ := f.runJSON(t, "--dry-run", "--project", "web", "--version", "3.0.0-rc.1"); code != 0 || doc.Projects[0].Channel != "rc" || doc.Projects[0].Tag != "web-v3.0.0-rc.1" {
+		t.Errorf("prerelease: exit %d, %+v", code, doc)
+	}
+}
+
+func TestShip_ExplicitVersionChecks(t *testing.T) {
+	tests := []struct {
+		name string
+		args []string
+		tags string
+		want string
+		open bool
+	}{
+		{"monorepo needs --project", []string{"--version", "2.0.0"}, "", "declares 3 projects, each with its own version: pass --project too", false},
+		{"not newer than the last tag", []string{"--project", "core", "--version", "1.1.0"}, "core-v1.1.0\n", "--version 1.1.0: project core already has 1.1.0 (tag core-v1.1.0); the version must be newer than the last one", true},
+		{"older than the last tag", []string{"--project", "core", "--version", "1.0.9"}, "core-v1.0.0\ncore-v1.1.0\n", "already has 1.1.0", true},
+		{"not the expected version", []string{"--project", "core", "--version", "1.2.0", "--expect", "core=1.3.0"}, "", "core: expected 1.3.0, computed 1.2.0", true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f := newShipFixture(t, shipMonorepoYAML)
+			f.runner.Responses["git -C "+f.ws.dir+" tag --list"] = envtest.Response{Stdout: tt.tags}
+			code, doc, _ := f.runJSON(t, append(tt.args, "--yes")...)
+			if code != 1 || doc.Status != "refused" || !strings.Contains(doc.Error, tt.want) {
+				t.Fatalf("exit %d, %+v; want a refusal with %q", code, doc, tt.want)
+			}
+			if got := slices.Contains(f.events, "open"); got != tt.open {
+				t.Errorf("events %v: opened %v, want %v", f.events, got, tt.open)
+			}
+			if slices.ContainsFunc(f.events, func(e string) bool { return strings.Contains(e, ": echo") }) {
+				t.Errorf("steps ran: %v", f.events)
+			}
+		})
+	}
+}
+
+// newComposeFixture is a fixture for shipComposeYAML, whose clone has the
+// compose file.
+func newComposeFixture(t *testing.T) *shipFixture {
+	t.Helper()
+	f := newShipFixture(t, shipComposeYAML)
+	f.ws.results = []semrel.ProjectResult{shipResult("api", "1.4.0", "v1.4.0")}
+	if err := os.WriteFile(filepath.Join(f.ws.dir, "api", "docker-compose.yml"), []byte("services: {}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return f
+}
+
+func TestShip_ComposeModeBuildsTestsAndSavesTheImages(t *testing.T) {
+	f := newComposeFixture(t)
+	code, doc, stderr := f.runJSON(t, "--yes")
+	if code != 0 {
+		t.Fatalf("exit %d: %s", code, stderr)
+	}
+	tar := filepath.Join(f.ws.ArtifactsDir(), "api", "outputs", "ghcr.io_acme_api_1.4.0.tar")
+	want := []string{
+		"open", "compute",
+		"api: docker compose -f api/docker-compose.yml build",
+		"api: docker compose -f api/docker-compose.yml run --rm tests",
+		"api: docker save -o " + tar + " ghcr.io/acme/api:1.4.0",
+		"close",
+	}
+	if !slices.Equal(f.events, want) {
+		t.Errorf("events\n %v\nwant\n %v", f.events, want)
+	}
+	m, err := artifact.Verify(doc.Projects[0].Artifact)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m.BuildMode != "compose" || !slices.Equal(m.Images, []string{"ghcr.io/acme/api:1.4.0"}) || len(m.Outputs) != 1 ||
+		m.Outputs[0] != (artifact.Output{Path: "outputs/ghcr.io_acme_api_1.4.0.tar", Kind: artifact.KindImageTar, SHA256: m.Outputs[0].SHA256}) {
+		t.Errorf("manifest %+v", m)
+	}
+
+	// The test service's exit code is the test result.
+	f = newComposeFixture(t)
+	f.failStep = map[string]error{"api: docker compose -f api/docker-compose.yml run --rm tests": errors.New("exit code 3")}
+	code, doc, _ = f.runJSON(t, "--yes")
+	if code != 2 || doc.Status != "failed" || doc.Projects[0].Status != "failed" || !slices.Contains(f.events, "api: echo fail api") || len(f.packaged(t)) != 0 {
+		t.Errorf("exit %d, %+v, events %v", code, doc, f.events)
+	}
+}
+
+func TestShip_PipelineFailureRunsFailHooksAndWritesNoArtifact(t *testing.T) {
 	f := newShipFixture(t, shipMonorepoYAML)
 	f.monorepoResults()
 	f.failStep = map[string]error{"core: echo build core": errors.New("exit code 1")}
 	code, stdout, _ := f.run(t, "--yes")
-	if code != 2 || len(f.released()) != 0 || slices.Contains(f.events, "core: echo fail core") {
+	if code != 2 || len(f.packaged(t)) != 0 || !slices.Contains(f.events, "core: echo fail core") || slices.Contains(f.events, "web: echo build web") {
 		t.Errorf("exit %d, events %v", code, f.events)
 	}
-	if !strings.Contains(strings.ToLower(stdout), "nothing was tagged") {
+	if !strings.Contains(stdout, "Nothing was written to your repository or to origin for core") {
 		t.Errorf("summary:\n%s", stdout)
 	}
-}
-
-func TestShip_GitHubTokenOnlyWhenTheEnvironmentHasNone(t *testing.T) {
-	f := newShipFixture(t, shipMonorepoYAML)
-	f.monorepoResults()
-	if code, _, stderr := f.run(t, "--yes"); code != 0 {
-		t.Fatalf("exit %d: %s", code, stderr)
-	}
-	if f.tokens != 1 || !slices.Contains(f.ws.requests[0].Env, "GH_TOKEN=gh-tok") {
-		t.Errorf("tokens %d, env %v", f.tokens, f.ws.requests[0].Env)
-	}
-	for _, name := range []string{"GH_TOKEN", "GITHUB_TOKEN"} {
-		f = newShipFixture(t, shipMonorepoYAML)
-		f.monorepoResults()
-		f.env[name] = "from-env"
-		if code, _, _ := f.run(t, "--yes"); code != 0 || f.tokens != 0 || len(f.ws.requests[0].Env) != 0 {
-			t.Errorf("%s set: tokens %d, env %v", name, f.tokens, f.ws.requests[0].Env)
-		}
-	}
-}
-
-func TestShip_PushDeniedStopsBeforeThePipeline(t *testing.T) {
-	f := newShipFixture(t, shipMonorepoYAML)
-	f.monorepoResults()
-	f.ws.pushErr = fmt.Errorf("%w (https://github.com/acme/widgets.git) with your credentials", semrel.ErrPushDenied)
-	code, _, stderr := f.run(t, "--yes")
-	if code != 2 || slices.Contains(f.events, "core: echo build core") || !strings.Contains(stderr, "credentials") {
-		t.Errorf("exit %d, events %v, stderr %s", code, f.events, stderr)
-	}
+	f.noGitWrites(t)
 }
 
 func TestShip_InterruptedExitsWith128PlusTheSignal(t *testing.T) {
 	f := newShipFixture(t, shipMonorepoYAML)
 	f.monorepoResults()
 	f.signal = syscall.SIGINT
-	f.ws.release = func(ctx context.Context, req semrel.ReleaseRequest) (semrel.ProjectResult, error) {
-		f.cancel()
-		return semrel.ProjectResult{}, ctx.Err()
-	}
+	f.onFirstStep = func() { f.cancel() }
+	f.failStep = map[string]error{"core: echo build core": context.Canceled}
 	code, _, stderr := f.run(t, "--yes")
 	if code != 130 || !strings.Contains(stderr, "interrupted") {
 		t.Errorf("exit %d, stderr %s", code, stderr)
@@ -680,54 +903,23 @@ func TestShip_InterruptedExitsWith128PlusTheSignal(t *testing.T) {
 	if slices.Contains(f.events, "core: echo fail core") {
 		t.Errorf("fail hooks run after an interrupt: %v", f.events)
 	}
-	if !f.ws.closed {
-		t.Error("release clone not removed")
+	if !f.ws.closed || len(f.packaged(t)) != 0 {
+		t.Errorf("release clone removed %v, artifacts %v", f.ws.closed, f.packaged(t))
 	}
 }
 
-func TestShip_ProjectKeepsDependencyResultsForDependsOn(t *testing.T) {
+func TestShip_ProjectComputesEveryProjectForDependsOn(t *testing.T) {
 	f := newShipFixture(t, shipMonorepoYAML)
 	f.monorepoResults()
-	f.ws.release = func(_ context.Context, req semrel.ReleaseRequest) (semrel.ProjectResult, error) {
-		hasCore := slices.ContainsFunc(req.Computed, func(r semrel.ProjectResult) bool {
-			return r.Project == "core" && r.NewReleasePublished
-		})
-		if !hasCore {
-			return semrel.ProjectResult{}, fmt.Errorf("%w: computed results lack core: %+v", semrel.ErrVersionMismatch, req.Computed)
-		}
-		return req.Expected, nil
-	}
-	code, _, stderr := f.run(t, "--yes", "--project", "web")
+	code, doc, stderr := f.runJSON(t, "--yes", "--project", "web")
 	if code != 0 {
 		t.Fatalf("exit %d: %s", code, stderr)
 	}
-	if got := f.released(); !slices.Equal(got, []string{"web"}) {
-		t.Errorf("released %v, want only web", got)
+	if !slices.Equal(f.ws.computed, []string{""}) || len(doc.Projects) != 1 || doc.Projects[0].Project != "web" {
+		t.Errorf("computed %v, outcomes %+v", f.ws.computed, doc.Projects)
 	}
-}
-
-func TestShip_ReleasedAnotherVersionSaysWhichTagExists(t *testing.T) {
-	f := newShipFixture(t, shipMonorepoYAML)
-	f.monorepoResults()
-	f.ws.originNow = strings.Repeat("9", 40)
-	f.ws.release = func(context.Context, semrel.ReleaseRequest) (semrel.ProjectResult, error) {
-		f.ws.tags["core-v1.2.0"] = true
-		r := shipResult("core", "1.2.0", "core-v1.2.0")
-		return r, fmt.Errorf("project core: %w: computed 1.1.0, semantic-release released 1.2.0 (tag core-v1.2.0)", semrel.ErrVersionMismatch)
-	}
-	code, stdout, _ := f.run(t, "--yes", "--json")
-	var doc shipDocument
-	if err := json.Unmarshal([]byte(stdout), &doc); err != nil {
-		t.Fatal(err)
-	}
-	core := doc.Projects[0]
-	if code != 2 || !core.Tagged || slices.Contains(f.events, "core: echo publish core") {
-		t.Errorf("exit %d, core %+v, events %v", code, core, f.events)
-	}
-	for _, want := range []string{"released 1.2.0", "core-v1.2.0", "instead of the confirmed 1.1.0", "publish stage did not run", "do not run nerv ship again"} {
-		if !strings.Contains(core.Action, want) {
-			t.Errorf("action lacks %q: %s", want, core.Action)
-		}
+	if got := f.packaged(t); !slices.Equal(got, []string{"web/2.1.0"}) {
+		t.Errorf("packaged %v, want only web", got)
 	}
 }
 
@@ -745,15 +937,11 @@ func TestShip_RerunAdviceSaysPullWhenOriginMoved(t *testing.T) {
 			f := newShipFixture(t, shipMonorepoYAML)
 			f.monorepoResults()
 			f.ws.originNow = tt.originNow
-			// core is released, then web fails in its pipeline.
+			// core is packaged, then web fails in its pipeline.
 			f.failStep = map[string]error{"web: echo build web": errors.New("exit code 1")}
-			code, stdout, _ := f.run(t, "--yes", "--json")
-			var doc shipDocument
-			if err := json.Unmarshal([]byte(stdout), &doc); err != nil {
-				t.Fatal(err)
-			}
+			code, doc, _ := f.runJSON(t, "--yes")
 			web := doc.Projects[2]
-			if code != 2 || web.Status != "failed" || doc.Projects[0].Status != "released" {
+			if code != 2 || web.Status != "failed" || doc.Projects[0].Status != "packaged" {
 				t.Fatalf("exit %d, %+v", code, doc)
 			}
 			if got := strings.Contains(web.Action, "git pull"); got != tt.wantPull {
@@ -775,19 +963,19 @@ func TestShip_JSONDocumentOnEveryPath(t *testing.T) {
 		wantStatus string
 		projects   int
 	}{
-		{"released", func(f *shipFixture) {}, []string{"--yes"}, 0, "released", 3},
+		{"packaged", func(f *shipFixture) {}, []string{"--yes"}, 0, "packaged", 3},
 		{"dry run", func(f *shipFixture) {}, []string{"--dry-run"}, 0, "dry-run", 3},
-		{"nothing to release", func(f *shipFixture) { f.ws.results = []semrel.ProjectResult{{Project: "core"}} }, []string{"--yes"}, 0, "nothing-to-release", 1},
+		{"nothing to release", func(f *shipFixture) {
+			f.ws.results = []semrel.ProjectResult{{Project: "core"}, {Project: "cli"}, {Project: "web"}}
+		}, []string{"--yes"}, 0, "nothing-to-release", 3},
 		{"refused: behind origin", func(f *shipFixture) { f.ws.head = strings.Repeat("2", 40) }, []string{"--yes"}, 1, "refused", 0},
 		{"refused: no --yes", func(f *shipFixture) {}, nil, 1, "refused", 0},
 		{"declined", func(f *shipFixture) { f.tty, f.stdin = true, "n\n" }, nil, 1, "declined", 0},
 		{"failed: compute", func(f *shipFixture) { f.ws.computeErr = errors.New("node missing") }, []string{"--yes"}, 2, "failed", 0},
 		{"interrupted", func(f *shipFixture) {
 			f.signal = syscall.SIGINT
-			f.ws.release = func(ctx context.Context, _ semrel.ReleaseRequest) (semrel.ProjectResult, error) {
-				f.cancel()
-				return semrel.ProjectResult{}, ctx.Err()
-			}
+			f.onFirstStep = func() { f.cancel() }
+			f.failStep = map[string]error{"core: echo build core": context.Canceled}
 		}, []string{"--yes"}, 130, "interrupted", 3},
 	}
 	for _, tt := range tests {
@@ -795,11 +983,7 @@ func TestShip_JSONDocumentOnEveryPath(t *testing.T) {
 			f := newShipFixture(t, shipMonorepoYAML)
 			f.monorepoResults()
 			tt.setup(f)
-			code, stdout, stderr := f.run(t, append(tt.args, "--json")...)
-			var doc shipDocument
-			if err := json.Unmarshal([]byte(stdout), &doc); err != nil {
-				t.Fatalf("stdout is not one JSON document: %v\n%q\nstderr %s", err, stdout, stderr)
-			}
+			code, doc, _ := f.runJSON(t, tt.args...)
 			if code != tt.wantCode || doc.Status != tt.wantStatus || len(doc.Projects) != tt.projects || doc.Projects == nil {
 				t.Errorf("exit %d, document %+v; want exit %d, status %s, %d projects", code, doc, tt.wantCode, tt.wantStatus, tt.projects)
 			}
@@ -826,11 +1010,7 @@ func TestShip_RerunAdviceWhenOriginCannotBeReadOrTheBranchIsGone(t *testing.T) {
 			f.monorepoResults()
 			tt.setup(f.ws)
 			f.failStep = map[string]error{"core: echo build core": errors.New("exit code 1")}
-			code, stdout, _ := f.run(t, "--yes", "--json")
-			var doc shipDocument
-			if err := json.Unmarshal([]byte(stdout), &doc); err != nil {
-				t.Fatal(err)
-			}
+			code, doc, _ := f.runJSON(t, "--yes")
 			action := doc.Projects[0].Action
 			for _, w := range tt.want {
 				if !strings.Contains(action, w) {
@@ -856,11 +1036,7 @@ func TestShip_InterruptedRunStillReadsOriginForTheAdvice(t *testing.T) {
 	f.ws.originNow = strings.Repeat("9", 40)
 	f.onFirstStep = func() { f.cancel() }
 	f.failStep = map[string]error{"core: echo build core": context.Canceled}
-	code, stdout, _ := f.run(t, "--yes", "--json")
-	var doc shipDocument
-	if err := json.Unmarshal([]byte(stdout), &doc); err != nil {
-		t.Fatal(err)
-	}
+	code, doc, _ := f.runJSON(t, "--yes")
 	if code != 130 || doc.Status != "interrupted" {
 		t.Fatalf("exit %d, %+v", code, doc)
 	}
@@ -872,7 +1048,7 @@ func TestShip_InterruptedRunStillReadsOriginForTheAdvice(t *testing.T) {
 	}
 }
 
-func TestShip_ExpectBindsTheReleaseToTheApprovedVersions(t *testing.T) {
+func TestShip_ExpectBindsTheRunToTheApprovedVersions(t *testing.T) {
 	tests := []struct {
 		name      string
 		expect    []string
@@ -889,21 +1065,17 @@ func TestShip_ExpectBindsTheReleaseToTheApprovedVersions(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			f := newShipFixture(t, shipMonorepoYAML)
 			f.monorepoResults()
-			args := []string{"--yes", "--json"}
+			args := []string{"--yes"}
 			for _, e := range tt.expect {
 				args = append(args, "--expect", e)
 			}
-			code, stdout, stderr := f.run(t, args...)
-			var doc shipDocument
-			if err := json.Unmarshal([]byte(stdout), &doc); err != nil {
-				t.Fatalf("stdout: %v\n%s", err, stdout)
-			}
+			code, doc, stderr := f.runJSON(t, args...)
 			if code != tt.wantCode {
 				t.Fatalf("exit %d, want %d; stderr:\n%s", code, tt.wantCode, stderr)
 			}
 			if tt.wantCode == 0 {
-				if doc.Status != "released" || len(f.released()) != 2 {
-					t.Errorf("status %s, released %v", doc.Status, f.released())
+				if doc.Status != "packaged" || len(f.packaged(t)) != 2 {
+					t.Errorf("status %s, packaged %v", doc.Status, f.packaged(t))
 				}
 				return
 			}
@@ -962,17 +1134,12 @@ const shipPathsYAML = `release:
     - name: api
       path: api
       shared_paths: [libs/common, "libs/**/gen"]
-      presets: [dotnet, docker]
-      dotnet:
-        project_file: api/Api.csproj
-        solution: Api.sln
-      docker:
-        images:
-          - name: ghcr.io/acme/api
-            dockerfile: api/Dockerfile
-            context: ctx
+      build:
+        mode: compose
+        file: api/compose.yml
+        version_files: [api/Api.csproj]
       stages:
-        build: { run: "echo build", workdir: tools/build }
+        lint: { run: "echo lint", workdir: tools/build }
       hooks:
         prepare: [{ run: "echo prepare", workdir: tools/hooks }]
 `
@@ -986,24 +1153,22 @@ func TestShip_LocalPathsMissingOnOriginAreRefused(t *testing.T) {
 		{"every path on origin (the glob is not checked)", nil, nil},
 		{"project path", []string{"api"}, []string{`"api" (project api, path)`}},
 		{"shared path", []string{"libs/common"}, []string{`"libs/common" (project api, shared_paths)`}},
-		{"dotnet project file", []string{"api/Api.csproj"}, []string{`"api/Api.csproj" (project api, dotnet.project_file)`}},
-		{"dotnet solution", []string{"Api.sln"}, []string{`"Api.sln" (project api, dotnet.solution)`}},
-		{"dockerfile", []string{"api/Dockerfile"}, []string{`"api/Dockerfile" (project api, docker.images.dockerfile)`}},
-		{"docker context", []string{"ctx"}, []string{`"ctx" (project api, docker.images.context)`}},
-		{"stage workdir", []string{"tools/build"}, []string{`"tools/build" (project api, stages.build.workdir)`}},
+		{"compose file", []string{"api/compose.yml"}, []string{`"api/compose.yml" (project api, build.file)`}},
+		{"version file", []string{"api/Api.csproj"}, []string{`"api/Api.csproj" (project api, build.version_files)`}},
+		{"stage workdir", []string{"tools/build"}, []string{`"tools/build" (project api, stages.lint.workdir)`}},
 		{"hook workdir", []string{"tools/hooks"}, []string{`"tools/hooks" (project api, hooks.prepare.workdir)`}},
-		{"several, all listed", []string{"Api.sln", "tools/hooks"}, []string{`"Api.sln" (project api, dotnet.solution)`, `"tools/hooks" (project api, hooks.prepare.workdir)`}},
+		{"several, all listed", []string{"api/compose.yml", "tools/hooks"}, []string{`"api/compose.yml" (project api, build.file)`, `"tools/hooks" (project api, hooks.prepare.workdir)`}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			f := newShipFixture(t, shipPathsYAML)
 			f.ws.results = []semrel.ProjectResult{shipResult("api", "1.1.0", "v1.1.0")}
-			for _, d := range []string{"libs/common", "ctx", "tools/build", "tools/hooks"} {
+			for _, d := range []string{"libs/common", "tools/build", "tools/hooks"} {
 				if err := os.MkdirAll(filepath.Join(f.ws.dir, d), 0o755); err != nil {
 					t.Fatal(err)
 				}
 			}
-			for _, file := range []string{"api/Api.csproj", "Api.sln", "api/Dockerfile"} {
+			for _, file := range []string{"api/Api.csproj", "api/compose.yml"} {
 				if err := os.WriteFile(filepath.Join(f.ws.dir, file), []byte(apiCsproj), 0o644); err != nil {
 					t.Fatal(err)
 				}
@@ -1013,11 +1178,7 @@ func TestShip_LocalPathsMissingOnOriginAreRefused(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			code, stdout, stderr := f.run(t, "--dry-run", "--json")
-			var doc shipDocument
-			if err := json.Unmarshal([]byte(stdout), &doc); err != nil {
-				t.Fatal(err)
-			}
+			code, doc, stderr := f.runJSON(t, "--dry-run")
 			if tt.want == nil {
 				if code != 0 || doc.Status != "dry-run" {
 					t.Errorf("exit %d, %+v\nstderr %s", code, doc, stderr)
@@ -1035,7 +1196,7 @@ func TestShip_LocalPathsMissingOnOriginAreRefused(t *testing.T) {
 			if strings.Contains(doc.Error, "libs/**/gen") {
 				t.Errorf("the glob shared path was checked: %s", doc.Error)
 			}
-			// Refused before semantic-release plans anything.
+			// Refused before any version is computed.
 			if want := []string{"open", "close"}; !slices.Equal(f.events, want) {
 				t.Errorf("events %v, want %v", f.events, want)
 			}
@@ -1049,12 +1210,21 @@ func TestShip_SaysWhereTheSemanticReleaseConfigCameFrom(t *testing.T) {
 	for i := range f.ws.results {
 		f.ws.results[i].SemanticReleaseConfig = semrel.ConfigBuiltIn
 	}
-	code, stdout, stderr := f.run(t, "--dry-run", "--json")
-	var doc shipDocument
-	if err := json.Unmarshal([]byte(stdout), &doc); err != nil || code != 0 {
-		t.Fatalf("exit %d: %v %s", code, err, stdout)
+	code, doc, stderr := f.runJSON(t, "--dry-run")
+	if code != 0 || doc.SemanticReleaseConfig != semrel.ConfigBuiltIn || !strings.Contains(stderr, "semantic-release config: built-in default (dim)") {
+		t.Errorf("exit %d, document %+v\nstderr %s", code, doc, stderr)
 	}
-	if doc.SemanticReleaseConfig != semrel.ConfigBuiltIn || !strings.Contains(stderr, "semantic-release config: built-in default (dim)") {
-		t.Errorf("document %+v\nstderr %s", doc, stderr)
+}
+
+func TestPrependChangelog(t *testing.T) {
+	tests := []struct{ old, want string }{
+		{"", "## 2.0.0\n"},
+		{"# Changelog\n\n## 1.0.0\n", "# Changelog\n\n## 2.0.0\n\n## 1.0.0\n"},
+		{"## 1.0.0\n", "## 2.0.0\n\n## 1.0.0\n"},
+	}
+	for _, tt := range tests {
+		if got := prependChangelog(tt.old, "## 2.0.0\n\n"); got != tt.want {
+			t.Errorf("prependChangelog(%q) = %q, want %q", tt.old, got, tt.want)
+		}
 	}
 }
