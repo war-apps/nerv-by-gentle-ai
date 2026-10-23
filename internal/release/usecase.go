@@ -142,15 +142,20 @@ func compute(deps Deps, opts PreviewOptions, apply bool) (PreviewResult, error) 
 
 	if apply {
 		changelogPath := filepath.Join(deps.Repo, "CHANGELOG.md")
+		extensions, err := extensionVersions(deps.Repo, nextVersion)
+		if err != nil {
+			return result, err
+		}
 		written, err := applyVersion(pluginJSONPath, string(pluginJSONBytes), nextVersion, changelogPath, section)
 		if err != nil {
 			return result, err
 		}
-		extensions, err := applyExtensionVersions(deps.Repo, nextVersion)
-		if err != nil {
-			return result, err
+		for _, ext := range extensions {
+			if err := os.WriteFile(ext.path, []byte(ext.content), 0o644); err != nil {
+				return result, fmt.Errorf("writing %s: %w", ext.path, err)
+			}
+			written = append(written, ext.path)
 		}
-		written = append(written, extensions...)
 		result.Applied = true
 		result.Written = written
 	}
@@ -242,15 +247,20 @@ func applyVersion(pluginJSONPath, pluginJSONContent, nextVersion, changelogPath,
 	return []string{pluginJSONPath, changelogPath}, nil
 }
 
-// applyExtensionVersions writes nextVersion into every extension plugin's
-// plugins/<name>/.claude-plugin/plugin.json: all the plugins of the
-// marketplace ship in one release. It returns the files written, in path
-// order.
-func applyExtensionVersions(repo, nextVersion string) ([]string, error) {
+// extensionUpdate is one extension plugin.json rewritten to the next
+// version, not yet written.
+type extensionUpdate struct{ path, content string }
+
+// extensionVersions prepares nextVersion for every extension plugin's
+// plugins/<name>/.claude-plugin/plugin.json, in path order: all the plugins
+// of the marketplace ship in one release. It writes nothing, so a broken
+// extension manifest stops Apply before any file changes.
+func extensionVersions(repo, nextVersion string) ([]extensionUpdate, error) {
 	paths, err := filepath.Glob(filepath.Join(repo, "plugins", "*", ".claude-plugin", "plugin.json"))
 	if err != nil {
 		return nil, err
 	}
+	var updates []extensionUpdate
 	for _, path := range paths {
 		content, err := os.ReadFile(path)
 		if err != nil {
@@ -260,11 +270,9 @@ func applyExtensionVersions(repo, nextVersion string) ([]string, error) {
 		if err != nil {
 			return nil, fmt.Errorf("%s: %w", path, err)
 		}
-		if err := os.WriteFile(path, []byte(updated), 0o644); err != nil {
-			return nil, fmt.Errorf("writing %s: %w", path, err)
-		}
+		updates = append(updates, extensionUpdate{path: path, content: updated})
 	}
-	return paths, nil
+	return updates, nil
 }
 
 // GuardResult is Guard's outcome: version, tag, changelog_section,

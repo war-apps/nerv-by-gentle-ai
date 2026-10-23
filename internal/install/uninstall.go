@@ -7,14 +7,16 @@ import (
 
 	"github.com/war-apps/nerv-by-gentle-ai/internal/claude"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/paths"
-	"github.com/war-apps/nerv-by-gentle-ai/internal/plugin"
 )
 
-// Uninstall removes NERV's settings.json registration (backed up and
-// written atomically, like Install's own registration step), tolerantly
-// runs "claude plugin uninstall" for every enabled extension plugin and
-// then nerv@nerv, runs "claude plugin marketplace remove nerv", and
-// removes the materialized <home>/.nerv/marketplace directory.
+// Uninstall tolerantly runs "claude plugin uninstall" for every enabled
+// extension plugin of the nerv marketplace, then removes NERV's
+// settings.json registration (backed up and written atomically, like
+// Install's own registration step) including every other "*@nerv" id,
+// runs "claude plugin uninstall nerv@nerv" and "claude plugin marketplace
+// remove nerv", and removes the materialized <home>/.nerv/marketplace
+// directory. Extensions are uninstalled before settings.json changes, so
+// a failed one is still enabled, and retried, on the next run.
 func Uninstall(ctx context.Context, deps Deps) error {
 	path := settingsPath(deps)
 	previous, settings, err := loadOrInitSettings(path)
@@ -22,24 +24,31 @@ func Uninstall(ctx context.Context, deps Deps) error {
 		return err
 	}
 
-	exts, err := plugin.Extensions(deps.ExtensionsFS)
-	if err != nil {
-		return err
-	}
 	var extIDs []string
-	for _, e := range exts {
-		if id := e.Name + "@" + marketplaceName; settings.PluginEnabled(id) {
+	for _, id := range settings.MarketplacePlugins(marketplaceName) {
+		if id != pluginID {
 			extIDs = append(extIDs, id)
 		}
 	}
 
-	removedExt := false
+	cli := claude.PluginCLI{Runner: deps.Runner}
 	for _, id := range extIDs {
-		if settings.Unregister(marketplaceName, id) {
-			removedExt = true
+		if !settings.PluginEnabled(id) {
+			continue
+		}
+		fmt.Fprintf(deps.Stdout, "-> claude plugin uninstall %s\n", id)
+		if _, err := cli.Uninstall(ctx, id); err != nil {
+			return fmt.Errorf("claude plugin uninstall failed (re-run nerv uninstall to finish): %w", err)
 		}
 	}
-	if settings.Unregister(marketplaceName, pluginID) || removedExt {
+
+	removed := false
+	for _, id := range extIDs {
+		if settings.Unregister(marketplaceName, id) {
+			removed = true
+		}
+	}
+	if settings.Unregister(marketplaceName, pluginID) || removed {
 		written, backup, err := claude.SaveSettings(path, settings, previous, deps.Now())
 		if err != nil {
 			return fmt.Errorf("writing %s: %w", path, err)
@@ -49,18 +58,14 @@ func Uninstall(ctx context.Context, deps Deps) error {
 				fmt.Fprintf(deps.Stdout, "Backup written: %s\n", backup)
 			}
 			fmt.Fprintln(deps.Stdout, "Removed extraKnownMarketplaces.nerv and enabledPlugins[\"nerv@nerv\"].")
+			for _, id := range extIDs {
+				fmt.Fprintf(deps.Stdout, "Removed enabledPlugins[%q].\n", id)
+			}
 		}
 	} else {
 		fmt.Fprintln(deps.Stdout, "extraKnownMarketplaces.nerv and enabledPlugins[\"nerv@nerv\"] not present.")
 	}
 
-	cli := claude.PluginCLI{Runner: deps.Runner}
-	for _, id := range extIDs {
-		fmt.Fprintf(deps.Stdout, "-> claude plugin uninstall %s\n", id)
-		if _, err := cli.Uninstall(ctx, id); err != nil {
-			return fmt.Errorf("claude plugin uninstall failed: %w", err)
-		}
-	}
 	fmt.Fprintln(deps.Stdout, "-> claude plugin uninstall nerv@nerv")
 	if _, err := cli.Uninstall(ctx, pluginID); err != nil {
 		return fmt.Errorf("claude plugin uninstall failed: %w", err)
