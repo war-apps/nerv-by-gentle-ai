@@ -70,6 +70,18 @@
 - **Looking for gentle-ai's archive agent.** gentle-ai 4.x retired SDD, so
   there is none. Nerv by Gentle-AI archives mechanically — Aoba runs `git mv`
   plus `nerv spec-compose` per delta spec.
+- **An agent reports `partial` because `mem_save` was rejected** ("session
+  registration could not be confirmed"). The change is not blocked: the
+  agent hands the knowledge-base mirror back, Ikari saves it at close, and
+  the run summary lists any mirror still unflushed under `## KB mirrors
+  unflushed`.
+- **The archive blocks on `nerv spec-compose` after a requirement was
+  renamed.** The delta needs a `## RENAMED Requirements` block (`###
+  Requirement: Old → New` plus a `(Reason: ...)` line); Ritsuko writes it
+  when her spec delta renames a heading.
+- **A lock says a run is active, but nobody is working.** A lock whose
+  heartbeat is 15 minutes old or more (and not parked on a user gate) is
+  stale, not active; `/nerv:status` says so and a resume may proceed.
 - **A launch dies under memory pressure.** The protocol retries the launch
   once. If the session itself is interrupted, resuming is safe: the
   orchestrator lock and its heartbeat let a resume session detect and take
