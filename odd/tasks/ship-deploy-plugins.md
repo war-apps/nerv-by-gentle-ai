@@ -75,10 +75,10 @@ Branch: `feature/ship-deploy-plugins`, cut from `feature/tasks-plugin-split` at 
 | T1 | S2, S3 | delegated writer, in parallel with T2 (Writer trigger (a): independent units with disjoint surfaces, each over 100 lines; also the context backstop) | committed (RED: 14 Compute and Import tests plus the changelog test; GREEN: `go test ./internal/versioning` ok; parity 16/16 against semantic-release 24.2.9) | see `git log -- internal/versioning` |
 | T2 | S4, S5 | delegated writer, in parallel with T1 (same trigger) | committed and verified (no blockers) | f0254d2 |
 | T3 | S6, S7, S8 | delegated writer (context backstop) | committed and verified; fixes in ed99e5d | 322edc0, 367d066, ed99e5d |
-| T4 | S1, S9 | two parallel delegated writers: T4a Go, T4b prose (Writer trigger (a): disjoint surfaces, each well over 100 lines) | in progress | — |
+| T4 | S1, S9 | two parallel delegated writers: T4a Go, T4b prose (Writer trigger (a): disjoint surfaces, each well over 100 lines) | committed; verifier running (risk: items 3 and 5) | 2e80414, 16474d7, 3690480 |
 | T5 | S10 | delegated writer (context backstop; about 38 files of prose) | committed and verified; fixes in d752c90 | 7af0059, d752c90 |
 | T6 | S11 | delegated writer (context backstop; the edit surface spans the whole tree) | committed and verified; fixes in c5c0bf4 | 9c6032c, c5c0bf4 |
-| T7 | S12 | — | pending | — |
+| T7 | S12 | delegated writer (context backstop) | in progress | — |
 
 - **T1:** the native version engine (`internal/versioning`), its config schema, and the semantic-release config importer. Parity tests against the behaviours listed in S2, using the dim configs as fixtures.
 - **T2:** the build modes, compose and script, with presets removed. The artifact writer, and ship reworked to produce the artifact with no git writes.
@@ -201,4 +201,18 @@ Forecast: well over 400 lines (about 11.5k lines of Go move or are rewritten), s
     - the TDD mode is no longer persistent (`nerv migrate` should carry `strict_tdd` over);
     - wording leftovers;
     - a feature named `tasks` would collide.
-- **Next step:** T4a (running). T4b is written and not yet committed (it waits for T4a). The user's L5 decisions are "ODD + agentes NERV encima (Recommended)", "Se mantiene, renombrado (Recommended)" and "Subcomando nerv migrate (Recommended)". Then T6.
+- **L19** (2026-10-23): T4 committed.
+  - **2e80414 (T4a):**
+    - semantic-release and `nerv pipeline` are removed, and `internal/shipclone` computes with the native engine inside the throwaway clone;
+    - one `ship:` section holds the projects and engine keys; `nerv ship setup --import` translates a semantic-release config;
+    - the installer order is task → providers → ship → deploy → deploy providers;
+    - the Go advisories are fixed.
+  - **16474d7 (T4b):** the ship and deploy plugins (agents versioner, builder and deployer) are added, and the core commands removed. The parent amended out a 9.6 MB `nerv` binary a writer had built at the repo root, and `/nerv` is now in `.gitignore`.
+  - **3690480 (parent):** deploy now makes lightweight tags. semantic-release reads the channel note of an annotated tag from the tag object, so CI still running semantic-release would have missed it. Test RED, then GREEN.
+  - **Differential check:** `nerv version next` gives identical text, json and env output against semantic-release 24.2.3 on 3 fixture repos, 18 of 18 runs.
+  - **Writer decisions to confirm:**
+    - online `version next` only sees origin's tags;
+    - `ship --version` must fit the branch entry;
+    - an unimported semantic-release config only warns.
+  - **Open:** the tar name clash (L10).
+- **Next step:** T7, and the T4 verifier. Ask the user the L18 advisory-1 decision. The user's L5 decisions are "ODD + agentes NERV encima (Recommended)", "Se mantiene, renombrado (Recommended)" and "Subcomando nerv migrate (Recommended)". Then T6.
