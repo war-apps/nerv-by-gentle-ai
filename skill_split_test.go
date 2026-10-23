@@ -126,8 +126,8 @@ func TestLightPipeline_LaunchesOneBoundedWriter(t *testing.T) {
 }
 
 // DIRECT is the only tier where Ikari edits source itself. The test pins its
-// real rules: the classification thresholds in the core, no agent besides
-// Hyuga and Maya, Maya only on a high or unassessable tier with RDD off or
+// real rules: the classification thresholds in the core, no NERV agent
+// besides Maya (the task plugin's dispatcher is not a NERV agent), Maya only on a high or unassessable tier with RDD off or
 // unknown, user validation before the commit, and the ratchet to LIGHT.
 func TestDirectPipeline_PinsItsRoutingRules(t *testing.T) {
 	const corePath = "skills/nerv-orchestrator/SKILL.md"
@@ -141,7 +141,7 @@ func TestDirectPipeline_PinsItsRoutingRules(t *testing.T) {
 	const path = "skills/nerv-orchestrator/references/pipeline-direct.md"
 	direct := readPluginText(t, path)
 	assertContainsAll(t, path, normalizeSpace(direct),
-		"No NERV agent is launched except `nerv:hyuga`",
+		"No NERV agent is launched except `nerv:maya`",
 		"`nerv:maya` only when",
 		"RDD off or unknown",
 		"`high`, a failed assessment or an unrecognized verb launches `nerv:maya`",
@@ -150,10 +150,10 @@ func TestDirectPipeline_PinsItsRoutingRules(t *testing.T) {
 		"loads `pipeline-light.md`",
 		"RDD hook",
 	)
-	for _, role := range []string{"shinji", "asuka", "rei", "toji", "kaworu", "ritsuko", "aoba", "misato",
+	for _, role := range []string{"hyuga", "shinji", "asuka", "rei", "toji", "kaworu", "ritsuko", "aoba", "misato",
 		"balthasar", "melchior", "casper", "fuyutsuki", "kaji", "gendo"} {
 		if strings.Contains(direct, "nerv:"+role) {
-			t.Errorf("%s launches nerv:%s; DIRECT launches only nerv:hyuga and nerv:maya", path, role)
+			t.Errorf("%s launches nerv:%s; DIRECT launches only nerv:maya", path, role)
 		}
 	}
 }
@@ -176,13 +176,11 @@ func TestFullPipeline_FixRoutingSpellsOutItsOwnCycle(t *testing.T) {
 	}
 }
 
-// The shared contracts know the DIRECT tier: state.yaml records it and the
-// tracker's testing move follows the work unit's verification.
+// The shared contracts know the DIRECT tier: state.yaml records it. The
+// testing move of the task plugin is pinned in task_split_prose_test.go.
 func TestSharedContracts_KnowTheDirectTier(t *testing.T) {
 	const artifacts = "skills/_shared/nerv-artifacts.md"
 	assertContainsAll(t, artifacts, readPluginText(t, artifacts), "# direct | light | full")
-	const tasks = "skills/nerv-tasks/SKILL.md"
-	assertContainsAll(t, tasks, readPluginText(t, tasks), "when the work unit's verification starts")
 }
 
 func normalizeSpace(s string) string {

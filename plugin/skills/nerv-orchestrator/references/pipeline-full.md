@@ -14,7 +14,7 @@ the table below or downgrade FULL to LIGHT or DIRECT mid-run.
 
 | Step | Actor | Launch prompt carries | Expected envelope | Gate |
 |---|---|---|---|---|
-| 0. Preflight | Ikari, Hyuga (d), Aoba | — | tracker start via Hyuga `DISPATCH: tracker` (`createTask` if requested, then `start`); worktree/branch state | user HARD if asked |
+| 0. Preflight | Ikari, `task:dispatcher` (only when the task plugin is installed), Aoba | — | `run.started` envelopes; worktree/branch state | user HARD if asked |
 | 1. Intel | `nerv:ritsuko` (MODE: intel) | change scope, skills | `exploration.md` (Ikari writes it to its locator) | gatekeeper |
 | 2. Spec + test plan | `nerv:ritsuko` (MODE: test-plan) | `exploration.md` locator, skills | `specs/{domain}/spec.md`, `nerv/test-plan.md` with `## Corner-case questions` | **user HARD** — Ikari relays the questions as one grouped blocking prompt; the answers are written into `## Answers` and gate the plan |
 | 3. Plan | `nerv:misato` | `exploration.md`, `spec.md`, `test-plan.md` (with answers), skills | `proposal.md`, `design.md` (must contain `## New skills, scripts and commands`), `tasks.md` (ids `T1`, `T2`, ... with `pilot` and `depends_on`) | gatekeeper — verifies the `## New skills, scripts and commands` section exists in `design.md` |
@@ -33,31 +33,35 @@ the table below or downgrade FULL to LIGHT or DIRECT mid-run.
 | 16. Ranking + issue gate | `nerv:hyuga` (dispatch c) | `audit-report.md` (post-refuter) | `nerv/issue-ranking.md` | **user HARD** — Ikari relays the ranked NOW/DEFER list as one blocking prompt: approve the NOW set / edit it / accept residual and close |
 | 17. Fix routing + re-audit loop | owning pilot per approved issue (FULL work-unit cycle: Kaworu RED when behavioral, Aoba commit, pilot fix, Aoba commit, RDD hook), `nerv:aoba` (fix-delta patch), audit passes, `nerv:kaji` | fixes committed; `nerv/audit/diff-round-N+1.patch` scoped to the fix delta only; updated `audit-report.md` carrying forward unresolved items | cap 2 re-audits (loop back to step 14 over the fix-delta patch); at the cap the user accepts the residual (`residual_accepted` in `issue-ranking.md`) or declines the remainder; deviations → Misato ruling |
 | 18. Docs + archive + curate | `nerv:ritsuko` (MODE: docs), `nerv:aoba` (Archive duty), `nerv:fuyutsuki` (MODE: curate) | `issue-ranking.md`, fix commits, `tasks.md`, docs deltas | `nerv/issue-resolutions.md`, `nerv/agent-config.md`, repo doc deltas (Ikari writes them at Ritsuko-named locators), change archived to `openspec/changes/archive/YYYY-MM-DD-{change}/` via `nerv spec-compose` + `git mv`, `## Summary` appended to `nerv/deliberation-log.md` | gatekeeper |
-| 19. Run summary + close | `nerv:aoba`; `nerv:hyuga` `DISPATCH: tracker` (`close`, or `done` when the user prefers the task stay open) | usage table from Ikari | `nerv/run-summary.md`, change closed, tracker updated (see `### Tracker dispatch (Phase 4)` below) | none — the user already validated at gates 16 and 18 |
+| 19. Run summary + close | `nerv:aoba`; `task:dispatcher` `run.closed` (only when the task plugin is installed) | usage table and task envelopes from Ikari | `nerv/run-summary.md`, change closed (see `### Task events` below) | none — the user already validated at gates 16 and 18 |
 
-### Tracker dispatch (Phase 4)
+### Task events
 
-`nerv:hyuga` `DISPATCH: tracker` runs at four points in FULL (in DIRECT
-and LIGHT: Preflight, the work unit's verification start, and Close):
+When the task plugin is installed, Ikari emits the core's `## Task events`
+through `task:dispatcher` at these points in FULL (in DIRECT and LIGHT:
+Preflight, the work unit's verification start, and Close). Without
+`task:dispatcher`, none of them runs.
 
-- **Preflight (step 0).** `createTask` if requested, then `start`
-  (assign, `inDev` stage, local timer). Skipped when the provider is
-  `none` or the user chose to work without a task.
-- **Maya's full gate start (before step 12).** `moveStage(testing)`.
-- **Issue gate (around step 16).** `comment` with the ranked audit
-  summary; `createTask` for every accepted `DEFER` issue, so deferred
-  findings become tracked follow-up work.
-- **Close (step 19).** `close` (`stop` with real start/end +
-  `moveStage(implemented)` + `complete`), or `done` (same without
-  `complete`) when the user prefers the task stay open. Ikari also sets
-  `status: done` on every completed task in `tasks.md`, records `closed_at`
-  in `state.yaml`, and deletes `nerv/.orchestrator.lock`.
+- **Preflight (step 0).** `run.started`, after classification. A
+  `needs_input` envelope is relayed verbatim and dispatched again with the
+  answer in `data`.
+- **Implementation wave start (step 11).** `wave.started` once per wave,
+  with the wave in `data`.
+- **Maya's full gate start (before step 12).** `verification.started`.
+- **Issue gate (step 16).** `audit.ranked` with the ranked audit summary in
+  `data`, then `issue.deferred` once per accepted `DEFER` issue, so
+  deferred findings become follow-up work.
+- **Close (step 19).** `run.closed`, before Aoba writes the run summary,
+  so its envelope appears in it. It never completes the task: completing
+  it stays an explicit `/task:close`. Ikari also sets `status: done` on
+  every completed task in `tasks.md`, records `closed_at` in `state.yaml`,
+  and deletes `nerv/.orchestrator.lock`.
 
-A halted run routes to `block(reason)` instead — Ikari asks the user for
-the mandatory cause first, then Hyuga runs `block` with it. Every tracker
-op is logged by Ikari as one `tracker_event` entry in
-`nerv/deliberation-log.md` (`{op, taskRef, result}`); see the port
-contract in `plugin/agents/hyuga.md`.
+A halted run emits `run.halted` instead — Ikari asks the user for the
+mandatory cause first and passes it in `data`. A `blocked` or `failed`
+envelope never halts or retries the run. Ikari appends every envelope to
+`nerv/task-events.yaml` and logs one `task_event` entry
+(`{event, provider, result, task_ref}`) in `nerv/deliberation-log.md`.
 
 ### Plan gatekeeper
 

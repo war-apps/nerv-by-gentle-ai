@@ -123,7 +123,7 @@ Return exactly these fields as the final text:
 - `detailed_report`: full output, or omit if already inline
 - `artifacts`: list of artifact keys/paths written
 - `next_recommended`: one of `none`, `next-pilot`, `maya-gate`,
-  `aoba-commit`, `tracker-close`
+  `aoba-commit`, `run-closed` (Ikari emits the `run.closed` task event)
 - `risks`: risks discovered, or "None"
 - `skill_resolution`: `paths-injected`, `fallback-registry`,
   `fallback-path`, or `none`

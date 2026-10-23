@@ -20,11 +20,10 @@ which lives at `openspec/changes/{change}/state.yaml` and carries the
   never hand-edited by NERV agents).
 - Location: `openspec/changes/{change}/state.yaml`.
 - Engram key: `nerv/{change}/state` (mirror of the `nerv:` block only).
-- `task_ref` holds `{PREFIX}-{id}` — the resolved provider's
-  `task_ref_prefix` uppercased plus the task id, e.g. `TW-49132010` —
-  when a task is active, or `null` when the change has no task
-  (`tasks.provider: none`, or the user chose to work without one at
-  Preflight).
+- `task_ref` holds `{PREFIX}-{id}`, e.g. `TW-49132010`, taken from the
+  `run.started` envelope the task plugin returns at Preflight, or `null`
+  when the change has no task (the task plugin is not installed, or its
+  envelopes carry no `task_ref`).
 - `closed_at` is `null` until the change closes, then set once by Ikari at
   Close (DIRECT's or LIGHT's Close step, or FULL's step 19), the same
   write that deletes
@@ -199,6 +198,33 @@ estimated.
 
 ## PR slices
 {none, or the chained/stacked slice list with boundaries}
+
+## Task events pending
+{only when the task plugin is installed and some envelope in
+nerv/task-events.yaml is pending: one line per envelope (event, provider,
+error), then: replay them with `/task:replay {change}`}
+```
+
+## task-events.yaml (Ikari, append-only)
+
+- Purpose: every envelope the task plugin's `task:dispatcher` returned for
+  this change, so undelivered events can be replayed.
+- Author: Ikari, after every dispatch. Never created when the task plugin
+  is not installed (`task:dispatcher` unavailable).
+- Location: `nerv/task-events.yaml`.
+- Shape: one list item per envelope, verbatim from the dispatcher
+  (`{event, provider, result, task_ref, data, error, replay}`), plus the
+  `payload` it was dispatched with. An envelope with `result` `blocked` or
+  `failed` and `replay: true` is **pending** until `/task:replay {change}`
+  marks it `replayed: <ISO time>` with its new result.
+
+```yaml
+- event: run.started
+  provider: <provider name>
+  result: ok                      # ok | skipped | blocked | failed
+  task_ref: "TW-49132010"
+  data: {stage: "<provider stage>", timer: started}
+  payload: {task_ref: "", repo: "<repo>", change: "{change}", branch: "<branch>", worktree: "", session_id: "<uuid>", data: {}, disabled_events: []}
 ```
 
 ## deliberation-log.md (Ikari, append-only)
@@ -753,17 +779,18 @@ The audit-and-closure stage adds these event types to
 - `log_curated` — Fuyutsuki appended the `## Summary` block to
   `nerv/deliberation-log.md` (MODE: curate).
 
-### Phase 4 event types
+### Task plugin event types
 
-The task-tracking layer adds one event type to the same append-only log,
-same shape (`{ts, phase, actor, event_type, payload_ref}`):
+When the task plugin is installed, it adds one event type to the same
+append-only log, same shape (`{ts, phase, actor, event_type, payload_ref}`):
 
-- `tracker_event` — one task-tracking port operation completed (payload:
-  `{op, taskRef, result}`, taken verbatim from `nerv:hyuga`'s
-  `DISPATCH: tracker` envelope). Logged by Ikari after every tracker
-  dispatch: Preflight's `createTask`/`start`, Maya's full-gate
-  `moveStage(testing)`, the issue gate's `comment`/`createTask` for
-  accepted `DEFER` issues, and Close's `close`/`done`/`block`.
+- `task_event` — one envelope returned by `task:dispatcher` (payload:
+  `{event, provider, result, task_ref}`, taken verbatim from the envelope,
+  which Ikari also appends to `nerv/task-events.yaml`). Logged by Ikari
+  after every dispatch: `run.started` at Preflight,
+  `verification.started`, `wave.started`, `audit.ranked` and
+  `issue.deferred` at the issue gate, and `run.closed` or `run.halted` at
+  Close. Never logged when the task plugin is not installed.
 
 ### Phase 5 event types
 

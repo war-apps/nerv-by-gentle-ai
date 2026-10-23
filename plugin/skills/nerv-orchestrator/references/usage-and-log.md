@@ -28,11 +28,13 @@ declaration (tier plus trigger evidence, see SKILL.md Classification). FULL adds
 also defined in `nerv-artifacts.md`: `patch_frozen`, `audit_pass`,
 `dedupe_merge`, `refuter_result`, `ranking_issued`, `issue_gate_relayed`,
 `issue_gate_decision`, `fix_routed`, `reaudit`, `residual_accepted`,
-`docs_written`, `archived`, `log_curated`. Phase 4 adds `tracker_event`
-(payload `{op, taskRef, result}`, defined in `nerv-artifacts.md`), logged
-once per Hyuga tracker op — Preflight, the testing move (Maya's full-gate
-start in FULL, the work unit's verification start in DIRECT and LIGHT),
-the issue gate, and Close. Phase 5 adds `resume` (`{from_step, took_over_from}`) and
+`docs_written`, `archived`, `log_curated`. The task plugin adds
+`task_event` (payload `{event, provider, result, task_ref}`, defined in
+`nerv-artifacts.md`), logged once per envelope `task:dispatcher` returns —
+`run.started`, `verification.started` (Maya's full-gate start in FULL, the
+work unit's verification start in DIRECT and LIGHT), `wave.started`,
+`audit.ranked`, `issue.deferred`, `run.closed` and `run.halted` — and only
+when the task plugin is installed. Phase 5 adds `resume` (`{from_step, took_over_from}`) and
 `lock_refused`, also defined in `nerv-artifacts.md`, logged by the
 Orchestrator lock and Resume protocols. A `launch` entry's payload opens with
 the launch's `({model}) {Display name}: {action}` label, the same text as its Agent
@@ -47,9 +49,9 @@ the issue gate always produces `issue_gate_relayed` and
 pre-granted in the launch context (payload: `approved-as-ranked`, the
 empty NOW set, the DEFER ids). Recording a decision only in
 `issue-ranking.md` or `issue-resolutions.md` is not a substitute: those
-files are the artifact, the log line is the event. A `tracker_event` is
-logged for the DEFER `createTask` ops as well (`result=skipped` when the
-provider is `none`).
+files are the artifact, the log line is the event. With the task plugin
+installed, a `task_event` is logged for every `issue.deferred` envelope as
+well, including `result=skipped` ones.
 
 **Close ordering.** The close commit (`docs: close nerv run for {change}`)
 is the run's last write. Ikari appends the `stop` event before launching
