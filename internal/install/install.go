@@ -24,7 +24,8 @@ const marketplaceName = "nerv"
 // registering that directory marketplace and enabling nerv@nerv in
 // settings.json, refreshing the plugin cache through "claude plugin
 // uninstall/install" and verifying it against the embedded version,
-// applying model/effort assignments to the cached agents, ensuring the
+// reporting (and, on confirmation, removing) the old /task:* command copies
+// that shadow the task plugin's commands, applying model/effort assignments to the cached agents, ensuring the
 // Engram "nerv" knowledge base, and installing skills (unless
 // opts.NoSkills). The closing "run nerv configure" hint is cmd/nerv's own
 // responsibility, not this package's. Every step's progress is written to
@@ -59,6 +60,8 @@ func Install(ctx context.Context, deps Deps, opts Options) error {
 			return err
 		}
 	}
+
+	reportLegacyCommands(deps)
 
 	if err := applyModelsForVersion(deps, pluginVersion); err != nil {
 		return err
@@ -178,15 +181,38 @@ func registerSettings(deps Deps, opts Options, marketplaceDir string) ([]plugin.
 
 // RefreshCache re-registers nerv@nerv in the Claude Code plugin cache
 // ("claude plugin marketplace add", then "uninstall/install") and verifies
-// the cached version matches the embedded plugin version. Exported for internal/wizard's
-// closing "apply and refresh" step, wrapping the same tail Install itself
-// runs after registering settings.json.
+// the cached version matches the embedded plugin version, then does the
+// same for every extension plugin of deps.ExtensionsFS that settings.json
+// enables, at that extension's embedded version. Exported for
+// internal/wizard's closing "apply and refresh" step, wrapping the same tail
+// Install itself runs after registering settings.json.
 func RefreshCache(ctx context.Context, deps Deps) error {
 	pluginVersion, err := version.PluginVersion(deps.FS)
 	if err != nil {
 		return fmt.Errorf("reading embedded plugin version: %w", err)
 	}
-	return refreshCache(ctx, deps, pluginVersion)
+	if err := refreshCache(ctx, deps, pluginVersion); err != nil {
+		return err
+	}
+
+	exts, err := plugin.Extensions(deps.ExtensionsFS)
+	if err != nil || len(exts) == 0 {
+		return err
+	}
+	_, settings, err := loadOrInitSettings(settingsPath(deps))
+	if err != nil {
+		return err
+	}
+	for _, ext := range exts {
+		id := ext.Name + "@" + marketplaceName
+		if !settings.PluginEnabled(id) {
+			continue
+		}
+		if err := refreshPlugin(ctx, deps, id, ext.Version); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func refreshCache(ctx context.Context, deps Deps, pluginVersion string) error {

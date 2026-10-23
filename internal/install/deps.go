@@ -54,6 +54,11 @@ type Deps struct {
 	// installed. Nil suggests nothing: non-interactive callers leave it
 	// unset.
 	ConfirmExtension func(name, description string) bool
+	// ConfirmRemoveLegacyCommands, when set, is asked whether to delete the
+	// old /task:* copies found in <Home>/.claude/commands/task, which shadow
+	// the task plugin's commands. Nil only reports them: non-interactive
+	// callers leave it unset.
+	ConfirmRemoveLegacyCommands func(files []string) bool
 	// Stdout receives this package's step-by-step progress log.
 	Stdout io.Writer
 }
@@ -65,8 +70,8 @@ type Options struct {
 	RequireGentleAI bool
 	// NoSkills skips the skills-install step entirely.
 	NoSkills bool
-	// Extensions names extension plugins to install (such as "task" or
-	// "task-teamwork"); their requirements are added. Unknown names are a
+	// Extensions names extension plugins to install (such as "task" or a
+	// "task-<provider>" plugin); their requirements are added. Unknown names are a
 	// RefusalError.
 	Extensions []string
 }
