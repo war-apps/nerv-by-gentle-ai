@@ -29,7 +29,7 @@ origin) in a temporary directory at the artifact's base commit and:
   1. commits the artifact's release files (CHANGELOG, version files) with
      deploy.git.commit_message (default @semantic-release/git's
      "chore(release): ${nextRelease.version} [skip ci]" and the notes);
-  2. creates the annotated tag and semantic-release's channel note
+  2. creates the lightweight tag and semantic-release's channel note
      refs/notes/semantic-release-<tag>;
   3. pushes the branch, the tag and the note atomically (never forced);
   4. runs every target's publish, then each target's deploy and verify, in

@@ -81,7 +81,7 @@ nerv deploy --artifact <dir> [--target <name> ...] [--dry-run] [--rebase] [--yes
 | `verify-artifact` | Checks the sha256 of the notes, the CHANGELOG section, every output and every release file; a file the manifest does not list is refused. |
 | `clone` | Clones `deploy.git.remote` in a temporary directory, with its tags and channel notes. |
 | `commit` | Writes the release files on the artifact's base commit and commits them with `deploy.git.commit_message`. |
-| `tag` | Creates the annotated tag. |
+| `tag` | Creates the lightweight tag, as semantic-release does. |
 | `notes` | Writes the channel note `refs/notes/semantic-release-<tag>`, so the next prerelease number continues. |
 | `push` | Pushes the branch, the tag and the note in one atomic push; never forced. |
 | `publish:<target>` | Each target's `publish`, in `deploy.targets` order. |

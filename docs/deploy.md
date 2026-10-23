@@ -50,7 +50,7 @@ binary after the tag is on origin.
 | `verify-artifact` | Checks the sha256 of the notes, the CHANGELOG section, every output and every release file. A file the manifest does not list is refused. |
 | `clone` | Clones the remote (`deploy.git.remote`) in a temporary directory, with its tags and `refs/notes/semantic-release*`. |
 | `commit` | Writes the artifact's release files (CHANGELOG, version files) on the artifact's base commit and commits them with `deploy.git.commit_message`. |
-| `tag` | Creates the annotated tag (the artifact's tag, from the project's `tag_format`). |
+| `tag` | Creates the lightweight tag, as semantic-release does (the artifact's tag, from the project's `tag_format`), so the channel note on the release commit is also the tag's note for semantic-release. |
 | `notes` | Writes semantic-release's channel note on the release commit: ref `refs/notes/semantic-release-<tag>`, content `{"channels":["<channel>"]}` (`[null]` for the default channel). Without it, the next prerelease number of the channel would start over. |
 | `push` | Pushes the branch, the tag and the note in one atomic push. It never force-pushes. |
 | `publish:<target>` | Each target's `publish`, in `deploy.targets` order. |

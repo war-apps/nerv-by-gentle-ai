@@ -16,7 +16,7 @@ import (
 
 const tag = "v1.0.0-alpha.1"
 
-// A deploy makes the release commit on the base commit, the annotated tag,
+// A deploy makes the release commit on the base commit, the lightweight tag,
 // semantic-release's channel note, pushes all three, then runs the target's
 // publish, deploy and verify and creates the GitHub prerelease.
 func TestRun_ReleasesAndDeploysTheArtifact(t *testing.T) {
@@ -40,8 +40,11 @@ func TestRun_ReleasesAndDeploysTheArtifact(t *testing.T) {
 	if got := git(t, e.origin, "show", head+":CHANGELOG.md"); got != strings.TrimSpace(changelog) {
 		t.Errorf("CHANGELOG.md at the release commit %q", got)
 	}
-	if kind := git(t, e.origin, "cat-file", "-t", "refs/tags/"+tag); kind != "tag" {
-		t.Errorf("tag is a %s, want an annotated tag", kind)
+	// A lightweight tag, as semantic-release makes it: its channel note on
+	// the release commit is also the tag's note for semantic-release's
+	// "git notes show <tag>", so both engines read it.
+	if kind := git(t, e.origin, "cat-file", "-t", "refs/tags/"+tag); kind != "commit" {
+		t.Errorf("tag is a %s, want a lightweight tag on the release commit", kind)
 	}
 	if peeled := git(t, e.origin, "rev-parse", tag+"^{commit}"); peeled != head {
 		t.Errorf("tag points at %s, want the release commit %s", peeled, head)

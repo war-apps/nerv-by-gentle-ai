@@ -241,7 +241,7 @@ nerv ship setup --import
 
 Releases and deploys an artifact `nerv ship` left: it preflights every
 target's tools and data before any push, then makes the release commit, the
-annotated tag and the channel note, pushes them atomically, runs each
+lightweight tag and the channel note, pushes them atomically, runs each
 target's publish, deploy and verify, and creates the git host release.
 `--dry-run` prepares the release in a clone and shows the steps; `--target`
 selects targets; `--rebase` re-applies the release on origin's moved branch.

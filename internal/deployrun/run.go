@@ -7,7 +7,7 @@
 //  3. commit: the release commit, the artifact's release files on its base
 //     commit with deploy.git.commit_message (when origin's branch moved
 //     past the base, only with Rebase, cherry-picked on the new head);
-//  4. tag: the annotated tag;
+//  4. tag: the lightweight tag, as semantic-release makes it;
 //  5. notes: semantic-release's channel note refs/notes/semantic-release-
 //     <tag>, {"channels":[<channel or null>]}, on the release commit (where
 //     git log --tags reads it, as the version engine does);
@@ -272,7 +272,7 @@ func (d *deployer) prepare(ctx context.Context, message string) ([]string, error
 		if commit != head {
 			refs = append(refs, commit+":refs/heads/"+m.Branch)
 		}
-		if _, err := w.git(ctx, "tag", "--annotate", "--message", m.Tag, "--", m.Tag, commit); err != nil {
+		if _, err := w.git(ctx, "tag", "--", m.Tag, commit); err != nil {
 			tr.set("tag", StatusFailed, "%v", err)
 			return nil, err
 		}
