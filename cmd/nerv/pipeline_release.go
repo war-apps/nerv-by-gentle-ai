@@ -119,7 +119,7 @@ func (s *shipRun) prepareRelease(ctx context.Context, base func(context.Context,
 	cfg, err := pipelineconfig.Load(top)
 	switch {
 	case errors.Is(err, pipelineconfig.ErrNotConfigured):
-		return "", refuse("the repository has no pipeline: section in .nerv/nerv.yaml; see docs/pipeline.md")
+		return "", refuse("%s", withLegacyHint("the repository has no pipeline: section in .ai-workflow.yml; see docs/pipeline.md", top))
 	case err != nil:
 		// An invalid section is a refusal (exit 1), as for nerv ship.
 		return "", &refusal.Error{Err: err}

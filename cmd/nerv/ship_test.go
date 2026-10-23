@@ -216,7 +216,7 @@ func newShipFixture(t *testing.T, nervYAML string) *shipFixture {
 			t.Fatal(err)
 		}
 		if nervYAML != "" {
-			if err := os.WriteFile(filepath.Join(dir, ".nerv", "nerv.yaml"), []byte(nervYAML), 0o644); err != nil {
+			if err := os.WriteFile(filepath.Join(dir, ".ai-workflow.yml"), []byte(nervYAML), 0o644); err != nil {
 				t.Fatal(err)
 			}
 		}
@@ -1117,7 +1117,7 @@ func TestShip_UsesTheLocalConfigurationNotOrigins(t *testing.T) {
 	f.monorepoResults()
 	// Origin's committed copy (in the clone) has other commands.
 	other := strings.ReplaceAll(shipMonorepoYAML, "echo build core", "echo origin build core")
-	if err := os.WriteFile(filepath.Join(f.ws.dir, ".nerv", "nerv.yaml"), []byte(other), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(f.ws.dir, ".ai-workflow.yml"), []byte(other), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	if code, _, stderr := f.run(t, "--yes"); code != 0 {

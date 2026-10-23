@@ -87,7 +87,7 @@ func newSyncFixture(t *testing.T, yaml string) *syncFixture {
 	if err := os.MkdirAll(filepath.Join(top, ".nerv"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(top, ".nerv", "nerv.yaml"), []byte(yaml), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(top, ".ai-workflow.yml"), []byte(yaml), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	return &syncFixture{top: top, ws: &fakeSyncWorkspace{origin: []string{"main", "develop", "release/a", "release/b"}}}

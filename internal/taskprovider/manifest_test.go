@@ -110,7 +110,7 @@ func TestParse_Config(t *testing.T) {
 	wantProblem(t, strings.Replace(valid, "key: project_id", "key: assignee_id", 1), "assignee_id: duplicated")
 	wantProblem(t, strings.Replace(valid, "    prompt: Acme project id\n", "", 1), "prompt")
 	wantProblem(t, strings.Replace(valid, `default: "0"`, `default: "zero"`, 1), "default")
-	// A map key is edited in nerv.yaml, so it needs no prompt.
+	// A map key is edited in the configuration files, so it needs no prompt.
 	mapKey := strings.Replace(valid, "config:\n", "config:\n  - key: comment_labels\n    scope: user\n    type: map\n", 1)
 	if m := mustParse(t, mapKey); m.Config[0].Scalar() {
 		t.Errorf("a map key reported as scalar: %+v", m.Config[0])

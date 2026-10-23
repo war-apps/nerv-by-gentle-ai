@@ -9,7 +9,7 @@ set -euo pipefail
 git init -q -b main
 
 mkdir -p .nerv src
-cat > .nerv/nerv.yaml <<'YAML'
+cat > .ai-workflow.yml <<'YAML'
 enabled: true
 git:
   worktree: never

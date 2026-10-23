@@ -13,9 +13,19 @@ import (
 	"github.com/war-apps/nerv-by-gentle-ai/internal/pipelineconfig"
 )
 
-// writeConfig writes text as <repo>/.nerv/nerv.yaml in a fresh temporary
+// writeConfig writes text as <repo>/.ai-workflow.yml in a fresh temporary
 // repository and returns the repository root.
 func writeConfig(t *testing.T, text string) string {
+	t.Helper()
+	repo := t.TempDir()
+	if err := os.WriteFile(filepath.Join(repo, ".ai-workflow.yml"), []byte(text), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return repo
+}
+
+// writeLegacyConfig writes text as the pre-rename <repo>/.nerv/nerv.yaml.
+func writeLegacyConfig(t *testing.T, text string) string {
 	t.Helper()
 	repo := t.TempDir()
 	dir := filepath.Join(repo, ".nerv")
@@ -50,11 +60,13 @@ func TestLoad_NotConfigured(t *testing.T) {
 		name string
 		repo func(t *testing.T) string
 	}{
-		{"no nerv.yaml", func(t *testing.T) string { return t.TempDir() }},
-		{"nerv.yaml without pipeline", func(t *testing.T) string {
+		{"no .ai-workflow.yml", func(t *testing.T) string { return t.TempDir() }},
+		// The old file is never read as configuration (nerv migrate moves it).
+		{"only the old .nerv/nerv.yaml", func(t *testing.T) string { return writeLegacyConfig(t, minimal) }},
+		{".ai-workflow.yml without pipeline", func(t *testing.T) string {
 			return writeConfig(t, "enabled: true\nrelease:\n  projects:\n    - { name: api, path: . }\n")
 		}},
-		{"empty nerv.yaml", func(t *testing.T) string { return writeConfig(t, "") }},
+		{"empty .ai-workflow.yml", func(t *testing.T) string { return writeConfig(t, "") }},
 		{"broken YAML elsewhere", func(t *testing.T) string {
 			return writeConfig(t, "enabled: true\nenabled: false\n")
 		}},

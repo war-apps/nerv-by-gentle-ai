@@ -21,7 +21,7 @@ import (
 	"github.com/war-apps/nerv-by-gentle-ai/internal/wizard"
 )
 
-// fixtureLF mirrors the real nerv.yaml shape (every managed key at its
+// fixtureLF mirrors the real config.yml shape (every managed key at its
 // built-in default), LF line endings — port of tests/configure.test.ps1's
 // $fixtureLf, trimmed to the fields the Go wizard's User-config section
 // actually asks about (the exotic known_projects:/sources:/sources_howto:
@@ -105,7 +105,7 @@ func noRunner() *envtest.FakeRunner { return &envtest.FakeRunner{} }
 
 func testPaths(root, home string) configure.Paths {
 	return configure.Paths{
-		Config:    filepath.Join(root, "nerv.yaml"),
+		Config:    filepath.Join(root, "config.yml"),
 		State:     filepath.Join(home, ".gentle-ai", "state.json"),
 		SkillsDir: filepath.Join(home, ".claude", "skills"),
 	}
@@ -124,7 +124,7 @@ func skipAll() wizard.Options {
 
 func countBackups(t *testing.T, root string) int {
 	t.Helper()
-	matches, err := filepath.Glob(filepath.Join(root, "nerv.yaml.bak-configure-*"))
+	matches, err := filepath.Glob(filepath.Join(root, "config.yml.bak-configure-*"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -147,7 +147,7 @@ func countBackups(t *testing.T, root string) int {
 func TestRun_AllBlankAnswers_ByteIdenticalNoBackup(t *testing.T) {
 	root := t.TempDir()
 	home := t.TempDir()
-	writeFixture(t, filepath.Join(root, "nerv.yaml"))
+	writeFixture(t, filepath.Join(root, "config.yml"))
 	paths := testPaths(root, home)
 	deps := configure.Deps{Home: home, FS: nerv.PluginFS(), Runner: noRunner(), Now: fixedNow, LookPath: lookPathNone}
 
@@ -194,7 +194,7 @@ func TestRun_AllBlankAnswers_ByteIdenticalNoBackup(t *testing.T) {
 func TestRun_ReaderEndsAtFirstPrompt_AbortsWithoutWriteOrRunnerCall(t *testing.T) {
 	root := t.TempDir()
 	home := t.TempDir()
-	writeFixture(t, filepath.Join(root, "nerv.yaml"))
+	writeFixture(t, filepath.Join(root, "config.yml"))
 	paths := testPaths(root, home)
 	runner := &envtest.FakeRunner{}
 	deps := configure.Deps{Home: home, FS: nerv.PluginFS(), Runner: runner, Now: fixedNow, LookPath: lookPathNone}
@@ -237,7 +237,7 @@ func TestRun_ReaderEndsAtFirstPrompt_AbortsWithoutWriteOrRunnerCall(t *testing.T
 func TestRun_ReaderEndsAtApplyAndRefreshPrompt_AbortsWithoutRunnerCall(t *testing.T) {
 	root := t.TempDir()
 	home := t.TempDir()
-	writeFixture(t, filepath.Join(root, "nerv.yaml"))
+	writeFixture(t, filepath.Join(root, "config.yml"))
 	paths := testPaths(root, home)
 	runner := &envtest.FakeRunner{}
 	deps := configure.Deps{Home: home, FS: nerv.PluginFS(), Runner: runner, Now: fixedNow, LookPath: lookPathNone}
@@ -282,7 +282,7 @@ func TestRun_ReaderEndsAtApplyAndRefreshPrompt_AbortsWithoutRunnerCall(t *testin
 func TestRun_ModelsSection_CustomModelID_EOFAfterPrompt_AbortsWithoutWriteOrRunnerCall(t *testing.T) {
 	root := t.TempDir()
 	home := t.TempDir()
-	writeFixture(t, filepath.Join(root, "nerv.yaml"))
+	writeFixture(t, filepath.Join(root, "config.yml"))
 	paths := testPaths(root, home)
 	runner := &envtest.FakeRunner{}
 	deps := configure.Deps{Home: home, FS: nerv.PluginFS(), Runner: runner, Now: fixedNow, LookPath: lookPathNone}
@@ -333,7 +333,7 @@ func TestRun_ModelsSection_CustomModelID_EOFAfterPrompt_AbortsWithoutWriteOrRunn
 func TestRun_ModelsSection_CustomModelID_InvalidThenValid_AppliesOverride(t *testing.T) {
 	root := t.TempDir()
 	home := t.TempDir()
-	writeFixture(t, filepath.Join(root, "nerv.yaml"))
+	writeFixture(t, filepath.Join(root, "config.yml"))
 	paths := testPaths(root, home)
 	deps := configure.Deps{Home: home, FS: nerv.PluginFS(), Runner: noRunner(), Now: fixedNow, LookPath: lookPathNone}
 
@@ -379,7 +379,7 @@ func TestRun_ModelsSection_CustomModelID_InvalidThenValid_AppliesOverride(t *tes
 func TestRun_BaseBranchChange_RepoInit(t *testing.T) {
 	root := t.TempDir()
 	home := t.TempDir()
-	writeFixture(t, filepath.Join(root, "nerv.yaml"))
+	writeFixture(t, filepath.Join(root, "config.yml"))
 	paths := testPaths(root, home)
 
 	repoDir := filepath.Join(t.TempDir(), "repo")
@@ -430,7 +430,7 @@ func TestRun_BaseBranchChange_RepoInit(t *testing.T) {
 		t.Error("expected a backup to be written")
 	}
 
-	repoConfig, err := os.ReadFile(filepath.Join(repoDir, ".nerv", "nerv.yaml"))
+	repoConfig, err := os.ReadFile(filepath.Join(repoDir, ".ai-workflow.yml"))
 	if err != nil {
 		t.Fatalf("repo config not written: %v", err)
 	}
@@ -452,7 +452,7 @@ func TestRun_BaseBranchChange_RepoInit(t *testing.T) {
 func TestRun_DeclineWrite_LeavesFileUntouched(t *testing.T) {
 	root := t.TempDir()
 	home := t.TempDir()
-	writeFixture(t, filepath.Join(root, "nerv.yaml"))
+	writeFixture(t, filepath.Join(root, "config.yml"))
 	paths := testPaths(root, home)
 	deps := configure.Deps{Home: home, FS: nerv.PluginFS(), Runner: noRunner(), Now: fixedNow, LookPath: lookPathNone}
 
@@ -494,7 +494,7 @@ func TestRun_DeclineWrite_LeavesFileUntouched(t *testing.T) {
 func TestRun_WorktreePatternMenu_HerdrDetected_ChoosesHerdr(t *testing.T) {
 	root := t.TempDir()
 	home := t.TempDir()
-	writeFixture(t, filepath.Join(root, "nerv.yaml"))
+	writeFixture(t, filepath.Join(root, "config.yml"))
 	paths := testPaths(root, home)
 	appData := filepath.Join(home, "appdata")
 	writeHerdrConfig(t, home, appData, "[worktrees]\ndirectory = 'D:\\.worktrees'\n")
@@ -556,7 +556,7 @@ func TestRun_WorktreePatternMenu_HerdrDetected_ChoosesHerdr(t *testing.T) {
 func TestRun_WorktreePatternMenu_HerdrAbsent_ChoosesCustom(t *testing.T) {
 	root := t.TempDir()
 	home := t.TempDir()
-	writeFixture(t, filepath.Join(root, "nerv.yaml"))
+	writeFixture(t, filepath.Join(root, "config.yml"))
 	paths := testPaths(root, home)
 	deps := configure.Deps{Home: home, FS: nerv.PluginFS(), Runner: noRunner(), Now: fixedNow, LookPath: lookPathNone}
 
@@ -611,7 +611,7 @@ func TestRun_WorktreePatternMenu_HerdrAbsent_ChoosesCustom(t *testing.T) {
 func TestRun_WorktreePatternMenu_Blank_KeepsCurrent(t *testing.T) {
 	root := t.TempDir()
 	home := t.TempDir()
-	writeFixture(t, filepath.Join(root, "nerv.yaml"))
+	writeFixture(t, filepath.Join(root, "config.yml"))
 	paths := testPaths(root, home)
 	deps := configure.Deps{Home: home, FS: nerv.PluginFS(), Runner: noRunner(), Now: fixedNow, LookPath: lookPathNone}
 
@@ -656,7 +656,7 @@ func TestRun_WorktreePatternMenu_ChoosesDefault(t *testing.T) {
 	if customized == fixtureLF {
 		t.Fatal("fixture replacement did not match; fixtureLF's worktree_pattern line changed shape")
 	}
-	if err := os.WriteFile(filepath.Join(root, "nerv.yaml"), []byte(customized), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(root, "config.yml"), []byte(customized), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	paths := testPaths(root, home)
@@ -695,7 +695,7 @@ func TestRun_WorktreePatternMenu_ChoosesDefault(t *testing.T) {
 func TestRun_ModelsSection_MagiGroup(t *testing.T) {
 	root := t.TempDir()
 	home := t.TempDir()
-	writeFixture(t, filepath.Join(root, "nerv.yaml"))
+	writeFixture(t, filepath.Join(root, "config.yml"))
 	paths := testPaths(root, home)
 	deps := configure.Deps{Home: home, FS: nerv.PluginFS(), Runner: noRunner(), Now: fixedNow, LookPath: lookPathNone}
 
@@ -845,7 +845,7 @@ func lineWith(out, needle string) string {
 func TestRun_ModelsSection_TableShowsPurposeEquivalentAndGroupLegend(t *testing.T) {
 	root := t.TempDir()
 	home := t.TempDir()
-	writeFixture(t, filepath.Join(root, "nerv.yaml"))
+	writeFixture(t, filepath.Join(root, "config.yml"))
 	paths := testPaths(root, home)
 	deps := configure.Deps{Home: home, FS: nerv.PluginFS(), Runner: noRunner(), Now: fixedNow, LookPath: lookPathNone}
 	opts := wizard.Options{Paths: paths, SkipSkills: true, SkipRepos: true, NoRefresh: true}
@@ -936,7 +936,7 @@ func TestRun_ModelsSection_TableShowsPurposeEquivalentAndGroupLegend(t *testing.
 func TestRun_ModelsSection_PhasePickerListsEquivalentFirst(t *testing.T) {
 	root := t.TempDir()
 	home := t.TempDir()
-	writeFixture(t, filepath.Join(root, "nerv.yaml"))
+	writeFixture(t, filepath.Join(root, "config.yml"))
 	paths := testPaths(root, home)
 	state := `{"claude_phase_assignments":{"jd-judge-a":{"model":"opus","effort":"high"},"jd-judge-b":{"model":"sonnet","effort":"medium"}}}`
 	if err := os.MkdirAll(filepath.Dir(paths.State), 0o755); err != nil {
@@ -1016,7 +1016,7 @@ func TestRun_ModelsSection_AcceptsLegacyNamesAndWritesNewIDs(t *testing.T) {
 func TestRun_ModelsSection_PhasePickerMarksNothingForReviewAgentEquivalent(t *testing.T) {
 	root := t.TempDir()
 	home := t.TempDir()
-	writeFixture(t, filepath.Join(root, "nerv.yaml"))
+	writeFixture(t, filepath.Join(root, "config.yml"))
 	paths := testPaths(root, home)
 	// review-reliability is present as a key so that a hint driven by the
 	// equivalent (instead of FromPhase) would surface it first and marked.
@@ -1053,7 +1053,7 @@ func TestRun_ModelsSection_PhasePickerMarksNothingForReviewAgentEquivalent(t *te
 func TestRun_Prerequisites_UnsupportedMajorWarnsAndNamesSupportedMajors(t *testing.T) {
 	root := t.TempDir()
 	home := t.TempDir()
-	writeFixture(t, filepath.Join(root, "nerv.yaml"))
+	writeFixture(t, filepath.Join(root, "config.yml"))
 	runner := &envtest.FakeRunner{Responses: map[string]envtest.Response{
 		"gentle-ai --version": {Stdout: "gentle-ai version 2.9.0\n"},
 	}}

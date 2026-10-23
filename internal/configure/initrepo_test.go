@@ -21,7 +21,7 @@ func gitToplevelRunner(repoPath string) *envtest.FakeRunner {
 }
 
 // ---------------------------------------------------------------------------
-// initrepo: creates <repo>/.nerv/nerv.yaml with the given fields; running it
+// initrepo: creates <repo>/.ai-workflow.yml with the given fields; running it
 // again reports "already initialized" and writes nothing.
 // ---------------------------------------------------------------------------
 
@@ -39,7 +39,7 @@ func TestInitRepo_CreatesProjectConfig(t *testing.T) {
 		t.Fatal("Changed = false, want true")
 	}
 
-	repoConfigPath := filepath.Join(repoDir, ".nerv", "nerv.yaml")
+	repoConfigPath := filepath.Join(repoDir, ".ai-workflow.yml")
 	content, err := os.ReadFile(repoConfigPath)
 	if err != nil {
 		t.Fatalf("file not created: %v", err)
@@ -63,8 +63,42 @@ func TestInitRepo_CreatesProjectConfig(t *testing.T) {
 	if result.ConfigPath != repoConfigPath {
 		t.Errorf("ConfigPath = %q, want %q", result.ConfigPath, repoConfigPath)
 	}
-	if len(result.Written) != 1 || result.Written[0] != repoConfigPath {
-		t.Errorf("Written = %v, want [%s]", result.Written, repoConfigPath)
+	ignorePath := filepath.Join(repoDir, ".nerv", ".gitignore")
+	if len(result.Written) != 2 || result.Written[0] != repoConfigPath || result.Written[1] != ignorePath {
+		t.Errorf("Written = %v, want [%s %s]", result.Written, repoConfigPath, ignorePath)
+	}
+	if ignore, err := os.ReadFile(ignorePath); err != nil || string(ignore) != "*\n" {
+		t.Errorf(".nerv/.gitignore = %q, %v; want \"*\\n\" so the runtime folder is never committed", ignore, err)
+	}
+}
+
+// A repository with only the old .nerv/nerv.yaml is uninitialized: InitRepo
+// writes .ai-workflow.yml, leaves the old file alone and warns that nerv
+// migrate moves it.
+func TestInitRepo_OldFileOnly_WritesNewFileAndHints(t *testing.T) {
+	repoDir := t.TempDir()
+	oldPath := filepath.Join(repoDir, ".nerv", "nerv.yaml")
+	if err := os.MkdirAll(filepath.Dir(oldPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(oldPath, []byte("enabled: true\ngit:\n  base_branch: legacy\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	deps := configure.Deps{Runner: gitToplevelRunner(repoDir), Now: func() time.Time { return time.Now() }}
+
+	result, err := configure.InitRepo(deps, configure.InitRepoRequest{Path: repoDir, Base: "develop"})
+	if err != nil {
+		t.Fatalf("InitRepo() error = %v", err)
+	}
+	text, err := os.ReadFile(filepath.Join(repoDir, ".ai-workflow.yml"))
+	if err != nil || !strings.Contains(string(text), "base_branch: develop") {
+		t.Fatalf(".ai-workflow.yml = %q, %v; want a fresh project file", text, err)
+	}
+	if old, _ := os.ReadFile(oldPath); string(old) != "enabled: true\ngit:\n  base_branch: legacy\n" {
+		t.Errorf("old file changed: %q", old)
+	}
+	if len(result.Warnings) != 1 || !strings.Contains(result.Warnings[0], oldPath) || !strings.Contains(result.Warnings[0], "nerv migrate") {
+		t.Errorf("Warnings = %q, want one naming %s and nerv migrate", result.Warnings, oldPath)
 	}
 }
 
@@ -75,7 +109,7 @@ func TestInitRepo_AlreadyInitialized_WarnsNoOverwrite(t *testing.T) {
 	if _, err := configure.InitRepo(deps, configure.InitRepoRequest{Path: repoDir, Base: "develop"}); err != nil {
 		t.Fatalf("InitRepo() (first) error = %v", err)
 	}
-	repoConfigPath := filepath.Join(repoDir, ".nerv", "nerv.yaml")
+	repoConfigPath := filepath.Join(repoDir, ".ai-workflow.yml")
 	before, err := os.ReadFile(repoConfigPath)
 	if err != nil {
 		t.Fatal(err)
@@ -171,7 +205,7 @@ func TestInitRepo_InvalidProviderConfig_Refused(t *testing.T) {
 			if !strings.Contains(err.Error(), want) {
 				t.Errorf("error = %q, want it to contain %q", err.Error(), want)
 			}
-			if _, statErr := os.Stat(filepath.Join(repoDir, ".nerv", "nerv.yaml")); statErr == nil {
+			if _, statErr := os.Stat(filepath.Join(repoDir, ".ai-workflow.yml")); statErr == nil {
 				t.Error("file was created despite the invalid entry")
 			}
 		})
@@ -194,7 +228,7 @@ const legacyProjectConfig = "enabled: true\n" +
 
 func writeProjectConfig(t *testing.T, repoDir, content string) string {
 	t.Helper()
-	path := filepath.Join(repoDir, ".nerv", "nerv.yaml")
+	path := filepath.Join(repoDir, ".ai-workflow.yml")
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -235,7 +269,7 @@ func TestInitRepo_ExistingConfigWithTasksBlock_IsUntouchedWithoutBackup(t *testi
 
 func TestInitRepo_UnreadableExistingConfig_WarnsInsteadOfFailing(t *testing.T) {
 	repoDir := t.TempDir()
-	path := filepath.Join(repoDir, ".nerv", "nerv.yaml")
+	path := filepath.Join(repoDir, ".ai-workflow.yml")
 	// A directory at the config path exists for os.Stat but cannot be read
 	// as a file, like an unreadable config.
 	if err := os.MkdirAll(path, 0o755); err != nil {

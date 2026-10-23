@@ -199,7 +199,7 @@ func checkPins(packages, unresolved, specs []string) error {
 	var problems []string
 	if len(missing) > 0 {
 		problems = append(problems, fmt.Sprintf(
-			"the semantic-release configuration needs %s, not installed by NERV; pin each one in .nerv/nerv.yaml under release.semantic_release.extra_plugins as \"<name>@<exact version>\"",
+			"the semantic-release configuration needs %s, not installed by NERV; pin each one in .ai-workflow.yml under release.semantic_release.extra_plugins as \"<name>@<exact version>\"",
 			strings.Join(missing, ", ")))
 	}
 	if len(unresolved) > 0 {

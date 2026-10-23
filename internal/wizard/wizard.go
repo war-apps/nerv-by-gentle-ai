@@ -6,10 +6,10 @@
 // the per-role models editor folded directly into the models section
 // instead of shelling out to a separate command.
 //
-// Every nerv.yaml write goes through configure.Store, config.SetManagedValue
+// Every configuration write goes through configure.Store, config.SetManagedValue
 // (via configure.Set), or config.SetModelsBlock — the same primitives
 // "nerv configure --set"/"--set-model" already use — so there is exactly
-// one place in the whole program that ever writes nerv.yaml text. Task
+// one place in the whole program that ever writes configuration text. Task
 // provider settings go through configure.SetProviderSettings, the same
 // format-preserving editor, and repo initialization reuses
 // configure.InitRepo rather than reimplementing its file write.
@@ -52,7 +52,7 @@ type Options struct {
 type Summary struct {
 	// Changed is true when any section actually wrote something (user
 	// config, task provider settings, the models block, or a repo's
-	// .nerv/nerv.yaml).
+	// .ai-workflow.yml).
 	Changed bool
 }
 
@@ -60,7 +60,7 @@ type Summary struct {
 // the optional required-skills install, user-scope config (git, skills
 // stacks, critical paths, artifacts), the task provider settings when the
 // task plugin is enabled, the optional per-role models editor, the
-// optional per-repo .nerv/nerv.yaml init loop, and the closing
+// optional per-repo .ai-workflow.yml init loop, and the closing
 // apply/refresh step.
 //
 // Run prints its closing "Restart Claude Code..." line only when

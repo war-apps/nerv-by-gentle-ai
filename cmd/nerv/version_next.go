@@ -22,12 +22,13 @@ import (
 	"github.com/war-apps/nerv-by-gentle-ai/internal/refusal"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/semrel"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/shipconfig"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/workflowconfig"
 )
 
 const versionNextUsage = `Usage: nerv version next [flags]
 
 Computes the next semantic version of the repository (or of each project of
-the release: section of .nerv/nerv.yaml) with the repository's own
+the release: section of .ai-workflow.yml) with the repository's own
 semantic-release configuration, in dry-run mode. Nothing in the repository
 changes. Needs Node.js and npm (semantic-release is installed in a NERV
 cache) and git.
@@ -171,6 +172,9 @@ func runVersionNext(args []string, stdout, stderr io.Writer, opts options) int {
 	}
 	if err != nil {
 		return report(err)
+	}
+	if shape.Whole {
+		workflowconfig.PrintHints(stderr, "", top)
 	}
 
 	source := "reading origin's release tags and notes"
@@ -335,7 +339,7 @@ func requestShape(top, name string) (outputShape, error) {
 	rel, err := shipconfig.Load(top)
 	if errors.Is(err, shipconfig.ErrNotConfigured) {
 		if name != "" {
-			return outputShape{}, &refusal.Error{Err: fmt.Errorf("--project %q: the repository has no release: section in .nerv/nerv.yaml, so it is a single project; drop --project", name)}
+			return outputShape{}, &refusal.Error{Err: errors.New(withLegacyHint(fmt.Sprintf("--project %q: the repository has no release: section in .ai-workflow.yml, so it is a single project; drop --project", name), top))}
 		}
 		return outputShape{Whole: true}, nil
 	}

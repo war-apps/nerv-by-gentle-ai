@@ -16,7 +16,7 @@ import (
 // ---------------------------------------------------------------------------
 
 func TestStore_Load_MissingFileReportsNotExists(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "nerv.yaml")
+	path := filepath.Join(t.TempDir(), "config.yml")
 
 	doc, exists, err := (configstore.Store{}).Load(path)
 	if err != nil {
@@ -31,7 +31,7 @@ func TestStore_Load_MissingFileReportsNotExists(t *testing.T) {
 }
 
 func TestStore_Load_ExistingFile(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "nerv.yaml")
+	path := filepath.Join(t.TempDir(), "config.yml")
 	if err := os.WriteFile(path, []byte("enabled: true\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -55,7 +55,7 @@ func TestStore_Load_ExistingFile(t *testing.T) {
 
 func TestStore_Save_NoopWhenBytesIdentical(t *testing.T) {
 	dir := t.TempDir()
-	path := filepath.Join(dir, "nerv.yaml")
+	path := filepath.Join(dir, "config.yml")
 	original := []byte("enabled: true\n")
 	if err := os.WriteFile(path, original, 0o644); err != nil {
 		t.Fatal(err)
@@ -99,7 +99,7 @@ func TestStore_Save_NoopWhenBytesIdentical(t *testing.T) {
 
 func TestStore_Save_WritesTimestampedBackupAndNewContent(t *testing.T) {
 	dir := t.TempDir()
-	path := filepath.Join(dir, "nerv.yaml")
+	path := filepath.Join(dir, "config.yml")
 	original := []byte("enabled: true\ngit:\n  base_branch: develop\n")
 	if err := os.WriteFile(path, original, 0o644); err != nil {
 		t.Fatal(err)
@@ -147,7 +147,7 @@ func TestStore_Save_WritesTimestampedBackupAndNewContent(t *testing.T) {
 
 func TestStore_Save_CreatesParentDirWhenFileMissing(t *testing.T) {
 	dir := t.TempDir()
-	path := filepath.Join(dir, "nested", "nerv.yaml")
+	path := filepath.Join(dir, "nested", "config.yml")
 
 	doc := config.Parse("enabled: true\n")
 	now := time.Date(2026, 9, 29, 0, 0, 0, 0, time.UTC)
@@ -190,7 +190,7 @@ func TestStore_Save_KeepsTasksBlockBytes(t *testing.T) {
 		"      stages: { inDev: DESARROLLO, blocked: BLOQUEA }\n" +
 		"    # legacy stubs, kept by hand\n" +
 		"    jira: { task_ref_prefix: jira, site: \"\", project_key: \"\" }               # later\n"
-	path := filepath.Join(t.TempDir(), "nerv.yaml")
+	path := filepath.Join(t.TempDir(), "config.yml")
 	if err := os.WriteFile(path, []byte(original), 0o644); err != nil {
 		t.Fatal(err)
 	}

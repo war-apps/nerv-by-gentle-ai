@@ -11,7 +11,7 @@ The task plugin connects NERV to task trackers (Teamwork today). It does not tal
 
 ## 1. Configuration
 
-The configuration merges the user's `~/.claude/nerv/nerv.yaml` with the repository's `<repo>/.nerv/nerv.yaml`, key by key, and the repository wins. Everything lives under `tasks:`.
+The configuration merges the user's `~/.config/ai-workflow/config.yml` with the repository's `<repo>/.ai-workflow.yml`, key by key, and the repository wins. Everything lives under `tasks:`.
 
 | Key | Default | Meaning |
 |---|---|---|

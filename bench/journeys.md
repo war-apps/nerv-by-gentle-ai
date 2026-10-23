@@ -13,7 +13,7 @@ outcomes that must hold. Run them after every phase and before any push.
 - Scratch repo with a real test runner. Reference layout: .NET 10 class
   library `src/Calc` + xUnit project `tests/Calc.Tests`, solution `Bench.slnx`,
   one passing test (`Calculator.Add`).
-- `.nerv/nerv.yaml` with `enabled: true`, `git.worktree: never`,
+- `.ai-workflow.yml` with `enabled: true`, `git.worktree: never`,
   `git.base_branch: main`, skills `testing: [tdd]`, `code: [dotnet-best-practices]`.
 - `openspec/config.yaml` with `strict_tdd: true` and
   `rules.apply.test_command: dotnet test`; `.atl/skill-registry.md` refreshed
@@ -26,10 +26,10 @@ outcomes that must hold. Run them after every phase and before any push.
 
 1. Fresh session in the scratch repo (marker present), prompt: "Answer YES or
    NO: does your context contain a section whose first line is
-   `# NERV orchestrator protocol (active: .nerv/nerv.yaml enabled)`? Then list
+   `# NERV orchestrator protocol (active: .ai-workflow.yml enabled)`? Then list
    agent types starting with `nerv:`."
    Expected: `YES` and `nerv:aoba` (plus every agent shipped in the build).
-2. Same prompt in a repo without `.nerv/nerv.yaml`. Expected: `NO`; agents may
+2. Same prompt in a repo without `.ai-workflow.yml`. Expected: `NO`; agents may
    still be listed (they are global once installed).
 3. `nerv ping` in the scratch repo. Expected: `nerv:aoba` spawned once,
    envelope with `status: success`, `executive_summary: aoba online`, the
@@ -134,7 +134,7 @@ name: `multiply-and-ci`.
 
 Setup: same scratch repo, `gentle-ai review mode disable --scope clone --cwd
 <repo>` (RDD off in the bench clone — the global switch stays as the user
-set it), `.nerv/nerv.yaml` unchanged from the Common setup above
+set it), `.ai-workflow.yml` unchanged from the Common setup above
 (no task plugin installed).
 
 Prompt (piped to `claude -p --max-turns 200 --allowedTools 'Agent,Bash(git
@@ -245,7 +245,7 @@ so the audit stage has a real, candidate-caused finding to catch rather
 than a synthetic one.
 
 `gentle-ai review mode disable --scope clone --cwd <repo>` (RDD off in the
-bench clone, as in J1/J3). `.nerv/nerv.yaml` as in Common setup plus
+bench clone, as in J1/J3). `.ai-workflow.yml` as in Common setup plus
 `critical_paths: [src/Calc/]`: the audit stage lives only in the FULL
 pipeline, and a single-domain `Divide` change would classify LIGHT, so the
 critical-path rule is what forces FULL here.
@@ -390,7 +390,7 @@ Setup:
   task-teamwork`), and Claude Code restarted, so the agent type
   `task:dispatcher` is available. The Teamwork MCP server that
   `task-teamwork`'s `provider.yaml` declares is configured.
-- Bench repo `.nerv/nerv.yaml`:
+- Bench repo `.ai-workflow.yml`:
   ```yaml
   enabled: true
   tasks:
@@ -405,7 +405,7 @@ Setup:
     worktree: never
     base_branch: main
   ```
-- User-scope `~/.claude/nerv/nerv.yaml`:
+- User-scope `~/.config/ai-workflow/config.yml`:
   ```yaml
   tasks:
     providers:
@@ -486,7 +486,7 @@ frozen tasks or re-running closed waves.
 
 Setup: same scratch repo as J3, fresh branch `feature/power-resume` off
 `main` (`Calculator` has `Add`/`Subtract`/`Multiply`/`Divide` from
-J1/J3/J4), `.nerv/nerv.yaml` as in Common setup (no task plugin),
+J1/J3/J4), `.ai-workflow.yml` as in Common setup (no task plugin),
 `gentle-ai review mode disable --scope clone --cwd <repo>`. Change name:
 `power-resume`. Request: add a `Power(int base, int exponent)` method to
 `Calculator` in src/Calc/Calculator.cs, using the same J3-style FULL
@@ -547,7 +547,7 @@ commit pre-validated).
    from `waves.md`) — not `status: planned`, the defect the J4 close
    process left behind before Phase 5 (see `odd/tasks/nerv-overlay.md`
    T3.2).
-6. **Artifacts commit policy: `at-close`.** With `.nerv/nerv.yaml`'s
+6. **Artifacts commit policy: `at-close`.** With `.ai-workflow.yml`'s
    `artifacts.commit: at-close` (the default, unchanged from Common
    setup), inspect the closing commits: a commit
    `docs: nerv artifacts for power-resume` exists in `git log`, and
@@ -567,21 +567,21 @@ commit pre-validated).
 
 Run standalone (not chained off J3/J6's change) to confirm a run without
 the task plugin stays free of task steps. Setup: fresh branch, `task@nerv`
-not installed (no `task:dispatcher` agent type), `.nerv/nerv.yaml` still
+not installed (no `task:dispatcher` agent type), `.ai-workflow.yml` still
 carrying the J5 `tasks:` block, no active timer. Interactive session,
 prompt: "Add a `Modulo` method..." (as J5). Expected: the grouped
 question asks only Worktree (per `git.worktree`), Branch name and Base
 branch — no task question; no agent is launched for task events, no
 `task_event` entry appears in `nerv/deliberation-log.md`, no
 `nerv/task-events.yaml` is created, and the `tasks:` block is left in
-`.nerv/nerv.yaml` untouched. The `task-plugin-absent-no-events` eval case
+`.ai-workflow.yml` untouched. The `task-plugin-absent-no-events` eval case
 covers the preflight slice of this variant.
 
 ### Variant: missing-config preflight
 
 Interactive only (the grouped question cannot be exercised
 non-interactively). Setup: fresh branch in the scratch repo, the task
-plugin installed as in J5, `.nerv/nerv.yaml` present with `enabled: true`
+plugin installed as in J5, `.ai-workflow.yml` present with `enabled: true`
 but **no `tasks:` block at all**, and no local timer referenced in
 `~/.claude/work/timers.json` for this session. Prompt: "Add a
 `Sqrt(double x)` method to `Calculator`... Follow the NERV orchestrator

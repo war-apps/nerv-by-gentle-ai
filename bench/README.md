@@ -13,7 +13,7 @@ Two complementary test suites live here:
 - **`plugin/evals/`** — a `claude plugin eval` corpus: seven cheap,
   deterministic cases derived from J0, J1 (preflight/classification only)
   and J5 (task plugin absent), each scaffolding its own throwaway git repo and
-  `.nerv/nerv.yaml`. It checks only what a grader can judge mechanically
+  `.ai-workflow.yml`. It checks only what a grader can judge mechanically
   or with a small model: the SessionStart activation gate, DIRECT/LIGHT/FULL
   classification, and a run without the task plugin emitting no task event
   and never mentioning a tracker.
@@ -27,7 +27,7 @@ claude plugin eval ./plugin --scaffold --runs 1 --ablation with-without --max-co
 ```
 
 - `--scaffold` is required: every case seeds its own empty git repo and
-  `.nerv/nerv.yaml` through a `context.scaffold_script`, and
+  `.ai-workflow.yml` through a `context.scaffold_script`, and
   `claude plugin eval` skips that script unless the flag is passed.
 - `--ablation with-without` (already the default once the `nerv` plugin
   resolves from `./plugin`) also runs each case with no plugin loaded, so

@@ -22,7 +22,7 @@ mcp:
     - teamwork_list_projects
     - teamwork_list_tasklists
 
-# Read from tasks.providers.teamwork.<key> in nerv.yaml.
+# Read from tasks.providers.teamwork.<key> in the merged configuration (.ai-workflow.yml over config.yml).
 config:
   - key: assignee_id
     scope: user

@@ -1,6 +1,6 @@
 // Package semrel computes the next semantic version of a repository, or of
 // each project of a monorepo declared in the release: section of
-// .nerv/nerv.yaml, by running semantic-release itself in dry-run mode.
+// .ai-workflow.yml, by running semantic-release itself in dry-run mode.
 //
 // semantic-release and its plugins are installed at pinned versions in a
 // NERV cache (never in the repository) and driven by an embedded node runner
@@ -88,7 +88,7 @@ func (e *Engine) Compute(ctx context.Context, opts Options) ([]ProjectResult, er
 	return e.compute(ctx, opts, nil)
 }
 
-// loadRelease loads the release: section of the .nerv/nerv.yaml in dir: nil
+// loadRelease loads the release: section of the .ai-workflow.yml in dir: nil
 // (no error) when there is none.
 func loadRelease(dir string) (*shipconfig.Release, error) {
 	rel, err := shipconfig.Load(dir)

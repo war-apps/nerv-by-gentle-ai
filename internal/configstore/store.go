@@ -1,4 +1,4 @@
-// Package configstore reads and writes the user-scope nerv.yaml on the
+// Package configstore reads and writes the user-scope config.yml on the
 // real filesystem. It is the disk-access seam beneath "nerv configure":
 // configure is a use case (validation, diffing, orchestration), depending
 // downward on configstore for the actual Load/Save, exactly like install
@@ -16,7 +16,7 @@ import (
 	"github.com/war-apps/nerv-by-gentle-ai/internal/config"
 )
 
-// Store reads and writes the user-scope nerv.yaml on the real filesystem.
+// Store reads and writes the user-scope config.yml on the real filesystem.
 // It has no state of its own (a zero-value Store{} is ready to use) — like
 // internal/models and internal/skills, it talks to the real disk directly
 // through the os package rather than through an injected seam, since it is

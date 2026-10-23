@@ -47,7 +47,7 @@ func scalarOf(t *testing.T, path, key string) (string, bool) {
 func TestRun_TaskProviders_HiddenWithoutTheTaskPlugin(t *testing.T) {
 	root := t.TempDir()
 	home := t.TempDir()
-	writeFixture(t, filepath.Join(root, "nerv.yaml"))
+	writeFixture(t, filepath.Join(root, "config.yml"))
 	deps := configure.Deps{Home: home, FS: nerv.PluginFS(), ExtensionsFS: nerv.ExtensionsFS(), Runner: noRunner(), Now: fixedNow, LookPath: lookPathNone}
 	opts := skipAll()
 	opts.Paths = testPaths(root, home)
@@ -70,7 +70,7 @@ func TestRun_TaskProviders_HiddenWithoutTheTaskPlugin(t *testing.T) {
 func TestRun_TaskProviders_PromptsTheEnabledProviderUserKeys(t *testing.T) {
 	root := t.TempDir()
 	home := t.TempDir()
-	writeFixture(t, filepath.Join(root, "nerv.yaml"))
+	writeFixture(t, filepath.Join(root, "config.yml"))
 	deps := configure.Deps{Home: home, FS: nerv.PluginFS(), ExtensionsFS: nerv.ExtensionsFS(), Runner: noRunner(), Now: fixedNow, LookPath: lookPathNone}
 	opts := skipAll()
 	opts.Paths = testPaths(root, home)
@@ -151,7 +151,7 @@ func twoProviders(t *testing.T) fs.FS {
 func TestRun_TaskProviders_AsksTheProviderWhenSeveralAreEnabled(t *testing.T) {
 	root := t.TempDir()
 	home := t.TempDir()
-	writeFixture(t, filepath.Join(root, "nerv.yaml"))
+	writeFixture(t, filepath.Join(root, "config.yml"))
 	deps := configure.Deps{Home: home, FS: nerv.PluginFS(), ExtensionsFS: twoProviders(t), Runner: noRunner(), Now: fixedNow, LookPath: lookPathNone}
 	opts := skipAll()
 	opts.Paths = testPaths(root, home)
@@ -174,11 +174,11 @@ func TestRun_TaskProviders_AsksTheProviderWhenSeveralAreEnabled(t *testing.T) {
 }
 
 // S3: the repo flow prompts the enabled providers' repo-scope scalar keys and
-// writes the answered ones into the repo's .nerv/nerv.yaml.
+// writes the answered ones into the repo's .ai-workflow.yml.
 func TestRun_RepoInit_PromptsRepoScopeProviderKeys(t *testing.T) {
 	root := t.TempDir()
 	home := t.TempDir()
-	writeFixture(t, filepath.Join(root, "nerv.yaml"))
+	writeFixture(t, filepath.Join(root, "config.yml"))
 	repoDir := t.TempDir()
 	runner := &envtest.FakeRunner{Responses: map[string]envtest.Response{
 		"git -C " + repoDir + " rev-parse --show-toplevel": {Stdout: repoDir + "\n"},
@@ -198,7 +198,7 @@ func TestRun_RepoInit_PromptsRepoScopeProviderKeys(t *testing.T) {
 	if _, err := wizard.Run(deps, in, &out, opts); err != nil {
 		t.Fatalf("Run() error = %v; output:\n%s", err, out.String())
 	}
-	repoConfig := filepath.Join(repoDir, ".nerv", "nerv.yaml")
+	repoConfig := filepath.Join(repoDir, ".ai-workflow.yml")
 	if got, _ := scalarOf(t, repoConfig, "tasks.providers.teamwork.project_id"); got != "111" {
 		t.Errorf("project_id = %q, want 111", got)
 	}

@@ -93,7 +93,7 @@ func newDockerFixture(t *testing.T, yaml string) *dockerFixture {
 	if err := os.MkdirAll(filepath.Join(top, ".nerv"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(top, ".nerv", "nerv.yaml"), []byte(yaml), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(top, ".ai-workflow.yml"), []byte(yaml), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	return &dockerFixture{top: top, ws: &fakeDockerWorkspace{dir: t.TempDir(), head: "branchhead", public: "https://github.com/acme/api.git", tags: map[string]string{"v1.4.0-alpha.3": "c0ffee"}},
@@ -234,7 +234,7 @@ func TestPipelineDocker_Refusals(t *testing.T) {
 			f.env = map[string]string{}
 		}, nil, "GHCR_TOKEN"},
 		{"no pipeline section", func(f *dockerFixture) {
-			os.WriteFile(filepath.Join(f.top, ".nerv", "nerv.yaml"), []byte("enabled: true\n"), 0o644)
+			os.WriteFile(filepath.Join(f.top, ".ai-workflow.yml"), []byte("enabled: true\n"), 0o644)
 		}, nil, "docs/pipeline.md"},
 	}
 	for _, tt := range tests {

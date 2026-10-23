@@ -54,7 +54,7 @@ type WorkspaceOptions struct {
 // into the clone's own .git/config as url.<real>.insteadOf (owner-only file
 // in an owner-only temporary directory), so neither a command line nor an
 // environment ever holds it. The release: section is the user's local one
-// (their working tree's .nerv/nerv.yaml, committed or not, loaded once by
+// (their working tree's .ai-workflow.yml, committed or not, loaded once by
 // NewWorkspace), never the clone's copy: only the code and the
 // semantic-release configuration come from origin. Close removes
 // everything.
@@ -209,7 +209,7 @@ func (w *Workspace) OriginHead() string { return w.head }
 // local origin.
 func (w *Workspace) PublicURL() string { return w.public }
 
-// Config is the release: section of the user's local .nerv/nerv.yaml (nil
+// Config is the release: section of the user's local .ai-workflow.yml (nil
 // when it has none), the one every step of the release uses; the clone's
 // copy is ignored.
 func (w *Workspace) Config() *shipconfig.Release { return w.local.rel }

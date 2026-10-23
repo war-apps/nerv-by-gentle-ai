@@ -71,7 +71,7 @@ type Thresholds struct {
 // Threshold sources.
 const (
 	SourceRunsettings = "runsettings"
-	SourceConfig      = "nerv.yaml"
+	SourceConfig      = ".ai-workflow.yml"
 )
 
 func (t *Thresholds) sourceOf(metric string) string {
@@ -82,7 +82,7 @@ func (t *Thresholds) sourceOf(metric string) string {
 }
 
 // origin names where the thresholds come from, for messages: the
-// runsettings file, nerv.yaml or both.
+// runsettings file, .ai-workflow.yml or both.
 func (t *Thresholds) origin(runsettings string) string {
 	file, conf := false, false
 	for _, m := range coverageMetrics {
@@ -681,7 +681,7 @@ type MetricCheck struct {
 	Type     string  `json:"type"`
 	Actual   string  `json:"actual"`
 	Required float64 `json:"required"`
-	// Source is where the threshold comes from: runsettings or nerv.yaml.
+	// Source is where the threshold comes from: runsettings or .ai-workflow.yml.
 	Source string `json:"source"`
 	Met    bool   `json:"met"`
 }

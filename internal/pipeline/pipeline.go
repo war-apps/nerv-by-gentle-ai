@@ -2,7 +2,7 @@
 // dim.comprobantes.api's GitHub Actions CI/CD (.github/workflows/ci-cd.yml)
 // for repositories that deploy a Docker image. Each step is one job of that
 // workflow, run from the pipeline: section of the repository's local
-// .nerv/nerv.yaml (internal/pipelineconfig).
+// .ai-workflow.yml (internal/pipelineconfig).
 //
 // The validate and test steps run in the user's working tree, as CI runs on
 // a checkout: they verify the code as it is, uncommitted changes included.

@@ -13,7 +13,7 @@ develop and `release/*`) → `deploy` (update the containers over SSH). Each
 step is its own `nerv pipeline <step>` command with its own records and
 checks; `nerv pipeline run` runs them in that order and stops at the first
 one that does not pass. The configuration is the `pipeline:` section of the
-local `.nerv/nerv.yaml`; its reference is `docs/pipeline.md`.
+local `.ai-workflow.yml`; its reference is `docs/pipeline.md`.
 
 **Accepted arguments.** Check `$ARGUMENTS` before running anything: it may
 be empty, or hold exactly one of `--from <step>` and `--only <step>`, where

@@ -1,21 +1,89 @@
 // Package paths is the single catalogue of every filesystem location nerv
-// resolves from a user's home directory: the user-scope nerv.yaml,
-// gentle-ai's state.json, the Claude Code skills directory,
+// resolves from a user's home directory or a repository root: the
+// user-scope config.yml and the project-scope .ai-workflow.yml (plus the
+// legacy nerv.yaml locations nerv no longer reads, kept only to point at
+// "nerv migrate"), the .nerv/ runtime folder, gentle-ai's state.json, the Claude Code skills directory,
 // settings.json, the materialized marketplace, installed_plugins.json, and
 // the per-version plugin cache agents directory. Every other package
 // resolves these paths from Resolve instead of rebuilding the same joins
 // by hand.
 package paths
 
-import "path/filepath"
+import (
+	"os"
+	"path/filepath"
+	"runtime"
+)
+
+// ProjectConfigFile is the project-scope configuration file, at the
+// repository root. It is meant to be committed.
+const ProjectConfigFile = ".ai-workflow.yml"
+
+// RuntimeDirName is the repository's runtime-only folder (artifacts, the
+// orchestrator lock, logs). It is git-ignored and never holds configuration.
+const RuntimeDirName = ".nerv"
+
+// ProjectConfig is the project-scope configuration path of the repository
+// at repoRoot: "<repoRoot>/.ai-workflow.yml".
+func ProjectConfig(repoRoot string) string {
+	return filepath.Join(repoRoot, ProjectConfigFile)
+}
+
+// LegacyProjectConfig is where the project configuration lived before
+// .ai-workflow.yml: "<repoRoot>/.ai-workflow.yml". nerv never reads it as
+// configuration; it only reports that "nerv migrate" moves it.
+func LegacyProjectConfig(repoRoot string) string {
+	return filepath.Join(repoRoot, RuntimeDirName, "nerv.yaml")
+}
+
+// RuntimeDir is the repository's runtime folder: "<repoRoot>/.nerv".
+func RuntimeDir(repoRoot string) string {
+	return filepath.Join(repoRoot, RuntimeDirName)
+}
+
+// DefaultConfigDir is os.UserConfigDir's layout for home on goos, without
+// reading the environment: "<home>/AppData/Roaming" on Windows,
+// "<home>/Library/Application Support" on macOS, "<home>/lib" on Plan 9
+// and "<home>/.config" everywhere else.
+func DefaultConfigDir(home, goos string) string {
+	switch goos {
+	case "windows":
+		return filepath.Join(home, "AppData", "Roaming")
+	case "darwin", "ios":
+		return filepath.Join(home, "Library", "Application Support")
+	case "plan9":
+		return filepath.Join(home, "lib")
+	default:
+		return filepath.Join(home, ".config")
+	}
+}
+
+// userConfigDir is os.UserConfigDir when home is the real user's home, so
+// XDG_CONFIG_HOME or %AppData% apply exactly as the platform defines them.
+// Any other home (a test's fake one) gets DefaultConfigDir, so the real
+// environment never redirects a fake home's configuration to the real
+// user's.
+func userConfigDir(home string) string {
+	if real, err := os.UserHomeDir(); err == nil && filepath.Clean(real) == filepath.Clean(home) {
+		if dir, err := os.UserConfigDir(); err == nil {
+			return dir
+		}
+	}
+	return DefaultConfigDir(home, runtime.GOOS)
+}
 
 // Paths is every filesystem location nerv resolves from a home directory.
 type Paths struct {
 	// Home is the resolved home directory every other field is derived
 	// from.
 	Home string
-	// UserConfig is the user-scope nerv.yaml path.
+	// UserConfig is the user-scope configuration path:
+	// "<os.UserConfigDir()>/ai-workflow/config.yml".
 	UserConfig string
+	// LegacyUserConfig is where the user configuration lived before
+	// config.yml: "<os.UserConfigDir()>/ai-workflow/config.yml". nerv never reads it as
+	// configuration; it only reports that "nerv migrate" moves it.
+	LegacyUserConfig string
 	// State is gentle-ai's state.json path.
 	State string
 	// SkillsDir is the Claude Code user-scope skills directory.
@@ -32,7 +100,8 @@ type Paths struct {
 func Resolve(home string) Paths {
 	return Paths{
 		Home:             home,
-		UserConfig:       filepath.Join(home, ".claude", "nerv", "nerv.yaml"),
+		UserConfig:       filepath.Join(userConfigDir(home), "ai-workflow", "config.yml"),
+		LegacyUserConfig: filepath.Join(home, ".claude", "nerv", "nerv.yaml"),
 		State:            filepath.Join(home, ".gentle-ai", "state.json"),
 		SkillsDir:        filepath.Join(home, ".claude", "skills"),
 		Settings:         filepath.Join(home, ".claude", "settings.json"),

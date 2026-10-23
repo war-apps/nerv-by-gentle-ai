@@ -10,7 +10,7 @@ import (
 )
 
 // SetModel applies one or more "role=<spec>" per-role model/effort override
-// changes to the user-scope nerv.yaml's models: block, where <spec> is
+// changes to the user-scope config.yml's models: block, where <spec> is
 // model[/effort], from:<gentle-ai-phase>, or default (clears the role's
 // override). Every entry is validated (ParseSetArg, ValidateRole,
 // ResolveModelSpec) before its change is applied to the in-memory override

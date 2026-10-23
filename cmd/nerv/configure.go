@@ -13,6 +13,7 @@ import (
 
 	"github.com/war-apps/nerv-by-gentle-ai/internal/configure"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/wizard"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/workflowconfig"
 )
 
 const configureUsage = `Usage: nerv configure [flags]
@@ -44,7 +45,7 @@ With --init-repo:
 
 Other flags:
   --json                    Print the result as JSON (ignored by --print, which always does)
-  --config <path>           Override the user-scope nerv.yaml path
+  --config <path>           Override the user-scope config.yml path
 `
 
 // stringList is a repeatable string flag: each --flag value appends an
@@ -113,6 +114,9 @@ func runConfigure(args []string, stdout, stderr io.Writer, opts options) int {
 		return 2
 	}
 	paths := configure.ResolvePaths(home, *configOverride)
+	if *configOverride == "" {
+		workflowconfig.PrintHints(stderr, home, "")
+	}
 	deps := configure.Deps{Home: home, FS: opts.PluginFS, ExtensionsFS: opts.ExtensionsFS, Runner: opts.Runner, Now: opts.Now, LookPath: opts.LookPath, Getenv: opts.Getenv}
 
 	switch {

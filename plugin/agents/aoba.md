@@ -218,10 +218,11 @@ invent it. Never hand-edit any of the three files after generating them.
 
 ### Artifacts commit policy
 
-`artifacts.commit` (from the merged `nerv.yaml`: `with-change` | `at-close`
+`artifacts.commit` (from the merged configuration: `with-change` | `at-close`
 | `never`) decides whether the change folder is tracked in git. First
-check whether the repo ignores the artifacts: `git check-ignore -q .nerv/
-openspec/changes/{change}/` (either path ignored counts). When it does,
+check whether the repo ignores the artifacts: `git check-ignore -q
+openspec/changes/{change}/` (`.nerv/` is runtime only and always ignores
+itself, so it is not checked). When it does,
 the artifacts stay local whatever `artifacts.commit` says: commit nothing
 from them, never force-add them, archive with a plain `mv` instead of
 `git mv`, make no archive commit, and say so in `detailed_report`. `with-change`

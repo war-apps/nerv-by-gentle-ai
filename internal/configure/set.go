@@ -7,7 +7,7 @@ import (
 )
 
 // Set applies one or more "key=value" managed-key changes to the user-scope
-// nerv.yaml: every entry is parsed and validated (ParseSetArg,
+// configuration: every entry is parsed and validated (ParseSetArg,
 // ValidateManagedKey, ValidateManagedValue) before anything is written —
 // the first invalid entry refuses the whole batch and touches nothing.
 func Set(deps Deps, paths Paths, args []string) (Result, error) {
@@ -60,7 +60,7 @@ func Set(deps Deps, paths Paths, args []string) (Result, error) {
 // finalizeMutation writes working to paths.Config through store when
 // touched is true and its text actually differs from original, and
 // assembles the shared Result shape. Shared by Set, SetModel and
-// SetProviderSettings — the modes that mutate the user-scope nerv.yaml.
+// SetProviderSettings — the modes that mutate the user-scope config.yml.
 func finalizeMutation(deps Deps, paths Paths, store Store, working *config.Document, original []byte, touched bool, changes []Change) (Result, error) {
 	result := Result{
 		Changed:    false,

@@ -21,7 +21,7 @@ import (
 const pipelineUsage = `Usage: nerv pipeline <step> [flags]
 
 Runs one step of the Docker pipeline configured in the pipeline: section
-of the repository's local .nerv/nerv.yaml (see docs/pipeline.md), a
+of the repository's local .ai-workflow.yml (see docs/pipeline.md), a
 standalone copy of dim.comprobantes.api's CI/CD.
 
 Steps:
@@ -202,7 +202,7 @@ func runPipelineStep(ctx context.Context, step, cwd string, stderr io.Writer, op
 	cfg, err := pipelineconfig.Load(top)
 	switch {
 	case errors.Is(err, pipelineconfig.ErrNotConfigured):
-		return refused(errors.New("the repository has no pipeline: section in .nerv/nerv.yaml; see docs/pipeline.md"))
+		return refused(errors.New(withLegacyHint("the repository has no pipeline: section in .ai-workflow.yml; see docs/pipeline.md", top)))
 	case err != nil:
 		return refused(err)
 	}
@@ -251,8 +251,9 @@ func runPipelineStep(ctx context.Context, step, cwd string, stderr io.Writer, op
 }
 
 // testedState reads what the test step tests, before it runs: the working
-// tree's HEAD and its changes outside .nerv/ (where the local nerv.yaml
-// and the artifacts live), tracked or untracked, ignored files excluded.
+// tree's HEAD and its changes outside .nerv/ (the artifacts) and
+// .ai-workflow.yml (the local configuration), tracked or untracked, ignored
+// files excluded.
 func testedState(ctx context.Context, opts options, top string) (pipeline.TestRecord, error) {
 	var r pipeline.TestRecord
 	out, errOut, code, err := opts.Runner.Run(ctx, "git", "-C", top, "rev-parse", "--verify", "HEAD")
@@ -264,7 +265,7 @@ func testedState(ctx context.Context, opts options, top string) (pipeline.TestRe
 	}
 	// -z: paths are NUL-terminated and never quoted; a rename or copy is
 	// "XY new\0old\0".
-	out, errOut, code, err = opts.Runner.Run(ctx, "git", "-C", top, "status", "--porcelain=v1", "-z", "--untracked-files=all", "--", ".", ":(exclude).nerv")
+	out, errOut, code, err = opts.Runner.Run(ctx, "git", "-C", top, "status", "--porcelain=v1", "-z", "--untracked-files=all", "--", ".", ":(exclude).nerv", ":(exclude).ai-workflow.yml")
 	if err == nil && code != 0 {
 		err = fmt.Errorf("exit code %d: %s", code, strings.TrimSpace(errOut))
 	}

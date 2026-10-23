@@ -98,7 +98,7 @@ func newDeployFixture(t *testing.T, yaml string) *deployFixture {
 	if err := os.MkdirAll(filepath.Join(top, ".nerv"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(top, ".nerv", "nerv.yaml"), []byte(yaml), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(top, ".ai-workflow.yml"), []byte(yaml), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	env := map[string]string{"GHCR_TOKEN": "registry-secret"}

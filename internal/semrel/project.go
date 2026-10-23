@@ -31,7 +31,7 @@ type project struct {
 func planProjects(rel *shipconfig.Release, repoName, only string) ([]project, error) {
 	if rel == nil {
 		if only != "" {
-			return nil, fmt.Errorf("project %q: the repository has no release: section in .nerv/nerv.yaml", only)
+			return nil, fmt.Errorf("project %q: the repository has no release: section in .ai-workflow.yml", only)
 		}
 		return []project{{Name: repoName}}, nil
 	}

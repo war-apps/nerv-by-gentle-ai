@@ -7,12 +7,12 @@ description: Show NERV activation, config resolution and change status for this 
 Report NERV's state for the current repository. Read-only. Keep the output
 short and imperative — this is a status check, not a narrative.
 
-1. **Activation.** Check whether `.nerv/nerv.yaml` exists in the repo root
+1. **Activation.** Check whether `.ai-workflow.yml` exists in the repo root
    and contains `enabled: true`. Report `NERV: active` or `NERV: inactive`
    accordingly. If inactive, stop here — nothing else applies.
 
-2. **Config resolution.** Read `~/.claude/nerv/nerv.yaml` (user scope) and
-   `<repo>/.nerv/nerv.yaml` (project scope). Print a merged summary: which
+2. **Config resolution.** Read `~/.config/ai-workflow/config.yml` (user scope) and
+   `<repo>/.ai-workflow.yml` (project scope). Print a merged summary: which
    keys came from the project file, which fell back to the user file, and
    which fell back to a built-in default. The project file always wins key
    by key. Also print one line: `Task plugin: installed (task:dispatcher
@@ -80,7 +80,7 @@ short and imperative — this is a status check, not a narrative.
    Then print a closing line: `models: in sync` when every role's resolved
    effort matches its cached frontmatter effort, or `models: N role(s)
    drift — run nerv apply-models` otherwise (`N` = the
-   count of mismatched roles). Read-only — never write `nerv.yaml`,
+   count of mismatched roles). Read-only — never write the configuration files,
    `state.json`, or any cached agent file.
 
 6. **Phase note.** Always print, verbatim: "Phase 5 adds the orchestrator

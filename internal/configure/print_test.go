@@ -30,7 +30,7 @@ var errNotFound = errTest("not found")
 
 func TestPrint_ConfigPathAndExists(t *testing.T) {
 	home := t.TempDir()
-	configPath := filepath.Join(home, "nerv.yaml")
+	configPath := filepath.Join(home, "config.yml")
 	writeFixture(t, configPath, richFixtureLF)
 	paths := configure.Paths{Config: configPath, State: filepath.Join(home, "state.json"), SkillsDir: filepath.Join(home, "skills")}
 
@@ -85,7 +85,7 @@ func TestPrint_PrerequisitesShape(t *testing.T) {
 
 func TestPrint_ValuesAndDefaults(t *testing.T) {
 	home := t.TempDir()
-	configPath := filepath.Join(home, "nerv.yaml")
+	configPath := filepath.Join(home, "config.yml")
 	writeFixture(t, configPath, richFixtureLF)
 	paths := configure.Paths{Config: configPath, State: filepath.Join(home, "state.json"), SkillsDir: filepath.Join(home, "skills")}
 
@@ -125,7 +125,7 @@ func TestPrint_ValuesAndDefaults(t *testing.T) {
 
 func TestPrint_ModelsTableHasOverrideRole(t *testing.T) {
 	home := t.TempDir()
-	configPath := filepath.Join(home, "nerv.yaml")
+	configPath := filepath.Join(home, "config.yml")
 	writeFixture(t, configPath, richFixtureLF)
 	paths := configure.Paths{Config: configPath, State: filepath.Join(home, "state.json"), SkillsDir: filepath.Join(home, "skills")}
 
@@ -266,7 +266,7 @@ func TestPrint_SkillsStatusNonEmpty(t *testing.T) {
 
 func TestPrint_JSONFieldNames(t *testing.T) {
 	home := t.TempDir()
-	configPath := filepath.Join(home, "nerv.yaml")
+	configPath := filepath.Join(home, "config.yml")
 	writeFixture(t, configPath, richFixtureLF)
 	paths := configure.Paths{Config: configPath, State: filepath.Join(home, "state.json"), SkillsDir: filepath.Join(home, "skills")}
 

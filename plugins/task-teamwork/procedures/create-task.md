@@ -2,7 +2,7 @@
 
 This implements the `createTask` operation of the task contract (`task:task` skill §3).
 
-`taskRef` `TW-<id>` is the Teamwork task id `<id>`: strip the prefix and the dash; the prefix is case-insensitive. The settings are `tasks.providers.teamwork.*` from the merged `nerv.yaml`. Report every failure with the exact error text, and never retry.
+`taskRef` `TW-<id>` is the Teamwork task id `<id>`: strip the prefix and the dash; the prefix is case-insensitive. The settings are `tasks.providers.teamwork.*` from the merged configuration. Report every failure with the exact error text, and never retry.
 
 1. **Where.** Pick the tasklist in this order: the caller's `list` (an id, or a name resolved with `teamwork_list_tasklists`), then `tasklist_id`, then `default_tasklist_id`. The project follows the same order (`project_id`, then `default_project_id`).
 

@@ -51,7 +51,7 @@ func TestIntegration_PipelineRunDryRunGetsThroughEveryStep(t *testing.T) {
 				work.commit("feat: add gadgets", "b.txt")
 			}
 			work.git("push", "-q", "origin", "main", "develop", "--tags")
-			work.write(".nerv/nerv.yaml", `pipeline:
+			work.write(".ai-workflow.yml", `pipeline:
   dotnet: { solution: App.slnx }
   images: [{ name: ghcr.io/acme/app }]
   deploy:

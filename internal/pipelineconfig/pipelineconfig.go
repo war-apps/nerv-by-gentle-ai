@@ -1,12 +1,12 @@
 // Package pipelineconfig reads the pipeline: section of a repository's
-// project-scope .nerv/nerv.yaml: the typed, validated configuration behind
+// project-scope .ai-workflow.yml: the typed, validated configuration behind
 // `nerv pipeline`, a standalone copy of dim.comprobantes.api's GitHub Actions
 // CI/CD (validate, test, release, docker, sync) plus a Docker deploy.
 //
 // Like the release: section (internal/shipconfig), the pipeline: block is cut
 // out of the file and parsed alone with gopkg.in/yaml.v3, every key is
 // checked strictly, and every problem is reported at once with its path. The
-// file read is always the local working-tree .nerv/nerv.yaml. Paths are
+// file read is always the local working-tree .ai-workflow.yml. Paths are
 // relative to the repository root and written with forward slashes; Load
 // normalises backslashes and rejects absolute and escaping paths.
 //
@@ -20,18 +20,18 @@ import (
 	"fmt"
 	"os"
 	"path"
-	"path/filepath"
 	"reflect"
 	"strings"
 	"time"
 
+	"github.com/war-apps/nerv-by-gentle-ai/internal/paths"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/shipconfig/yamlsection"
 	"gopkg.in/yaml.v3"
 )
 
 // ErrNotConfigured is returned by Load when the repository has no
-// .nerv/nerv.yaml or the file has no pipeline: key.
-var ErrNotConfigured = errors.New("pipeline: not configured in .nerv/nerv.yaml")
+// .ai-workflow.yml or the file has no pipeline: key.
+var ErrNotConfigured = errors.New("pipeline: not configured in .ai-workflow.yml")
 
 // Pipeline is the pipeline: section.
 type Pipeline struct {
@@ -352,12 +352,12 @@ func (p *Pipeline) MainBranch() string {
 	return ""
 }
 
-// Load reads the pipeline: section of <repoRoot>/.nerv/nerv.yaml, applies
+// Load reads the pipeline: section of <repoRoot>/.ai-workflow.yml, applies
 // defaults and validates it. It returns ErrNotConfigured when the file or
 // the key is absent, and a *ValidationError listing every problem, each
 // prefixed by its path in the section (e.g. pipeline.images[1].name).
 func Load(repoRoot string) (*Pipeline, error) {
-	file := filepath.Join(repoRoot, ".nerv", "nerv.yaml")
+	file := paths.ProjectConfig(repoRoot)
 	data, err := os.ReadFile(file)
 	if errors.Is(err, os.ErrNotExist) {
 		return nil, ErrNotConfigured
@@ -377,7 +377,7 @@ func Load(repoRoot string) (*Pipeline, error) {
 
 var typeOfPipeline = reflect.TypeFor[Pipeline]()
 
-// parse decodes the pipeline: key of a nerv.yaml text.
+// parse decodes the pipeline: key of a .ai-workflow.yml text.
 func parse(data []byte) (*Pipeline, error) {
 	node, err := yamlsection.Locate(data, "pipeline")
 	var problem *yamlsection.ProblemError

@@ -28,7 +28,7 @@ which lives at `openspec/changes/{change}/state.yaml` and carries the
   Close (DIRECT's or LIGHT's Close step, or FULL's step 19), the same
   write that deletes
   `nerv/.orchestrator.lock`.
-- The merged `nerv.yaml`'s `models` section (per-role `model`/`effort`,
+- The merged configuration's `models` section (per-role `model`/`effort`,
   resolved as described in `nerv-orchestrator/SKILL.md`'s Configuration
   resolution) is not mirrored into `state.yaml`; it is resolved fresh each
   session.
@@ -375,7 +375,7 @@ after the user responds, never before, never on the user's behalf.
 ```
 
 A task is auto-`critical` when it touches a `critical_paths` entry from
-the merged `nerv.yaml`; any MAGI member may also escalate a task to
+the merged configuration; any MAGI member may also escalate a task to
 `critical` during voting (never down), which supersedes this table's
 value for that round.
 

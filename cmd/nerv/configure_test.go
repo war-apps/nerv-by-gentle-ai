@@ -12,6 +12,7 @@ import (
 	nerv "github.com/war-apps/nerv-by-gentle-ai"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/config"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/env/envtest"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/paths"
 )
 
 func testOptions(home string) options {
@@ -77,7 +78,7 @@ func TestRunConfigure_NoModeFlag_Terminal_RunsWizard(t *testing.T) {
 
 func TestRunConfigure_Answers_DrivesWizard(t *testing.T) {
 	home := t.TempDir()
-	configPath := filepath.Join(home, ".claude", "nerv", "nerv.yaml")
+	configPath := paths.Resolve(home).UserConfig
 	if err := os.MkdirAll(filepath.Dir(configPath), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -181,7 +182,7 @@ func TestRunConfigure_Print_EmitsJSON(t *testing.T) {
 
 func TestRunConfigure_Set_HappyPathThenNoop(t *testing.T) {
 	home := t.TempDir()
-	configPath := filepath.Join(home, ".claude", "nerv", "nerv.yaml")
+	configPath := paths.Resolve(home).UserConfig
 	if err := os.MkdirAll(filepath.Dir(configPath), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -277,7 +278,7 @@ func TestRunConfigure_HomeFlag_NoLongerAccepted(t *testing.T) {
 	}
 }
 
-// tasksFixture is a nerv.yaml carrying a tasks: block written by an earlier
+// tasksFixture is a user config.yml carrying a tasks: block written by an earlier
 // release, with the Teamwork stages inline map and the settings of a provider
 // that no longer exists. Core owns none of it and must keep every byte.
 const tasksFixture = "enabled: true\n" +
@@ -313,7 +314,7 @@ func tasksBlock(t *testing.T, path string) string {
 // exactly as they were.
 func TestRunConfigure_RoundTrip_PreservesTasksBlock(t *testing.T) {
 	home := t.TempDir()
-	configPath := filepath.Join(home, ".claude", "nerv", "nerv.yaml")
+	configPath := paths.Resolve(home).UserConfig
 	if err := os.MkdirAll(filepath.Dir(configPath), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -344,7 +345,7 @@ func TestRunConfigure_RoundTrip_PreservesTasksBlock(t *testing.T) {
 	}
 
 	repo := t.TempDir()
-	projectPath := filepath.Join(repo, ".nerv", "nerv.yaml")
+	projectPath := filepath.Join(repo, ".ai-workflow.yml")
 	if err := os.MkdirAll(filepath.Dir(projectPath), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -418,7 +419,7 @@ func TestRunConfigure_InitRepo_ProviderConfig_WritesProviderKeys(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("exit code = %d, want 0 (stdout=%q stderr=%q)", code, stdout.String(), stderr.String())
 	}
-	data, err := os.ReadFile(filepath.Join(repo, ".nerv", "nerv.yaml"))
+	data, err := os.ReadFile(filepath.Join(repo, ".ai-workflow.yml"))
 	if err != nil {
 		t.Fatal(err)
 	}
