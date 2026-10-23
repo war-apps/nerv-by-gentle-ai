@@ -86,9 +86,9 @@ Source: `~/projects/docs/nerv-learnings-from-projects-2026-10-23.md`. The number
 | T2 | S3, S5, S8, S12, S14 | inline | Go part done (RED: build failed; GREEN: go test ./internal/taskprovider ok). Prose contract goes with T3 | see L7 |
 | T3 | S2, S4, S9, S10, S11, S13, S15, S17, S18 | inline | committed (prose plugin; checks: `go test ./internal/taskprovider/` ok) | 29ac930 |
 | T4 | S3, S14, S15, S16 | inline | committed (`TestEmbeddedProviders_AreValid` ok) | a7f142a |
-| T5 | S1, S7 | delegated: two parallel writers, prose and Go (Writer trigger (a): independent units over disjoint surfaces, each well over 100 lines; also the context backstop) | committed; verifier pending (high risk: items 1, 3) | cedd28f, d86ceec, a7c2e28 |
-| T6 | S19, S20, S21, S22, S23 | inline | pending | — |
-| T7 | S24 | inline | pending | — |
+| T5 | S1, S7 | delegated: two parallel writers, prose and Go (Writer trigger (a): independent units over disjoint surfaces, each well over 100 lines; also the context backstop) | committed and verified; corrections in 8f421c9 | cedd28f, d86ceec, a7c2e28, 8f421c9 |
+| T6 | S19, S20, S21, S22, S23 | delegated writer (context backstop), run in parallel with T7 | committed (RED: 5 tests and 41 missing phrases; GREEN: `go test ./...`) | 73e3145 |
+| T7 | S24 | delegated writer, run in parallel with T6 | committed (RED: build failed; GREEN: shipconfig and shipplan tests ok; differential check identical) | 23db6f9 |
 
 - **T1:** multi-plugin embed, materialize, install, uninstall and version check, plus the suggestion prompts. Risk item 5 (installer).
 - **T2:** the provider contract (the `provider.yaml` schema, the event list, the response envelope, `contract_version`) and its Go validator.
@@ -140,3 +140,19 @@ The order is T2 → T1 → T3/T4 → T5 → T6 → T7. Every task runs inline: t
   - **Checks:** `go build/vet/test ./...` all ok; `tests/hook-*.test.sh` ok.
   - **Known environmental failure:** `tests/install-sh.test.sh` fails with exit 127 at HEAD without these changes too.
   - **Advisories open:** `taskprovider.validValue` is duplicated in `configure.ValidateProviderValue`; `release guard` does not check extension versions.
+- **L11** (2026-10-23): the T5 verifier found 2 blockers.
+  - **B1:** the result lists lacked `needs_input`.
+  - **B2:** S18 was not met with the plugin installed but off.
+  - Both were fixed in 8f421c9, with the verifier's regression tests (`task_events_regress_test.go`). Advisory A2 (the user-scope key in `--repo-provider-config`) was fixed too, after a RED test. A4 (the reason for the wave skip) was aligned.
+  - **Left open:** A1, where "tracker" still appears in the "no tracker" statements and the eval graders (accepted); A3 (no CLI way to add provider settings to an already-initialized repo); A5 (the `tasks:` blocks in the eval scaffolds; harmless).
+- **L12** (2026-10-23): evidence for T6, from the learnings report.
+  - **S19:** obs #2344, #2255, #2122; CA/DPC deliberation-log:42; CA/AF deliberation-log:49.
+  - **S20:** CA/AR deliberation-log:210-216, 173; CA/AF deliberation-log:17, 140; obs #1753.
+  - **S21:** CA/AR run-summary:25; FE `.orchestrator.lock`.
+  - **S22:** comprobantes a9bd1f7; dim.docker 262b4f4; obs #2393, #1849; CA/DPC deliberation-log:94-96. A gentle-ai 4.2.0 probe also found that any untracked path makes `review assess` unassessable, and that `--intended-untracked` takes file paths only.
+  - **S23:** CA/DPC run-summary:43-61; CA/AR run-summary:9-13.
+- **L13** (2026-10-23): T7 design.
+  - `dotnet.shared_host` and `dotnet.sdk` are two keys, because the SDK version is per repo. A project gets `submodules: true`. `coverage_threshold` gets a map form `{line, branch, method}`, and the number form stays the line floor.
+  - `docs/release-commands.md` was updated by the parent.
+  - **Risk: item 3.** The exported `shipconfig.Dotnet.CoverageThreshold` changed type; behaviour stays the same for existing configs.
+- **Next step:** native review of the branch, with the user's consent (they asked for "Revisar este cambio" once; the first START never began because of untracked files).
