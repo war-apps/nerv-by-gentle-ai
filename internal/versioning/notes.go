@@ -11,8 +11,8 @@ import (
 // lib/hosts-config.js), conventional-changelog-writer 8 (context.js,
 // template.js, utils.js) and the conventionalcommits preset 8 (writer.js,
 // constants.js, templates/*.hbs), plus nerv's own handling of a repository
-// without a public address (internal/semrel/runner/nerv-semrel-lib.mjs
-// NO_REMOTE_URL and stripNoRemoteLinks).
+// without a public address (the former semantic-release node runner's
+// NO_REMOTE_URL and stripNoRemoteLinks, nerv-semrel-lib.mjs).
 
 // noRemoteURL stands in for the repository URL when there is no public
 // address; every link to it is then reduced to its text (see

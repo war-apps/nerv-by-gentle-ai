@@ -90,3 +90,15 @@ func TestCommitMessage_RendersSemanticReleasePlaceholders(t *testing.T) {
 		t.Errorf("notes are not re-expanded: %q", got)
 	}
 }
+
+// S9: the old pipeline: section is refused, saying where its deploy went.
+func TestLoad_RefusesTheOldPipelineSection(t *testing.T) {
+	_, err := load(t, "pipeline:\n  deploy:\n    selection: branches\ndeploy:\n  targets: []\n")
+	if err == nil || !strings.Contains(err.Error(), "deploy: the deploy-ssh-compose target") || !strings.Contains(err.Error(), "selection: branches") {
+		t.Fatalf("Load = %v", err)
+	}
+	// Without a deploy: section the refusal still comes first.
+	if _, err := load(t, "pipeline:\n  test: { run: x }\n"); err == nil || errors.Is(err, ErrNotConfigured) || !strings.Contains(err.Error(), "pipeline:") {
+		t.Fatalf("Load without deploy: = %v", err)
+	}
+}

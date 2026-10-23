@@ -25,6 +25,7 @@ import (
 	"strings"
 
 	"github.com/war-apps/nerv-by-gentle-ai/internal/paths"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/shipconfig"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/shipconfig/yamlsection"
 )
 
@@ -120,6 +121,9 @@ func Load(repoRoot string) (*Deploy, error) {
 }
 
 func parse(data []byte) (*Deploy, error) {
+	if msg := shipconfig.RemovedPipeline(data); msg != "" {
+		return nil, errors.New(msg)
+	}
 	node, err := yamlsection.Locate(data, "deploy")
 	var problem *yamlsection.ProblemError
 	switch {

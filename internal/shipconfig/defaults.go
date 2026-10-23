@@ -4,11 +4,8 @@ import (
 	"path"
 )
 
-// The documented defaults of the release: section (docs/release-commands.md).
+// The documented defaults of the ship: section.
 const (
-	// DefaultSemanticReleaseVersion is the semantic-release version installed
-	// in the NERV cache when release.semantic_release.version is not set.
-	DefaultSemanticReleaseVersion = "24.2.3"
 	// DefaultTagFormat is the tag format of a single-project section; with
 	// several projects each one defaults to "<name>-" + DefaultTagFormat.
 	DefaultTagFormat = "v${version}"
@@ -20,19 +17,13 @@ const (
 	DefaultShell = "bash"
 )
 
-// DefaultDockerTags returns the tags a nerv pipeline docker image receives
-// when tags is not set: every tag kind (DockerTags). Each call returns a
-// fresh slice, so a caller cannot change the defaults of later calls. Kept
-// for nerv pipeline (internal/pipelineconfig) until it is folded into ship
-// and deploy.
-func DefaultDockerTags() []string {
-	return []string{"version", "channel", "latest"}
-}
-
 // applyDefaults fills every unset field with its documented default.
 func (r *Release) applyDefaults() {
-	if r.SemanticRelease.Version == "" {
-		r.SemanticRelease.Version = DefaultSemanticReleaseVersion
+	if r.TagFormat == "" {
+		r.TagFormat = DefaultTagFormat
+	}
+	if r.Changelog.File == "" {
+		r.Changelog.File = DefaultChangelog
 	}
 	single := len(r.Projects) == 1
 	for i := range r.Projects {
@@ -42,9 +33,9 @@ func (r *Release) applyDefaults() {
 		}
 		if p.TagFormat == "" {
 			if single {
-				p.TagFormat = DefaultTagFormat
+				p.TagFormat = r.TagFormat
 			} else {
-				p.TagFormat = p.Name + "-" + DefaultTagFormat
+				p.TagFormat = p.Name + "-" + r.TagFormat
 			}
 		}
 		for j := range p.DependsOn {
@@ -72,6 +63,6 @@ func (c Command) withDefaults() Command {
 }
 
 // defaultChangelog is the CHANGELOG of a project at projectPath.
-func defaultChangelog(projectPath string) string {
-	return path.Join(projectPath, DefaultChangelog)
+func (r *Release) defaultChangelog(projectPath string) string {
+	return path.Join(projectPath, r.Changelog.File)
 }

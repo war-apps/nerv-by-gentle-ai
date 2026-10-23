@@ -19,7 +19,8 @@ func TestRunInstall_Terminal_DecliningTaskOffersNoProvider(t *testing.T) {
 	opts.ExtensionsFS = nerv.ExtensionsFS()
 	opts.IsTerminal = func() bool { return true }
 	opts.Runner = baseInstallRunner()
-	opts.Stdin = strings.NewReader("n\ny\n")
+	// No to task, then no to ship (asked next, after task's providers).
+	opts.Stdin = strings.NewReader("n\nn\n")
 
 	code := run([]string{"install", "--no-skills", "--no-configure"}, &stdout, &stderr, opts)
 
@@ -225,5 +226,66 @@ func TestReleaseApply_ListsExtensionsAfterChangelog(t *testing.T) {
 	}
 	if got := mustReadFile(t, ext); !strings.Contains(got, `"version": "0.2.0"`) {
 		t.Errorf("extension not bumped:\n%s", got)
+	}
+}
+
+// S1: --with a deploy provider brings deploy and, through it, ship.
+func TestRunInstall_WithDeployProvider_BringsDeployAndShip(t *testing.T) {
+	home := t.TempDir()
+	seedShipFamilyForCLI(t, home)
+	var stdout, stderr bytes.Buffer
+	opts := testOptions(home)
+	opts.ExtensionsFS = nerv.ExtensionsFS()
+	opts.Runner = baseInstallRunner()
+
+	code := run([]string{"install", "--no-skills", "--no-configure", "--with", "deploy-github"}, &stdout, &stderr, opts)
+
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0; stdout:\n%s\nstderr:\n%s", code, stdout.String(), stderr.String())
+	}
+	out := stdout.String()
+	ship, deploy, github := strings.Index(out, "Adding ship (required by deploy)"), strings.Index(out, "Adding deploy (required by deploy-github)"), strings.Index(out, "-> claude plugin install deploy-github@nerv")
+	if ship < 0 || deploy < 0 || github < 0 || !(ship < deploy) {
+		t.Errorf("want ship, then deploy added, then deploy-github installed:\n%s", out)
+	}
+}
+
+// S1: on a terminal the suggestions are task, its providers, ship, deploy
+// (only once ship is accepted) and the deploy providers (only once deploy
+// is accepted).
+func TestRunInstall_Terminal_SuggestionOrder(t *testing.T) {
+	tests := []struct {
+		name, answers string
+		asked         []string
+	}{
+		{"everything accepted", "y\ny\ny\ny\ny\ny\n", []string{"task", "task-teamwork", "ship", "deploy", "deploy-github", "deploy-ssh-compose"}},
+		{"ship declined: no deploy", "n\nn\n", []string{"task", "ship"}},
+		{"deploy declined: no deploy provider", "n\ny\nn\n", []string{"task", "ship", "deploy"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			home := t.TempDir()
+			seedShipFamilyForCLI(t, home)
+			var stdout, stderr bytes.Buffer
+			opts := testOptions(home)
+			opts.ExtensionsFS = nerv.ExtensionsFS()
+			opts.IsTerminal = func() bool { return true }
+			opts.Runner = baseInstallRunner()
+			opts.Stdin = strings.NewReader(tt.answers)
+
+			code := run([]string{"install", "--no-skills", "--no-configure"}, &stdout, &stderr, opts)
+
+			if code != 0 {
+				t.Fatalf("exit code = %d, want 0; stdout:\n%s", code, stdout.String())
+			}
+			var asked []string
+			for _, part := range strings.Split(stdout.String(), "Install ")[1:] {
+				name, _, _ := strings.Cut(part, "@nerv")
+				asked = append(asked, name)
+			}
+			if strings.Join(asked, ",") != strings.Join(tt.asked, ",") {
+				t.Errorf("asked %v, want %v:\n%s", asked, tt.asked, stdout.String())
+			}
+		})
 	}
 }

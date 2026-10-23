@@ -7,8 +7,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/war-apps/nerv-by-gentle-ai/internal/pipeline"
-	"github.com/war-apps/nerv-by-gentle-ai/internal/pipelineconfig"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/proc"
 )
 
@@ -129,8 +127,8 @@ func TestNewTarget(t *testing.T) {
 
 func fmtTarget(t Target) string { return strings.Join([]string{t.String()}, "") }
 
-func rel(version, branch string) pipeline.ReleaseOutputs {
-	return pipeline.ReleaseOutputs{Status: "passed", Published: true, Version: version, Branch: branch, GitTag: "v" + version}
+func rel(version, branch string) Release {
+	return Release{Version: version, Branch: branch, GitTag: "v" + version}
 }
 
 func TestSelect_Target(t *testing.T) {
@@ -153,30 +151,15 @@ func TestSelect_Target(t *testing.T) {
 		{"next", "1.4.0", false},
 	} {
 		tg := Target{Environment: "e", Enabled: true, ImageVersion: tt.imageVersion}
-		d, err := Select(tg, pipelineconfig.Environment{Name: "e"}, "target", rel(tt.version, "x"))
+		d, err := Select(tg, rel(tt.version, "x"))
 		if err != nil || d.Deploy != tt.want || (!d.Deploy && !strings.Contains(d.Reason, tt.imageVersion)) {
 			t.Errorf("%s vs %s: %+v %v, want deploy %v", tt.imageVersion, tt.version, d, err, tt.want)
 		}
 	}
-	if _, err := Select(Target{Environment: "staging", Enabled: true}, pipelineconfig.Environment{Name: "staging"}, "target", rel("1.4.0", "main")); err == nil || !strings.Contains(err.Error(), "staging: DOCKER_IMAGE_VERSION is not set") {
+	if _, err := Select(Target{Environment: "staging", Enabled: true}, rel("1.4.0", "main")); err == nil || !strings.Contains(err.Error(), "staging: DOCKER_IMAGE_VERSION is not set") {
 		t.Errorf("missing DOCKER_IMAGE_VERSION: err = %v", err)
 	}
-	if d, err := Select(Target{Environment: "e", Enabled: false, ImageVersion: "1.4.0"}, pipelineconfig.Environment{Name: "e"}, "target", rel("1.4.0", "main")); err != nil || d.Deploy || !strings.Contains(d.Reason, "DOCKER_DEPLOY_ENABLED") {
+	if d, err := Select(Target{Environment: "e", Enabled: false, ImageVersion: "1.4.0"}, rel("1.4.0", "main")); err != nil || d.Deploy || !strings.Contains(d.Reason, "DOCKER_DEPLOY_ENABLED") {
 		t.Errorf("disabled: %+v %v", d, err)
-	}
-}
-
-func TestSelect_Branches(t *testing.T) {
-	env := pipelineconfig.Environment{Name: "staging", Branches: []string{"release/*", "hotfix/*"}}
-	tg := Target{Environment: "staging", Enabled: true}
-	if d, err := Select(tg, env, "branches", rel("1.4.0-rc.1", "release/1.4")); err != nil || !d.Deploy {
-		t.Errorf("release/1.4: %+v %v", d, err)
-	}
-	if d, _ := Select(tg, env, "branches", rel("1.4.0", "main")); d.Deploy || !strings.Contains(d.Reason, "main") {
-		t.Errorf("main: %+v", d)
-	}
-	tg.Enabled = false
-	if d, _ := Select(tg, env, "branches", rel("1.4.0-rc.1", "release/1.4")); d.Deploy {
-		t.Errorf("disabled deploys: %+v", d)
 	}
 }

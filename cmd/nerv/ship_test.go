@@ -15,17 +15,18 @@ import (
 
 	"github.com/war-apps/nerv-by-gentle-ai/internal/artifact"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/env/envtest"
-	"github.com/war-apps/nerv-by-gentle-ai/internal/semrel"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/shipclone"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/shipconfig"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/shipplan"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/shiprun"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/versioning"
 )
 
 const localHead = "1111111111111111111111111111111111111111"
 
 // shipMonorepoYAML: core packages a file and has prepare and fail hooks;
 // cli only builds; web depends on core and has a fail hook.
-const shipMonorepoYAML = `release:
+const shipMonorepoYAML = `ship:
   projects:
     - name: core
       path: core
@@ -55,7 +56,7 @@ const shipMonorepoYAML = `release:
 
 // shipVersionFilesYAML is one script project at the root with a version
 // file.
-const shipVersionFilesYAML = `release:
+const shipVersionFilesYAML = `ship:
   projects:
     - name: api
       path: .
@@ -67,7 +68,7 @@ const shipVersionFilesYAML = `release:
 `
 
 // shipComposeYAML is one compose project with a test service and an image.
-const shipComposeYAML = `release:
+const shipComposeYAML = `ship:
   projects:
     - name: api
       path: api
@@ -83,19 +84,19 @@ const shipComposeYAML = `release:
 const apiCsproj = "<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n    <Version>1.0.0</Version>\n    <PackageReleaseNotes>old notes</PackageReleaseNotes>\n  </PropertyGroup>\n</Project>\n"
 
 // fakeWorkspace is the release clone: a real directory holding the
-// configuration, scripted answers for origin and semantic-release.
+// configuration, scripted answers for origin and the version engine.
 type fakeWorkspace struct {
 	f          *shipFixture
 	dir, extra string
 	head       string
 	public     string
-	results    []semrel.ProjectResult
-	pushErr    error
-	release    func(ctx context.Context, req semrel.ReleaseRequest) (semrel.ProjectResult, error)
-	tags       map[string]bool
-	requests   []semrel.ReleaseRequest
+	results    []versioning.Result
 	computed   []string
 	computeErr error
+	// branch is how the ship: section's branches treat the branch;
+	// branchErr, when set, is the engine's answer instead.
+	branch    versioning.ReleaseBranch
+	branchErr error
 	// originNow is origin's branch head at the end of the run ("" = head);
 	// originGone: the branch was deleted on origin; originErr: it cannot be
 	// read. originCtxErrs are the context errors BranchOnOrigin saw.
@@ -105,14 +106,14 @@ type fakeWorkspace struct {
 	originCtxErrs []error
 	closed        bool
 	// removeOnClose removes the artifacts and notes directories on Close,
-	// as semrel.Workspace.Close does.
+	// as shipclone.Workspace.Close does.
 	removeOnClose bool
 }
 
 func (w *fakeWorkspace) Dir() string { return w.dir }
 
-// Config is the user's local release: section, read from the fixture's
-// repository (never the clone), as semrel.Workspace.Config.
+// Config is the user's local ship: section, read from the fixture's
+// repository (never the clone), as shipclone.Workspace.Config.
 func (w *fakeWorkspace) Config() *shipconfig.Release {
 	rel, err := shipconfig.Load(w.f.top)
 	if err != nil {
@@ -135,32 +136,15 @@ func (w *fakeWorkspace) Close() error {
 	return nil
 }
 
-func (w *fakeWorkspace) Compute(_ context.Context, project string) ([]semrel.ProjectResult, error) {
-	w.computed = append(w.computed, project)
+func (w *fakeWorkspace) Compute(_ context.Context, projects []string) ([]versioning.Result, error) {
+	w.computed = append(w.computed, strings.Join(projects, ","))
 	w.f.log("compute")
 	return w.results, w.computeErr
 }
 
-func (w *fakeWorkspace) CheckPush(context.Context) error {
-	w.f.log("check-push")
-	return w.pushErr
-}
-
-func (w *fakeWorkspace) Release(ctx context.Context, req semrel.ReleaseRequest) (semrel.ProjectResult, error) {
-	w.requests = append(w.requests, req)
-	w.f.log("release " + req.Expected.Project)
-	if w.release != nil {
-		return w.release(ctx, req)
-	}
-	r := req.Expected
-	r.NewReleaseGitHead = "release-commit-" + r.Project
-	w.tags[r.NewReleaseGitTag] = true
-	return r, nil
-}
-
-func (w *fakeWorkspace) TagOnOrigin(_ context.Context, tag string) (bool, error) {
-	w.f.log("tag? " + tag)
-	return w.tags[tag], nil
+func (w *fakeWorkspace) Branch(context.Context) (versioning.ReleaseBranch, error) {
+	w.f.log("branch")
+	return w.branch, w.branchErr
 }
 
 func (w *fakeWorkspace) BranchOnOrigin(ctx context.Context) (string, error) {
@@ -186,7 +170,7 @@ type shipFixture struct {
 	top      string
 	runner   *envtest.FakeRunner
 	ws       *fakeWorkspace
-	opened   []semrel.WorkspaceOptions
+	opened   []shipclone.Options
 	events   []string
 	vars     []shiprun.Vars
 	steps    []shiprun.Step
@@ -198,7 +182,6 @@ type shipFixture struct {
 	tty     bool
 	stdin   string
 	env     map[string]string
-	tokens  int
 	cancel  context.CancelFunc
 	signal  os.Signal
 	// onFirstStep runs before the first step is recorded.
@@ -231,7 +214,7 @@ func newShipFixture(t *testing.T, nervYAML string) *shipFixture {
 		}},
 		env: map[string]string{},
 	}
-	f.ws = &fakeWorkspace{f: f, dir: clone, extra: t.TempDir(), head: localHead, public: "https://github.com/acme/widgets.git", tags: map[string]bool{}}
+	f.ws = &fakeWorkspace{f: f, dir: clone, extra: t.TempDir(), head: localHead, public: "https://github.com/acme/widgets.git", branch: versioning.ReleaseBranch{Name: "main"}}
 	// Origin's branch (the clone) has every project directory the local
 	// configuration names.
 	if rel, err := shipconfig.Load(top); err == nil {
@@ -294,7 +277,7 @@ func (f *shipFixture) options(t *testing.T) options {
 	opts.IsTerminal = func() bool { return f.tty }
 	opts.Stdin = strings.NewReader(f.stdin)
 	opts.Getenv = func(k string) string { return f.env[k] }
-	opts.OpenShipWorkspace = func(_ context.Context, o semrel.WorkspaceOptions) (shipWorkspace, error) {
+	opts.OpenShipWorkspace = func(_ context.Context, o shipclone.Options) (shipWorkspace, error) {
 		f.opened = append(f.opened, o)
 		f.log("open")
 		return f.ws, nil
@@ -305,7 +288,6 @@ func (f *shipFixture) options(t *testing.T) options {
 		}
 		return stepRecorder{f, t}
 	}
-	opts.GitHubToken = func(context.Context) string { f.tokens++; return "gh-tok" }
 	opts.SignalContext = func(parent context.Context) (context.Context, context.CancelFunc, func() os.Signal) {
 		ctx, cancel := context.WithCancel(parent)
 		f.cancel = cancel
@@ -331,34 +313,23 @@ func (f *shipFixture) runJSON(t *testing.T, args ...string) (int, shipDocument, 
 	return code, doc, stderr
 }
 
-func shipResult(project, version, tag string) semrel.ProjectResult {
-	return semrel.ProjectResult{
+func shipResult(project, version, tag string) versioning.Result {
+	return versioning.Result{
 		Project: project, Branch: "main",
 		NewReleasePublished: true, NewReleaseVersion: version, NewReleaseGitTag: tag,
 		NewReleaseNotes:    "## " + version + "\n\n* " + project + " change\n",
+		ChangelogSection:   "## " + version + " (2026-10-23)\n\n* " + project + " change\n",
 		NewReleaseGitHead:  localHead,
 		LastReleaseVersion: "1.0.0", LastReleaseGitTag: project + "-v1.0.0",
 	}
 }
 
 func (f *shipFixture) monorepoResults() {
-	f.ws.results = []semrel.ProjectResult{
+	f.ws.results = []versioning.Result{
 		shipResult("core", "1.1.0", "core-v1.1.0"),
 		{Project: "cli", Branch: "main", LastReleaseVersion: "0.3.0", LastReleaseGitTag: "cli-v0.3.0"},
 		shipResult("web", "2.1.0", "web-v2.1.0"),
 	}
-}
-
-// released are the projects semantic-release ran for (nerv pipeline
-// release; nerv ship never runs it).
-func (f *shipFixture) released() []string {
-	var out []string
-	for _, e := range f.events {
-		if p, ok := strings.CutPrefix(e, "release "); ok {
-			out = append(out, p)
-		}
-	}
-	return out
 }
 
 // packaged lists the artifacts in the repository, as <project>/<version>.
@@ -381,8 +352,7 @@ func (f *shipFixture) packaged(t *testing.T) []string {
 
 func indexOf(events []string, e string) int { return slices.Index(events, e) }
 
-// noGitWrites fails when the run asked git for anything but reads, or
-// semantic-release or the push check ran.
+// noGitWrites fails when the run asked git for anything but reads.
 func (f *shipFixture) noGitWrites(t *testing.T) {
 	t.Helper()
 	for _, c := range f.runner.Calls {
@@ -396,9 +366,6 @@ func (f *shipFixture) noGitWrites(t *testing.T) {
 		if slices.Contains([]string{"push", "commit", "notes", "update-ref"}, args[0]) || (args[0] == "tag" && !slices.Equal(args, []string{"tag", "--list"})) {
 			t.Errorf("git write: git %s", strings.Join(c.Args, " "))
 		}
-	}
-	if len(f.ws.requests) != 0 || slices.Contains(f.events, "check-push") || f.tokens != 0 {
-		t.Errorf("semantic-release %d, events %v, tokens %d: nerv ship never releases", len(f.ws.requests), f.events, f.tokens)
 	}
 }
 
@@ -465,8 +432,8 @@ func TestShip_UnknownProjectAndNoOrigin(t *testing.T) {
 	}
 	f = newShipFixture(t, shipMonorepoYAML)
 	opts := f.options(t)
-	opts.OpenShipWorkspace = func(context.Context, semrel.WorkspaceOptions) (shipWorkspace, error) {
-		return nil, semrel.ErrNoOrigin
+	opts.OpenShipWorkspace = func(context.Context, shipclone.Options) (shipWorkspace, error) {
+		return nil, shipclone.ErrNoOrigin
 	}
 	var out, errOut bytes.Buffer
 	if code := run([]string{"ship", "--yes"}, &out, &errOut, opts); code != 1 || !strings.Contains(errOut.String(), "origin") {
@@ -481,13 +448,13 @@ func TestShip_RequiresTheBuildMode(t *testing.T) {
 		name, yaml string
 		want       []string
 	}{
-		{"no release section", "", []string{"no release: section", "build.mode (compose or script)"}},
-		{"no build mode", "release:\n  projects:\n    - { name: api, path: . }\n", []string{"release.projects[0].build.mode: required by nerv ship (compose or script): there is no default"}},
-		{"old preset", "release:\n  projects:\n    - name: api\n      path: .\n      presets: [dotnet]\n      dotnet: { project_file: Api.csproj }\n", []string{
-			"release.projects[0].presets: the presets were removed; set build.mode instead",
-			"release.projects[0].dotnet: the dotnet preset was removed",
+		{"no ship section", "", []string{"no ship: section", "build.mode (compose or script)"}},
+		{"no build mode", "ship:\n  projects:\n    - { name: api, path: . }\n", []string{"ship.projects[0].build.mode: required by nerv ship (compose or script): there is no default"}},
+		{"old preset", "ship:\n  projects:\n    - name: api\n      path: .\n      presets: [dotnet]\n      dotnet: { project_file: Api.csproj }\n", []string{
+			"ship.projects[0].presets: the presets were removed; set build.mode instead",
+			"ship.projects[0].dotnet: the dotnet preset was removed",
 		}},
-		{"old publish stage", "release:\n  projects:\n    - name: api\n      path: .\n      build: { mode: script }\n      stages:\n        publish: { run: x }\n", []string{"publishing moved to nerv deploy"}},
+		{"old publish stage", "ship:\n  projects:\n    - name: api\n      path: .\n      build: { mode: script }\n      stages:\n        publish: { run: x }\n", []string{"publishing moved to nerv deploy"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -596,7 +563,9 @@ func TestShip_PackagesInDependencyOrderAndSkipsUnreleased(t *testing.T) {
 	}
 	notes, _ := os.ReadFile(filepath.Join(coreDir, artifact.NotesFile))
 	section, _ := os.ReadFile(filepath.Join(coreDir, artifact.ChangelogFile))
-	if string(notes) != f.ws.results[0].NewReleaseNotes || string(section) != f.ws.results[0].NewReleaseNotes {
+	// The notes and the CHANGELOG section are the engine's own (the section
+	// carries the release date, as @semantic-release/changelog writes it).
+	if string(notes) != f.ws.results[0].NewReleaseNotes || string(section) != f.ws.results[0].ChangelogSection {
 		t.Errorf("notes %q, section %q", notes, section)
 	}
 	if _, err := os.Stat(f.ws.extra); !errors.Is(err, os.ErrNotExist) {
@@ -631,7 +600,7 @@ func TestShip_StepsGetTheReleaseVariables(t *testing.T) {
 
 func TestShip_NothingToRelease(t *testing.T) {
 	f := newShipFixture(t, shipMonorepoYAML)
-	f.ws.results = []semrel.ProjectResult{
+	f.ws.results = []versioning.Result{
 		{Project: "core", Branch: "main"}, {Project: "cli", Branch: "main"}, {Project: "web", Branch: "main"},
 	}
 	code, stdout, _ := f.run(t)
@@ -681,7 +650,7 @@ func TestShip_ReleaseFilesInTheCloneAndTheArtifact(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			f := newShipFixture(t, shipVersionFilesYAML)
 			f.ws.public = tt.public
-			f.ws.results = []semrel.ProjectResult{shipResult("api", "1.1.0", "v1.1.0")}
+			f.ws.results = []versioning.Result{shipResult("api", "1.1.0", "v1.1.0")}
 			csproj := filepath.Join(f.ws.dir, "src", "Api", "Api.csproj")
 			if err := os.MkdirAll(filepath.Dir(csproj), 0o755); err != nil {
 				t.Fatal(err)
@@ -707,7 +676,7 @@ func TestShip_ReleaseFilesInTheCloneAndTheArtifact(t *testing.T) {
 			if !strings.Contains(atFirstStep, "<Version>1.1.0</Version>") || !strings.Contains(atFirstStep, "<PackageReleaseNotes>"+tt.wantNotes+"</PackageReleaseNotes>") {
 				t.Errorf("csproj at the first step:\n%s", atFirstStep)
 			}
-			wantChangelog := "# Changelog\n\n## 1.1.0\n\n* api change\n\n## 1.0.0\n\n* first\n"
+			wantChangelog := "# Changelog\n\n## 1.1.0 (2026-10-23)\n\n* api change\n\n## 1.0.0\n\n* first\n"
 			if changelogAtFirstStep != wantChangelog {
 				t.Errorf("CHANGELOG at the first step:\n%q\nwant\n%q", changelogAtFirstStep, wantChangelog)
 			}
@@ -791,10 +760,53 @@ func TestShip_ExplicitVersionSkipsComputing(t *testing.T) {
 	}
 	f.noGitWrites(t)
 
-	// A prerelease's channel is its first identifier.
+	// L7, L15: a prerelease's channel is the branch's (release/* is rc on
+	// the beta channel), never its prerelease identifier.
 	f = newShipFixture(t, shipMonorepoYAML)
-	if code, doc, _ := f.runJSON(t, "--dry-run", "--project", "web", "--version", "3.0.0-rc.1"); code != 0 || doc.Projects[0].Channel != "rc" || doc.Projects[0].Tag != "web-v3.0.0-rc.1" {
+	f.ws.branch = versioning.ReleaseBranch{Name: "release/3.0", Prerelease: "rc", Channel: "beta"}
+	if code, doc, _ := f.runJSON(t, "--dry-run", "--project", "web", "--version", "3.0.0-rc.1"); code != 0 || doc.Projects[0].Channel != "beta" || doc.Projects[0].Tag != "web-v3.0.0-rc.1" {
 		t.Errorf("prerelease: exit %d, %+v", code, doc)
+	}
+}
+
+// L15: --version must fit the branch: its prerelease identifier on a
+// prerelease branch, a stable version on a release branch, and a release
+// branch at all.
+func TestShip_ExplicitVersionMustFitTheBranch(t *testing.T) {
+	tests := []struct {
+		name    string
+		branch  versioning.ReleaseBranch
+		err     error
+		version string
+		want    string
+	}{
+		{"stable on a prerelease branch", versioning.ReleaseBranch{Name: "develop", Prerelease: "alpha", Channel: "alpha"}, nil, "3.0.0", "develop is a prerelease branch whose prerelease identifier is alpha; pass a version such as 3.0.0-alpha.1"},
+		{"another prerelease id", versioning.ReleaseBranch{Name: "release/3.0", Prerelease: "rc", Channel: "beta"}, nil, "3.0.0-beta.1", "prerelease identifier is rc"},
+		{"prerelease on a release branch", versioning.ReleaseBranch{Name: "main"}, nil, "3.0.0-rc.1", "main is a release branch, which releases stable versions; pass one without a prerelease, such as 3.0.0"},
+		{"not a release branch", versioning.ReleaseBranch{}, errors.New("branch topic is not a release branch (the configured branches are main)"), "3.0.0", "branch topic is not a release branch"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f := newShipFixture(t, shipMonorepoYAML)
+			f.ws.branch, f.ws.branchErr = tt.branch, tt.err
+			code, doc, _ := f.runJSON(t, "--dry-run", "--project", "web", "--version", tt.version)
+			if code != 1 || doc.Status != "refused" || !strings.Contains(doc.Error, tt.want) {
+				t.Errorf("exit %d, %+v; want a refusal with %q", code, doc, tt.want)
+			}
+			if slices.ContainsFunc(f.events, func(e string) bool { return strings.Contains(e, ": echo") }) {
+				t.Errorf("steps ran: %v", f.events)
+			}
+		})
+	}
+}
+
+// L10: with --version, a --expect mismatch says the two flags disagree, not
+// that origin moved.
+func TestShip_ExpectWithAnExplicitVersion(t *testing.T) {
+	f := newShipFixture(t, shipMonorepoYAML)
+	code, doc, _ := f.runJSON(t, "--yes", "--project", "core", "--version", "1.2.0", "--expect", "core=1.3.0")
+	if code != 1 || !strings.Contains(doc.Error, "--version does not match --expect") || strings.Contains(doc.Error, "Origin probably moved") {
+		t.Errorf("exit %d, %+v", code, doc)
 	}
 }
 
@@ -834,7 +846,7 @@ func TestShip_ExplicitVersionChecks(t *testing.T) {
 func newComposeFixture(t *testing.T) *shipFixture {
 	t.Helper()
 	f := newShipFixture(t, shipComposeYAML)
-	f.ws.results = []semrel.ProjectResult{shipResult("api", "1.4.0", "v1.4.0")}
+	f.ws.results = []versioning.Result{shipResult("api", "1.4.0", "v1.4.0")}
 	if err := os.WriteFile(filepath.Join(f.ws.dir, "api", "docker-compose.yml"), []byte("services: {}\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -966,7 +978,7 @@ func TestShip_JSONDocumentOnEveryPath(t *testing.T) {
 		{"packaged", func(f *shipFixture) {}, []string{"--yes"}, 0, "packaged", 3},
 		{"dry run", func(f *shipFixture) {}, []string{"--dry-run"}, 0, "dry-run", 3},
 		{"nothing to release", func(f *shipFixture) {
-			f.ws.results = []semrel.ProjectResult{{Project: "core"}, {Project: "cli"}, {Project: "web"}}
+			f.ws.results = []versioning.Result{{Project: "core"}, {Project: "cli"}, {Project: "web"}}
 		}, []string{"--yes"}, 0, "nothing-to-release", 3},
 		{"refused: behind origin", func(f *shipFixture) { f.ws.head = strings.Repeat("2", 40) }, []string{"--yes"}, 1, "refused", 0},
 		{"refused: no --yes", func(f *shipFixture) {}, nil, 1, "refused", 0},
@@ -1129,7 +1141,7 @@ func TestShip_UsesTheLocalConfigurationNotOrigins(t *testing.T) {
 }
 
 // shipPathsYAML names one path per checked field; libs/**/gen is a glob.
-const shipPathsYAML = `release:
+const shipPathsYAML = `ship:
   projects:
     - name: api
       path: api
@@ -1162,7 +1174,7 @@ func TestShip_LocalPathsMissingOnOriginAreRefused(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			f := newShipFixture(t, shipPathsYAML)
-			f.ws.results = []semrel.ProjectResult{shipResult("api", "1.1.0", "v1.1.0")}
+			f.ws.results = []versioning.Result{shipResult("api", "1.1.0", "v1.1.0")}
 			for _, d := range []string{"libs/common", "tools/build", "tools/hooks"} {
 				if err := os.MkdirAll(filepath.Join(f.ws.dir, d), 0o755); err != nil {
 					t.Fatal(err)
@@ -1204,15 +1216,33 @@ func TestShip_LocalPathsMissingOnOriginAreRefused(t *testing.T) {
 	}
 }
 
-func TestShip_SaysWhereTheSemanticReleaseConfigCameFrom(t *testing.T) {
+func TestShip_SaysWhereTheVersionConfigCameFrom(t *testing.T) {
 	f := newShipFixture(t, shipMonorepoYAML)
 	f.monorepoResults()
-	for i := range f.ws.results {
-		f.ws.results[i].SemanticReleaseConfig = semrel.ConfigBuiltIn
-	}
 	code, doc, stderr := f.runJSON(t, "--dry-run")
-	if code != 0 || doc.SemanticReleaseConfig != semrel.ConfigBuiltIn || !strings.Contains(stderr, "semantic-release config: built-in default (dim)") {
+	if code != 0 || doc.SemanticReleaseConfig != "repository" || !strings.Contains(stderr, "version config: ship: section (.ai-workflow.yml)") {
 		t.Errorf("exit %d, document %+v\nstderr %s", code, doc, stderr)
+	}
+}
+
+// L10: a .nerv/artifacts that leads outside the repository is refused
+// before any stage runs (a dry run writes no artifact, so it is not
+// checked).
+func TestShip_RefusesASymlinkedArtifactsFolderBeforeRunning(t *testing.T) {
+	f := newShipFixture(t, shipMonorepoYAML)
+	f.monorepoResults()
+	if err := os.Symlink(t.TempDir(), filepath.Join(f.top, ".nerv", "artifacts")); err != nil {
+		t.Skip("symlinks unavailable:", err)
+	}
+	code, doc, _ := f.runJSON(t, "--yes")
+	if code != 1 || doc.Status != "refused" || !strings.Contains(doc.Error, "outside the repository") {
+		t.Fatalf("exit %d, %+v", code, doc)
+	}
+	if slices.Contains(f.events, "open") {
+		t.Errorf("origin was read: %v", f.events)
+	}
+	if code, _, _ := f.runJSON(t, "--dry-run"); code != 0 {
+		t.Errorf("dry run: exit %d", code)
 	}
 }
 

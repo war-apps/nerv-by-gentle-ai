@@ -2,8 +2,8 @@
 // .ai-workflow.yml with gopkg.in/yaml.v3, without depending on the rest of
 // the file: the section block is cut out of the text and parsed alone, its
 // keys are checked strictly against a Go struct, and paths are checked and
-// normalised. It backs the release: section (internal/shipconfig) and the
-// pipeline: section (internal/pipelineconfig).
+// normalised. It backs the ship: section (internal/shipconfig) and the
+// deploy: section (internal/deployconfig).
 package yamlsection
 
 import (

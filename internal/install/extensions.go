@@ -12,8 +12,10 @@ import (
 // selectExtensions decides which extension plugins Install enables, in
 // order: the requested ones (each after its requirements), then those
 // settings already enables, then the ones the user accepts when
-// deps.ConfirmExtension is set (the task plugin first, then each provider
-// whose requirements are selected).
+// deps.ConfirmExtension is set, asked in plugin.SuggestionOrder (task, its
+// providers, ship, deploy, the deploy providers) and only when every
+// requirement is already selected: deploy only once ship is, a provider
+// only once its plugin is.
 func selectExtensions(deps Deps, opts Options, settings *claude.Settings) ([]plugin.Extension, error) {
 	exts, err := plugin.Extensions(deps.ExtensionsFS)
 	if err != nil {
@@ -36,6 +38,28 @@ func selectExtensions(deps Deps, opts Options, settings *claude.Settings) ([]plu
 		}
 	}
 
+	// require adds e after its requirements, transitively (deploy-github
+	// brings deploy, which brings ship).
+	var require func(e plugin.Extension, by string) error
+	require = func(e plugin.Extension, by string) error {
+		for _, req := range e.Requires {
+			if has(req) {
+				continue
+			}
+			r, shipped := byName[req]
+			if !shipped {
+				return &RefusalError{Err: fmt.Errorf("extension plugin %q requires %q, which this nerv does not ship", e.Name, req)}
+			}
+			if err := require(r, e.Name); err != nil {
+				return err
+			}
+		}
+		if by != "" && !has(e.Name) {
+			fmt.Fprintf(deps.Stdout, "Adding %s (required by %s)\n", e.Name, by)
+		}
+		add(e)
+		return nil
+	}
 	for _, name := range opts.Extensions {
 		e, ok := byName[name]
 		if !ok {
@@ -45,18 +69,9 @@ func selectExtensions(deps Deps, opts Options, settings *claude.Settings) ([]plu
 			}
 			return nil, &RefusalError{Err: fmt.Errorf("unknown extension plugin %q (available: %s)", name, available)}
 		}
-		for _, req := range e.Requires {
-			if has(req) {
-				continue
-			}
-			r, shipped := byName[req]
-			if !shipped {
-				return nil, &RefusalError{Err: fmt.Errorf("extension plugin %q requires %q, which this nerv does not ship", e.Name, req)}
-			}
-			fmt.Fprintf(deps.Stdout, "Adding %s (required by %s)\n", req, e.Name)
-			add(r)
+		if err := require(e, ""); err != nil {
+			return nil, err
 		}
-		add(e)
 	}
 
 	for _, e := range exts {
@@ -68,14 +83,12 @@ func selectExtensions(deps Deps, opts Options, settings *claude.Settings) ([]plu
 	if deps.ConfirmExtension == nil {
 		return selected, nil
 	}
-	for _, providers := range []bool{false, true} {
-		for _, e := range exts {
-			if e.Provider != providers || has(e.Name) {
-				continue
-			}
-			if !slices.ContainsFunc(e.Requires, func(r string) bool { return !has(r) }) && deps.ConfirmExtension(e.Name, e.Description) {
-				add(e)
-			}
+	for _, e := range plugin.SuggestionOrder(exts) {
+		if has(e.Name) {
+			continue
+		}
+		if !slices.ContainsFunc(e.Requires, func(r string) bool { return !has(r) }) && deps.ConfirmExtension(e.Name, e.Description) {
+			add(e)
 		}
 	}
 	return selected, nil

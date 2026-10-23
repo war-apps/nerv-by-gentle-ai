@@ -6,7 +6,7 @@ import (
 )
 
 // The default target selection refuses an environment whose
-// DOCKER_IMAGE_VERSION is not set, as nerv pipeline deploy did, so an
+// DOCKER_IMAGE_VERSION is not set, so an
 // alpha never reaches an environment that names no version.
 func TestRunComposeOp_RefusesAMissingImageVersion(t *testing.T) {
 	f := &fakeProc{}

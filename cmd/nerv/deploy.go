@@ -37,9 +37,14 @@ origin) in a temporary directory at the artifact's base commit and:
   5. creates the git host's release (deploy.host), a prerelease for a
      release on a channel, unless it exists.
 
+Before anything is cloned or pushed, every target's config and the tools
+its provider needs are checked (deploy-ssh-compose: sshpass for password
+authentication, infisical for source infisical).
+
 Your repository is never modified. When origin's branch moved past the
 artifact's base commit the deploy is refused, unless --rebase re-applies the
-release files on its new head (a conflict is refused). A re-run is
+release files on its new head (a conflict is refused; the tag then points at
+code nerv ship never built, and a warning says so). A re-run is
 idempotent: what origin already has is skipped, so after a failure, fix the
 cause and run the same command again. Without --yes it asks before pushing.
 
@@ -48,7 +53,8 @@ Flags:
   --target <name>    Only this target of deploy.targets (repeatable)
   --dry-run          Prepare the release in the clone and show the steps;
                      push nothing and run no provider
-  --rebase           Re-apply the release on origin's moved branch
+  --rebase           Re-apply the release on origin's moved branch (the
+                     tagged code was never built: prefer shipping again)
   --yes              Deploy without asking for confirmation
   --cwd <dir>        A directory inside the repository (default ".")
   --json             Print the final report as JSON

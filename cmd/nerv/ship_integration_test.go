@@ -1,31 +1,20 @@
-//go:build semrel_integration
-
-// Integration tests of nerv ship and nerv pipeline release: real git, node,
-// npm, semantic-release and bash, against a local bare repository as origin
-// (never a real remote).
-// Run with
-//
-//	go test -tags semrel_integration -run Integration -v ./cmd/nerv/
-//
-// They skip when git, node, npm or bash is missing or the npm registry is
-// unreachable.
+// Integration tests of nerv ship: real git and bash, the native version
+// engine, against a local bare repository as origin (never a real remote).
+// They skip when git or bash is missing, and with -short.
 
 package main
 
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/war-apps/nerv-by-gentle-ai/internal/artifact"
-	"github.com/war-apps/nerv-by-gentle-ai/internal/semrel"
-	"github.com/war-apps/nerv-by-gentle-ai/internal/shipconfig"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/shipclone"
 )
 
 func requireShipToolchain(t *testing.T) {
@@ -33,15 +22,10 @@ func requireShipToolchain(t *testing.T) {
 	if testing.Short() {
 		t.Skip("integration test")
 	}
-	for _, tool := range []string{"git", "node", "npm", "bash"} {
+	for _, tool := range []string{"git", "bash"} {
 		if _, err := exec.LookPath(tool); err != nil {
 			t.Skipf("%s not available", tool)
 		}
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-	if err := exec.CommandContext(ctx, "npm", "view", "semantic-release@"+shipconfig.DefaultSemanticReleaseVersion, "version").Run(); err != nil {
-		t.Skipf("npm registry unreachable: %v", err)
 	}
 }
 
@@ -112,21 +96,7 @@ func newShipRepos(t *testing.T) (origin, work gitDir) {
 	return origin, work
 }
 
-const shipReleaseConfig = `{
-  "name": "widgets", "version": "0.0.0", "private": true,
-  "release": {
-    "branches": ["main"],
-    "plugins": [
-      "@semantic-release/commit-analyzer",
-      "@semantic-release/release-notes-generator",
-      "@semantic-release/changelog",
-      ["@semantic-release/git", { "assets": ["CHANGELOG.md"] }]
-    ]
-  }
-}
-`
-
-// markerProject is a script-mode release: project whose stages and hooks
+// markerProject is a script-mode ship: project whose stages and hooks
 // append one line each to marker, with the NERV_RELEASE_* values they saw;
 // its package stage writes <name>.txt to the outputs.
 func markerProject(name, path, tagFormat, marker string) string {
@@ -148,22 +118,20 @@ func markerProject(name, path, tagFormat, marker string) string {
 `
 }
 
-func shipOptions(t *testing.T, cache string) options {
+func shipOptions(t *testing.T) options {
 	opts := defaultOptions()
 	opts.Stdin = strings.NewReader("")
 	opts.IsTerminal = func() bool { return false }
-	opts.GitHubToken = func(context.Context) string { return "" }
-	opts.OpenShipWorkspace = func(ctx context.Context, o semrel.WorkspaceOptions) (shipWorkspace, error) {
-		o.CacheDir = cache
-		return semrel.NewWorkspace(ctx, o)
+	opts.OpenShipWorkspace = func(ctx context.Context, o shipclone.Options) (shipWorkspace, error) {
+		return shipclone.New(ctx, o)
 	}
 	return opts
 }
 
-func runShipCommand(t *testing.T, cache string, args ...string) (int, string, string) {
+func runShipCommand(t *testing.T, args ...string) (int, string, string) {
 	t.Helper()
 	var stdout, stderr bytes.Buffer
-	code := run(append([]string{"ship"}, args...), &stdout, &stderr, shipOptions(t, cache))
+	code := run(append([]string{"ship"}, args...), &stdout, &stderr, shipOptions(t))
 	return code, stdout.String(), stderr.String()
 }
 
@@ -196,11 +164,9 @@ func readArtifact(t *testing.T, work gitDir, project, version string) (*artifact
 func TestIntegration_ShipPackagesWhatOriginHasAndNeverWritesToGit(t *testing.T) {
 	requireShipToolchain(t)
 	shipEnv(t)
-	cache := t.TempDir()
 	marker := filepath.Join(t.TempDir(), "marker.log")
 	origin, work := newShipRepos(t)
-	work.write("package.json", shipReleaseConfig)
-	work.write(".ai-workflow.yml", "release:\n  projects:\n"+markerProject("widgets", ".", "", marker))
+	work.write(".ai-workflow.yml", "ship:\n  projects:\n"+markerProject("widgets", ".", "", marker))
 	work.commit("chore: init", "a.txt")
 	work.git("tag", "v1.0.0")
 	work.commit("feat: add gadgets", "b.txt")
@@ -208,7 +174,7 @@ func TestIntegration_ShipPackagesWhatOriginHasAndNeverWritesToGit(t *testing.T) 
 	originBefore, workBefore := refs(origin), refs(work)
 
 	// A dry run builds and runs the prepare hooks in the clone, nothing else.
-	code, stdout, stderr := runShipCommand(t, cache, "--cwd", work.dir, "--dry-run")
+	code, stdout, stderr := runShipCommand(t, "--cwd", work.dir, "--dry-run")
 	if code != 0 {
 		t.Fatalf("dry run: exit %d\n%s", code, stderr)
 	}
@@ -223,18 +189,18 @@ func TestIntegration_ShipPackagesWhatOriginHasAndNeverWritesToGit(t *testing.T) 
 	os.Remove(marker)
 
 	// Not a terminal and no --yes: refused before anything runs.
-	if code, _, stderr := runShipCommand(t, cache, "--cwd", work.dir); code != 1 || !strings.Contains(stderr, "--yes") {
+	if code, _, stderr := runShipCommand(t, "--cwd", work.dir); code != 1 || !strings.Contains(stderr, "--yes") {
 		t.Errorf("without --yes: exit %d\n%s", code, stderr)
 	}
 	// An approval of another version is refused before anything runs.
-	if code, _, stderr := runShipCommand(t, cache, "--cwd", work.dir, "--yes", "--expect", "widgets=1.0.1"); code != 1 || !strings.Contains(stderr, "expected 1.0.1, computed 1.1.0") {
+	if code, _, stderr := runShipCommand(t, "--cwd", work.dir, "--yes", "--expect", "widgets=1.0.1"); code != 1 || !strings.Contains(stderr, "expected 1.0.1, computed 1.1.0") {
 		t.Errorf("--expect mismatch: exit %d\n%s", code, stderr)
 	}
 	if readMarker(t, marker) != nil {
 		t.Error("steps ran without a confirmation or despite the --expect refusal")
 	}
 
-	code, stdout, stderr = runShipCommand(t, cache, "--cwd", work.dir, "--yes", "--expect", "widgets=1.1.0")
+	code, stdout, stderr = runShipCommand(t, "--cwd", work.dir, "--yes", "--expect", "widgets=1.1.0")
 	if code != 0 {
 		t.Fatalf("ship: exit %d\nstdout %s\nstderr %s", code, stdout, stderr)
 	}
@@ -269,10 +235,10 @@ func TestIntegration_ShipPackagesWhatOriginHasAndNeverWritesToGit(t *testing.T) 
 	}
 
 	// The same version again: refused unless --force.
-	if code, _, stderr := runShipCommand(t, cache, "--cwd", work.dir, "--yes"); code != 1 || !strings.Contains(stderr, "--force") {
+	if code, _, stderr := runShipCommand(t, "--cwd", work.dir, "--yes"); code != 1 || !strings.Contains(stderr, "--force") {
 		t.Errorf("rerun: exit %d\n%s", code, stderr)
 	}
-	if code, _, stderr := runShipCommand(t, cache, "--cwd", work.dir, "--yes", "--force"); code != 0 {
+	if code, _, stderr := runShipCommand(t, "--cwd", work.dir, "--yes", "--force"); code != 0 {
 		t.Errorf("rerun --force: exit %d\n%s", code, stderr)
 	}
 	if got := refs(origin); got != originBefore {
@@ -283,11 +249,9 @@ func TestIntegration_ShipPackagesWhatOriginHasAndNeverWritesToGit(t *testing.T) 
 func TestIntegration_ShipMonorepoInOrder(t *testing.T) {
 	requireShipToolchain(t)
 	shipEnv(t)
-	cache := t.TempDir()
 	marker := filepath.Join(t.TempDir(), "marker.log")
 	origin, work := newShipRepos(t)
-	work.write("package.json", shipReleaseConfig)
-	work.write(".ai-workflow.yml", "release:\n  projects:\n"+
+	work.write(".ai-workflow.yml", "ship:\n  projects:\n"+
 		markerProject("api", "api", "api-v${version}", marker)+
 		markerProject("web", "web", "web-v${version}", marker)+
 		markerProject("docs", "docs", "docs-v${version}", marker))
@@ -300,7 +264,7 @@ func TestIntegration_ShipMonorepoInOrder(t *testing.T) {
 	work.git("push", "-q", "origin", "main", "--tags")
 	originBefore := refs(origin)
 
-	code, stdout, stderr := runShipCommand(t, cache, "--cwd", work.dir, "--yes")
+	code, stdout, stderr := runShipCommand(t, "--cwd", work.dir, "--yes")
 	if code != 0 {
 		t.Fatalf("ship: exit %d\nstdout %s\nstderr %s", code, stdout, stderr)
 	}
@@ -327,11 +291,9 @@ func TestIntegration_ShipMonorepoInOrder(t *testing.T) {
 func TestIntegration_ShipProjectRaisedByDependsOn(t *testing.T) {
 	requireShipToolchain(t)
 	shipEnv(t)
-	cache := t.TempDir()
 	marker := filepath.Join(t.TempDir(), "marker.log")
 	origin, work := newShipRepos(t)
-	work.write("package.json", shipReleaseConfig)
-	work.write(".ai-workflow.yml", "release:\n  projects:\n"+
+	work.write(".ai-workflow.yml", "ship:\n  projects:\n"+
 		markerProject("core", "core", "core-v${version}", marker)+
 		markerProject("app", "app", "app-v${version}", marker)+
 		"      depends_on:\n        - project: core\n          bump: minor\n")
@@ -341,7 +303,7 @@ func TestIntegration_ShipProjectRaisedByDependsOn(t *testing.T) {
 	work.commit("fix: core bug", "core/b.txt")
 	work.git("push", "-q", "origin", "main", "--tags")
 
-	code, stdout, stderr := runShipCommand(t, cache, "--cwd", work.dir, "--yes", "--project", "app")
+	code, stdout, stderr := runShipCommand(t, "--cwd", work.dir, "--yes", "--project", "app")
 	if code != 0 {
 		t.Fatalf("ship --project app: exit %d\nstdout %s\nstderr %s", code, stdout, stderr)
 	}
@@ -357,26 +319,24 @@ func TestIntegration_ShipProjectRaisedByDependsOn(t *testing.T) {
 	}
 }
 
-// The release: section is the user's local one: origin has none, the
+// The ship: section is the user's local one: origin has none, the
 // working tree has it uncommitted, and its hooks run.
 func TestIntegration_ShipUsesTheLocalUncommittedSection(t *testing.T) {
 	requireShipToolchain(t)
 	shipEnv(t)
-	cache := t.TempDir()
 	marker := filepath.Join(t.TempDir(), "marker.log")
 	origin, work := newShipRepos(t)
-	work.write("package.json", shipReleaseConfig)
 	work.commit("chore: init", "a.txt")
 	work.git("tag", "v1.0.0")
 	work.commit("feat: add gadgets", "b.txt")
 	work.git("push", "-q", "origin", "main", "--tags")
 	// Not committed: only the working tree has it.
-	work.write(".ai-workflow.yml", "release:\n  projects:\n"+markerProject("widgets", ".", "", marker))
+	work.write(".ai-workflow.yml", "ship:\n  projects:\n"+markerProject("widgets", ".", "", marker))
 	if status := work.git("status", "--porcelain"); !strings.Contains(status, ".ai-workflow.yml") {
 		t.Fatalf("the section should be uncommitted: %q", status)
 	}
 
-	code, stdout, stderr := runShipCommand(t, cache, "--cwd", work.dir, "--yes", "--expect", "widgets=1.1.0")
+	code, stdout, stderr := runShipCommand(t, "--cwd", work.dir, "--yes", "--expect", "widgets=1.1.0")
 	if code != 0 {
 		t.Fatalf("ship: exit %d\nstdout %s\nstderr %s", code, stdout, stderr)
 	}
@@ -390,14 +350,13 @@ func TestIntegration_ShipUsesTheLocalUncommittedSection(t *testing.T) {
 	}
 }
 
-// A repository without a semantic-release configuration computes with the
-// built-in one (dim's): develop gets X.Y.Z-alpha.1 on the alpha channel.
+// The ship: section's default branches are dim's: develop gets
+// X.Y.Z-alpha.1 on the alpha channel.
 func TestIntegration_ShipWithTheBuiltInConfiguration(t *testing.T) {
 	requireShipToolchain(t)
 	shipEnv(t)
-	cache := t.TempDir()
 	origin, work := newShipRepos(t)
-	work.write(".ai-workflow.yml", "release:\n  projects:\n    - name: widgets\n      path: .\n      build: { mode: script }\n      stages:\n        build: { run: 'true' }\n")
+	work.write(".ai-workflow.yml", "ship:\n  projects:\n    - name: widgets\n      path: .\n      build: { mode: script }\n      stages:\n        build: { run: 'true' }\n")
 	work.commit("chore: init", "a.txt")
 	work.git("tag", "v1.0.0")
 	work.git("checkout", "-q", "-b", "develop")
@@ -405,11 +364,11 @@ func TestIntegration_ShipWithTheBuiltInConfiguration(t *testing.T) {
 	work.git("push", "-q", "origin", "main", "develop", "--tags")
 	originBefore := refs(origin)
 
-	code, stdout, stderr := runShipCommand(t, cache, "--cwd", work.dir, "--yes", "--json")
+	code, stdout, stderr := runShipCommand(t, "--cwd", work.dir, "--yes", "--json")
 	if code != 0 {
 		t.Fatalf("ship: exit %d\nstdout %s\nstderr %s", code, stdout, stderr)
 	}
-	if !strings.Contains(stdout, `"semantic_release_config":"default"`) || !strings.Contains(stdout, `"status":"packaged"`) || !strings.Contains(stderr, "built-in default (dim)") {
+	if !strings.Contains(stdout, `"semantic_release_config":"repository"`) || !strings.Contains(stdout, `"status":"packaged"`) || !strings.Contains(stderr, "version config: ship: section") {
 		t.Errorf("source not reported:\nstdout %s", stdout)
 	}
 	m, _ := readArtifact(t, work, "widgets", "1.1.0-alpha.1")
@@ -418,124 +377,5 @@ func TestIntegration_ShipWithTheBuiltInConfiguration(t *testing.T) {
 	}
 	if refs(origin) != originBefore {
 		t.Error("origin changed")
-	}
-}
-
-// nerv pipeline release with the built-in semantic-release configuration
-// and a version file: dry run, release on develop, then nothing to release.
-func TestIntegration_PipelineReleaseWithTheBuiltInConfiguration(t *testing.T) {
-	requireShipToolchain(t)
-	shipEnv(t)
-	cache := t.TempDir()
-	origin, work := newShipRepos(t)
-	work.write("src/Api/Api.csproj", apiCsproj)
-	work.commit("chore: init", "a.txt")
-	work.git("tag", "v1.0.0")
-	work.git("checkout", "-q", "-b", "develop")
-	work.commit("feat: add gadgets", "b.txt")
-	work.git("push", "-q", "origin", "main", "develop", "--tags")
-	// The pipeline: section is local (untracked).
-	work.write(".ai-workflow.yml", "pipeline:\n  dotnet:\n    solution: App.slnx\n  images:\n    - name: ghcr.io/acme/app\n  release:\n    version_files: [src/Api/Api.csproj]\n")
-	originBefore := origin.git("for-each-ref", "--format=%(refname) %(objectname)")
-	outputs := filepath.Join(work.dir, ".nerv", "artifacts", "pipeline", "release.json")
-	readJSON := func() map[string]any {
-		t.Helper()
-		data, err := os.ReadFile(outputs)
-		if err != nil {
-			t.Fatal(err)
-		}
-		var m map[string]any
-		if err := json.Unmarshal(data, &m); err != nil {
-			t.Fatal(err)
-		}
-		return m
-	}
-	runRelease := func(args ...string) (int, string, string) {
-		var stdout, stderr bytes.Buffer
-		code := run(append([]string{"pipeline", "release", "--cwd", work.dir}, args...), &stdout, &stderr, shipOptions(t, cache))
-		return code, stdout.String(), stderr.String()
-	}
-
-	code, _, stderr := runRelease("--dry-run")
-	if code != 0 {
-		t.Fatalf("dry run: exit %d\n%s", code, stderr)
-	}
-	if got := origin.git("for-each-ref", "--format=%(refname) %(objectname)"); got != originBefore {
-		t.Errorf("the dry run changed origin")
-	}
-	if m := readJSON(); m["dry_run"] != true || m["published"] != true || m["version"] != "1.1.0-alpha.1" || m["semantic_release_config"] != "default" {
-		t.Errorf("dry-run release.json %v", m)
-	}
-
-	code, stdout, stderr := runRelease("--yes", "--json", "--expect", filepath.Base(work.dir)+"=1.1.0-alpha.1")
-	if code != 0 {
-		t.Fatalf("release: exit %d\nstdout %s\nstderr %s", code, stdout, stderr)
-	}
-	head := origin.git("rev-parse", "develop")
-	if origin.git("rev-parse", "v1.1.0-alpha.1^{commit}") != head {
-		t.Errorf("tag v1.1.0-alpha.1 is not origin's develop")
-	}
-	if files := origin.git("show", "--name-only", "--format=", "v1.1.0-alpha.1"); files != "CHANGELOG.md\nsrc/Api/Api.csproj" {
-		t.Errorf("release commit holds %q, want the CHANGELOG and the version file", files)
-	}
-	if cs := origin.git("show", "develop:src/Api/Api.csproj"); !strings.Contains(cs, "<Version>1.1.0-alpha.1</Version>") {
-		t.Errorf("version file on origin:\n%s", cs)
-	}
-	if !strings.Contains(stderr, "[pipeline:release] nerv pipeline release: warning: origin has no public address") {
-		t.Errorf("no warning for the release link on a local origin:\n%s", stderr)
-	}
-	m := readJSON()
-	if m["published"] != true || m["dry_run"] != false || m["version"] != "1.1.0-alpha.1" || m["channel"] != "alpha" || m["git_tag"] != "v1.1.0-alpha.1" || m["git_head"] != head {
-		t.Errorf("release.json %v", m)
-	}
-	if !strings.Contains(stdout, `"git_tag":"v1.1.0-alpha.1"`) {
-		t.Errorf("--json stdout %s", stdout)
-	}
-
-	// Pull the release commit; nothing new to release.
-	work.git("pull", "-q", "origin", "develop")
-	code, _, stderr = runRelease("--yes")
-	if m := readJSON(); code != 0 || m["published"] != false || m["last_version"] != "1.1.0-alpha.1" {
-		t.Errorf("no release: exit %d, %v\n%s", code, m, stderr)
-	}
-}
-
-// With the repository's own configuration, version files its
-// @semantic-release/git assets do not list are refused before anything is
-// released; once listed, they enter the release commit.
-func TestIntegration_PipelineReleaseRepositoryConfigAssets(t *testing.T) {
-	requireShipToolchain(t)
-	shipEnv(t)
-	cache := t.TempDir()
-	origin, work := newShipRepos(t)
-	work.write("package.json", shipReleaseConfig) // git assets: CHANGELOG.md only
-	work.write("src/Api/Api.csproj", apiCsproj)
-	work.commit("chore: init", "a.txt")
-	work.git("tag", "v1.0.0")
-	work.commit("feat: add gadgets", "b.txt")
-	work.git("push", "-q", "origin", "main", "--tags")
-	work.write(".ai-workflow.yml", "pipeline:\n  dotnet:\n    solution: App.slnx\n  images:\n    - name: ghcr.io/acme/app\n  release:\n    version_files: [src/Api/Api.csproj]\n")
-	runRelease := func(args ...string) (int, string, string) {
-		var stdout, stderr bytes.Buffer
-		code := run(append([]string{"pipeline", "release", "--cwd", work.dir}, args...), &stdout, &stderr, shipOptions(t, cache))
-		return code, stdout.String(), stderr.String()
-	}
-
-	code, stdout, stderr := runRelease("--yes", "--json")
-	if code != 1 || !strings.Contains(stdout, `"status":"refused"`) || !strings.Contains(stdout, `src/Api/Api.csproj`) || !strings.Contains(stdout, "package.json") {
-		t.Fatalf("uncovered: exit %d\nstdout %s\nstderr %s", code, stdout, stderr)
-	}
-	if tags := origin.git("tag", "--list"); tags != "v1.0.0" {
-		t.Errorf("tagged despite the refusal: %q", tags)
-	}
-
-	work.write("package.json", strings.Replace(shipReleaseConfig, `{ "assets": ["CHANGELOG.md"] }`, `{ "assets": ["CHANGELOG.md", "src/**/*.csproj"] }`, 1))
-	work.commit("chore: commit the csproj in releases")
-	work.git("push", "-q", "origin", "main")
-	if code, stdout, stderr := runRelease("--yes", "--json"); code != 0 {
-		t.Fatalf("covered: exit %d\nstdout %s\nstderr %s", code, stdout, stderr)
-	}
-	if files := origin.git("show", "--name-only", "--format=", "v1.1.0"); files != "CHANGELOG.md\nsrc/Api/Api.csproj" {
-		t.Errorf("release commit holds %q", files)
 	}
 }

@@ -2,7 +2,8 @@
 # nerv-session-start.sh
 #
 # SessionStart hook for the NERV plugin. When the current repo has opted in
-# via ".ai-workflow.yml" with "enabled: true", prints a short activation
+# via ".ai-workflow.yml" with a top-level "enabled: true" (a nested one does
+# not count; see nerv_file_enabled), prints a short activation
 # header that tells the session to load the NERV orchestrator (Ikari)
 # protocol itself, via the Skill tool. A repo that opted in only through
 # the pre-rename ".nerv/nerv.yaml" is not active: it gets one line saying

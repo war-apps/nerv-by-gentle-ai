@@ -1,6 +1,7 @@
 package shipconfig
 
 import (
+	"errors"
 	"fmt"
 	"math"
 	"regexp"
@@ -9,6 +10,7 @@ import (
 	"time"
 
 	"github.com/war-apps/nerv-by-gentle-ai/internal/shipconfig/yamlsection"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/versioning"
 )
 
 // Stages are the pipeline stages, in run order.
@@ -23,16 +25,10 @@ var LifecycleHooks = []string{"prepare", "fail"}
 var Shells = []string{"node", "pwsh", "bash"}
 
 // Bumps are the dependency bump levels.
-var Bumps = []string{"patch", "minor", "none"}
-
-// DockerTags are the tag kinds a nerv pipeline image can receive (kept for
-// internal/pipelineconfig until nerv pipeline is folded into ship and
-// deploy).
-var DockerTags = []string{"version", "channel", "latest"}
+var Bumps = []string{"patch", "minor", "major", "none"}
 
 // BuildArgPlaceholders are the placeholders a compose-mode build.images
-// reference (and a nerv pipeline build_args value) may use: ${version},
-// ${channel} and ${tag}.
+// reference may use: ${version}, ${channel} and ${tag}.
 var BuildArgPlaceholders = []string{"version", "channel", "tag"}
 
 // reservedEnvPrefix is the prefix of the variables NERV passes to hooks.
@@ -41,7 +37,6 @@ const reservedEnvPrefix = "NERV_RELEASE_"
 var (
 	nameRe        = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*$`)
 	scopeRe       = regexp.MustCompile(`^[^\s():]+$`)
-	exactVersion  = regexp.MustCompile(`^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$`)
 	envNameRe     = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 	placeholderRe = regexp.MustCompile(`\$\{([^}]*)\}`)
 )
@@ -57,9 +52,9 @@ func (r *Release) finalizePaths() {
 			p.SharedPaths[j] = normalize(p.SharedPaths[j])
 		}
 		if p.Changelog == "" {
-			p.Changelog = defaultChangelog(p.Path)
+			p.Changelog = r.defaultChangelog(p.Path)
 		} else {
-			p.Changelog, p.ChangelogExplicit = normalize(p.Changelog), true
+			p.Changelog = normalize(p.Changelog)
 		}
 		if b := p.Build; b != nil {
 			b.File = normalize(b.File)
@@ -88,28 +83,17 @@ func normalize(p string) string { return yamlsection.NormalizePath(p) }
 // validate returns one path-qualified message per problem.
 func (r *Release) validate() []string {
 	var v validator
-	sr := r.SemanticRelease
-	if !exactVersion.MatchString(sr.Version) {
-		v.addf("release.semantic_release.version: %q must be an exact version such as %s", sr.Version, DefaultSemanticReleaseVersion)
-	}
-	for i, spec := range sr.ExtraPlugins {
-		at := strings.LastIndex(spec, "@")
-		if at <= 0 || !exactVersion.MatchString(spec[at+1:]) {
-			name := spec
-			if at > 0 {
-				name = spec[:at]
-			}
-			v.addf("release.semantic_release.extra_plugins[%d]: %q must pin an exact version, e.g. %q", i, spec, name+"@<version>")
+	// The engine settings are the version engine's own, checked by it.
+	var engine *versioning.ConfigError
+	if err := r.engineSettings().WithDefaults().Validate(); errors.As(err, &engine) {
+		for _, p := range engine.Problems {
+			v.addf("%s.%s", SectionKey, p)
 		}
-	}
-	if len(r.Projects) == 0 {
-		v.addf("release.projects: at least one project is required")
-		return v.problems
 	}
 
 	byName := map[string]int{}
 	for i, p := range r.Projects {
-		at := fmt.Sprintf("release.projects[%d]", i)
+		at := fmt.Sprintf("ship.projects[%d]", i)
 		switch {
 		case p.Name == "":
 			v.addf("%s.name: required", at)
@@ -127,7 +111,7 @@ func (r *Release) validate() []string {
 	tagOwner := map[string]string{}
 	refsOK := true
 	for i, p := range r.Projects {
-		at := fmt.Sprintf("release.projects[%d]", i)
+		at := fmt.Sprintf("ship.projects[%d]", i)
 		if p.Path == "" {
 			v.addf("%s.path: required", at)
 		} else {
@@ -176,7 +160,7 @@ func (r *Release) validate() []string {
 
 	if refsOK && len(byName) == len(r.Projects) {
 		if _, err := r.TopoOrder(); err != nil {
-			v.addf("release.projects: %v", err)
+			v.addf("ship.projects: %v", err)
 		}
 	}
 	return v.problems

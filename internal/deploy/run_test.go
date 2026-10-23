@@ -8,8 +8,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/war-apps/nerv-by-gentle-ai/internal/pipeline"
-	"github.com/war-apps/nerv-by-gentle-ai/internal/pipelineconfig"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/proc"
 )
 
@@ -58,8 +56,8 @@ func newRunner(f *fakeProc, healthy bool) (*Runner, *int) {
 	yes := healthy
 	return &Runner{
 		SSH:     passwordSSH(f),
-		Verify:  pipelineconfig.Verify{Healthy: &yes, VersionLabel: "org.opencontainers.image.version", Timeout: "60s"},
-		Release: pipeline.ReleaseOutputs{Version: "1.4.0", GitTag: "v1.4.0"},
+		Verify:  Verify{Healthy: yes, VersionLabel: "org.opencontainers.image.version", Timeout: 60 * time.Second},
+		Release: Release{Version: "1.4.0", GitTag: "v1.4.0"},
 		Sleep:   func(context.Context, time.Duration) error { slept++; return nil },
 		Now:     func() time.Time { return time.Unix(int64(slept)*5, 0) },
 	}, &slept
@@ -114,7 +112,7 @@ func TestRunner_UpdatesWaitsForHealthAndChecksTheVersion(t *testing.T) {
 	f := &fakeProc{answer: h.answer}
 	r, slept := newRunner(f, true)
 	res := r.Deploy(context.Background(), target("staging"))
-	if res.Status != pipeline.DeployDeployed || res.Running != "v1.4.0" || res.Health != "Up 40 seconds (healthy)" || *slept != 2 {
+	if res.Status != StatusDeployed || res.Running != "v1.4.0" || res.Health != "Up 40 seconds (healthy)" || *slept != 2 {
 		t.Fatalf("result %+v, slept %d", res, *slept)
 	}
 	wantUpdate := `cd '/srv/my apps' && './manage.sh' pull --container 'api-staging' && './manage.sh' up --container 'api-staging'`
@@ -149,7 +147,7 @@ func TestRunner_Failures(t *testing.T) {
 			f := &fakeProc{answer: h.answer}
 			r, _ := newRunner(f, tt.healthy)
 			res := r.Deploy(context.Background(), target("staging"))
-			if res.Status != pipeline.DeployFailed || !strings.Contains(res.Error, tt.want) {
+			if res.Status != StatusFailed || !strings.Contains(res.Error, tt.want) {
 				t.Errorf("result %+v, want failed with %q", res, tt.want)
 			}
 		})
@@ -159,7 +157,7 @@ func TestRunner_Failures(t *testing.T) {
 func TestRunner_WithoutHealthCheckUpIsEnough(t *testing.T) {
 	h := &host{statuses: []string{"Up 3 seconds"}, label: "1.4.0"}
 	r, _ := newRunner(&fakeProc{answer: h.answer}, false)
-	if res := r.Deploy(context.Background(), target("staging")); res.Status != pipeline.DeployDeployed {
+	if res := r.Deploy(context.Background(), target("staging")); res.Status != StatusDeployed {
 		t.Errorf("result %+v", res)
 	}
 }
@@ -172,74 +170,6 @@ func (m mapSource) Read(_ context.Context, env string) (Data, error) {
 		return nil, errors.New(env + ": not found")
 	}
 	return d, nil
-}
-
-func deployConfig(selection string, envs ...pipelineconfig.Environment) *pipelineconfig.Deploy {
-	return &pipelineconfig.Deploy{Selection: selection, Environments: envs, SSH: pipelineconfig.SSH{Auth: "password"}}
-}
-
-func TestPlan(t *testing.T) {
-	prod, staging, dev := dataFor("blue"), dataFor("rc"), dataFor("alpha")
-	prod["DOCKER_IMAGE_VERSION"], staging["DOCKER_IMAGE_VERSION"], dev["DOCKER_IMAGE_VERSION"] = "latest", "beta", "alpha"
-	staging["DOCKER_DEPLOY_STRATEGY"] = "blue-green"
-	delete(prod, "DOCKER_SSH_HOST") // not deployed by an rc: no need for its host
-	src := mapSource{"production": prod, "staging": staging, "development": dev}
-	cfg := deployConfig("target", pipelineconfig.Environment{Name: "production"}, pipelineconfig.Environment{Name: "staging"}, pipelineconfig.Environment{Name: "development"})
-	plan, err := Plan(context.Background(), src, cfg, rel("1.4.0-rc.1", "release/1.4"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	var got []string
-	for _, p := range plan {
-		got = append(got, p.Result.Environment+":"+p.Result.Status)
-	}
-	if !slices.Equal(got, []string{"production:skipped", "staging:would-deploy", "development:skipped"}) || plan[1].Result.Strategy != "blue-green" || plan[1].Result.Container != "api-rc" {
-		t.Errorf("plan %q %+v", got, plan)
-	}
-
-	delete(staging, "DOCKER_SSH_HOST")
-	if _, err := Plan(context.Background(), src, cfg, rel("1.4.0-rc.1", "release/1.4")); err == nil || !strings.Contains(err.Error(), "staging: missing DOCKER_SSH_HOST") {
-		t.Errorf("deployed environment without host: %v", err)
-	}
-	staging["DOCKER_SSH_HOST"], prod["DOCKER_SSH_HOST"] = "10.0.0.2", "10.0.0.3"
-	delete(dev, "DOCKER_IMAGE_VERSION")
-	if _, err := Plan(context.Background(), src, cfg, rel("1.4.0", "main")); err == nil || !strings.Contains(err.Error(), "development: DOCKER_IMAGE_VERSION is not set") {
-		t.Errorf("no image version: %v", err)
-	}
-	if _, err := Plan(context.Background(), src, deployConfig("target", pipelineconfig.Environment{Name: "qa"}), rel("1.4.0", "main")); err == nil || !strings.Contains(err.Error(), "qa: not found") {
-		t.Errorf("unreadable environment: %v", err)
-	}
-}
-
-func TestRun_StopsAtTheFirstFailure(t *testing.T) {
-	h := &host{statuses: []string{"Up (healthy)"}, label: "1.4.0"}
-	f := &fakeProc{answer: func(c proc.Command) (proc.Result, error) {
-		if strings.Contains(remoteOf(c), "api-b") && strings.HasPrefix(remoteOf(c), "cd ") {
-			return proc.Result{}, errors.New("exit status 1")
-		}
-		return h.answer(c)
-	}}
-	r, _ := newRunner(f, true)
-	plan := []Planned{
-		{Target: target("a"), Result: pipeline.EnvironmentDeploy{Environment: "a", Status: pipeline.DeployWouldDeploy}, Deploy: true},
-		{Result: pipeline.EnvironmentDeploy{Environment: "skip", Status: pipeline.DeploySkipped, Reason: "x"}},
-		{Target: target("b"), Result: pipeline.EnvironmentDeploy{Environment: "b", Status: pipeline.DeployWouldDeploy}, Deploy: true},
-		{Target: target("c"), Result: pipeline.EnvironmentDeploy{Environment: "c", Status: pipeline.DeployWouldDeploy}, Deploy: true},
-	}
-	envs, failed := r.Run(context.Background(), plan)
-	var got []string
-	for _, e := range envs {
-		got = append(got, e.Environment+":"+e.Status)
-	}
-	if !slices.Equal(got, []string{"a:deployed", "skip:skipped", "b:failed", "c:not-run"}) || failed != "b" {
-		t.Errorf("run %q failed %q", got, failed)
-	}
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
-	envs, _ = r.Run(ctx, plan)
-	if envs[0].Status != pipeline.DeployNotRun || envs[3].Status != pipeline.DeployNotRun {
-		t.Errorf("interrupted: %+v", envs)
-	}
 }
 
 func TestSSH_RefusesUnsafeDestinations(t *testing.T) {
@@ -320,10 +250,10 @@ func TestRunner_HungCallsAreCutOff(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			h := &host{statuses: []string{"Up (healthy)"}, label: "1.4.0"}
 			r, _ := newRunner(&fakeProc{answerCtx: hang(tt.match, h)}, true)
-			r.Verify.Timeout, r.UpdateTimeout = "50ms", 50*time.Millisecond
+			r.Verify.Timeout, r.UpdateTimeout = 50*time.Millisecond, 50*time.Millisecond
 			start := time.Now()
 			res := r.Deploy(context.Background(), target("staging"))
-			if res.Status != pipeline.DeployFailed || !strings.Contains(res.Error, tt.want) || time.Since(start) > 5*time.Second {
+			if res.Status != StatusFailed || !strings.Contains(res.Error, tt.want) || time.Since(start) > 5*time.Second {
 				t.Errorf("result %+v after %s", res, time.Since(start))
 			}
 		})
