@@ -126,7 +126,9 @@ Requires Go 1.26+ (see "Requirements" above).
 
 Flags: `--no-configure` (skip the closing wizard/hint entirely),
 `--no-skills` (skip installing skills), `--require-gentle-ai` (fail with
-exit 1 when gentle-ai is missing or not 4.x).
+exit 1 when gentle-ai is missing or not 4.x), `--with <names>` (install
+extension plugins such as `task,task-teamwork`; in a terminal, install
+offers the task plugin and then its providers).
 
 ### Updating
 

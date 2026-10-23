@@ -48,9 +48,12 @@ Maintainer commands:
 // scripted ones.
 type options struct {
 	PluginFS fs.FS
-	Runner   env.Runner
-	Now      func() time.Time
-	LookPath func(string) (string, error)
+	// ExtensionsFS holds the optional extension plugins (the task plugin
+	// and its providers). Nil ships none.
+	ExtensionsFS fs.FS
+	Runner       env.Runner
+	Now          func() time.Time
+	LookPath     func(string) (string, error)
 	// Getenv resolves an environment variable (the wizard's herdr
 	// detection, for %APPDATA% on Windows).
 	Getenv func(string) string
@@ -130,6 +133,7 @@ type options struct {
 func defaultOptions() options {
 	return options{
 		PluginFS:        pluginFS(),
+		ExtensionsFS:    nerv.ExtensionsFS(),
 		Runner:          env.ExecRunner{},
 		Now:             time.Now,
 		LookPath:        env.LookPath,

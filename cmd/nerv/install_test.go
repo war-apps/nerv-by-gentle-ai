@@ -290,3 +290,84 @@ func TestRunInstall_SkillsStep_NotATerminal_NoPromptNoSync(t *testing.T) {
 		t.Errorf("stdout lacks the remedy:\n%s", stdout.String())
 	}
 }
+
+// seedExtensionsForCLI records task@nerv and task-teamwork@nerv as cached
+// at the embedded version, next to nerv@nerv.
+func seedExtensionsForCLI(t *testing.T, home string) {
+	t.Helper()
+	seedInstalledPluginsForCLI(t, home)
+	pv, err := version.PluginVersion(nerv.PluginFS())
+	if err != nil {
+		t.Fatal(err)
+	}
+	content := `{"plugins":{"nerv@nerv":[{"installPath":"/c/nerv","version":"` + pv + `"}],` +
+		`"task@nerv":[{"installPath":"/c/task","version":"` + pv + `"}],` +
+		`"task-teamwork@nerv":[{"installPath":"/c/tw","version":"` + pv + `"}]}}`
+	if err := os.WriteFile(filepath.Join(home, ".claude", "plugins", "installed_plugins.json"), []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestRunInstall_WithFlag_InstallsTheNamedExtensions(t *testing.T) {
+	home := t.TempDir()
+	seedExtensionsForCLI(t, home)
+	var stdout, stderr bytes.Buffer
+	opts := testOptions(home)
+	opts.ExtensionsFS = nerv.ExtensionsFS()
+	runner := baseInstallRunner()
+	opts.Runner = runner
+
+	code := run([]string{"install", "--no-skills", "--no-configure", "--with", "task"}, &stdout, &stderr, opts)
+
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0; stdout:\n%s\nstderr:\n%s", code, stdout.String(), stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "-> claude plugin install task@nerv") {
+		t.Errorf("task@nerv not installed:\n%s", stdout.String())
+	}
+	if strings.Contains(stdout.String(), "task-teamwork@nerv") {
+		t.Errorf("a provider was installed without being named or confirmed:\n%s", stdout.String())
+	}
+}
+
+func TestRunInstall_Terminal_SuggestsExtensions(t *testing.T) {
+	home := t.TempDir()
+	seedExtensionsForCLI(t, home)
+	var stdout, stderr bytes.Buffer
+	opts := testOptions(home)
+	opts.ExtensionsFS = nerv.ExtensionsFS()
+	opts.IsTerminal = func() bool { return true }
+	opts.Runner = baseInstallRunner()
+	opts.Stdin = strings.NewReader("y\nn\n")
+
+	code := run([]string{"install", "--no-skills", "--no-configure"}, &stdout, &stderr, opts)
+
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0; stdout:\n%s\nstderr:\n%s", code, stdout.String(), stderr.String())
+	}
+	out := stdout.String()
+	if !strings.Contains(out, "Install task@nerv") || !strings.Contains(out, "Install task-teamwork@nerv") {
+		t.Errorf("expected both suggestions, got:\n%s", out)
+	}
+	if !strings.Contains(out, "-> claude plugin install task@nerv") || strings.Contains(out, "-> claude plugin install task-teamwork@nerv") {
+		t.Errorf("expected only task@nerv installed, got:\n%s", out)
+	}
+}
+
+func TestRunInstall_WithUnknownExtension_Exits1(t *testing.T) {
+	home := t.TempDir()
+	seedInstalledPluginsForCLI(t, home)
+	var stdout, stderr bytes.Buffer
+	opts := testOptions(home)
+	opts.ExtensionsFS = nerv.ExtensionsFS()
+	opts.Runner = baseInstallRunner()
+
+	code := run([]string{"install", "--no-skills", "--no-configure", "--with", "task-jira"}, &stdout, &stderr, opts)
+
+	if code != 1 {
+		t.Fatalf("exit code = %d, want 1; stdout:\n%s", code, stdout.String())
+	}
+	if !strings.Contains(stdout.String(), `"task-jira"`) {
+		t.Errorf("expected the unknown name reported, got:\n%s", stdout.String())
+	}
+}

@@ -100,6 +100,12 @@ func (s *Settings) EnablePlugin(id string) bool {
 	return changed
 }
 
+// PluginEnabled reports whether enabledPlugins[id] is true.
+func (s *Settings) PluginEnabled(id string) bool {
+	enabled, _ := s.data["enabledPlugins"].(map[string]any)
+	return enabled[id] == true
+}
+
 // Unregister removes extraKnownMarketplaces[marketplaceName] and
 // enabledPlugins[pluginID] when present, reporting whether either was
 // actually removed.

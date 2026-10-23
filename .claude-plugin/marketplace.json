@@ -6,6 +6,16 @@
       "name": "nerv",
       "source": "./plugin",
       "description": "Nerv by Gentle-AI: governance overlay on gentle-ai (Evangelion-named multi-agent workflow)"
+    },
+    {
+      "name": "task",
+      "source": "./plugins/task",
+      "description": "NERV task tracking: /task:* commands, local timers, and the event dispatcher that hands NERV pipeline events to the installed task providers"
+    },
+    {
+      "name": "task-teamwork",
+      "source": "./plugins/task-teamwork",
+      "description": "Teamwork provider for the NERV task plugin: assigns, moves stages, logs time and creates tasks in Teamwork"
     }
   ]
 }

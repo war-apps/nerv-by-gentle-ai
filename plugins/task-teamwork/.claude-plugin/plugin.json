@@ -1,0 +1,6 @@
+{
+  "name": "task-teamwork",
+  "version": "4.2.0",
+  "description": "Teamwork provider for the NERV task plugin: assigns, moves stages, logs time and creates tasks in Teamwork",
+  "author": { "name": "Walter Rodriguez" }
+}

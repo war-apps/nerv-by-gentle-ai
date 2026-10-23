@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"strings"
 
 	"github.com/war-apps/nerv-by-gentle-ai/internal/configure"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/install"
@@ -17,7 +18,11 @@ const installUsage = `Usage: nerv install [flags]
 Materializes the embedded NERV plugin under <home>/.nerv/marketplace,
 registers it in Claude Code's settings.json, refreshes the plugin cache,
 applies model/effort assignments to the cached agents, ensures the Engram
-"nerv" knowledge base, and installs skills. Unless --no-configure is given,
+"nerv" knowledge base, and installs skills. It also installs the optional
+extension plugins named by --with, keeps the ones already enabled up to
+date, and, when stdin is a terminal, offers the others: the task plugin
+(task@nerv, the /task:* commands), then its providers (task-teamwork@nerv).
+Unless --no-configure is given,
 it then runs the interactive setup wizard when stdin is a terminal, or
 prints the "run nerv configure" hint otherwise.
 
@@ -25,11 +30,14 @@ Flags:
   --require-gentle-ai   Fail (exit 1) when gentle-ai is missing or not 4.x
   --no-skills           Skip installing skills
   --no-configure        Skip the closing wizard/hint entirely
+  --with <names>        Comma-separated extension plugins to install, such as
+                        task,task-teamwork (a provider brings the task plugin)
 `
 
 const uninstallUsage = `Usage: nerv uninstall [flags]
 
-Removes NERV's settings.json registration, uninstalls the cached plugin,
+Removes NERV's settings.json registration, uninstalls the cached plugin and
+every enabled extension plugin,
 and removes the materialized marketplace directory.
 `
 
@@ -46,6 +54,7 @@ func runInstall(args []string, stdout, stderr io.Writer, opts options) int {
 	requireGentleAI := fs.Bool("require-gentle-ai", false, "")
 	noSkills := fs.Bool("no-skills", false, "")
 	noConfigure := fs.Bool("no-configure", false, "")
+	with := fs.String("with", "", "")
 
 	if err := fs.Parse(args); err != nil {
 		fmt.Fprint(stderr, installUsage)
@@ -59,19 +68,22 @@ func runInstall(args []string, stdout, stderr io.Writer, opts options) int {
 	}
 
 	deps := install.Deps{
-		Home:         home,
-		SettingsPath: opts.Settings,
-		FS:           opts.PluginFS,
-		Runner:       opts.Runner,
-		Now:          opts.Now,
-		LookPath:     opts.LookPath,
-		ConfirmSync:  syncConfirmer(opts, stdout),
-		Stdout:       stdout,
+		Home:             home,
+		SettingsPath:     opts.Settings,
+		FS:               opts.PluginFS,
+		ExtensionsFS:     opts.ExtensionsFS,
+		Runner:           opts.Runner,
+		Now:              opts.Now,
+		LookPath:         opts.LookPath,
+		ConfirmSync:      syncConfirmer(opts, stdout),
+		ConfirmExtension: extensionConfirmer(opts, stdout),
+		Stdout:           stdout,
 	}
 
 	err = install.Install(context.Background(), deps, install.Options{
 		RequireGentleAI: *requireGentleAI,
 		NoSkills:        *noSkills,
+		Extensions:      splitList(*with),
 	})
 	if code := mapInstallError(stdout, err); code != 0 {
 		return code
@@ -117,6 +129,7 @@ func runUninstall(args []string, stdout, stderr io.Writer, opts options) int {
 		Home:         home,
 		SettingsPath: opts.Settings,
 		FS:           opts.PluginFS,
+		ExtensionsFS: opts.ExtensionsFS,
 		Runner:       opts.Runner,
 		Now:          opts.Now,
 		LookPath:     opts.LookPath,
@@ -164,4 +177,15 @@ func mapInstallError(stdout io.Writer, err error) int {
 	}
 	fmt.Fprintf(stdout, "nerv: %v\n", err)
 	return exitCodeFor(err)
+}
+
+// splitList splits a comma-separated flag value, dropping blanks.
+func splitList(value string) []string {
+	var names []string
+	for _, name := range strings.Split(value, ",") {
+		if name = strings.TrimSpace(name); name != "" {
+			names = append(names, name)
+		}
+	}
+	return names
 }

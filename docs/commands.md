@@ -267,7 +267,12 @@ nerv ship --branch develop --project api
 Materializes the embedded plugin, registers it in Claude Code's
 `settings.json`, refreshes the plugin cache, applies model/effort
 assignments, ensures the Engram "nerv" knowledge base, and installs
-skills. See the README's "Install" section for the shell one-liners and
+skills. It also installs the optional extension plugins named by `--with`,
+keeps the ones already enabled up to date, and, when stdin is a terminal,
+offers the others: first the task plugin (`task@nerv`, the `/task:*`
+commands), then, only if it is installed, its providers
+(`task-teamwork@nerv`). A provider named in `--with` brings the task plugin
+with it. See the README's "Install" section for the shell one-liners and
 environment variables (`NERV_CHANNEL`, `NERV_INSTALL_DIR`,
 `NERV_NO_INSTALL`, `NERV_VERSION`); the install script itself is
 [`../scripts/install.sh`](../scripts/install.sh).
@@ -279,10 +284,16 @@ Flags:
   --require-gentle-ai   Fail (exit 1) when gentle-ai is missing or not 4.x
   --no-skills           Skip installing skills
   --no-configure        Skip the closing wizard/hint entirely
+  --with <names>        Comma-separated extension plugins to install, such as
+                        task,task-teamwork (a provider brings the task plugin)
 ```
 
 ```
 nerv install
+```
+
+```
+nerv install --with task-teamwork
 ```
 
 ```
