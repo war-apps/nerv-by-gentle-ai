@@ -11,7 +11,7 @@ overwrites silently, and bootstraps `openspec/` and the skill registry itself.
    On failure, tell the user NERV requires a git repository and stop — do
    not create any file.
 
-2. **Read existing config.** Read `~/.config/ai-workflow/config.yml` (user scope) if
+2. **Read existing config.** Read the user config (the path `nerv configure --print --json` reports as `config_path`: `~/.config/ai-workflow/config.yml` on Linux, `%AppData%\ai-workflow\config.yml` on Windows) (user scope) if
    present, and `<repo>/.ai-workflow.yml` (project scope) if present. Merge
    per the standard precedence (project overrides user key by key). Never
    read the old `~/.claude/nerv/nerv.yaml` or `<repo>/.nerv/nerv.yaml` as

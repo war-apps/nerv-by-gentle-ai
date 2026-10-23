@@ -11,8 +11,10 @@ package paths
 
 import (
 	"os"
+	"os/user"
 	"path/filepath"
 	"runtime"
+	"strings"
 )
 
 // ProjectConfigFile is the project-scope configuration file, at the
@@ -30,7 +32,7 @@ func ProjectConfig(repoRoot string) string {
 }
 
 // LegacyProjectConfig is where the project configuration lived before
-// .ai-workflow.yml: "<repoRoot>/.ai-workflow.yml". nerv never reads it as
+// .ai-workflow.yml: "<repoRoot>/.nerv/nerv.yaml". nerv never reads it as
 // configuration; it only reports that "nerv migrate" moves it.
 func LegacyProjectConfig(repoRoot string) string {
 	return filepath.Join(repoRoot, RuntimeDirName, "nerv.yaml")
@@ -64,12 +66,35 @@ func DefaultConfigDir(home, goos string) string {
 // environment never redirects a fake home's configuration to the real
 // user's.
 func userConfigDir(home string) string {
-	if real, err := os.UserHomeDir(); err == nil && filepath.Clean(real) == filepath.Clean(home) {
+	if real := realHomeDir(); real != "" && sameDir(real, home) {
 		if dir, err := os.UserConfigDir(); err == nil {
 			return dir
 		}
 	}
 	return DefaultConfigDir(home, runtime.GOOS)
+}
+
+// realHomeDir is the account's home from the user database, not from
+// $HOME, so a sandbox that fakes $HOME is never mistaken for the real home
+// (os.UserConfigDir would follow its XDG_CONFIG_HOME). It falls back to
+// os.UserHomeDir when the user database is unavailable.
+func realHomeDir() string {
+	if u, err := user.Current(); err == nil && u.HomeDir != "" {
+		return u.HomeDir
+	}
+	if dir, err := os.UserHomeDir(); err == nil {
+		return dir
+	}
+	return ""
+}
+
+// sameDir compares two directories, case-insensitively on Windows.
+func sameDir(a, b string) bool {
+	a, b = filepath.Clean(a), filepath.Clean(b)
+	if runtime.GOOS == "windows" {
+		return strings.EqualFold(a, b)
+	}
+	return a == b
 }
 
 // Paths is every filesystem location nerv resolves from a home directory.
@@ -81,7 +106,7 @@ type Paths struct {
 	// "<os.UserConfigDir()>/ai-workflow/config.yml".
 	UserConfig string
 	// LegacyUserConfig is where the user configuration lived before
-	// config.yml: "<os.UserConfigDir()>/ai-workflow/config.yml". nerv never reads it as
+	// config.yml: "<home>/.claude/nerv/nerv.yaml". nerv never reads it as
 	// configuration; it only reports that "nerv migrate" moves it.
 	LegacyUserConfig string
 	// State is gentle-ai's state.json path.

@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 
 	"github.com/war-apps/nerv-by-gentle-ai/internal/paths"
@@ -79,5 +80,18 @@ func TestProjectPaths(t *testing.T) {
 	}
 	if got, want := paths.RuntimeDir(repo), filepath.Join(repo, ".nerv"); got != want {
 		t.Errorf("RuntimeDir = %q, want %q", got, want)
+	}
+}
+
+// A sandbox that fakes HOME but keeps XDG_CONFIG_HOME must still get the
+// fake home's own config dir, never the environment's.
+func TestResolve_FakeHomeIgnoresXDGConfigHome(t *testing.T) {
+	fake := t.TempDir()
+	xdg := t.TempDir()
+	t.Setenv("HOME", fake)
+	t.Setenv("XDG_CONFIG_HOME", xdg)
+	got := paths.Resolve(fake).UserConfig
+	if strings.HasPrefix(got, xdg) {
+		t.Fatalf("UserConfig = %s, resolved through XDG_CONFIG_HOME for a fake home", got)
 	}
 }

@@ -30,7 +30,7 @@ type InitRepoRequest struct {
 // tasks.providers.<provider>.<key>) and, when missing, the runtime folder's
 // <toplevel>/.nerv/.gitignore of "*" — never overwriting or editing an
 // existing project config, reporting that case as a warning rather than an
-// error. A pre-rename <toplevel>/.ai-workflow.yml is not a project config:
+// error. A pre-rename <toplevel>/.nerv/nerv.yaml is not a project config:
 // it is left alone and reported in a warning that "nerv migrate" moves it.
 // path must exist and be inside a git working tree (resolved with "git -C
 // <path> rev-parse --show-toplevel"); either failure, like an invalid

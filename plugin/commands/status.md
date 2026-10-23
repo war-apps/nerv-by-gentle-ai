@@ -11,7 +11,7 @@ short and imperative — this is a status check, not a narrative.
    and contains `enabled: true`. Report `NERV: active` or `NERV: inactive`
    accordingly. If inactive, stop here — nothing else applies.
 
-2. **Config resolution.** Read `~/.config/ai-workflow/config.yml` (user scope) and
+2. **Config resolution.** Read the user config (the path `nerv configure --print --json` reports as `config_path`: `~/.config/ai-workflow/config.yml` on Linux, `%AppData%\ai-workflow\config.yml` on Windows) (user scope) and
    `<repo>/.ai-workflow.yml` (project scope). Print a merged summary: which
    keys came from the project file, which fell back to the user file, and
    which fell back to a built-in default. The project file always wins key

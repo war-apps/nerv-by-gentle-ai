@@ -124,7 +124,7 @@ writes.
 
 Resolve NERV configuration from exactly two files, same schema:
 
-1. `~/.config/ai-workflow/config.yml` (user scope, personal defaults)
+1. the user config (the path `nerv configure --print --json` reports as `config_path`: `~/.config/ai-workflow/config.yml` on Linux, `%AppData%\ai-workflow\config.yml` on Windows) (user scope, personal defaults)
 2. `<repo>/.ai-workflow.yml` (project scope, committed); the old
    `~/.claude/nerv/nerv.yaml` and `.nerv/nerv.yaml` are never read.
 
