@@ -13,6 +13,7 @@ import (
 
 	"github.com/war-apps/nerv-by-gentle-ai/internal/artifact"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/proc"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/refusal"
 )
 
 // NotesRefPrefix is semantic-release's channel note ref (lib/definitions/
@@ -142,6 +143,9 @@ func (w workspace) commitRelease(ctx context.Context, at, artifactDir, message s
 		return "", false, err
 	}
 	for _, f := range files {
+		if err := w.checkReleasePath(f.Path); err != nil {
+			return "", false, err
+		}
 		data, err := os.ReadFile(filepath.Join(artifactDir, filepath.FromSlash(f.Stored)))
 		if err != nil {
 			return "", false, err
@@ -169,6 +173,26 @@ func (w workspace) commitRelease(ctx context.Context, at, artifactDir, message s
 	}
 	commit, err := w.git(ctx, "rev-parse", "HEAD")
 	return commit, true, err
+}
+
+// checkReleasePath refuses a release file that would land in the clone's
+// git directory, or be written through a symlink the repository holds.
+func (w workspace) checkReleasePath(p string) error {
+	if !artifact.SafeReleasePath(p) {
+		return &refusal.Error{Err: fmt.Errorf("release file %q is not a repository path outside .git", p)}
+	}
+	dir := w.dir
+	for _, part := range strings.Split(p, "/") {
+		dir = filepath.Join(dir, part)
+		info, err := os.Lstat(dir)
+		if err != nil {
+			break
+		}
+		if info.Mode()&os.ModeSymlink != 0 {
+			return &refusal.Error{Err: fmt.Errorf("release file %q is written through the symlink %s in the repository", p, part)}
+		}
+	}
+	return nil
 }
 
 // errConflict is a release commit that does not apply on origin's new head.

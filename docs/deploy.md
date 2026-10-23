@@ -162,7 +162,9 @@ Kind `target`, requires `docker` and `ssh`.
   - `verify` waits until the container is healthy and checks that its
     version label is the released version.
   - An environment whose `DOCKER_DEPLOY_ENABLED` is off, or whose
-    `DOCKER_IMAGE_VERSION` points at other releases, is skipped.
+    `DOCKER_IMAGE_VERSION` points at other releases, is skipped. One that
+    sets no `DOCKER_IMAGE_VERSION` is refused, as `nerv pipeline deploy`
+    refused it, so a prerelease never reaches an environment by default.
 
 | Key | Scope | Default |
 |---|---|---|

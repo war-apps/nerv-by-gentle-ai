@@ -279,8 +279,8 @@ func checkSources(in Input) error {
 	}
 	files := map[string]bool{}
 	for _, f := range in.ReleaseFiles {
-		if !localPath(f.Path) {
-			return fmt.Errorf("artifact: release file %q must be a repository-relative path", f.Path)
+		if !SafeReleasePath(f.Path) {
+			return fmt.Errorf("artifact: release file %q must be a repository-relative path outside .git", f.Path)
 		}
 		if files[f.Path] {
 			return fmt.Errorf("artifact: release file %q given twice", f.Path)
@@ -292,6 +292,22 @@ func checkSources(in Input) error {
 
 // localPath reports a clean, relative, forward-slash path that stays below
 // its root.
+// SafeReleasePath reports whether p may be written into a repository as a
+// release file: a clean repository-relative path with no ".git" component
+// in any case, since files there (a config with core.fsmonitor, a hook)
+// run code on the next git command.
+func SafeReleasePath(p string) bool {
+	if !localPath(p) {
+		return false
+	}
+	for _, part := range strings.Split(p, "/") {
+		if strings.EqualFold(part, ".git") {
+			return false
+		}
+	}
+	return true
+}
+
 func localPath(p string) bool {
 	return p != "" && !strings.Contains(p, `\`) && path.Clean(p) == p && filepath.IsLocal(filepath.FromSlash(p))
 }
@@ -441,8 +457,8 @@ func Read(dir string) (*Manifest, error) {
 	}
 	for _, f := range m.ReleaseFiles {
 		rest, ok := strings.CutPrefix(f.Stored, ReleaseFilesDir+"/")
-		if !localPath(f.Path) || !ok || !localPath(rest) {
-			return nil, fmt.Errorf("artifact: %s: release file %q (stored %q) is not a safe relative path", dir, f.Path, f.Stored)
+		if !SafeReleasePath(f.Path) || !ok || !localPath(rest) {
+			return nil, fmt.Errorf("artifact: %s: release file %q (stored %q) is not a safe relative path outside .git", dir, f.Path, f.Stored)
 		}
 		if !digestRe.MatchString(f.SHA256) {
 			return nil, fmt.Errorf("artifact: %s: release file %s: sha256 %q is not a hex digest", dir, f.Path, f.SHA256)

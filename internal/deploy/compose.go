@@ -102,17 +102,18 @@ func composeOp(ctx context.Context, op string, stdin io.Reader, deps ComposeDeps
 		return "skipped", fmt.Sprintf("%s: DOCKER_DEPLOY_ENABLED is off", cfg.environment)
 	}
 	rel := pipeline.ReleaseOutputs{Version: req.Artifact.Version, GitTag: req.Artifact.Tag, Branch: req.Artifact.Branch}
-	if t.ImageVersion != "" {
-		d, serr := Select(t, pipelineconfig.Environment{Name: cfg.environment}, "target", rel)
-		if serr != nil {
-			return fail("%v", serr)
-		}
-		if !d.Deploy {
-			return "skipped", fmt.Sprintf("%s: %s", cfg.environment, d.Reason)
-		}
-	}
 	if err != nil {
 		return fail("%v", err)
+	}
+	// The default target selection, as nerv pipeline deploy applies it: an
+	// environment that names no DOCKER_IMAGE_VERSION is refused, so a
+	// prerelease never reaches an environment by default.
+	d, serr := Select(t, pipelineconfig.Environment{Name: cfg.environment}, "target", rel)
+	if serr != nil {
+		return fail("%v", serr)
+	}
+	if !d.Deploy {
+		return "skipped", fmt.Sprintf("%s: %s", cfg.environment, d.Reason)
 	}
 	ssh := SSH{Proc: deps.Proc, Auth: cfg.ssh.Auth, KeyFile: cfg.ssh.KeyFile, KnownHosts: cfg.ssh.KnownHosts, Port: cfg.ssh.Port,
 		ConnectTimeout: cfg.ssh.ConnectTimeoutDuration(), Env: env}

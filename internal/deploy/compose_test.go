@@ -61,7 +61,8 @@ func runCompose(t *testing.T, op, req string, f *fakeProc, getenv func(string) s
 func TestRunComposeOp_DeployUpdatesAndVerifyChecks(t *testing.T) {
 	h := &host{statuses: []string{"Up 40 seconds (healthy)"}, label: "1.4.0"}
 	f := &fakeProc{answer: h.answer}
-	resp, code := runCompose(t, "deploy", requestFor("deploy", nil), f, stagingEnv(nil))
+	env := stagingEnv(map[string]string{"NERV_DEPLOY_STAGING_DOCKER_IMAGE_VERSION": "1.4.0"})
+	resp, code := runCompose(t, "deploy", requestFor("deploy", nil), f, env)
 	if code != 0 || resp["status"] != "ok" || len(f.cmds) != 1 || len(h.updates) != 1 {
 		t.Fatalf("deploy: %v code %d, %d commands", resp, code, len(f.cmds))
 	}
@@ -69,13 +70,13 @@ func TestRunComposeOp_DeployUpdatesAndVerifyChecks(t *testing.T) {
 		t.Errorf("known_hosts not expanded: %q", kh)
 	}
 	f.cmds = nil
-	resp, code = runCompose(t, "verify", requestFor("verify", nil), f, stagingEnv(nil))
+	resp, code = runCompose(t, "verify", requestFor("verify", nil), f, env)
 	if code != 0 || resp["status"] != "ok" || len(h.updates) != 1 || !strings.Contains(resp["message"], "1.4.0") {
 		t.Fatalf("verify: %v code %d, updates %d", resp, code, len(h.updates))
 	}
 
 	h.label = "1.3.9"
-	resp, code = runCompose(t, "verify", requestFor("verify", nil), f, stagingEnv(nil))
+	resp, code = runCompose(t, "verify", requestFor("verify", nil), f, env)
 	if code != 1 || resp["status"] != "failed" || !strings.Contains(resp["message"], "runs 1.3.9, not 1.4.0") {
 		t.Errorf("wrong version: %v code %d", resp, code)
 	}
