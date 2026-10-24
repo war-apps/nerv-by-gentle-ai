@@ -506,9 +506,10 @@ if [ -z "$NERV_RELEASE_CHANNEL" ] || [ "$NERV_RELEASE_CHANNEL" = default ]; then
 
 // dockerPreset is 4.2.0's docker preset, package side: one docker build per
 // image with its tags, build arguments and labels. Each image 4.2.0 pushed
-// becomes a build.images entry with its version tag: nerv ship saves it
-// into the artifact after the package commands and records its reference,
-// and deploy-ssh-compose's publish pushes it. An image 4.2.0 did not push
+// becomes a build.images mapping {name, tags} with its 4.2.0 tag kinds:
+// nerv ship tags it, saves every tag into the artifact after the package
+// commands and records each reference, and deploy-ssh-compose's publish
+// pushes them all. An image 4.2.0 did not push
 // (push: false) is saved by the package commands themselves, so the
 // artifact holds it without a reference to push.
 func dockerPreset(p *Plan, plan *stagePlan, build *yaml.Node, old oldProject, at string) {
@@ -518,7 +519,6 @@ func dockerPreset(p *Plan, plan *stagePlan, build *yaml.Node, old oldProject, at
 	}
 	lines := []string{dockerTagsPreamble}
 	images := &yaml.Node{Kind: yaml.SequenceNode, Tag: "!!seq"}
-	var unpushedTags []string
 	tars := map[string]bool{}
 	for _, img := range old.Docker.Images {
 		pushed := img.Push == nil || *img.Push
@@ -526,9 +526,15 @@ func dockerPreset(p *Plan, plan *stagePlan, build *yaml.Node, old oldProject, at
 		if len(kinds) == 0 {
 			kinds = oldDockerTags
 		}
+		var known []string // the 4.2.0 tag kinds, deduplicated, for build.images
+		for _, kind := range kinds {
+			if slices.Contains(oldDockerTags, kind) && !slices.Contains(known, kind) {
+				known = append(known, kind)
+			}
+		}
 		kinds = slices.Compact(slices.Clone(kinds))
 		if pushed && !slices.Contains(kinds, "version") {
-			// build.images names the version tag, so it must be built.
+			// nerv ship tags the others from <name>:<version>, so it must be built.
 			kinds = append([]string{"version"}, kinds...)
 		}
 		var tags []string // shell words, without -t
@@ -538,14 +544,8 @@ func dockerPreset(p *Plan, plan *stagePlan, build *yaml.Node, old oldProject, at
 				tags = append(tags, img.Name+":"+versionVar)
 			case "channel":
 				tags = append(tags, "${channel_tag:+"+img.Name+":$channel_tag}")
-				if pushed {
-					unpushedTags = append(unpushedTags, img.Name+":<channel>")
-				}
 			case "latest":
 				tags = append(tags, "${latest_tag:+"+img.Name+":latest}")
-				if pushed {
-					unpushedTags = append(unpushedTags, img.Name+":latest")
-				}
 			default:
 				p.warn("%s: docker image %s: unknown tag kind %q dropped", at, img.Name, kind)
 			}
@@ -573,7 +573,14 @@ func dockerPreset(p *Plan, plan *stagePlan, build *yaml.Node, old oldProject, at
 			"${NERV_RELEASE_GIT_HEAD:+--label org.opencontainers.image.revision=$NERV_RELEASE_GIT_HEAD}", shq(context))
 		lines = append(lines, strings.Join(cmd, " "))
 		if pushed {
-			images.Content = append(images.Content, scalar(img.Name+":${version}"))
+			tagList := &yaml.Node{Kind: yaml.SequenceNode, Tag: "!!seq", Style: yaml.FlowStyle}
+			for _, kind := range known {
+				tagList.Content = append(tagList.Content, scalar(kind))
+			}
+			entry := &yaml.Node{Kind: yaml.MappingNode, Tag: "!!map", Style: yaml.FlowStyle}
+			addKV(entry, "name", scalar(img.Name))
+			addKV(entry, "tags", tagList)
+			images.Content = append(images.Content, entry)
 			continue
 		}
 		tar := path.Base(img.Name)
@@ -586,10 +593,7 @@ func dockerPreset(p *Plan, plan *stagePlan, build *yaml.Node, old oldProject, at
 	plan.add("package", step{run: strings.Join(lines, "\n") + "\n"})
 	if len(images.Content) > 0 {
 		addKV(build, "images", images)
-		p.note("%s: the docker images 4.2.0 pushed became build.images: nerv ship saves them into the artifact and deploy-ssh-compose pushes them", at)
-	}
-	if len(unpushedTags) > 0 {
-		p.warn("%s: 4.2.0 also pushed %s; build.images names only the version tag, so nerv deploy pushes that one: the other tags are built locally only", at, strings.Join(unpushedTags, ", "))
+		p.note("%s: the docker images 4.2.0 pushed became build.images with their 4.2.0 tags: nerv ship tags and saves them into the artifact and deploy-ssh-compose pushes every tag", at)
 	}
 }
 

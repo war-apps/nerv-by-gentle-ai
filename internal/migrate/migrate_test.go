@@ -6,6 +6,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"sort"
 	"strings"
@@ -355,8 +356,13 @@ func TestShip_ReleaseBecomesScriptModeShip(t *testing.T) {
 	// L22: the pushed images are build.images, which ship saves and records
 	// for deploy to push: the script saves nothing itself.
 	lacks(t, "stages.package", pkg, "docker save")
-	if want := []string{"ghcr.io/dirm-s-a/dim.comprobantes.api:${version}", "ghcr.io/dirm-s-a/dim.comprobantes.api-login-broker:${version}"}; !slices.Equal(api.Build.Images, want) {
-		t.Errorf("build.images = %q, want %q", api.Build.Images, want)
+	// The images keep 4.2.0's tag kinds in the mapping form.
+	all := []string{"version", "channel", "latest"}
+	if want := []shipconfig.BuildImage{
+		{Name: "ghcr.io/dirm-s-a/dim.comprobantes.api", Tags: all},
+		{Name: "ghcr.io/dirm-s-a/dim.comprobantes.api-login-broker", Tags: all},
+	}; !reflect.DeepEqual(api.Build.Images, want) {
+		t.Errorf("build.images = %+v, want %+v", api.Build.Images, want)
 	}
 	text := w.read(".ai-workflow.yml")
 	lacks(t, ".ai-workflow.yml", text, "\nrelease:", "presets:", "semantic_release:", "4.2.0 pushed", "records no image references")
@@ -739,13 +745,13 @@ func TestConflict_BothFilesAreRefused(t *testing.T) {
 // commands and records its reference for deploy-ssh-compose to push.
 func TestShip_MigratedDockerPresetPlansTheImageSaves(t *testing.T) {
 	for fixture, want := range map[string][]string{
-		comprobantes: {"ghcr.io/dirm-s-a/dim.comprobantes.api:1.4.0-alpha.2", "ghcr.io/dirm-s-a/dim.comprobantes.api-login-broker:1.4.0-alpha.2"},
-		factura:      {"ghcr.io/dirm-s-a/dim-factura-electronica-service:1.4.0-alpha.2"},
+		comprobantes: {"ghcr.io/dirm-s-a/dim.comprobantes.api", "ghcr.io/dirm-s-a/dim.comprobantes.api-login-broker"},
+		factura:      {"ghcr.io/dirm-s-a/dim-factura-electronica-service"},
 	} {
 		t.Run(fixture, func(t *testing.T) {
 			w := newWorld(t, fixture)
 			p, _ := w.migrate(w.options(false, githubOrigin))
-			if anyContains(p.Warnings, "will not push them") || anyContains(p.Warnings, "records no image references") {
+			if anyContains(p.Warnings, "will not push them") || anyContains(p.Warnings, "records no image references") || anyContains(p.Warnings, "built locally only") {
 				t.Errorf("the old push warning is left: %q", p.Warnings)
 			}
 			rel, err := shipconfig.Load(w.root)
@@ -758,12 +764,18 @@ func TestShip_MigratedDockerPresetPlansTheImageSaves(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			var refs, saves []string
+			// On alpha each image is saved as its version and alpha, as
+			// 4.2.0 pushed it, and every reference is recorded.
+			var saves []string
 			for _, img := range plan.Images {
-				refs = append(refs, img.Ref)
+				saves = append(saves, strings.Join(img.Refs, " "))
 			}
-			if !slices.Equal(refs, want) {
-				t.Errorf("plan images = %q, want %q", refs, want)
+			var wantSaves []string
+			for _, name := range want {
+				wantSaves = append(wantSaves, name+":1.4.0-alpha.2 "+name+":alpha")
+			}
+			if !slices.Equal(saves, wantSaves) {
+				t.Errorf("plan image references = %q, want %q", saves, wantSaves)
 			}
 			var pkg []shipplan.Step
 			for _, st := range plan.Stages {
@@ -774,13 +786,18 @@ func TestShip_MigratedDockerPresetPlansTheImageSaves(t *testing.T) {
 			if len(pkg) == 0 || pkg[0].Command.Run == "" || !strings.Contains(pkg[0].Command.Run, "docker build") {
 				t.Fatalf("the package stage does not start with the docker builds: %+v", pkg)
 			}
+			var steps []string
 			for _, s := range pkg[1:] {
-				saves = append(saves, strings.Join(s.Exec, " "))
+				steps = append(steps, strings.Join(s.Exec, " "))
 			}
-			for i, ref := range want {
-				if i >= len(saves) || saves[i] != "docker save -o "+filepath.Join(plan.OutputsDir, plan.Images[i].Tar)+" "+ref {
-					t.Errorf("save steps = %q, want one docker save of %s", saves, ref)
-				}
+			var wantSteps []string
+			for i, name := range want {
+				wantSteps = append(wantSteps,
+					"docker tag "+name+":1.4.0-alpha.2 "+name+":alpha",
+					"docker save -o "+filepath.Join(plan.OutputsDir, plan.Images[i].Tar)+" "+wantSaves[i])
+			}
+			if !slices.Equal(steps, wantSteps) {
+				t.Errorf("package steps = %q, want %q", steps, wantSteps)
 			}
 		})
 	}

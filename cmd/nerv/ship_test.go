@@ -915,6 +915,37 @@ func TestShip_ComposeModeBuildsTestsAndSavesTheImages(t *testing.T) {
 	}
 }
 
+// A build.images mapping gets 4.2.0's tags: ship tags the version
+// reference with the others, saves them all into one archive and records
+// every reference in the manifest, so deploy pushes them all.
+func TestShip_ImageMappingSavesAndRecordsEveryTag(t *testing.T) {
+	f := newShipFixture(t, strings.Replace(shipComposeYAML, `images: ["ghcr.io/acme/api:${version}"]`, `images: [{ name: ghcr.io/acme/api }]`, 1))
+	f.ws.results = []versioning.Result{shipResult("api", "1.4.0", "v1.4.0")}
+	if err := os.WriteFile(filepath.Join(f.ws.dir, "api", "docker-compose.yml"), []byte("services: {}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	code, doc, stderr := f.runJSON(t, "--yes")
+	if code != 0 {
+		t.Fatalf("exit %d: %s", code, stderr)
+	}
+	tar := filepath.Join(f.ws.ArtifactsDir(), "api", "outputs", "ghcr.io_acme_api_1.4.0.tar")
+	for _, want := range []string{
+		"api: docker tag ghcr.io/acme/api:1.4.0 ghcr.io/acme/api:latest",
+		"api: docker save -o " + tar + " ghcr.io/acme/api:1.4.0 ghcr.io/acme/api:latest",
+	} {
+		if !slices.Contains(f.events, want) {
+			t.Errorf("events %v lack %q", f.events, want)
+		}
+	}
+	m, err := artifact.Verify(doc.Projects[0].Artifact)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(m.Images, []string{"ghcr.io/acme/api:1.4.0", "ghcr.io/acme/api:latest"}) || len(m.Outputs) != 1 {
+		t.Errorf("manifest images %q, outputs %+v", m.Images, m.Outputs)
+	}
+}
+
 func TestShip_PipelineFailureRunsFailHooksAndWritesNoArtifact(t *testing.T) {
 	f := newShipFixture(t, shipMonorepoYAML)
 	f.monorepoResults()

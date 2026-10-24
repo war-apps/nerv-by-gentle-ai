@@ -248,12 +248,16 @@ func TestMigrate_ShipDryRunPlansThe420Commands(t *testing.T) {
 	if want := []string{"restore", "lint", "build", "test", "coverage", "package"}; !slices.Equal(order, want) {
 		t.Fatalf("stages run %q, want %q", order, want)
 	}
-	// L22: after the package commands, ship saves build.images into the
-	// artifact itself (and records them for deploy to push).
+	// L22/L23: after the package commands, ship tags each build.images
+	// entry with its 4.2.0 tag kinds (a stable release adds latest) and
+	// saves every reference into the artifact (recorded for deploy to push).
 	outputs := filepath.Join(f.ws.ArtifactsDir(), "api", "outputs")
+	api, broker := "ghcr.io/dirm-s-a/dim.comprobantes.api", "ghcr.io/dirm-s-a/dim.comprobantes.api-login-broker"
 	if want := []string{
-		"docker save -o " + filepath.Join(outputs, "ghcr.io_dirm-s-a_dim.comprobantes.api_1.2.0.tar") + " ghcr.io/dirm-s-a/dim.comprobantes.api:1.2.0",
-		"docker save -o " + filepath.Join(outputs, "ghcr.io_dirm-s-a_dim.comprobantes.api-login-broker_1.2.0.tar") + " ghcr.io/dirm-s-a/dim.comprobantes.api-login-broker:1.2.0",
+		"docker tag " + api + ":1.2.0 " + api + ":latest",
+		"docker save -o " + filepath.Join(outputs, "ghcr.io_dirm-s-a_dim.comprobantes.api_1.2.0.tar") + " " + api + ":1.2.0 " + api + ":latest",
+		"docker tag " + broker + ":1.2.0 " + broker + ":latest",
+		"docker save -o " + filepath.Join(outputs, "ghcr.io_dirm-s-a_dim.comprobantes.api-login-broker_1.2.0.tar") + " " + broker + ":1.2.0 " + broker + ":latest",
 	}; !slices.Equal(saves, want) {
 		t.Errorf("image saves %q, want %q", saves, want)
 	}

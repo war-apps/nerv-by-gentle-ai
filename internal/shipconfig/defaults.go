@@ -43,6 +43,13 @@ func (r *Release) applyDefaults() {
 				p.DependsOn[j].Bump = DefaultBump
 			}
 		}
+		if p.Build != nil {
+			for j := range p.Build.Images {
+				if img := &p.Build.Images[j]; img.Name != "" && len(img.Tags) == 0 {
+					img.Tags = DefaultDockerTags()
+				}
+			}
+		}
 		for stage, c := range p.Stages {
 			p.Stages[stage] = c.withDefaults()
 		}

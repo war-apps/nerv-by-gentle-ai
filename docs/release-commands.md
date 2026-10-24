@@ -341,12 +341,45 @@ on it:
 | `mode` | both | required | `compose` or `script` ([Build modes](#build-modes)). |
 | `file` | compose | required | The compose file, repository-relative: `docker compose -f <file>`. |
 | `test_service` | compose | none (no test stage) | The compose service `docker compose -f <file> run --rm <test_service>` runs; its exit code is the test result. |
-| `images` | both | `[]` | Image references `docker save` packages into the artifact after the `package` stage, one archive each, recorded in the manifest's `images` so the `deploy-ssh-compose` publish pushes them; they may use `${version}`, `${channel}` (empty on the default channel) and `${tag}`. In compose mode they must be the images the compose file builds; in script mode the project's own commands (usually `stages.package`) must build them. |
+| `images` | both | `[]` | The images `docker save` packages into the artifact after the `package` stage, one archive per entry, every reference recorded in the manifest's `images` so the `deploy-ssh-compose` publish pushes them all. An entry is either a plain image reference, which may use `${version}`, `${channel}` (empty on the default channel) and `${tag}`, or a mapping `{name: <repository>, tags: [version, channel, latest]}` ([Image tags](#image-tags)). In compose mode they must be the images the compose file builds; in script mode the project's own commands (usually `stages.package`) must build them. |
 | `shared_host` | script | `false` | `true` gives the `restore`, `lint`, `build`, `test` and `package` commands the build-server-safe dotnet environment (`MSBUILDDISABLENODEREUSE=1`, `UseSharedCompilation=false`, `DOTNET_CLI_USE_MSBUILD_SERVER=0`) under their own `env`, for shared hosts where reused build servers crash dotnet. A command's own `env` wins key by key; its `run:` is never rewritten. |
 | `version_files` | both | `[]` | MSBuild project files (`.csproj`, `.fsproj`, `.vbproj`, `.props`, `.targets`) that receive `<Version>` and `<PackageReleaseNotes>` in the clone before the pipeline ([Version files](#version-files)). |
 | `coverage` | both | none | Coverage floors checked after the `coverage` stage over every Cobertura report (`*.cobertura.xml`) under `coverage.dir` ([Coverage](#coverage)). |
 | `coverage.dir` | both | `$NERV_RELEASE_ARTIFACTS_DIR/coverage` | Directory searched for the reports, repository-relative (a compose test service writes them through a bind mount). |
 | `coverage.line`, `coverage.branch`, `coverage.method` | both | `0` (not checked) | Minimum percentages, 0-100; at least one must be set. |
+
+#### Image tags
+
+A mapping entry tags its repository as 4.2.0's docker preset did. `tags`
+lists tag kinds, `[version, channel, latest]` by default:
+
+| Kind | Tag | When |
+|---|---|---|
+| `version` | the release version, e.g. `1.4.0-alpha.2` | always |
+| `channel` | the release channel, e.g. `alpha` | only off the default channel |
+| `latest` | `latest` | only on the default channel |
+
+So a stable release gives `<name>:<version>` and `<name>:latest`, and an
+`alpha` release `<name>:<version>` and `<name>:alpha`. Duplicate tags are
+dropped, a tag that is not a valid docker tag is refused, and so is an
+unknown kind. `name` is a repository without a tag or digest (a registry
+`host:port/` prefix is fine).
+
+The build must produce `<name>:<version>` (the compose file's `image:`, or
+the package commands' `docker build -t`). After the `package` stage,
+`nerv ship` runs `docker tag <name>:<version> <name>:<tag>` for each other
+tag, then one `docker save` of every tag into the image's archive, and
+records each reference in the manifest:
+
+```yaml
+build:
+  mode: compose
+  file: docker-compose.yml
+  images:
+    - { name: ghcr.io/org/api }                   # version, channel, latest
+    - { name: ghcr.io/org/worker, tags: [version] }
+    - "ghcr.io/org/tools:${version}"              # a plain reference
+```
 
 #### Migrating from the presets
 
@@ -359,7 +392,7 @@ refused, each key with what to write instead:
 | `presets` | `build: { mode: script }` with each stage's command under `stages`, or `build: { mode: compose, file: ..., test_service: ..., images: [...] }`. |
 | `dotnet` | Its commands as `stages` (`dotnet restore`, `dotnet format --verify-no-changes`, `dotnet build -c Release --no-restore`, `dotnet test -c Release --no-build`); `project_file` to `build.version_files`, `coverage_threshold` to `build.coverage`, `shared_host` to `build.shared_host`; for `sdk`, a `before_restore` hook writing `global.json`. |
 | `node` | Its commands as `stages` (`npm ci`, `npm run lint`, `npm run build`, `npm test`). |
-| `docker` | `build.mode: compose`, or a script `package` stage running `docker build` and `docker save -o "$NERV_RELEASE_OUTPUTS_DIR/<name>.tar"`. Pushing moved to `nerv deploy`. |
+| `docker` | `build.mode: compose`, or a script `package` stage running `docker build -t <name>:$NERV_RELEASE_VERSION`, with each image as `build.images: [{name: <name>, tags: [...]}]` so ship tags and saves it as the preset did ([Image tags](#image-tags)). Pushing moved to `nerv deploy`. |
 | `nuget`, `npm` | A `package` stage writing the package to `$NERV_RELEASE_OUTPUTS_DIR` (`dotnet pack -o`, `npm pack --pack-destination`). Publishing moved to `nerv deploy`. |
 | `stages.publish`, `hooks.publish`, `hooks.success` | Removed from `nerv ship`: publishing, and what runs after it, belong to `nerv deploy`. |
 
@@ -710,7 +743,7 @@ channel, tag):
 | `build` | `stages.build` | `docker compose -f <file> build` |
 | `test` | `stages.test` | `docker compose -f <file> run --rm <test_service>` (none without `test_service`) |
 | `coverage` | `stages.coverage`, then the floor check | `stages.coverage`, then the floor check |
-| `package` | `stages.package`, then one `docker save -o $NERV_RELEASE_OUTPUTS_DIR/<image>.tar <image>` per `build.images` entry | one `docker save -o $NERV_RELEASE_OUTPUTS_DIR/<image>.tar <image>` per `build.images` entry |
+| `package` | `stages.package`, then, per `build.images` entry, `docker tag` of a mapping's other tags and one `docker save -o $NERV_RELEASE_OUTPUTS_DIR/<image>.tar <references>` | per `build.images` entry, `docker tag` of a mapping's other tags and one `docker save -o $NERV_RELEASE_OUTPUTS_DIR/<image>.tar <references>` |
 
 1. A stage with no command is skipped together with its `before_<stage>`
    and `after_<stage>` hooks; otherwise its `before_<stage>` hooks run
@@ -816,7 +849,7 @@ no partial artifact.
 
 | Entry | Content |
 |---|---|
-| `manifest.json` | Schema `nerv.ship-artifact/v1`: `project`, `version`, `channel`, `tag`, `base_commit` (the origin commit built), `branch`, `build_mode`, `created_at`, `outputs` (`path`, `kind` `image-tar`, `file` or `dir`, `sha256`), `images` (the saved image references) and `release_files` (`path` in the repository, `stored` in the artifact, `sha256`). |
+| `manifest.json` | Schema `nerv.ship-artifact/v1`: `project`, `version`, `channel`, `tag`, `base_commit` (the origin commit built), `branch`, `build_mode`, `created_at`, `outputs` (`path`, `kind` `image-tar`, `file` or `dir`, `sha256`), `images` (every saved image reference, each tag of a mapping entry included) and `release_files` (`path` in the repository, `stored` in the artifact, `sha256`). |
 | `notes.md` | The release notes. |
 | `CHANGELOG.section.md` | The CHANGELOG section of the release. |
 | `outputs/` | What the package stage left in `$NERV_RELEASE_OUTPUTS_DIR`: each saved image's archive (`image-tar`), and every other entry as a `file` or a `dir`. A directory's `sha256` is the sha256 of its `sha256sum`-style listing (`<sha256>  <path>` per file, sorted by path). |

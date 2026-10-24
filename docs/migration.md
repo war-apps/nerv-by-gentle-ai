@@ -54,11 +54,11 @@ Its presets turn into the stage commands they ran in 4.2.0:
 
 A stage command the project wrote itself still replaces the presets', as it
 did in 4.2.0. The docker preset's builds go into `stages.package`, and every
-image 4.2.0 pushed becomes a `build.images` entry with its version tag
-(`<name>:${version}`): `nerv ship` saves it into the artifact after the
-package commands and records its reference, and the `deploy-ssh-compose`
-publish pushes it. Its channel and `latest` tags are still built, but only
-the version tag is pushed, and the run warns about it. An image with
+image 4.2.0 pushed becomes a `build.images` entry `{ name, tags }` with its
+4.2.0 tag kinds (`version` always, the channel off the default channel,
+`latest` on it): `nerv ship` tags and saves every reference into the
+artifact after the package commands and records them, and the
+`deploy-ssh-compose` publish pushes them all, as 4.2.0 did. An image with
 `push: false` is saved by the package commands themselves, with no
 reference to push. `semantic_release:` is dropped. The `publish` stage and the
 `publish`, `success`, `before_publish` and `after_publish` hooks are dropped

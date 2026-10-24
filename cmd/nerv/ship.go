@@ -787,7 +787,7 @@ func (s *shipRun) shipOne(ctx context.Context, it shipItem) error {
 		Branch: s.branch, BuildMode: it.plan.Mode, CreatedAt: time.Now().UTC().Truncate(time.Second),
 	}
 	for _, img := range it.plan.Images {
-		m.Images = append(m.Images, img.Ref)
+		m.Images = append(m.Images, img.Refs...)
 	}
 	dir, err := artifact.Write(s.top, artifact.Input{Manifest: m, Notes: v.Notes, ChangelogSection: v.ChangelogSection, Outputs: outputs, ReleaseFiles: files}, s.force)
 	if err != nil {

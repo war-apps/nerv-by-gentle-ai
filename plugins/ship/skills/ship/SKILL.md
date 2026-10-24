@@ -96,12 +96,12 @@ No `ship:` section means one project, the whole repository, for `nerv version ne
 | `build.mode` | both | `compose` or `script`. |
 | `build.file` | compose | The compose file. |
 | `build.test_service` | compose | The service `docker compose run --rm` runs for the tests. |
-| `build.images` | compose | The `image:` names it builds, with `${version}`; they are saved into the artifact. |
+| `build.images` | both | The images saved into the artifact and recorded for deploy to push: a plain reference with `${version}`, or `{name: <repository>, tags: [version, channel, latest]}` (default all three: the version always, the channel off the default channel, `latest` on it). The build makes `<name>:<version>`; ship `docker tag`s the others. |
 | `build.shared_host` | script | Disables the reused dotnet build servers on a shared host. |
 | `build.version_files` | both | `.csproj`/`.props` files whose `<Version>` and `<PackageReleaseNotes>` are written in the clone. |
 | `build.coverage` | both | Floors `{line, branch, method}` over the Cobertura reports in `$NERV_RELEASE_COVERAGE_DIR`, or `dir` where a compose test service writes them. |
 
-**Stages** run in this order: `restore`, `lint`, `build`, `test`, `coverage`, `package`. In `script` mode each one the project uses is a command `{run, shell, env, workdir, timeout}` (`shell`: `bash`, `pwsh` or `node`). In `compose` mode only `restore`, `lint` and `coverage` may be written: compose builds, tests (`test_service`) and packages (`docker save` of `images`) itself. The `package` stage writes what the artifact keeps into `$NERV_RELEASE_OUTPUTS_DIR`. There is no `publish` stage.
+**Stages** run in this order: `restore`, `lint`, `build`, `test`, `coverage`, `package`. In `script` mode each one the project uses is a command `{run, shell, env, workdir, timeout}` (`shell`: `bash`, `pwsh` or `node`). In `compose` mode only `restore`, `lint` and `coverage` may be written: compose builds, tests (`test_service`) and packages (`docker tag` and `docker save` of `images`) itself. The `package` stage writes what the artifact keeps into `$NERV_RELEASE_OUTPUTS_DIR`. There is no `publish` stage.
 
 **Hooks**: `before_<stage>`, `after_<stage>`, `prepare` (after the pipeline, before the artifact is written) and `fail`, each a list of commands. Publishing hooks belong to deploy.
 
