@@ -18,7 +18,7 @@ func TestEmbeddedProviders_AreValid(t *testing.T) {
 	}
 	providers := 0
 	for _, ext := range exts {
-		if !ext.Provider {
+		if ext.ProviderKind != plugin.TaskPlugin {
 			continue
 		}
 		providers++

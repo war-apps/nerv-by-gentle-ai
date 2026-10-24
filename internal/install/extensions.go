@@ -46,10 +46,15 @@ func selectExtensions(deps Deps, opts Options, settings *claude.Settings) ([]plu
 			return nil, &RefusalError{Err: fmt.Errorf("unknown extension plugin %q (available: %s)", name, available)}
 		}
 		for _, req := range e.Requires {
-			if !has(req) {
-				fmt.Fprintf(deps.Stdout, "Adding %s (required by %s)\n", req, e.Name)
-				add(byName[req])
+			if has(req) {
+				continue
 			}
+			r, shipped := byName[req]
+			if !shipped {
+				return nil, &RefusalError{Err: fmt.Errorf("extension plugin %q requires %q, which this nerv does not ship", e.Name, req)}
+			}
+			fmt.Fprintf(deps.Stdout, "Adding %s (required by %s)\n", req, e.Name)
+			add(r)
 		}
 		add(e)
 	}

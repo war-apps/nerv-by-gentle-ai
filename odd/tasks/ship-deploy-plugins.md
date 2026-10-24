@@ -74,9 +74,9 @@ Branch: `feature/ship-deploy-plugins`, cut from `feature/tasks-plugin-split` at 
 |---|---|---|---|---|
 | T1 | S2, S3 | delegated writer, in parallel with T2 (Writer trigger (a): independent units with disjoint surfaces, each over 100 lines; also the context backstop) | committed (RED: 14 Compute and Import tests plus the changelog test; GREEN: `go test ./internal/versioning` ok; parity 16/16 against semantic-release 24.2.9) | see `git log -- internal/versioning` |
 | T2 | S4, S5 | delegated writer, in parallel with T1 (same trigger) | committed and verified (no blockers) | f0254d2 |
-| T3 | S6, S7, S8 | delegated writer (context backstop) | in progress | — |
+| T3 | S6, S7, S8 | delegated writer (context backstop) | committed and verified; fixes in ed99e5d | 322edc0, 367d066, ed99e5d |
 | T4 | S1, S9 | inline | pending | — |
-| T5 | S10 | — | pending | — |
+| T5 | S10 | delegated writer (context backstop; about 38 files of prose) | in progress | — |
 | T6 | S11 | delegated writer (context backstop; the edit surface spans the whole tree) | committed and verified; fixes in c5c0bf4 | 9c6032c, c5c0bf4 |
 | T7 | S12 | — | pending | — |
 
@@ -150,4 +150,23 @@ Forecast: well over 400 lines (about 11.5k lines of Go move or are rewritten), s
     - Assigned to T4: a nested `enabled: true` activates the hook (a baseline defect); `.nerv/.gitignore` is written only by init and the wizard; the hint line is not indented in pipeline text mode.
     - Assigned to T7: `workflowconfig.Load` and `Scalar` have no production callers; the merge lives in prose.
   - **Interference:** while T3 was in progress, `plugin.Extensions` treated `deploy-*` (they have a `provider.yaml`) as task providers that require `task`, so two `cmd/nerv` install tests failed. Fix in T4: provider kinds and requirements per manifest kind.
-- **Next step:** T3 (running). The user's L5 decisions are "ODD + agentes NERV encima (Recommended)", "Se mantiene, renombrado (Recommended)" and "Subcomando nerv migrate (Recommended)". Then T6.
+- **L13** (2026-10-23): T3 committed.
+  - **Deploy:** the contract is `deploy-provider.yaml`, and the runner does the release commit (`--cleanup=whitespace`), the annotated tag, the channel note on the release commit, an atomic push, the targets and the host release.
+  - **Parity:** after a deploy, `Compute` gives the next alpha.N.
+  - **Installer fix (322edc0):** extensions get a provider kind (task or deploy), and a requirement this nerv does not ship is refused. This closes slice 01 advisory R1-001.
+  - **Open, safe defaults chosen by the writer:** empty notes after `ship --version` only warn; there is no automatic back-merge (`deploy.sync` later); providers come from the embedded extensions only.
+- **L14** (2026-10-23): T5 layout decision (parent).
+  - The ODD document `odd/tasks/<feature>.md` replaces proposal, design, tasks and spec deltas.
+  - The NERV per-run governance files (state, deliberation log, audit rounds, run summary) live in `odd/<feature>/nerv/` and are committed with the feature. The orchestrator lock moves to `.nerv/locks/<feature>.lock` (runtime).
+  - `openspec/` and `nerv spec-compose` are removed. In-flight openspec changes are converted by `nerv migrate` (T7).
+- **L15** (2026-10-23): the T3 verifier found two blockers, both fixed in ed99e5d with its regression tests (RED, then GREEN).
+  - **B1 (security):** a crafted artifact could declare `.git/config` as a release file and run `core.fsmonitor` in the deploy clone, even on a dry run. Release paths with a `.git` component, or written through a symlink, are now refused.
+  - **B2:** `deploy-ssh-compose` deployed an environment with no `DOCKER_IMAGE_VERSION`, which the base refused. Target selection is applied again.
+  - **Passed:** git writes and parity (alpha.N, rc.N, stable), atomic pushes with recovery after a rejection, idempotent re-runs, tamper checks, and injection through the notes or argv (none possible).
+  - **Advisories assigned to T4:**
+    - `ship --version` must take the channel from the branch config, otherwise rc collides with `beta`;
+    - preflight every target's tools and data (`sshpass`, `infisical`) before the push;
+    - warn on `--rebase` that the tag points at code that was never built;
+    - clean up the push error and gh's "release not found" noise.
+  - **Advisories assigned to T7:** `selection: branches` has no equivalent and needs a migration message; `manifest.json` itself is not hashed (it is a local artifact; record as a known limit).
+- **Next step:** T5 (running). The user's L5 decisions are "ODD + agentes NERV encima (Recommended)", "Se mantiene, renombrado (Recommended)" and "Subcomando nerv migrate (Recommended)". Then T6.

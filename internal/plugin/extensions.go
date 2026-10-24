@@ -12,15 +12,25 @@ import (
 // TaskPlugin is the extension every task provider needs installed.
 const TaskPlugin = "task"
 
+// DeployPlugin is the extension every deploy provider needs installed.
+const DeployPlugin = "deploy"
+
+// deployProviderManifest marks a deploy provider plugin (see
+// internal/deployprovider.ManifestFile; not imported, to keep this package
+// free of the deploy contract).
+const deployProviderManifest = "deploy-provider.yaml"
+
 // Extension is an optional plugin shipped next to the core nerv plugin in
 // the same marketplace, installed as <Name>@nerv.
 type Extension struct {
 	Name        string
 	Version     string
 	Description string
-	// Provider is true for a task provider: a plugin with a provider.yaml
-	// at its root.
+	// Provider is true for a task provider (a plugin with a provider.yaml
+	// at its root) or a deploy provider (a deploy-provider.yaml).
 	Provider bool
+	// ProviderKind is "task" or "deploy" for a provider, empty otherwise.
+	ProviderKind string
 	// Requires lists the extensions that must be installed with this one.
 	Requires []string
 }
@@ -61,8 +71,11 @@ func Extensions(fsys fs.FS) ([]Extension, error) {
 
 		ext := Extension{Name: manifest.Name, Version: manifest.Version, Description: manifest.Description}
 		if _, err := fs.Stat(fsys, e.Name()+"/"+taskprovider.ManifestFile); err == nil {
-			ext.Provider = true
+			ext.Provider, ext.ProviderKind = true, TaskPlugin
 			ext.Requires = []string{TaskPlugin}
+		} else if _, err := fs.Stat(fsys, e.Name()+"/"+deployProviderManifest); err == nil {
+			ext.Provider, ext.ProviderKind = true, DeployPlugin
+			ext.Requires = []string{DeployPlugin}
 		}
 		exts = append(exts, ext)
 	}

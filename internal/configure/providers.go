@@ -40,7 +40,7 @@ func EmbeddedProviders(fsys fs.FS) ([]Provider, error) {
 	}
 	var providers []Provider
 	for _, ext := range exts {
-		if !ext.Provider {
+		if ext.ProviderKind != plugin.TaskPlugin {
 			continue
 		}
 		data, err := fs.ReadFile(fsys, ext.Name+"/"+taskprovider.ManifestFile)
