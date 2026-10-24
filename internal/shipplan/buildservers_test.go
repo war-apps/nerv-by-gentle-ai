@@ -8,40 +8,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/war-apps/nerv-by-gentle-ai/internal/shipconfig"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/shiprun"
 )
-
-func TestDotnetPreset_NoBuildServers(t *testing.T) {
-	p := dimProject()
-	p.Presets = append(p.Presets, "nuget")
-	plan, err := Build(t.TempDir(), p, ctxFor("1.0.0", ""))
-	if err != nil {
-		t.Fatal(err)
-	}
-	seen := map[string]bool{}
-	for _, st := range plan.Stages {
-		for _, s := range st.Steps {
-			if !strings.HasPrefix(s.Name, "dotnet:") || s.Func != nil {
-				continue
-			}
-			seen[s.Exec[1]] = true
-			for k, v := range DotnetBuildServerEnv() {
-				if s.Command.Env[k] != v {
-					t.Errorf("%s: env %s=%q, want %q", s.Name, k, s.Command.Env[k], v)
-				}
-			}
-			wantFlag := s.Exec[1] != "format"
-			if got := slices.Contains(s.Exec, DisableBuildServers); got != wantFlag {
-				t.Errorf("%s %q: --disable-build-servers %v, want %v (dotnet format rejects it)", s.Name, s.Exec, got, wantFlag)
-			}
-		}
-	}
-	for _, cmd := range []string{"restore", "format", "build", "test", "pack"} {
-		if !seen[cmd] {
-			t.Errorf("no dotnet %s step in the plan", cmd)
-		}
-	}
-}
 
 func TestDotnetBuildServerEnv(t *testing.T) {
 	env := DotnetBuildServerEnv()
@@ -110,14 +79,7 @@ func TestExecutor_BuildServersFlagFollowsTheSDK(t *testing.T) {
 		{"runner cannot capture", "", nil, true, false, true},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			p := dimProject()
-			p.Presets = append(p.Presets, "nuget")
-			plan, err := Build(t.TempDir(), p, ctxFor("1.0.0", ""))
-			if err != nil {
-				t.Fatal(err)
-			}
-			plan.Stages = plan.Pipeline()
-			plan.Stages = slices.DeleteFunc(plan.Stages, func(s Stage) bool { return s.Name == "coverage" })
+			plan := dotnetPlan()
 			f := &fakeRunner{sdk: tt.sdk, sdkErr: tt.sdkErr}
 			var steps StepRunner = f
 			if tt.noCap {
@@ -162,4 +124,21 @@ func TestExecutor_BuildServersFlagFollowsTheSDK(t *testing.T) {
 			}
 		})
 	}
+}
+
+// dotnetPlan is a hand-built plan of the five dotnet commands nerv
+// pipeline's dotnet stages run (restore, format, build, test, pack), with
+// the build-server environment: the Executor's probe keeps or drops
+// DisableBuildServers on them.
+func dotnetPlan() *Plan {
+	step := func(stage string, argv ...string) Step {
+		return Step{Name: "dotnet:" + stage, Stage: stage, Command: shipconfig.Command{Env: DotnetBuildServerEnv()}, Exec: argv}
+	}
+	return &Plan{Project: "api", Context: Context{Version: "1.0.0", ArtifactsDir: artifacts}, Stages: []Stage{
+		{Name: "restore", Steps: []Step{step("restore", "dotnet", "restore", "Api.slnx", DisableBuildServers)}},
+		{Name: "lint", Steps: []Step{step("lint", "dotnet", "format", "Api.slnx", "--verify-no-changes")}},
+		{Name: "build", Steps: []Step{step("build", "dotnet", "build", "Api.slnx", DisableBuildServers)}},
+		{Name: "test", Steps: []Step{step("test", "dotnet", "test", "Api.slnx", DisableBuildServers)}},
+		{Name: "package", Steps: []Step{step("package", "dotnet", "pack", "Api.csproj", DisableBuildServers)}},
+	}}
 }

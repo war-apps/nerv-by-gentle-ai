@@ -1,9 +1,9 @@
-// Package deploy runs `nerv pipeline deploy`: dim's /update-deploy for the
-// release just made. It reads each environment's deploy data (environment
-// variables or Infisical, update-deploy's layout), selects the environments
-// the release deploys, updates their container over SSH with the host's
-// compose script and verifies that the container is healthy and runs the
-// released version.
+// Package deploy is the deploy-ssh-compose provider of nerv deploy: dim's
+// /update-deploy for one environment. It reads the environment's deploy data
+// (environment variables or Infisical, update-deploy's layout), decides
+// whether the release deploys it, updates its container over SSH with the
+// host's compose script and verifies that the container is healthy and runs
+// the released version.
 package deploy
 
 import (
@@ -14,7 +14,6 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/war-apps/nerv-by-gentle-ai/internal/pipelineconfig"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/proc"
 )
 
@@ -23,8 +22,8 @@ import (
 // configuration problem, nothing is deployed.
 var ErrIncompleteData = errors.New("incomplete deploy data")
 
-// Data is an environment's deploy keys (pipelineconfig.DeployHostKeys and
-// DeployAppKeys) as a source gives them.
+// Data is an environment's deploy keys (HostKeys and AppKeys) as a source
+// gives them.
 type Data map[string]string
 
 // Source reads an environment's deploy data.
@@ -32,7 +31,7 @@ type Source interface {
 	Read(ctx context.Context, environment string) (Data, error)
 }
 
-// EnvSource reads NERV_DEPLOY_<ENVIRONMENT>_<KEY> (pipelineconfig.DeployEnvVar).
+// EnvSource reads NERV_DEPLOY_<ENVIRONMENT>_<KEY> (EnvVar).
 type EnvSource struct {
 	Getenv func(string) string
 }
@@ -40,8 +39,8 @@ type EnvSource struct {
 // Read returns the environment's keys that are set.
 func (s EnvSource) Read(_ context.Context, environment string) (Data, error) {
 	d := Data{}
-	for _, key := range append(pipelineconfig.DeployHostKeys(), pipelineconfig.DeployAppKeys()...) {
-		if v := s.Getenv(pipelineconfig.DeployEnvVar(environment, key)); v != "" {
+	for _, key := range append(HostKeys(), AppKeys()...) {
+		if v := s.Getenv(EnvVar(environment, key)); v != "" {
 			d[key] = v
 		}
 	}
@@ -69,7 +68,7 @@ func (s InfisicalSource) Read(ctx context.Context, environment string) (Data, er
 	for _, part := range []struct {
 		path string
 		keys []string
-	}{{"/", pipelineconfig.DeployHostKeys()}, {s.AppPath, pipelineconfig.DeployAppKeys()}} {
+	}{{"/", HostKeys()}, {s.AppPath, AppKeys()}} {
 		values, err := s.export(ctx, environment, part.path)
 		if err != nil {
 			return nil, err

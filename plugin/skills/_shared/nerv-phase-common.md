@@ -41,9 +41,17 @@ that launched you.
 
 | reported store | locator shape | how to read it |
 |---|---|---|
-| `openspec` | repo path, e.g. `openspec/changes/{change}/nerv/maya-report.md` | read the file |
-| `engram` | topic key, e.g. `nerv/{change}/maya-report` | `mem_search(query: "<locator>", project: "{project}")` → `mem_get_observation(id)` |
+| `odd` | repo path, e.g. `odd/{feature}/nerv/maya-report.md` (FULL) or `.nerv/runs/{run-id}/maya-report.md` (DIRECT, LIGHT), or the ODD document `odd/tasks/{feature}.md` (FULL only) | read the file |
+| `engram` | topic key, e.g. `nerv/{feature}/maya-report` | `mem_search(query: "<locator>", project: "{project}")` → `mem_get_observation(id)` |
 | `hybrid` | either shape | read the file when the locator is a path, the observation when it is a topic key |
+
+**Two layouts.** Only FULL runs have an ODD document and the run folder
+`odd/{feature}/nerv/`. A DIRECT or LIGHT run has no document: its run files
+live in `.nerv/runs/{run-id}/`, which is never committed, and its brief
+carries the request in `## Feature` instead of a document locator. Use the
+locators the brief names either way; a missing document in DIRECT or
+LIGHT is expected, never a blocker. In DIRECT and LIGHT, `{feature}` in a
+topic key holds the run id.
 
 `mem_search` returns 300-character previews only. Always call
 `mem_get_observation(id)` for the full content of any topic-key locator —
@@ -55,18 +63,18 @@ store's copy or going looking for one yourself.
 ### Precedent lookup (knowledge base)
 
 Before producing a ruling, veto, vote, or audit compilation, search the
-shared knowledge base for precedent: `mem_search(query: "<change domain
+shared knowledge base for precedent: `mem_search(query: "<feature domain
 keywords>", project: "nerv", limit: 5)`, then `mem_get_observation` on
 every hit worth reading in full. When a precedent shapes the decision,
-cite it by its topic key (`nerv/kb/{repo}/{change}/{artifact}`) in the
-output. A precedent never overrides the current change's spec or the
+cite it by its topic key (`nerv/kb/{repo}/{feature}/{artifact}`) in the
+output. A precedent never overrides the current feature's `## Specs` or the
 user's own answers — it informs judgment, it does not bind it. An empty
 result is normal on a project's first NERV run and is not a blocker.
 
 ## C. Artifact persistence
 
 Persist every artifact you produce to the store Ikari reported, using that
-artifact's locator, `nerv/{change}/{artifact}` as the topic key when the
+artifact's locator, `nerv/{feature}/{artifact}` as the topic key when the
 store is `engram` or `hybrid` (artifact name = the file name without its
 extension, e.g. `maya-report`).
 
@@ -74,8 +82,8 @@ extension, e.g. `maya-report`).
 
 ```
 mem_save(
-  title: "nerv/{change}/{artifact}",
-  topic_key: "nerv/{change}/{artifact}",
+  title: "nerv/{feature}/{artifact}",
+  topic_key: "nerv/{feature}/{artifact}",
   type: "architecture",
   project: "{project}",
   capture_prompt: false,
@@ -88,7 +96,7 @@ mem_save(
 not human/proactive saves. Set it when the tool schema supports it; omit it
 rather than failing if an older schema rejects it.
 
-### OpenSpec mode
+### ODD mode
 
 The file was already written during your main step (via `Write`). No
 additional action needed.
@@ -107,19 +115,24 @@ Return the result inline only. Do not write any files and do not call
 
 ### Knowledge-base mirror (decision artifacts only)
 
-After the per-change persistence above, decision artifacts are ALSO
+After the per-feature persistence above, decision artifacts are ALSO
 saved to the shared knowledge base — Engram project `nerv` — with topic
-key `nerv/kb/{repo}/{change}/{artifact}` (`{repo}` = the basename of the
+key `nerv/kb/{repo}/{feature}/{artifact}` (`{repo}` = the basename of the
 git toplevel), `type: "decision"`, `capture_prompt: false`, and content
 equal to the artifact itself prefixed with one line: `repo: {repo}
-change: {change} artifact: {artifact}`. Decision artifacts are:
+feature: {feature} artifact: {artifact}`. Decision artifacts are:
 `veto-ruling` (Fuyutsuki), `ruling-*` and the plan/design decisions
 Misato records (a compact `## Decisions` extract, not the whole
-`design.md`), and `audit-report` (Kaji: the findings list with
+design entry), and `audit-report` (Kaji: the findings list with
 severities and dispositions). Everything else — test plans, Maya
-reports, waves, run summaries — is NOT mirrored. Both the per-change
+reports, waves, run summaries — is NOT mirrored. Both the per-feature
 write and the knowledge-base mirror are read back; a failed mirror is
-reported as `partial`, never a blocker for the change itself.
+reported as `partial`, never a blocker for the feature itself.
+When the host rejects that `mem_save` (for example "Claude host session
+registration could not be confirmed"), the status is `partial`, not
+`blocked`: put the unsaved mirror in `detailed_report` under a
+`Pending KB mirror` heading (its topic key, then the exact content), and
+Ikari flushes it at close.
 
 ## D. Return envelope
 
@@ -136,7 +149,7 @@ Return exactly these fields as your final text:
 - `detailed_report`: full output, or omit if already inline
 - `artifacts`: list of artifact keys/paths written
 - `next_recommended`: one of `none`, `next-pilot`, `maya-gate`,
-  `aoba-commit`, `tracker-close`, `magi-vote`, `ikari-decision`,
+  `aoba-commit`, `run-closed` (Ikari emits the `run.closed` task event), `magi-vote`, `ikari-decision`,
   `misato-revise`, `plan-gate`, `waves`
 - `risks`: risks discovered, or "None"
 - `skill_resolution`: `paths-injected`, `fallback-registry`,

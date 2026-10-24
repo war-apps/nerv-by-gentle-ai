@@ -13,9 +13,19 @@ import (
 	"github.com/war-apps/nerv-by-gentle-ai/internal/shipconfig"
 )
 
-// writeConfig writes text as <repo>/.nerv/nerv.yaml in a fresh temporary
+// writeConfig writes text as <repo>/.ai-workflow.yml in a fresh temporary
 // repository and returns the repository root.
 func writeConfig(t *testing.T, text string) string {
+	t.Helper()
+	repo := t.TempDir()
+	if err := os.WriteFile(filepath.Join(repo, ".ai-workflow.yml"), []byte(text), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return repo
+}
+
+// writeLegacyConfig writes text as the pre-rename <repo>/.nerv/nerv.yaml.
+func writeLegacyConfig(t *testing.T, text string) string {
 	t.Helper()
 	repo := t.TempDir()
 	dir := filepath.Join(repo, ".nerv")
@@ -42,13 +52,17 @@ func TestLoad_NotConfigured(t *testing.T) {
 		name string
 		repo func(t *testing.T) string
 	}{
-		{"no nerv.yaml", func(t *testing.T) string { return t.TempDir() }},
-		{"nerv.yaml without release", func(t *testing.T) string {
+		{"no .ai-workflow.yml", func(t *testing.T) string { return t.TempDir() }},
+		// The old file is never read as configuration (nerv migrate moves it).
+		{"only the old .nerv/nerv.yaml", func(t *testing.T) string {
+			return writeLegacyConfig(t, "ship:\n  projects:\n    - name: api\n      path: .\n      build: { mode: script }\n")
+		}},
+		{".ai-workflow.yml without release", func(t *testing.T) string {
 			return writeConfig(t, "enabled: true\nmodels:\n  misato: { model: fable }\n")
 		}},
-		{"empty nerv.yaml", func(t *testing.T) string { return writeConfig(t, "") }},
-		{"comment-only nerv.yaml", func(t *testing.T) string { return writeConfig(t, "# nothing yet\n") }},
-		// nerv.yaml is otherwise maintained by a line-based editor: a strict
+		{"empty .ai-workflow.yml", func(t *testing.T) string { return writeConfig(t, "") }},
+		{"comment-only .ai-workflow.yml", func(t *testing.T) string { return writeConfig(t, "# nothing yet\n") }},
+		// .ai-workflow.yml is otherwise maintained by a line-based editor: a strict
 		// YAML error outside release: must not matter to a repo without one.
 		{"duplicate key elsewhere", func(t *testing.T) string {
 			return writeConfig(t, "enabled: true\nenabled: false\n")
@@ -73,7 +87,7 @@ func TestLoad_NotConfigured(t *testing.T) {
 // A strict-YAML error outside release: does not stop a valid section from
 // loading, whether it comes before or after the section.
 func TestLoad_ToleratesUnrelatedYAMLErrors(t *testing.T) {
-	const section = "release:\n  projects:\n    - name: app\n      path: .\n"
+	const section = "ship:\n  projects:\n    - name: app\n      path: .\n"
 	tests := []struct{ name, yaml string }{
 		{"duplicate key before", "enabled: true\nenabled: false\n" + section},
 		{"tab indentation after", section + "models:\n\tmisato: fable\n"},
@@ -92,7 +106,7 @@ func TestLoad_ToleratesUnrelatedYAMLErrors(t *testing.T) {
 	}
 }
 
-// A document whose top level is not a mapping is a broken nerv.yaml, not a
+// A document whose top level is not a mapping is a broken .ai-workflow.yml, not a
 // repository without release configuration.
 func TestLoad_RootNotMapping(t *testing.T) {
 	for _, text := range []string{"- a\n- b\n", "just a scalar\n"} {
@@ -102,7 +116,7 @@ func TestLoad_RootNotMapping(t *testing.T) {
 			if !errors.As(err, &verr) {
 				t.Fatalf("err = %v, want a *ValidationError", err)
 			}
-			if !strings.Contains(err.Error(), "top level of nerv.yaml must be a mapping") {
+			if !strings.Contains(err.Error(), "top level of .ai-workflow.yml must be a mapping") {
 				t.Fatalf("err = %v", err)
 			}
 		})
@@ -112,13 +126,12 @@ func TestLoad_RootNotMapping(t *testing.T) {
 // Anchors and merge keys inside the section share settings between
 // projects; an unknown key reached only through a merge is still reported.
 func TestLoad_MergeKeys(t *testing.T) {
-	rel := mustLoad(t, `release:
+	rel := mustLoad(t, `ship:
   projects:
     - &base
       name: api
       path: api
-      presets: [dotnet]
-      dotnet: { project_file: api/Api.csproj }
+      build: { mode: script, version_files: [api/Api.csproj] }
       hooks:
         prepare:
           - &bump { run: scripts/bump.sh, shell: pwsh }
@@ -134,26 +147,26 @@ func TestLoad_MergeKeys(t *testing.T) {
       path: cli
 `)
 	worker, cli := rel.Projects[1], rel.Projects[2]
-	if worker.Dotnet == nil || worker.Dotnet.ProjectFile != "api/Api.csproj" || worker.Path != "worker" {
+	if worker.Build == nil || len(worker.Build.VersionFiles) != 1 || worker.Build.VersionFiles[0] != "api/Api.csproj" || worker.Path != "worker" {
 		t.Errorf("worker = %+v", worker)
 	}
 	if got := worker.Stages["test"]; got.Run != "scripts/test.sh" || got.Shell != "pwsh" {
 		t.Errorf("worker.stages.test = %+v", got)
 	}
-	if cli.Dotnet == nil || cli.TagFormat != "cli-v${version}" {
+	if cli.Build == nil || cli.TagFormat != "cli-v${version}" {
 		t.Errorf("cli = %+v", cli)
 	}
 
-	_, err := shipconfig.Load(writeConfig(t, `release:
+	_, err := shipconfig.Load(writeConfig(t, `ship:
   projects:
     - name: api
       path: api
-      x-shared: &shared { presets: [], dockr: {} }
+      x-shared: &shared { submodules: true, dockr: {} }
     - <<: *shared
       name: worker
       path: worker
 `))
-	if err == nil || !strings.Contains(err.Error(), "release.projects[1].dockr: unknown field") {
+	if err == nil || !strings.Contains(err.Error(), "ship.projects[1].dockr: unknown field") {
 		t.Fatalf("err = %v, want the merged unknown key reported", err)
 	}
 }
@@ -162,7 +175,7 @@ func TestLoad_MergeKeys(t *testing.T) {
 // the section is parsed.
 func TestLoad_AliasToOutsideAnchor(t *testing.T) {
 	_, err := shipconfig.Load(writeConfig(t, `defaults: &cmd { run: scripts/test.sh }
-release:
+ship:
   projects:
     - name: app
       path: .
@@ -173,7 +186,7 @@ release:
 	if !errors.As(err, &verr) {
 		t.Fatalf("err = %v, want a *ValidationError", err)
 	}
-	for _, want := range []string{"*cmd", "line 7", "outside the release: section"} {
+	for _, want := range []string{"*cmd", "line 7", "outside the ship: section"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("err = %v, want it to contain %q", err, want)
 		}
@@ -184,7 +197,7 @@ release:
 // used before its anchor) is reported as undefined, not as an outside anchor.
 func TestLoad_AliasToUndefinedAnchor(t *testing.T) {
 	tests := []struct{ name, yaml, alias, line string }{
-		{"typo", `release:
+		{"typo", `ship:
   projects:
     - name: app
       path: .
@@ -194,7 +207,7 @@ func TestLoad_AliasToUndefinedAnchor(t *testing.T) {
       stages:
         test: *bmup
 `, "*bmup", "line 9"},
-		{"used before its definition", `release:
+		{"used before its definition", `ship:
   projects:
     - name: app
       path: .
@@ -205,7 +218,7 @@ func TestLoad_AliasToUndefinedAnchor(t *testing.T) {
           - &cmd { run: scripts/test.sh }
 `, "*cmd", "line 6"},
 		{"only a longer anchor name outside", `defaults: &cmdx { run: scripts/test.sh }
-release:
+ship:
   projects:
     - name: app
       path: .
@@ -232,18 +245,18 @@ release:
 	}
 }
 
-// A top-level release key written with a node property or quoted is still
+// A top-level ship key written with a node property or quoted is still
 // found, even when the rest of the file is not valid YAML.
 func TestLoad_ReleaseKeyForms(t *testing.T) {
 	const body = "\n  projects:\n    - name: app\n      path: .\n"
 	const broken = "models:\n\tmisato: fable\n"
 	tests := []struct{ name, key string }{
-		{"anchored", "&r release:"},
-		{"tagged", "!!str release:"},
-		{"anchored and tagged", "&r !!str release:"},
-		{"verbatim tag", "!<tag:yaml.org,2002:str> release:"},
-		{"double-quoted", `"release":`},
-		{"single-quoted", "'release':"},
+		{"anchored", "&r ship:"},
+		{"tagged", "!!str ship:"},
+		{"anchored and tagged", "&r !!str ship:"},
+		{"verbatim tag", "!<tag:yaml.org,2002:str> ship:"},
+		{"double-quoted", `"ship":`},
+		{"single-quoted", "'ship':"},
 	}
 	for _, tt := range tests {
 		for _, layout := range []struct{ name, before string }{
@@ -260,11 +273,11 @@ func TestLoad_ReleaseKeyForms(t *testing.T) {
 	}
 }
 
-// A broken file with a line that may be a top-level release key the cut
+// A broken file with a line that may be a top-level ship key the cut
 // cannot recognise is an error, never a repository without configuration.
 func TestLoad_UnrecognisedReleaseKeyInBrokenFile(t *testing.T) {
 	_, err := shipconfig.Load(writeConfig(t, `enabled: true
-"rel\x65ase":
+"s\x68ip":
   projects:
     - name: app
       path: .
@@ -283,7 +296,7 @@ models:
 // fails fast instead of expanding 10^9 nodes.
 func TestLoad_AliasExpansionBudget(t *testing.T) {
 	var b strings.Builder
-	b.WriteString("release:\n  l0: &l0 { run: x }\n")
+	b.WriteString("ship:\n  l0: &l0 { run: x }\n")
 	for i := 1; i <= 9; i++ {
 		fmt.Fprintf(&b, "  l%d: &l%d { <<: [", i, i)
 		for j := range 10 {
@@ -314,14 +327,15 @@ func TestLoad_AliasExpansionBudget(t *testing.T) {
 
 // An unknown key does not hide the other problems of the section.
 func TestLoad_UnknownFieldsReportedWithOtherProblems(t *testing.T) {
-	_, err := shipconfig.Load(writeConfig(t, "release:\n  projects:\n    - name: api\n      pth: src\n      presets: [maven]\n"))
+	_, err := shipconfig.Load(writeConfig(t, "ship:\n  projects:\n    - name: api\n      pth: src\n      presets: [maven]\n      build: { mode: make }\n"))
 	if err == nil {
 		t.Fatal("want error")
 	}
 	for _, want := range []string{
-		"release.projects[0].pth: unknown field",
-		"release.projects[0].path: required",
-		`release.projects[0].presets[0]: unknown preset "maven"`,
+		"ship.projects[0].pth: unknown field",
+		"ship.projects[0].path: required",
+		"ship.projects[0].presets: the presets were removed",
+		`ship.projects[0].build.mode: unknown mode "make"`,
 	} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("error %q lacks %q", err, want)
@@ -332,15 +346,15 @@ func TestLoad_UnknownFieldsReportedWithOtherProblems(t *testing.T) {
 func TestLoad_SingleProjectDefaults(t *testing.T) {
 	rel := mustLoad(t, `enabled: true
 critical_paths: [auth/]
-release:
+ship:
   projects:
     - name: app
       path: .
 tasks:
   provider: none
 `)
-	if got := rel.SemanticRelease.Version; got != shipconfig.DefaultSemanticReleaseVersion {
-		t.Errorf("semantic_release.version = %q, want default %q", got, shipconfig.DefaultSemanticReleaseVersion)
+	if rel.TagFormat != shipconfig.DefaultTagFormat || rel.Changelog.File != shipconfig.DefaultChangelog {
+		t.Errorf("section defaults = tag_format %q, changelog.file %q", rel.TagFormat, rel.Changelog.File)
 	}
 	if len(rel.Projects) != 1 {
 		t.Fatalf("projects = %d, want 1", len(rel.Projects))
@@ -361,10 +375,7 @@ tasks:
 }
 
 func TestLoad_MonorepoDefaults(t *testing.T) {
-	rel := mustLoad(t, `release:
-  semantic_release:
-    version: "24.1.0"
-    extra_plugins: ["@semantic-release/exec@6.0.3"]
+	rel := mustLoad(t, `ship:
   projects:
     - name: api
       path: src\Api
@@ -376,12 +387,6 @@ func TestLoad_MonorepoDefaults(t *testing.T) {
       tag_format: "lib@${version}"
       changelog: docs/LIB_CHANGELOG.md
 `)
-	if rel.SemanticRelease.Version != "24.1.0" {
-		t.Errorf("version = %q", rel.SemanticRelease.Version)
-	}
-	if !reflect.DeepEqual(rel.SemanticRelease.ExtraPlugins, []string{"@semantic-release/exec@6.0.3"}) {
-		t.Errorf("extra_plugins = %v", rel.SemanticRelease.ExtraPlugins)
-	}
 	api, lib := rel.Projects[0], rel.Projects[1]
 	checks := []struct{ field, got, want string }{
 		{"api.path", api.Path, "src/Api"},
@@ -408,25 +413,13 @@ func TestLoad_MonorepoDefaults(t *testing.T) {
 	}
 }
 
-// The dotnet + docker shape documented in docs/release-commands.md.
-func TestLoad_PresetDefaults(t *testing.T) {
-	rel := mustLoad(t, `release:
+// Stage commands and hooks get the default shell, and keep their env.
+func TestLoad_CommandDefaults(t *testing.T) {
+	rel := mustLoad(t, `ship:
   projects:
     - name: api
       path: .
-      presets: [dotnet, docker, nuget, node, npm]
-      dotnet:
-        project_file: src/Api/Api.csproj
-        coverage_threshold: 80
-      docker:
-        images:
-          - name: ghcr.io/org/api
-            build_args: { APP_VERSION: "${version}" }
-          - name: ghcr.io/org/api-worker
-            dockerfile: worker/Dockerfile
-            context: worker
-            tags: [version]
-            push: false
+      build: { mode: script }
       stages:
         test: { run: "dotnet test --no-build" }
       hooks:
@@ -437,29 +430,6 @@ func TestLoad_PresetDefaults(t *testing.T) {
             shell: pwsh
 `)
 	p := rel.Projects[0]
-	if p.Dotnet.Configuration != shipconfig.DefaultDotnetConfiguration || p.Dotnet.ProjectFile != "src/Api/Api.csproj" || p.Dotnet.CoverageThreshold != 80 {
-		t.Errorf("dotnet = %+v", *p.Dotnet)
-	}
-	if p.Node.PackageManager != shipconfig.DefaultPackageManager {
-		t.Errorf("node.package_manager = %q, want %s", p.Node.PackageManager, shipconfig.DefaultPackageManager)
-	}
-	if p.NuGet.Source != shipconfig.DefaultNuGetSource || p.NuGet.APIKeyEnv != shipconfig.DefaultNuGetAPIKeyEnv {
-		t.Errorf("nuget = %+v", *p.NuGet)
-	}
-	if p.Npm.Access != shipconfig.DefaultNpmAccess {
-		t.Errorf("npm.access = %q, want %s", p.Npm.Access, shipconfig.DefaultNpmAccess)
-	}
-	img := p.Docker.Images[0]
-	if img.Dockerfile != shipconfig.DefaultDockerfile || img.Context != shipconfig.DefaultDockerContext || !img.ShouldPush() ||
-		!reflect.DeepEqual(img.Tags, []string{"version", "channel", "latest"}) ||
-		img.BuildArgs["APP_VERSION"] != "${version}" {
-		t.Errorf("image[0] = %+v", img)
-	}
-	worker := p.Docker.Images[1]
-	if worker.Dockerfile != "worker/Dockerfile" || worker.Context != "worker" || worker.ShouldPush() ||
-		!reflect.DeepEqual(worker.Tags, []string{"version"}) {
-		t.Errorf("image[1] = %+v", worker)
-	}
 	if got := p.Stages["test"]; got.Run != "dotnet test --no-build" || got.Shell != shipconfig.DefaultShell {
 		t.Errorf("stages.test = %+v", got)
 	}
@@ -472,7 +442,7 @@ func TestLoad_PresetDefaults(t *testing.T) {
 // workdir is normalised like every other path and timeout parses as a Go
 // duration; both are optional.
 func TestLoad_CommandWorkdirAndTimeout(t *testing.T) {
-	rel := mustLoad(t, `release:
+	rel := mustLoad(t, `ship:
   projects:
     - name: api
       path: .
@@ -512,7 +482,7 @@ func TestLoad_DocumentedExample(t *testing.T) {
 	}
 	rel := mustLoad(t, example)
 	p := rel.Projects[0]
-	if p.Name != "api" || p.TagFormat != "v${version}" || p.Dotnet == nil || p.Docker == nil {
+	if p.Name != "api" || p.TagFormat != "v${version}" || p.Build == nil || p.Build.Mode == "" {
 		t.Errorf("documented example loaded as %+v", p)
 	}
 }
@@ -521,18 +491,10 @@ func TestLoad_DocumentedExample(t *testing.T) {
 // constant must be a deliberate change to docs/release-commands.md too.
 func TestDefaults_MatchDocs(t *testing.T) {
 	want := map[string]string{
-		shipconfig.DefaultSemanticReleaseVersion: "24.2.3",
-		shipconfig.DefaultTagFormat:              "v${version}",
-		shipconfig.DefaultChangelog:              "CHANGELOG.md",
-		shipconfig.DefaultBump:                   "patch",
-		shipconfig.DefaultDotnetConfiguration:    "Release",
-		shipconfig.DefaultPackageManager:         "npm",
-		shipconfig.DefaultDockerfile:             "Dockerfile",
-		shipconfig.DefaultDockerContext:          ".",
-		shipconfig.DefaultNuGetSource:            "https://api.nuget.org/v3/index.json",
-		shipconfig.DefaultNuGetAPIKeyEnv:         "NUGET_API_KEY",
-		shipconfig.DefaultNpmAccess:              "public",
-		shipconfig.DefaultShell:                  "bash",
+		shipconfig.DefaultTagFormat: "v${version}",
+		shipconfig.DefaultChangelog: "CHANGELOG.md",
+		shipconfig.DefaultBump:      "patch",
+		shipconfig.DefaultShell:     "bash",
 	}
 	doc, err := os.ReadFile(filepath.Join("..", "..", "docs", "release-commands.md"))
 	if err != nil {
@@ -546,95 +508,54 @@ func TestDefaults_MatchDocs(t *testing.T) {
 			t.Errorf("docs/release-commands.md does not mention the default `%s`", documented)
 		}
 	}
-	if got := shipconfig.DefaultDockerTags(); !reflect.DeepEqual(got, []string{"version", "channel", "latest"}) {
-		t.Errorf("DefaultDockerTags() = %v", got)
-	}
-	for _, tag := range shipconfig.DefaultDockerTags() {
-		if !strings.Contains(string(doc), tag) {
-			t.Errorf("docs/release-commands.md does not mention the default tag %s", tag)
-		}
-	}
-}
-
-// The default docker tags cannot be changed from outside the package: a
-// caller mutating the returned slice does not affect later loads.
-func TestDefaultDockerTags_ReturnsACopy(t *testing.T) {
-	tags := shipconfig.DefaultDockerTags()
-	tags[0] = "mutated"
-	if again := shipconfig.DefaultDockerTags(); again[0] != "version" {
-		t.Fatalf("DefaultDockerTags() = %v after mutating a previous result", again)
-	}
-	rel := mustLoad(t, "release:\n  projects:\n    - name: app\n      path: .\n      presets: [docker]\n      docker:\n        images:\n          - name: ghcr.io/org/app\n")
-	if got := rel.Projects[0].Docker.Images[0].Tags; !reflect.DeepEqual(got, []string{"version", "channel", "latest"}) {
-		t.Fatalf("image tags = %v, want the documented defaults", got)
-	}
 }
 
 func TestLoad_ValidationErrors(t *testing.T) {
 	// one is a valid project prepended to cases that need a second project.
-	const one = "release:\n  projects:\n    - name: lib\n      path: lib\n"
+	const one = "ship:\n  projects:\n    - name: lib\n      path: lib\n"
 	tests := []struct {
 		name string
 		yaml string
 		want string
 	}{
-		{"release not a mapping", "release: [a]\n", "release: must be a mapping"},
-		{"bare release key", "enabled: true\nrelease:\n", "release.projects: at least one project is required"},
-		{"no projects", "release:\n  semantic_release: { version: 24.2.3 }\n", "release.projects: at least one project is required"},
-		{"unknown top-level release key", "release:\n  projets: []\n", `release.projets: unknown field`},
-		{"unknown project key", one + "      dockr: {}\n", `release.projects[0].dockr: unknown field`},
-		{"unknown nested key", one + "      docker:\n        images:\n          - name: x\n            tag: [version]\n", `release.projects[0].docker.images[0].tag: unknown field`},
-		{"wrong type", one + "      presets: docker\n", "release: line 5"},
-		{"missing name", "release:\n  projects:\n    - path: .\n", `release.projects[0].name: required`},
-		{"bad name chars", "release:\n  projects:\n    - name: My_Api\n      path: .\n", `release.projects[0].name: "My_Api" must match [a-z0-9][a-z0-9-]*`},
-		{"duplicate name", one + "    - name: lib\n      path: other\n", `release.projects[1].name: duplicate project "lib"`},
-		{"missing path", "release:\n  projects:\n    - name: api\n", `release.projects[0].path: required`},
-		{"absolute path", "release:\n  projects:\n    - name: api\n      path: /src/api\n", `release.projects[0].path: "/src/api" must be relative to the repository root`},
-		{"windows absolute path", "release:\n  projects:\n    - name: api\n      path: 'C:\\src'\n", `release.projects[0].path: "C:\\src" must be relative to the repository root`},
-		{"escaping path", "release:\n  projects:\n    - name: api\n      path: src/../../x\n", `release.projects[0].path: "src/../../x" escapes the repository root`},
-		{"escaping shared path", one + "      shared_paths: [../shared]\n", `release.projects[0].shared_paths[0]: "../shared" escapes the repository root`},
-		{"escaping changelog", one + "      changelog: ../CHANGELOG.md\n", `release.projects[0].changelog: "../CHANGELOG.md" escapes the repository root`},
-		{"empty scope", one + "      scopes: [\"\"]\n", `release.projects[0].scopes[0]: required`},
-		{"scope with spaces", one + "      scopes: [\"my api\"]\n", `release.projects[0].scopes[0]: "my api" is not a valid conventional-commit scope`},
-		{"tag format without version", one + "      tag_format: release-1\n", `release.projects[0].tag_format: "release-1" must contain ${version}`},
-		{"tag format unknown placeholder", one + "      tag_format: \"${name}-${version}\"\n", `release.projects[0].tag_format: unknown placeholder ${name}`},
-		{"duplicate tag format", "release:\n  projects:\n    - name: a\n      path: a\n      tag_format: v${version}\n    - name: b\n      path: b\n      tag_format: v${version}\n", `release.projects[1].tag_format: "v${version}" is already used by project "a"`},
-		{"unknown dependency", one + "      depends_on:\n        - project: lib2\n", `release.projects[0].depends_on[0].project: unknown project "lib2"`},
-		{"missing dependency project", one + "      depends_on:\n        - bump: minor\n", `release.projects[0].depends_on[0].project: required`},
-		{"self dependency", one + "      depends_on:\n        - project: lib\n", `release.projects[0].depends_on[0].project: a project cannot depend on itself`},
-		{"duplicate dependency", one + "    - name: api\n      path: api\n      depends_on:\n        - project: lib\n        - project: lib\n", `release.projects[1].depends_on[1].project: duplicate dependency on "lib"`},
-		{"unknown bump", one + "    - name: api\n      path: api\n      depends_on:\n        - project: lib\n          bump: major\n", `release.projects[1].depends_on[0].bump: unknown bump "major" (want patch, minor or none)`},
-		{"dependency cycle", "release:\n  projects:\n    - name: a\n      path: a\n      depends_on: [{ project: b }]\n    - name: b\n      path: b\n      depends_on: [{ project: c }]\n    - name: c\n      path: c\n      depends_on: [{ project: a }]\n", `release.projects: dependency cycle a -> b -> c -> a`},
-		{"unknown preset", one + "      presets: [maven]\n", `release.projects[0].presets[0]: unknown preset "maven" (want dotnet, node, docker, nuget or npm)`},
-		{"duplicate preset", one + "      presets: [npm, npm]\n", `release.projects[0].presets[1]: duplicate preset "npm"`},
-		{"dotnet without project file", one + "      presets: [dotnet]\n", `release.projects[0].dotnet.project_file: required by the dotnet preset`},
-		{"dotnet escaping project file", one + "      presets: [dotnet]\n      dotnet: { project_file: ../x.csproj }\n", `release.projects[0].dotnet.project_file: "../x.csproj" escapes the repository root`},
-		{"coverage not a number", one + "      presets: [dotnet]\n      dotnet: { project_file: a.csproj, coverage_threshold: .nan }\n", `release.projects[0].dotnet.coverage_threshold: NaN must be between 0 and 100`},
-		{"coverage infinite", one + "      presets: [dotnet]\n      dotnet: { project_file: a.csproj, coverage_threshold: -.inf }\n", `release.projects[0].dotnet.coverage_threshold: -Inf must be between 0 and 100`},
-		{"coverage out of range", one + "      presets: [dotnet]\n      dotnet: { project_file: a.csproj, coverage_threshold: 120 }\n", `release.projects[0].dotnet.coverage_threshold: 120 must be between 0 and 100`},
-		{"settings without preset", one + "      dotnet: { project_file: a.csproj }\n", `release.projects[0].dotnet: settings given but the dotnet preset is not enabled`},
-		{"unknown package manager", one + "      presets: [node]\n      node: { package_manager: bun }\n", `release.projects[0].node.package_manager: unknown package manager "bun" (want npm, pnpm or yarn)`},
-		{"docker preset without images", one + "      presets: [docker]\n", `release.projects[0].docker.images: at least one image is required by the docker preset`},
-		{"docker image without name", one + "      presets: [docker]\n      docker:\n        images:\n          - dockerfile: Dockerfile\n", `release.projects[0].docker.images[0].name: required`},
-		{"docker unknown tag", one + "      presets: [docker]\n      docker:\n        images:\n          - name: x\n            tags: [edge]\n", `release.projects[0].docker.images[0].tags[0]: unknown tag "edge" (want version, channel or latest)`},
-		{"docker unknown placeholder", one + "      presets: [docker]\n      docker:\n        images:\n          - name: x\n            build_args: { V: \"${build}\" }\n", `release.projects[0].docker.images[0].build_args.V: unknown placeholder ${build}`},
-		{"docker escaping context", one + "      presets: [docker]\n      docker:\n        images:\n          - name: x\n            context: ..\n", `release.projects[0].docker.images[0].context: ".." escapes the repository root`},
-		{"npm unknown access", one + "      presets: [npm]\n      npm: { access: private }\n", `release.projects[0].npm.access: unknown access "private" (want public or restricted)`},
-		{"nuget bad env name", one + "      presets: [nuget]\n      nuget: { api_key_env: \"MY KEY\" }\n", `release.projects[0].nuget.api_key_env: "MY KEY" is not a valid environment variable name`},
-		{"unknown stage", one + "      stages:\n        deploy: { run: x }\n", `release.projects[0].stages.deploy: unknown stage (want restore, lint, build, test, coverage, package or publish)`},
-		{"stage without run", one + "      stages:\n        test: { shell: bash }\n", `release.projects[0].stages.test.run: required`},
-		{"unknown hook", one + "      hooks:\n        before_deploy: [{ run: x }]\n", `release.projects[0].hooks.before_deploy: unknown hook`},
-		{"unknown shell", one + "      hooks:\n        prepare: [{ run: x, shell: cmd }]\n", `release.projects[0].hooks.prepare[0].shell: unknown shell "cmd" (want node, pwsh or bash)`},
-		{"hook without run", one + "      hooks:\n        after_test: [{ shell: bash }]\n", `release.projects[0].hooks.after_test[0].run: required`},
-		{"reserved hook env", one + "      hooks:\n        success: [{ run: x, env: { NERV_RELEASE_VERSION: \"1\" } }]\n", `release.projects[0].hooks.success[0].env.NERV_RELEASE_VERSION: the NERV_RELEASE_ prefix is reserved`},
-		{"escaping stage workdir", one + "      stages:\n        test: { run: x, workdir: ../up }\n", `release.projects[0].stages.test.workdir: "../up" escapes the repository root`},
-		{"absolute hook workdir", one + "      hooks:\n        prepare: [{ run: x, workdir: /tmp }]\n", `release.projects[0].hooks.prepare[0].workdir: "/tmp" must be relative to the repository root`},
-		{"timeout not a duration", one + "      stages:\n        test: { run: x, timeout: soon }\n", `release.projects[0].stages.test.timeout: "soon" is not a duration such as 90s or 10m`},
-		{"timeout without unit", one + "      hooks:\n        success: [{ run: x, timeout: 90 }]\n", `release.projects[0].hooks.success[0].timeout: "90" is not a duration such as 90s or 10m`},
-		{"zero timeout", one + "      stages:\n        build: { run: x, timeout: 0s }\n", `release.projects[0].stages.build.timeout: "0s" must be positive`},
-		{"negative timeout", one + "      stages:\n        build: { run: x, timeout: -5m }\n", `release.projects[0].stages.build.timeout: "-5m" must be positive`},
-		{"unpinned semantic-release", "release:\n  semantic_release: { version: ^24 }\n  projects:\n    - name: a\n      path: .\n", `release.semantic_release.version: "^24" must be an exact version such as 24.2.3`},
-		{"unpinned extra plugin", "release:\n  semantic_release: { extra_plugins: [\"@semantic-release/exec\"] }\n  projects:\n    - name: a\n      path: .\n", `release.semantic_release.extra_plugins[0]: "@semantic-release/exec" must pin an exact version, e.g. "@semantic-release/exec@<version>"`},
+		{"ship not a mapping", "ship: [a]\n", "ship: must be a mapping"},
+		{"unknown top-level ship key", "ship:\n  projets: []\n", `ship.projets: unknown field`},
+		{"unknown project key", one + "      dockr: {}\n", `ship.projects[0].dockr: unknown field`},
+		{"unknown nested key", one + "      build:\n        mod: script\n", `ship.projects[0].build.mod: unknown field`},
+		{"wrong type", one + "      scopes: api\n", "ship: line 5"},
+		{"missing name", "ship:\n  projects:\n    - path: .\n", `ship.projects[0].name: required`},
+		{"bad name chars", "ship:\n  projects:\n    - name: My_Api\n      path: .\n", `ship.projects[0].name: "My_Api" must match [a-z0-9][a-z0-9-]*`},
+		{"duplicate name", one + "    - name: lib\n      path: other\n", `ship.projects[1].name: duplicate project "lib"`},
+		{"missing path", "ship:\n  projects:\n    - name: api\n", `ship.projects[0].path: required`},
+		{"absolute path", "ship:\n  projects:\n    - name: api\n      path: /src/api\n", `ship.projects[0].path: "/src/api" must be relative to the repository root`},
+		{"windows absolute path", "ship:\n  projects:\n    - name: api\n      path: 'C:\\src'\n", `ship.projects[0].path: "C:\\src" must be relative to the repository root`},
+		{"escaping path", "ship:\n  projects:\n    - name: api\n      path: src/../../x\n", `ship.projects[0].path: "src/../../x" escapes the repository root`},
+		{"escaping shared path", one + "      shared_paths: [../shared]\n", `ship.projects[0].shared_paths[0]: "../shared" escapes the repository root`},
+		{"escaping changelog", one + "      changelog: ../CHANGELOG.md\n", `ship.projects[0].changelog: "../CHANGELOG.md" escapes the repository root`},
+		{"empty scope", one + "      scopes: [\"\"]\n", `ship.projects[0].scopes[0]: required`},
+		{"scope with spaces", one + "      scopes: [\"my api\"]\n", `ship.projects[0].scopes[0]: "my api" is not a valid conventional-commit scope`},
+		{"tag format without version", one + "      tag_format: release-1\n", `ship.projects[0].tag_format: "release-1" must contain ${version}`},
+		{"tag format unknown placeholder", one + "      tag_format: \"${name}-${version}\"\n", `ship.projects[0].tag_format: unknown placeholder ${name}`},
+		{"duplicate tag format", "ship:\n  projects:\n    - name: a\n      path: a\n      tag_format: v${version}\n    - name: b\n      path: b\n      tag_format: v${version}\n", `ship.projects[1].tag_format: "v${version}" is already used by project "a"`},
+		{"unknown dependency", one + "      depends_on:\n        - project: lib2\n", `ship.projects[0].depends_on[0].project: unknown project "lib2"`},
+		{"missing dependency project", one + "      depends_on:\n        - bump: minor\n", `ship.projects[0].depends_on[0].project: required`},
+		{"self dependency", one + "      depends_on:\n        - project: lib\n", `ship.projects[0].depends_on[0].project: a project cannot depend on itself`},
+		{"duplicate dependency", one + "    - name: api\n      path: api\n      depends_on:\n        - project: lib\n        - project: lib\n", `ship.projects[1].depends_on[1].project: duplicate dependency on "lib"`},
+		{"dependency cycle", "ship:\n  projects:\n    - name: a\n      path: a\n      depends_on: [{ project: b }]\n    - name: b\n      path: b\n      depends_on: [{ project: c }]\n    - name: c\n      path: c\n      depends_on: [{ project: a }]\n", `ship.projects: dependency cycle a -> b -> c -> a`},
+		{"unknown stage", one + "      stages:\n        deploy: { run: x }\n", `ship.projects[0].stages.deploy: unknown stage (want restore, lint, build, test, coverage or package)`},
+		{"stage without run", one + "      stages:\n        test: { shell: bash }\n", `ship.projects[0].stages.test.run: required`},
+		{"unknown hook", one + "      hooks:\n        before_deploy: [{ run: x }]\n", `ship.projects[0].hooks.before_deploy: unknown hook`},
+		{"unknown shell", one + "      hooks:\n        prepare: [{ run: x, shell: cmd }]\n", `ship.projects[0].hooks.prepare[0].shell: unknown shell "cmd" (want node, pwsh or bash)`},
+		{"hook without run", one + "      hooks:\n        after_test: [{ shell: bash }]\n", `ship.projects[0].hooks.after_test[0].run: required`},
+		{"reserved hook env", one + "      hooks:\n        fail: [{ run: x, env: { NERV_RELEASE_VERSION: \"1\" } }]\n", `ship.projects[0].hooks.fail[0].env.NERV_RELEASE_VERSION: the NERV_RELEASE_ prefix is reserved`},
+		{"escaping stage workdir", one + "      stages:\n        test: { run: x, workdir: ../up }\n", `ship.projects[0].stages.test.workdir: "../up" escapes the repository root`},
+		{"absolute hook workdir", one + "      hooks:\n        prepare: [{ run: x, workdir: /tmp }]\n", `ship.projects[0].hooks.prepare[0].workdir: "/tmp" must be relative to the repository root`},
+		{"timeout not a duration", one + "      stages:\n        test: { run: x, timeout: soon }\n", `ship.projects[0].stages.test.timeout: "soon" is not a duration such as 90s or 10m`},
+		{"timeout without unit", one + "      hooks:\n        fail: [{ run: x, timeout: 90 }]\n", `ship.projects[0].hooks.fail[0].timeout: "90" is not a duration such as 90s or 10m`},
+		{"zero timeout", one + "      stages:\n        build: { run: x, timeout: 0s }\n", `ship.projects[0].stages.build.timeout: "0s" must be positive`},
+		{"negative timeout", one + "      stages:\n        build: { run: x, timeout: -5m }\n", `ship.projects[0].stages.build.timeout: "-5m" must be positive`},
+		{"unknown bump", one + "    - name: a\n      path: a\n      depends_on: [{ project: lib, bump: huge }]\n", `ship.projects[1].depends_on[0].bump: unknown bump "huge" (want patch, minor, major or none)`},
+		{"engine tag format", "ship:\n  tag_format: v1\n  projects:\n    - name: a\n      path: .\n      tag_format: a-${version}\n", `ship.tag_format: "v1" must contain ${version} exactly once`},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -654,15 +575,15 @@ func TestLoad_ValidationErrors(t *testing.T) {
 
 // Every problem is reported at once, so a user fixes the file in one pass.
 func TestLoad_ReportsAllProblems(t *testing.T) {
-	_, err := shipconfig.Load(writeConfig(t, "release:\n  projects:\n    - name: Bad\n    - path: /x\n"))
+	_, err := shipconfig.Load(writeConfig(t, "ship:\n  projects:\n    - name: Bad\n    - path: /x\n"))
 	if err == nil {
 		t.Fatal("want error")
 	}
 	for _, want := range []string{
-		"release.projects[0].name:",
-		"release.projects[0].path: required",
-		"release.projects[1].name: required",
-		"release.projects[1].path:",
+		"ship.projects[0].name:",
+		"ship.projects[0].path: required",
+		"ship.projects[1].name: required",
+		"ship.projects[1].path:",
 	} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("error %q lacks %q", err, want)

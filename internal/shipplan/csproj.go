@@ -14,10 +14,11 @@ import (
 var versionRe = regexp.MustCompile(`^[0-9A-Za-z][0-9A-Za-z.+-]*$`)
 
 // WriteCsproj sets <Version> and <PackageReleaseNotes> in the MSBuild
-// project file at path, the dotnet preset's version write (modelled on
+// project file at path, the build.version_files write (modelled on
 // dim.comprobantes.api's scripts/bump-csproj.sh, but as a text edit instead
 // of sed). nerv ship writes it in the release clone before the pipeline, so
-// the packages carry the notes and the release commit the file.
+// the packages carry the notes, and stores the file in the artifact for
+// the release commit.
 //
 // Every existing element of each name outside XML comments gets the new
 // value (its attributes, e.g. a Condition, are kept; a self-closing

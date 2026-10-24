@@ -53,8 +53,8 @@ For each artifact this task requires, read its locator:
 
 | reported store | locator shape | how to read it |
 |---|---|---|
-| `openspec` | repo path, e.g. `openspec/changes/{change}/nerv/maya-report.md` | read the file |
-| `engram` | topic key, e.g. `nerv/{change}/maya-report` | `mem_search(query: "<locator>", project: "{project}")` → `mem_get_observation(id)` |
+| `odd` | repo path, e.g. `odd/{feature}/nerv/maya-report.md` (FULL) or `.nerv/runs/{run-id}/maya-report.md` (DIRECT, LIGHT) | read the file |
+| `engram` | topic key, e.g. `nerv/{feature}/maya-report` | `mem_search(query: "<locator>", project: "{project}")` → `mem_get_observation(id)` |
 | `hybrid` | either shape | read the file when the locator is a path, the observation when it is a topic key |
 
 `mem_search` returns 300-character previews only. Always call
@@ -64,9 +64,16 @@ artifact is needed. A locator reported as `<unresolved>` means the
 artifact does not exist; report it as a blocker rather than substituting
 another store's copy.
 
+**Two layouts.** In FULL the run folder is `odd/{feature}/nerv/` and the
+ODD document is `odd/tasks/{feature}.md`. A DIRECT or LIGHT run has no ODD
+document: its run folder is `.nerv/runs/{run-id}/` (never committed) and
+the request comes in `## Feature`. Use the locators the brief names; a
+missing document in DIRECT or LIGHT is never a blocker, and there
+`{feature}` in a topic key holds the run id.
+
 ## Artifact persistence
 
-Persist `nerv/{change}/maya-report` — the only artifact Maya produces —
+Persist `nerv/{feature}/maya-report` — the only artifact Maya produces —
 to the store the orchestrator reported, using the injected locator.
 `Write` is granted to Maya for exactly this artifact; she never uses it
 on source or test files.
@@ -75,8 +82,8 @@ on source or test files.
 
 ```
 mem_save(
-  title: "nerv/{change}/maya-report",
-  topic_key: "nerv/{change}/maya-report",
+  title: "nerv/{feature}/maya-report",
+  topic_key: "nerv/{feature}/maya-report",
   type: "architecture",
   project: "{project}",
   capture_prompt: false,
@@ -90,7 +97,7 @@ automated pipeline outputs, not human/proactive saves. Set it when the
 tool schema supports it; omit it rather than failing if an older schema
 rejects it.
 
-### OpenSpec mode
+### ODD mode
 
 Write `nerv/maya-report.md` directly to the injected repo path via
 `Write`. No additional action needed.
@@ -120,7 +127,7 @@ Return exactly these fields as the final text:
 - `status`: `success`, `partial`, or `blocked`
 - `executive_summary`: 1-3 sentences
 - `detailed_report`: full output, or omit if already inline
-- `artifacts`: `nerv/{change}/maya-report` plus its locator
+- `artifacts`: `nerv/{feature}/maya-report` plus its locator
 - `next_recommended`: `ikari-commit` when green and the launch says a
   commit still follows (DIRECT and LIGHT paths, where Ikari makes that
   commit after the user validates it); `none` when the launch says the gate

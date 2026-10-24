@@ -1,27 +1,34 @@
 ## Resume
 
-On resuming an interrupted NERV change, in order:
+On resuming an interrupted NERV run, in order. The run folder is
+`odd/{feature}/nerv/` for FULL and `.nerv/runs/{run-id}/` for DIRECT and
+LIGHT (`odd-document.md`); a run with no ODD document is DIRECT or LIGHT.
 
-1. **Lock check.** Read `nerv/.orchestrator.lock`. Held — fresh by age,
+1. **Lock check.** Read `.nerv/locks/{run-id}.lock`. Held — fresh by age,
    or `waiting_on: user` at any age (see `## Orchestrator lock`) — and its
    `session_id` is not ours → do not resume; relay one blocking prompt,
    exactly two choices: wait (stop here, try later) or take over (only
    after the user confirms the other session is really dead; record
    `took_over_from: <session_id>`). Stale (`waiting_on` not `user` and
    `heartbeat_at` 15+ minutes old) or absent → proceed.
-2. **Memory + change artifacts.** `mem_context` → `mem_search` scoped to
-   `nerv/{change}` → `mem_get_observation` for each hit's full content →
-   read the change directory: which of `proposal.md`, `specs/`,
-   `design.md`, `tasks.md` exist and the `[x]` state of `tasks.md` (FULL;
-   DIRECT and LIGHT usually have none).
-3. **Artifacts.** Read `state.yaml`, every `nerv/*.md`, `votes.md`'s
-   `frozen` flags, `waves.md`, and the commits since the branch point.
+2. **ODD memory + document (FULL only).** gentle-ai's ODD resume order:
+   `mem_context` → `mem_search` scoped to this project and feature
+   (`odd/{feature}/tasks`, then `nerv/{feature}`) → `mem_get_observation`
+   for each hit's full content → the file `odd/tasks/{feature}.md` itself:
+   its `## Specs`, the `Status`, `MAGI` and `Commit` columns of `## Tasks`,
+   and the last `## Log` entries. Reconcile the file with its mirror; on
+   an irreconcilable difference keep both and ask the user about that
+   conflict only.
+3. **Run folder.** Read its `state.yaml`, every `nerv/*.md`, and in FULL
+   `votes.md`'s `frozen` flags and `waves.md`, plus the commits since the
+   branch point.
 4. **Reconcile.** Frozen tasks are never re-voted; closed waves are never
    re-run; a `commit_recorded` event whose hash exists in `git log` is
    done. A launch recorded without its matching `envelope` event is the
    only step to redo.
-5. **DIRECT and LIGHT state.** A change whose `state.yaml` says
-   `path: direct` or `path: light` has no votes or waves: its progress is
+5. **DIRECT and LIGHT state.** A run whose `.nerv/runs/{run-id}/state.yaml`
+   says `path: direct` or `path: light` has no document, votes or waves:
+   it resumes from that file's `request`, the diff and the log. Its progress is
    one work unit that stays uncommitted in the working tree until Ikari's
    user-validated commit. Rebuild it from `git status --porcelain`, `git
    diff` (staged and unstaged) and the log since the last
@@ -50,5 +57,5 @@ On resuming an interrupted NERV change, in order:
    step.
 
 Never infer active work from the newest global memory hit alone; always
-confirm against the change's own artifacts.
+confirm against the run's own folder and, in FULL, its ODD document.
 

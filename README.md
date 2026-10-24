@@ -7,10 +7,10 @@
   <a href="https://www.gnu.org/software/bash/"><img alt="Bash hooks" src="https://img.shields.io/badge/Bash-hooks-4EAA25?style=for-the-badge&logo=gnubash&logoColor=white"></a>
   <a href="https://www.markdownguide.org/"><img alt="Markdown agents and skills" src="https://img.shields.io/badge/Markdown-agents_%26_skills-000000?style=for-the-badge&logo=markdown&logoColor=white"></a>
   <a href="https://mermaid.js.org/"><img alt="Mermaid diagrams" src="https://img.shields.io/badge/Mermaid-diagrams-FF3670?style=for-the-badge&logo=mermaid&logoColor=white"></a>
-  <a href="https://yaml.org/"><img alt="YAML config" src="https://img.shields.io/badge/YAML-nerv.yaml-CB171E?style=for-the-badge&logo=yaml&logoColor=white"></a>
-  <a href="https://github.com/Gentleman-Programming/gentle-ai"><img alt="OpenSpec RDD" src="https://img.shields.io/badge/OpenSpec-RDD-0aa?style=for-the-badge"></a>
+  <a href="https://yaml.org/"><img alt="YAML config" src="https://img.shields.io/badge/YAML-.ai--workflow.yml-CB171E?style=for-the-badge&logo=yaml&logoColor=white"></a>
+  <a href="https://github.com/Gentleman-Programming/gentle-ai"><img alt="ODD and RDD" src="https://img.shields.io/badge/ODD-RDD-0aa?style=for-the-badge"></a>
   <a href="https://github.com/Gentleman-Programming/engram"><img alt="Engram memory" src="https://img.shields.io/badge/Engram-memory-2d3748?style=for-the-badge"></a>
-  <a href="https://www.teamwork.com/"><img alt="Teamwork MCP" src="https://img.shields.io/badge/Teamwork-MCP_adapter-FF22B1?style=for-the-badge&logo=teamwork&logoColor=white"></a>
+  <a href="https://www.teamwork.com/"><img alt="Teamwork task provider" src="https://img.shields.io/badge/Teamwork-task_provider-FF22B1?style=for-the-badge&logo=teamwork&logoColor=white"></a>
   <a href="https://skills.sh/"><img alt="skills.sh" src="https://img.shields.io/badge/skills.sh-manifest-333?style=for-the-badge"></a>
   <a href="https://git-scm.com/"><img alt="git" src="https://img.shields.io/badge/git-gitflow-F05032?style=for-the-badge&logo=git&logoColor=white"></a>
 </p>
@@ -37,16 +37,58 @@ Codex and Pi are not supported yet.
 ## Relation to gentle-ai
 
 Nerv by Gentle-AI is an **overlay**, not a fork. It reuses gentle-ai's native
-engine and contracts unchanged — RDD
-(receipt-driven review), the skill registry and resolver, the `jd`
-judgment agents, delivery budgeting with chained PRs, and the lossless blocking-prompt
-contract — and expresses Nerv by Gentle-AI's own governance on top. Nerv by
+engine and contracts unchanged — ODD (Organic Driven Development) and its
+feature document, RDD (receipt-driven review), the skill registry and
+resolver, the `jd` judgment agents, delivery budgeting with chained PRs,
+and the lossless blocking-prompt contract — and expresses Nerv by
+Gentle-AI's own governance on top. Each FULL run is tracked on an ODD
+feature document, `odd/tasks/{feature}.md`, which the NERV agents write:
+Misato authors its `## Specs` and `## Tasks`, the MAGI vote is recorded per
+task row, Aoba records each commit, and Ritsuko's test plan goes into its
+`## Log`. NERV's governance files (state, deliberation log, audit rounds,
+run summary) sit next to it in `odd/{feature}/nerv/` and are committed
+with the feature in the close commit. DIRECT and LIGHT runs, like
+gentle-ai's ODD for small work, create no document and no close commit:
+their run files stay in the runtime folder `.nerv/runs/{run-id}/`, and
+their only commit is the work commit. The orchestrator lock is runtime
+only, in `.nerv/locks/`. Nerv by
 Gentle-AI never modifies any gentle-ai file: nothing is ever written
 under `~/.claude/agents` or `~/.claude/skills`, so `gentle-ai sync` cannot
 see or touch it.
 
 See [docs/integration.md](docs/integration.md) for the full layering,
 activation, and pipeline diagrams.
+
+## Core and optional plugins
+
+The marketplace ships seven plugins:
+
+| Plugin | Required | What it does |
+|---|---|---|
+| `nerv@nerv` | yes | Core: adapts gentle-ai's agents to the NERV pipeline. It holds no task, timer or tracker logic. |
+| `task@nerv` | no | The task plugin: the `/task:*` commands, local timers, and the `task:dispatcher` agent that turns pipeline events into tracker operations. |
+| `task-teamwork@nerv` | no | A task provider for Teamwork, shipped as its own plugin with a `provider.yaml` manifest. |
+| `ship@nerv` | no | The ship plugin: `/ship:version`, `/ship:setup`, `/ship:build`, the `ship:versioner` and `ship:builder` agents. A native version engine (no semantic-release) and a build in `compose` or `script` mode that leaves a local artifact; it never writes to git. |
+| `deploy@nerv` | no | The deploy plugin (requires `ship`): `/deploy:run`, `/deploy:setup` and the `deploy:deployer` agent. It turns an artifact into a release: release commit, tag, push, targets, git host release. |
+| `deploy-github@nerv` | no | A deploy git host for GitHub releases (`gh`), with a `deploy-provider.yaml` manifest. |
+| `deploy-ssh-compose@nerv` | no | A deploy target: pushes the artifact's images and updates the containers over SSH with the host's compose script. |
+
+When the task plugin is installed, the orchestrator emits pipeline events
+(`run.started`, `verification.started`, `audit.ranked`, `issue.deferred`,
+`wave.started`, `run.closed`, `run.halted`) to `task:dispatcher`, which
+answers one envelope per provider. When it is not installed, core emits
+nothing, asks no task question and logs nothing. See
+[docs/integration.md](docs/integration.md#task-plugin) for the event
+table, the envelope, the per-event switches and `/task:replay`.
+
+The ship and deploy plugins are independent of the orchestrator: install
+them with `nerv install --with ship,deploy,deploy-github` (add
+`deploy-ssh-compose` for SSH and compose hosts), run `/ship:setup` and
+`/deploy:setup` once, then `/ship:build` leaves a local artifact in
+`.nerv/artifacts/<project>/<version>/` and `/deploy:run` releases it. Both
+always rehearse with a dry run and act only after your explicit yes. A
+repository set up with nerv 4.2.0 migrates with `nerv migrate` (see
+[docs/migration.md](docs/migration.md)).
 
 ## Requirements
 
@@ -126,7 +168,11 @@ Requires Go 1.26+ (see "Requirements" above).
 
 Flags: `--no-configure` (skip the closing wizard/hint entirely),
 `--no-skills` (skip installing skills), `--require-gentle-ai` (fail with
-exit 1 when gentle-ai is missing or not 4.x).
+exit 1 when gentle-ai is missing or not 4.x), `--with <names>` (install
+extension plugins such as `task,task-teamwork` or
+`ship,deploy,deploy-github`; in a terminal, install offers the task plugin,
+its providers, the ship plugin, the deploy plugin, then the deploy
+providers; `deploy` requires `ship`).
 
 ### Updating
 
@@ -134,6 +180,13 @@ Re-run the install method you used (the `scripts/install.sh` one-liner, or
 `go install ...@latest` on Windows), then
 run `nerv install` again to refresh the plugin cache and re-apply
 configuration.
+
+**Upgrading from a release with built-in tasks.** An existing `tasks:`
+block in `~/.config/ai-workflow/config.yml` or `.ai-workflow.yml` keeps working once
+the task plugin is installed; without it, core ignores the block and never
+deletes it. Copies of the `/task:*` commands that an older release put in
+`~/.claude/commands/task/` are reported by `nerv install` and removed only
+after you confirm. See [docs/configuration.md](docs/configuration.md#tasks-task-plugin).
 
 ### Uninstall
 
@@ -164,17 +217,16 @@ native blocking prompts, pre-filled from the current config, and applies
 only the answers you confirm.
 
 **Activation per repository.** A repo opts in by writing
-`.nerv/nerv.yaml` with `enabled: true` — run
-`nerv configure --init-repo <path>` (with `--repo-base`, `--repo-provider`,
-and, for Teamwork, `--repo-project-id`/`--repo-tasklist-id`), or `/nerv:init`
-from inside Claude Code for the same thing through guided questions.
-Running `--init-repo` on a repo that already has `.nerv/nerv.yaml` also
-removes the task providers that no longer exist (`github-projects`, `jira`)
-from it, with a backup; any other content is left as written.
+`.ai-workflow.yml` with `enabled: true` — run
+`nerv configure --init-repo <path>` (with `--repo-base`, and a repeatable
+`--repo-provider-config <provider>.<key>=<value>` for task-provider
+settings), or `/nerv:init` from inside Claude Code for the same thing
+through guided questions. Running `--init-repo` on a repo that already has
+`.ai-workflow.yml` leaves its content as written.
 `/nerv:status` reports the resolved config and, while a run is in progress,
 the orchestrator lock state.
 
-The wizard walks through six sections:
+The wizard walks through these sections:
 
 1. **Prerequisites** — informational checks for `gentle-ai` (major version
    4 required), `engram` (optional), and `claude` (required for the cache
@@ -188,28 +240,26 @@ The wizard walks through six sections:
    `~/.claude/CLAUDE.md`). `nerv skills --dry-run --json` previews the same
    check without the wizard.
 3. **User config** — asks `git` (base branch, worktree policy, worktree
-   pattern, branch and commit-ref patterns), `tasks` (provider,
-   ask-when-missing, subtasks-per-wave, timer store, rounding minutes, and — when the
-   provider is Teamwork — the ref prefix, assignee id, default
-   project/tasklist ids, and the seven workflow-stage names), `skills`
-   (one comma-separated stack per consuming role), `critical_paths`, and
-   `artifacts.commit`, then writes `~/.claude/nerv/nerv.yaml`, backing up
-   any existing file first. A field left unchanged (Enter keeps the shown
-   value) is never rewritten at all; a whole block (`git:`, `tasks:`,
-   `skills:`, `artifacts:`, or the `providers.teamwork` sub-block) is only
-   generated fresh when it is missing from the file entirely. Anything the
+   pattern, branch and commit-ref patterns), `skills` (one comma-separated
+   stack per consuming role), `critical_paths`, and `artifacts.commit`,
+   then writes `~/.config/ai-workflow/config.yml`, backing up any existing file
+   first. A field left unchanged (Enter keeps the shown value) is never
+   rewritten at all; a whole block (`git:`, `skills:`, `artifacts:`) is
+   only generated fresh when it is missing from the file entirely. An
+   existing `tasks:` block is never rewritten or removed. Anything the
    wizard has no field for — extra keys, `known_projects:`, `sources:`,
    `sources_howto:`, or anything else you added by hand — is never dropped
    or regenerated.
 4. **Models** (`--skip-models`) — optionally edits per-role model/effort
    overrides (see "Configuring models and effort" below).
-5. **Repos** (`--skip-repos`) — optionally writes `.nerv/nerv.yaml` in one
+5. **Repos** (`--skip-repos`) — optionally writes `.ai-workflow.yml` in one
    or more local git repositories, leaving an already-initialized repo
    untouched.
-6. **Slash commands** (`--skip-commands`) — optionally copies the Teamwork
-   procedures under `plugin/skills/nerv-tasks/providers/teamwork/procedures/`
-   into `~/.claude/commands/task/` as the 16 `/task:*` commands, never
-   overwriting a file that already exists there.
+6. **Task providers** — shown only when `task@nerv` is enabled. It prompts
+   each enabled provider's scalar config keys, read from its
+   `provider.yaml`, plus `tasks.provider` when more than one provider is
+   enabled. The `/task:*` commands are served by the `task` plugin itself,
+   so nothing is copied to `~/.claude/commands/task/`.
 
 The closing step (`--no-refresh` to skip) applies the resolved `models:`
 block to the plugin cache and refreshes it.
@@ -219,13 +269,15 @@ it. `--answers <path>` drives the whole wizard from a text file (one
 answer per line) instead of prompting, for scripted setup.
 
 After the wizard, open Claude Code in each configured repository and run
-`/nerv:init` once — this creates `openspec/config.yaml` and the skill
-registry when they are missing; the wizard itself only writes `.nerv/nerv.yaml`.
+`/nerv:init` once — this refreshes the skill registry; the wizard itself
+only writes `.ai-workflow.yml`. Runs are tracked on gentle-ai's ODD feature
+documents (`odd/tasks/{feature}.md`), which the orchestrator creates for
+FULL runs.
 
 Outside the wizard, the plugin stays self-contained apart from these
 requirements: **gentle-ai 4.x** installed and configured (`gentle-ai
-install`), **Claude Code** with the **Teamwork MCP** configured when the
-Teamwork task-tracker adapter is used, and **Engram** (optional — used for
+install`), **Claude Code** (plus, for the optional `task-teamwork`
+provider, the Teamwork MCP server it declares), and **Engram** (optional — used for
 the shared `nerv` knowledge base and per-repo memory detection).
 
 ## Manual setup
@@ -240,15 +292,14 @@ Non-interactive configuration:
 nerv configure --print --json
 nerv configure --set key=value --set key2=value2 --json
 nerv configure --set-model role=model[/effort] --set-model role2=from:<gentle-ai-phase> --json
-nerv configure --init-repo <path> --repo-base <branch> --repo-provider <provider> [--repo-project-id <id> --repo-tasklist-id <id>]
-nerv configure --install-commands
+nerv configure --init-repo <path> --repo-base <branch> [--repo-provider-config <provider>.<key>=<value> ...]
 ```
 
 `--set` and `--set-model` are repeatable flags — pass every changed key of
 one batch as its own occurrence on a single invocation. Nothing is written
 when nothing changed, and the command exits 1 on a rejected key or value,
 or on any unknown key in a `--set`/`--set-model` batch (writing nothing for
-that batch). `--config <path>` overrides the user-scope `nerv.yaml` path,
+that batch). `--config <path>` overrides the user-scope `config.yml` path,
 for scripted or tested runs.
 
 Skills and models directly:
@@ -258,8 +309,8 @@ nerv skills --dry-run --json
 nerv apply-models
 ```
 
-Where files live: user scope `~/.claude/nerv/nerv.yaml` (personal
-defaults, never committed), project scope `<repo>/.nerv/nerv.yaml`
+Where files live: user scope `~/.config/ai-workflow/config.yml` (personal
+defaults, never committed), project scope `<repo>/.ai-workflow.yml`
 (committed), and the plugin cache under
 `~/.claude/plugins/cache/nerv/nerv/<version>/`.
 
@@ -281,7 +332,7 @@ flags (tests inject them through options, not through argv): a fake home
 does not sandbox `claude` or `npx`, both of which read the real user's
 Claude Code and npm configuration regardless of `HOME`/`USERPROFILE`. Test
 config edits through the fakes exercised by `go test ./...`, or against a
-disposable, backed-up `~/.claude/nerv/nerv.yaml` — never by pointing a real
+disposable, backed-up `~/.config/ai-workflow/config.yml` — never by pointing a real
 `nerv install`/`nerv configure` run at a throwaway home directory.
 
 Behavioral tests live under `bench/`: see [`bench/README.md`](bench/README.md)
@@ -289,10 +340,11 @@ for the manual journey suite and the `claude plugin eval` corpus.
 
 ## Configuration schema
 
-Every Nerv by Gentle-AI setting lives in `nerv.yaml`, in two scope copies
-(user `~/.claude/nerv/nerv.yaml` and project `<repo>/.nerv/nerv.yaml`,
+Every Nerv by Gentle-AI setting lives in two scope copies of one schema
+(user `~/.config/ai-workflow/config.yml` and project `<repo>/.ai-workflow.yml`,
 project overriding user key by key) with sections for skills, per-role
-model/effort overrides, critical paths, artifacts, git, and tasks.
+model/effort overrides, critical paths, artifacts and git. The `tasks:`
+section belongs to the optional task plugin; core ignores it.
 
 See [docs/configuration.md](docs/configuration.md) for the full schema,
 example YAML, and how to configure per-role models and effort (wizard,
@@ -304,21 +356,29 @@ example YAML, and how to configure per-role models and effort (wizard,
   Claude Code slash commands and the `nerv` CLI, with usage and examples.
 - [docs/integration.md](docs/integration.md) — how Nerv by Gentle-AI
   integrates with gentle-ai, the agent roles table, and operations
-  (activation, artifacts, task tracker, Engram project detection).
-- [docs/configuration.md](docs/configuration.md) — the `nerv.yaml`
+  (activation, artifacts, the task plugin and its events, Engram project
+  detection).
+- [docs/configuration.md](docs/configuration.md) — the configuration
   configuration schema and how to configure per-role models and effort.
 - [docs/releases.md](docs/releases.md) — versioning, release channels,
   and how to cut a release.
-- [docs/release-commands.md](docs/release-commands.md) — release commands
-  for your own repositories: `nerv version next` / `/nerv:version` (the next
-  semantic version of a repo or of each monorepo project), `nerv ship` /
-  `/nerv:ship` (a local release of what is on origin) and the `release:`
-  section, which `/nerv:release-setup` writes interactively.
-- [docs/pipeline.md](docs/pipeline.md) — the Docker pipeline for your own
-  repositories, a standalone copy of dim.comprobantes.api's CI/CD:
-  `nerv pipeline validate|test|release|docker|sync|deploy`, `nerv pipeline
-  run` and `/nerv:pipeline`, configured by the `pipeline:` section (Getting
-  started guide included).
+- [docs/release-commands.md](docs/release-commands.md) — the ship plugin
+  for your own repositories: `nerv version next` / `/ship:version` (the next
+  semantic version of a repo or of each monorepo project, from the native
+  engine), `nerv ship` / `/ship:build` (build, test and package what is on
+  origin into a local artifact) and the `ship:` section, which
+  `/ship:setup` writes interactively (importing an existing semantic-release
+  config with `nerv ship setup --import`).
+- [docs/deploy.md](docs/deploy.md) — the deploy plugin: `nerv deploy` /
+  `/deploy:run` (release commit, tag, push, targets, git host release from
+  an artifact), the `deploy:` section (`/deploy:setup`) and the provider
+  contract (`deploy-github`, `deploy-ssh-compose`).
+- [docs/pipeline.md](docs/pipeline.md) — migrating from the removed `nerv
+  pipeline` and its `pipeline:` section to ship and deploy (`nerv migrate`).
+- [docs/migration.md](docs/migration.md) — `nerv migrate`: moving a
+  repository and the user configuration from nerv 4.2.0 (configuration
+  files, `ship:` and `deploy:`, the semantic-release import, openspec to
+  ODD, the plugins to install).
 - [docs/troubleshooting.md](docs/troubleshooting.md) — known limitations
   and troubleshooting.
 

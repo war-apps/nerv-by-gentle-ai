@@ -19,7 +19,7 @@ import (
 
 func TestSetModel_AddsOverrideKeepsExisting(t *testing.T) {
 	dir := t.TempDir()
-	configPath := filepath.Join(dir, "nerv.yaml")
+	configPath := filepath.Join(dir, "config.yml")
 	writeFixture(t, configPath, richFixtureLF)
 
 	deps := newTestDeps(dir, time.Now())
@@ -51,7 +51,7 @@ func TestSetModel_AddsOverrideKeepsExisting(t *testing.T) {
 
 func TestSetModel_ClearRemovesRole(t *testing.T) {
 	dir := t.TempDir()
-	configPath := filepath.Join(dir, "nerv.yaml")
+	configPath := filepath.Join(dir, "config.yml")
 	writeFixture(t, configPath, richFixtureLF)
 
 	deps := newTestDeps(dir, time.Now())
@@ -84,7 +84,7 @@ func TestSetModel_ClearRemovesRole(t *testing.T) {
 
 func TestSetModel_UnknownRole_Refused(t *testing.T) {
 	dir := t.TempDir()
-	configPath := filepath.Join(dir, "nerv.yaml")
+	configPath := filepath.Join(dir, "config.yml")
 	writeFixture(t, configPath, richFixtureLF)
 
 	deps := newTestDeps(dir, time.Now())
@@ -116,10 +116,10 @@ func TestSetModel_UnknownRole_Refused(t *testing.T) {
 }
 
 // A role removed from the catalogue (e.g. kaji-security in 3.0.0) can leave
-// its override behind in nerv.yaml; role=default must still clear it.
+// its override behind in config.yml; role=default must still clear it.
 func TestSetModel_ClearsStaleOverrideOfRemovedRole(t *testing.T) {
 	dir := t.TempDir()
-	configPath := filepath.Join(dir, "nerv.yaml")
+	configPath := filepath.Join(dir, "config.yml")
 	stale := strings.Replace(richFixtureLF,
 		"misato: { model: fable, effort: high }",
 		"misato: { model: fable, effort: high }\n  kaji-security: { model: opus, effort: high }", 1)
@@ -164,7 +164,7 @@ func TestSetModel_RemovedRole_OnlyStaleClearAllowed(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			dir := t.TempDir()
-			configPath := filepath.Join(dir, "nerv.yaml")
+			configPath := filepath.Join(dir, "config.yml")
 			writeFixture(t, configPath, tc.fixture)
 
 			deps := newTestDeps(dir, time.Now())
@@ -190,7 +190,7 @@ func TestSetModel_RemovedRole_OnlyStaleClearAllowed(t *testing.T) {
 
 func TestSetModel_InvalidModelToken_Refused(t *testing.T) {
 	dir := t.TempDir()
-	configPath := filepath.Join(dir, "nerv.yaml")
+	configPath := filepath.Join(dir, "config.yml")
 	writeFixture(t, configPath, richFixtureLF)
 
 	deps := newTestDeps(dir, time.Now())
@@ -208,7 +208,7 @@ func TestSetModel_InvalidModelToken_Refused(t *testing.T) {
 
 func TestSetModel_InvalidEffortToken_Refused(t *testing.T) {
 	dir := t.TempDir()
-	configPath := filepath.Join(dir, "nerv.yaml")
+	configPath := filepath.Join(dir, "config.yml")
 	writeFixture(t, configPath, richFixtureLF)
 
 	deps := newTestDeps(dir, time.Now())
@@ -226,7 +226,7 @@ func TestSetModel_InvalidEffortToken_Refused(t *testing.T) {
 
 func TestSetModel_MalformedEntry_Refused(t *testing.T) {
 	dir := t.TempDir()
-	configPath := filepath.Join(dir, "nerv.yaml")
+	configPath := filepath.Join(dir, "config.yml")
 	writeFixture(t, configPath, richFixtureLF)
 
 	deps := newTestDeps(dir, time.Now())
@@ -248,7 +248,7 @@ func TestSetModel_MalformedEntry_Refused(t *testing.T) {
 
 func TestSetModel_FromPhase_Display(t *testing.T) {
 	dir := t.TempDir()
-	configPath := filepath.Join(dir, "nerv.yaml")
+	configPath := filepath.Join(dir, "config.yml")
 	writeFixture(t, configPath, richFixtureLF)
 
 	deps := newTestDeps(dir, time.Now())
@@ -340,7 +340,7 @@ func TestSetModel_LegacyAliases(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			dir := t.TempDir()
-			configPath := filepath.Join(dir, "nerv.yaml")
+			configPath := filepath.Join(dir, "config.yml")
 			writeFixture(t, configPath, tt.file)
 
 			result, err := configure.SetModel(newTestDeps(dir, time.Now()), configure.Paths{Config: configPath}, []string{tt.spec})
@@ -371,7 +371,7 @@ func TestSetModel_LegacyAliases(t *testing.T) {
 
 func TestSetModel_Batch_TwoRoles(t *testing.T) {
 	dir := t.TempDir()
-	configPath := filepath.Join(dir, "nerv.yaml")
+	configPath := filepath.Join(dir, "config.yml")
 	writeFixture(t, configPath, richFixtureLF)
 
 	deps := newTestDeps(dir, time.Now())
@@ -410,7 +410,7 @@ func TestSetModel_Batch_TwoRoles(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestSetModel_FromPhase_StateWarnings(t *testing.T) {
-	const stateWithPhases = `{"claude_phase_assignments":{"jd-judge-b":{"model":"opus","effort":"xhigh"},"sdd-apply":{"model":"sonnet","effort":"high"}}}`
+	const stateWithPhases = `{"claude_phase_assignments":{"jd-judge-b":{"model":"opus","effort":"xhigh"},"review-readability":{"model":"sonnet","effort":"high"}}}`
 
 	tests := []struct {
 		name        string
@@ -428,7 +428,7 @@ func TestSetModel_FromPhase_StateWarnings(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			dir := t.TempDir()
-			configPath := filepath.Join(dir, "nerv.yaml")
+			configPath := filepath.Join(dir, "config.yml")
 			writeFixture(t, configPath, richFixtureLF)
 			statePath := filepath.Join(dir, "state.json")
 			if tt.state != "" {
@@ -448,7 +448,7 @@ func TestSetModel_FromPhase_StateWarnings(t *testing.T) {
 					t.Fatalf("Warnings = %q, want exactly one", result.Warnings)
 				}
 				w := result.Warnings[0]
-				for _, want := range []string{"review-risk", "jd-judge-b, sdd-apply"} {
+				for _, want := range []string{"review-risk", "jd-judge-b, review-readability"} {
 					if !strings.Contains(w, want) {
 						t.Errorf("warning %q does not mention %q", w, want)
 					}

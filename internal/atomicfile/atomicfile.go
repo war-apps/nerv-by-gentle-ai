@@ -4,7 +4,7 @@
 // temp file in the same directory and renamed over the destination, and an
 // optional verification pass can reject a bad write before it lands (or,
 // once it has landed, trigger a restore from the backup). It is the shared
-// tail of "nerv configure"'s nerv.yaml writes and Claude Code's
+// tail of "nerv configure"'s config writes and Claude Code's
 // settings.json writes.
 package atomicfile
 

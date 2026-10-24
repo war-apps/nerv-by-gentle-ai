@@ -9,8 +9,8 @@ import (
 
 var typeOfRelease = reflect.TypeFor[Release]()
 
-// unknownFields reports every key of the release: node that Release does
+// unknownFields reports every key of the ship: node that Release does
 // not declare (see yamlsection.UnknownFields).
 func unknownFields(node *yaml.Node) ([]string, error) {
-	return yamlsection.UnknownFields(node, typeOfRelease, "release")
+	return yamlsection.UnknownFields(node, typeOfRelease, SectionKey)
 }

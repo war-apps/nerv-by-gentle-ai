@@ -144,6 +144,9 @@ func printReleaseComputeText(stdout io.Writer, result release.PreviewResult, pre
 	fmt.Fprintln(stdout, *result.Section)
 	if apply {
 		fmt.Fprintf(stdout, "Applied: wrote %s and %s\n", result.Written[0], result.Written[1])
+		for _, extension := range result.Written[2:] {
+			fmt.Fprintf(stdout, "Applied: wrote %s\n", extension)
+		}
 	}
 }
 

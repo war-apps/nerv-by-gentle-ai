@@ -52,6 +52,41 @@ func syncConfirmer(opts options, stdout io.Writer) func([]string) bool {
 	}
 }
 
+// extensionConfirmer is syncConfirmer's counterpart for install's
+// extension suggestions: nil (suggest nothing) unless stdin is a terminal.
+func extensionConfirmer(opts options, stdout io.Writer) func(name, description string) bool {
+	if opts.IsTerminal == nil || !opts.IsTerminal() || opts.Stdin == nil {
+		return nil
+	}
+	return func(name, description string) bool {
+		fmt.Fprintf(stdout, "Install %s@nerv (%s)? [y/N]: ", name, description)
+		line, sawNewline := readAnswer(opts.Stdin)
+		if !sawNewline {
+			fmt.Fprintln(stdout)
+		}
+		answer := strings.ToLower(strings.TrimSpace(line))
+		return answer == "y" || answer == "yes"
+	}
+}
+
+// legacyCommandsConfirmer is syncConfirmer's counterpart for the old
+// /task:* command copies install finds: nil (only report them) unless stdin
+// is a terminal.
+func legacyCommandsConfirmer(opts options, stdout io.Writer) func(files []string) bool {
+	if opts.IsTerminal == nil || !opts.IsTerminal() || opts.Stdin == nil {
+		return nil
+	}
+	return func(files []string) bool {
+		fmt.Fprintf(stdout, "Remove these %d old copies? [y/N]: ", len(files))
+		line, sawNewline := readAnswer(opts.Stdin)
+		if !sawNewline {
+			fmt.Fprintln(stdout)
+		}
+		answer := strings.ToLower(strings.TrimSpace(line))
+		return answer == "y" || answer == "yes"
+	}
+}
+
 // readAnswer reads one line from r a byte at a time, so nothing past the
 // line is consumed, and reports whether it ended with a newline (false at
 // EOF or on an error).

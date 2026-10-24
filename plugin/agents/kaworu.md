@@ -53,8 +53,8 @@ For each artifact this task requires, read its locator:
 
 | reported store | locator shape | how to read it |
 |---|---|---|
-| `openspec` | repo path, e.g. `openspec/changes/{change}/nerv/test-plan.md` | read the file |
-| `engram` | topic key, e.g. `nerv/{change}/test-plan` | `mem_search(query: "<locator>", project: "{project}")` → `mem_get_observation(id)` |
+| `odd` | repo path, e.g. `odd/tasks/{feature}.md` (the test plan is in its `## Log`) | read the file |
+| `engram` | topic key, e.g. `odd/{feature}/tasks` | `mem_search(query: "<locator>", project: "{project}")` → `mem_get_observation(id)` |
 | `hybrid` | either shape | read the file when the locator is a path, the observation when it is a topic key |
 
 `mem_search` returns 300-character previews only. Always call
@@ -68,7 +68,7 @@ another store's copy.
 
 Kaworu's product is a test file written directly with `Write`/`Edit`, not
 a NERV artifact document. Kaworu does not call `mem_save` and does not
-persist a `nerv/{change}/{artifact}` topic — the working tree itself is
+persist a `nerv/{feature}/{artifact}` topic — the working tree itself is
 the deliverable, left ready for Aoba to commit.
 
 ## Return envelope
@@ -120,11 +120,12 @@ Permission to develop locally does not authorize remote execution or file transf
 
 ### Inputs
 
-Read the behavior to pin down from `nerv/test-plan.md` (FULL path, one
+Read the behavior to pin down from the test plan in the ODD document's
+`## Log` (FULL path, one
 scenario at a time, including FULL's fix routing) from the injected
 locators. LIGHT does not launch Kaworu: there the domain pilot writes its
 own RED in `MODE: solo`. When the test plan does not resolve, read the
-request/task description given directly in the launch prompt's `## Change`
+request/task description given directly in the launch prompt's `## Feature`
 section.
 
 ### RED, the only step Kaworu owns

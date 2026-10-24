@@ -36,7 +36,7 @@ func writeFixture(t *testing.T, path, content string) {
 
 func TestSet_HappyPath_ChangedOneLineDiffBackupCreated(t *testing.T) {
 	dir := t.TempDir()
-	configPath := filepath.Join(dir, "nerv.yaml")
+	configPath := filepath.Join(dir, "config.yml")
 	writeFixture(t, configPath, richFixtureLF)
 
 	deps := newTestDeps(dir, time.Date(2026, 9, 29, 10, 0, 0, 0, time.UTC))
@@ -78,7 +78,7 @@ func TestSet_HappyPath_ChangedOneLineDiffBackupCreated(t *testing.T) {
 
 func TestSet_PreservesUnknownContentByteIdentical(t *testing.T) {
 	dir := t.TempDir()
-	configPath := filepath.Join(dir, "nerv.yaml")
+	configPath := filepath.Join(dir, "config.yml")
 	writeFixture(t, configPath, richFixtureLF)
 
 	deps := newTestDeps(dir, time.Now())
@@ -116,7 +116,7 @@ func TestSet_PreservesUnknownContentByteIdentical(t *testing.T) {
 
 func TestSet_Noop_ByteIdenticalNoBackup(t *testing.T) {
 	dir := t.TempDir()
-	configPath := filepath.Join(dir, "nerv.yaml")
+	configPath := filepath.Join(dir, "config.yml")
 	writeFixture(t, configPath, richFixtureLF)
 
 	deps := newTestDeps(dir, time.Now())
@@ -159,7 +159,7 @@ func TestSet_Noop_ByteIdenticalNoBackup(t *testing.T) {
 
 func TestSet_UnknownKey_RefusedNothingWritten(t *testing.T) {
 	dir := t.TempDir()
-	configPath := filepath.Join(dir, "nerv.yaml")
+	configPath := filepath.Join(dir, "config.yml")
 	writeFixture(t, configPath, richFixtureLF)
 
 	deps := newTestDeps(dir, time.Now())
@@ -196,7 +196,7 @@ func TestSet_UnknownKey_RefusedNothingWritten(t *testing.T) {
 
 func TestSet_InvalidEnumeratedValue_Refused(t *testing.T) {
 	dir := t.TempDir()
-	configPath := filepath.Join(dir, "nerv.yaml")
+	configPath := filepath.Join(dir, "config.yml")
 	writeFixture(t, configPath, richFixtureLF)
 
 	deps := newTestDeps(dir, time.Now())
@@ -221,7 +221,7 @@ func TestSet_InvalidEnumeratedValue_Refused(t *testing.T) {
 
 func TestSet_MalformedEntry_Refused(t *testing.T) {
 	dir := t.TempDir()
-	configPath := filepath.Join(dir, "nerv.yaml")
+	configPath := filepath.Join(dir, "config.yml")
 	writeFixture(t, configPath, richFixtureLF)
 
 	deps := newTestDeps(dir, time.Now())
@@ -247,7 +247,7 @@ func TestSet_MalformedEntry_Refused(t *testing.T) {
 
 func TestSet_Batch_TwoKeysOneWriteOneBackup(t *testing.T) {
 	dir := t.TempDir()
-	configPath := filepath.Join(dir, "nerv.yaml")
+	configPath := filepath.Join(dir, "config.yml")
 	writeFixture(t, configPath, richFixtureLF)
 
 	deps := newTestDeps(dir, time.Now())
@@ -273,7 +273,7 @@ func TestSet_Batch_TwoKeysOneWriteOneBackup(t *testing.T) {
 		t.Error("Backup = nil, want one backup")
 	}
 
-	backups, _ := filepath.Glob(filepath.Join(dir, "nerv.yaml.bak-configure-*"))
+	backups, _ := filepath.Glob(filepath.Join(dir, "config.yml.bak-configure-*"))
 	if len(backups) != 1 {
 		t.Errorf("backup file count = %d, want 1", len(backups))
 	}
@@ -287,7 +287,7 @@ func TestSet_Batch_TwoKeysOneWriteOneBackup(t *testing.T) {
 
 func TestSet_Batch_UnknownKeyWritesNothing(t *testing.T) {
 	dir := t.TempDir()
-	configPath := filepath.Join(dir, "nerv.yaml")
+	configPath := filepath.Join(dir, "config.yml")
 	writeFixture(t, configPath, richFixtureLF)
 
 	deps := newTestDeps(dir, time.Now())
@@ -305,7 +305,7 @@ func TestSet_Batch_UnknownKeyWritesNothing(t *testing.T) {
 	if string(after) != richFixtureLF {
 		t.Error("file changed after a batch containing an unknown key")
 	}
-	backups, _ := filepath.Glob(filepath.Join(dir, "nerv.yaml.bak-configure-*"))
+	backups, _ := filepath.Glob(filepath.Join(dir, "config.yml.bak-configure-*"))
 	if len(backups) != 0 {
 		t.Errorf("backup file count = %d, want 0", len(backups))
 	}
@@ -320,7 +320,7 @@ func TestSet_Batch_UnknownKeyWritesNothing(t *testing.T) {
 
 func TestSet_InlineFixture_EmptyBatchByteIdenticalNoBackup(t *testing.T) {
 	dir := t.TempDir()
-	configPath := filepath.Join(dir, "nerv.yaml")
+	configPath := filepath.Join(dir, "config.yml")
 	writeFixture(t, configPath, inlineFixtureLF)
 
 	deps := newTestDeps(dir, time.Now())
@@ -348,7 +348,7 @@ func TestSet_InlineFixture_EmptyBatchByteIdenticalNoBackup(t *testing.T) {
 		t.Errorf("skills: key count = %d, want 1", strings.Count(string(after), "skills:"))
 	}
 
-	backups, _ := filepath.Glob(filepath.Join(dir, "nerv.yaml.bak-configure-*"))
+	backups, _ := filepath.Glob(filepath.Join(dir, "config.yml.bak-configure-*"))
 	if len(backups) != 0 {
 		t.Errorf("backup file count = %d, want 0", len(backups))
 	}
@@ -361,7 +361,7 @@ func TestSet_InlineFixture_EmptyBatchByteIdenticalNoBackup(t *testing.T) {
 
 func TestSet_InlineFixture_ChangeOneSkillsCategory(t *testing.T) {
 	dir := t.TempDir()
-	configPath := filepath.Join(dir, "nerv.yaml")
+	configPath := filepath.Join(dir, "config.yml")
 	writeFixture(t, configPath, inlineFixtureLF)
 
 	deps := newTestDeps(dir, time.Now())
@@ -399,7 +399,7 @@ func TestSet_InlineFixture_ChangeOneSkillsCategory(t *testing.T) {
 
 func TestSet_InlineFixture_AppendsArtifactsBlockOnce(t *testing.T) {
 	dir := t.TempDir()
-	configPath := filepath.Join(dir, "nerv.yaml")
+	configPath := filepath.Join(dir, "config.yml")
 	writeFixture(t, configPath, inlineFixtureLF)
 
 	deps := newTestDeps(dir, time.Now())
@@ -434,7 +434,7 @@ func TestSet_InlineFixture_AppendsArtifactsBlockOnce(t *testing.T) {
 
 func TestSet_MissingUserConfig_BootstrapsAndWrites(t *testing.T) {
 	dir := t.TempDir()
-	configPath := filepath.Join(dir, "nerv", "nerv.yaml")
+	configPath := filepath.Join(dir, "ai-workflow", "config.yml")
 
 	deps := newTestDeps(dir, time.Now())
 	paths := configure.Paths{Config: configPath}

@@ -13,6 +13,7 @@ import (
 
 	"github.com/war-apps/nerv-by-gentle-ai/internal/configure"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/wizard"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/workflowconfig"
 )
 
 const configureUsage = `Usage: nerv configure [flags]
@@ -25,7 +26,6 @@ terminal, or when --answers is given):
   --skip-skills             Skip the required-skills install offer
   --skip-models             Skip the per-role models editor
   --skip-repos              Skip the repository init loop
-  --skip-commands           Skip the Teamwork /task:* commands install
   --no-refresh              Skip the closing apply-models/cache-refresh step
 
 Otherwise, exactly one mode flag is required:
@@ -34,17 +34,18 @@ Otherwise, exactly one mode flag is required:
   --set-model role=spec     Set a role's model/effort override (repeatable);
                              spec is model[/effort], from:<phase>, or default
   --init-repo <path>        Initialize a repository for NERV
-  --install-commands        Install the /task:* Teamwork slash commands
 
 With --init-repo:
   --repo-base <branch>      Base branch override
-  --repo-provider <name>    Tasks provider override (teamwork | none)
-  --repo-project-id <id>    Teamwork project id override
-  --repo-tasklist-id <id>   Teamwork tasklist id override
+  --repo-provider-config <provider>.<key>=<value>
+                            Task provider setting for this repo, written to
+                             tasks.providers.<provider>.<key> (repeatable);
+                             the key (repo scope only) and value are checked
+                             against the provider's embedded provider.yaml
 
 Other flags:
   --json                    Print the result as JSON (ignored by --print, which always does)
-  --config <path>           Override the user-scope nerv.yaml path
+  --config <path>           Override the user-scope config.yml path
 `
 
 // stringList is a repeatable string flag: each --flag value appends an
@@ -69,17 +70,14 @@ func runConfigure(args []string, stdout, stderr io.Writer, opts options) int {
 	fs.Var(&setModelArgs, "set-model", "")
 	initRepo := fs.String("init-repo", "", "")
 	repoBase := fs.String("repo-base", "", "")
-	repoProvider := fs.String("repo-provider", "", "")
-	repoProjectID := fs.String("repo-project-id", "", "")
-	repoTasklistID := fs.String("repo-tasklist-id", "", "")
-	installCommands := fs.Bool("install-commands", false, "")
+	var repoProviderConfig stringList
+	fs.Var(&repoProviderConfig, "repo-provider-config", "")
 	jsonOut := fs.Bool("json", false, "")
 	configOverride := fs.String("config", "", "")
 	answersFile := fs.String("answers", "", "")
 	skipSkills := fs.Bool("skip-skills", false, "")
 	skipModels := fs.Bool("skip-models", false, "")
 	skipRepos := fs.Bool("skip-repos", false, "")
-	skipCommands := fs.Bool("skip-commands", false, "")
 	noRefresh := fs.Bool("no-refresh", false, "")
 
 	if err := fs.Parse(args); err != nil {
@@ -100,10 +98,12 @@ func runConfigure(args []string, stdout, stderr io.Writer, opts options) int {
 	if *initRepo != "" {
 		modeCount++
 	}
-	if *installCommands {
-		modeCount++
-	}
 	if modeCount > 1 {
+		fmt.Fprint(stderr, configureUsage)
+		return 2
+	}
+	if len(repoProviderConfig) > 0 && *initRepo == "" {
+		fmt.Fprintln(stderr, "nerv configure: --repo-provider-config requires --init-repo")
 		fmt.Fprint(stderr, configureUsage)
 		return 2
 	}
@@ -114,7 +114,10 @@ func runConfigure(args []string, stdout, stderr io.Writer, opts options) int {
 		return 2
 	}
 	paths := configure.ResolvePaths(home, *configOverride)
-	deps := configure.Deps{Home: home, FS: opts.PluginFS, Runner: opts.Runner, Now: opts.Now, LookPath: opts.LookPath, Getenv: opts.Getenv}
+	if *configOverride == "" {
+		workflowconfig.PrintHints(stderr, home, "")
+	}
+	deps := configure.Deps{Home: home, FS: opts.PluginFS, ExtensionsFS: opts.ExtensionsFS, Runner: opts.Runner, Now: opts.Now, LookPath: opts.LookPath, Getenv: opts.Getenv}
 
 	switch {
 	case *printMode:
@@ -136,26 +139,20 @@ func runConfigure(args []string, stdout, stderr io.Writer, opts options) int {
 
 	case *initRepo != "":
 		req := configure.InitRepoRequest{
-			Path:       *initRepo,
-			Base:       *repoBase,
-			Provider:   *repoProvider,
-			ProjectID:  *repoProjectID,
-			TasklistID: *repoTasklistID,
+			Path:           *initRepo,
+			Base:           *repoBase,
+			ProviderConfig: repoProviderConfig,
 		}
 		result, err := configure.InitRepo(deps, req)
-		return emitMutation(stdout, result, err, *jsonOut)
-
-	case *installCommands:
-		result, err := configure.InstallCommands(deps, paths)
 		return emitMutation(stdout, result, err, *jsonOut)
 
 	default:
 		wizOpts := wizard.Options{
 			Paths:        paths,
+			SettingsPath: opts.Settings,
 			SkipSkills:   *skipSkills,
 			SkipModels:   *skipModels,
 			SkipRepos:    *skipRepos,
-			SkipCommands: *skipCommands,
 			NoRefresh:    *noRefresh,
 		}
 		return runConfigureWizard(stdout, deps, opts, wizOpts, *answersFile)
@@ -179,7 +176,7 @@ func runConfigureWizard(stdout io.Writer, deps configure.Deps, opts options, wiz
 	case opts.IsTerminal():
 		in = opts.Stdin
 	default:
-		fmt.Fprintln(stdout, "nerv configure: stdin is not a terminal; use --print, --set, --set-model, --init-repo, --install-commands, or --answers <file>.")
+		fmt.Fprintln(stdout, "nerv configure: stdin is not a terminal; use --print, --set, --set-model, --init-repo, or --answers <file>.")
 		return 1
 	}
 
@@ -217,7 +214,7 @@ func writeJSON(w io.Writer, v any) {
 	fmt.Fprintf(w, "%s\n", encoded)
 }
 
-// emitMutation formats one of Set/SetModel/InitRepo/InstallCommands'
+// emitMutation formats one of Set/SetModel/InitRepo's
 // results (or its refusal/environment error) and returns the process exit
 // code: 0 on success, 1 on a *configure.RefusalError, 2 on any other error.
 // Every branch writes to stdout, success, refusal, or unexpected error
@@ -245,9 +242,6 @@ func emitMutation(stdout io.Writer, result configure.Result, err error, jsonOut 
 		for _, w := range result.Written {
 			fmt.Fprintf(stdout, "  %s\n", w)
 		}
-	}
-	if line := configure.RemovedLine(result.Removed); line != "" {
-		fmt.Fprintln(stdout, line)
 	}
 	for _, w := range result.Warnings {
 		fmt.Fprintf(stdout, "Warning: %s\n", w)

@@ -12,6 +12,7 @@ import (
 	nerv "github.com/war-apps/nerv-by-gentle-ai"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/env/envtest"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/install"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/paths"
 )
 
 func TestApplyModels_AppliesOverridesAndRestoresDefaults(t *testing.T) {
@@ -19,12 +20,12 @@ func TestApplyModels_AppliesOverridesAndRestoresDefaults(t *testing.T) {
 	pv := pluginVersion(t)
 	seedInstalledPlugins(t, home, pv)
 
-	userConfigDir := filepath.Join(home, ".claude", "nerv")
+	userConfigDir := filepath.Dir(paths.Resolve(home).UserConfig)
 	if err := os.MkdirAll(userConfigDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
 	yaml := "models:\n  aoba: { model: haiku, effort: low }\n"
-	if err := os.WriteFile(filepath.Join(userConfigDir, "nerv.yaml"), []byte(yaml), 0o644); err != nil {
+	if err := os.WriteFile(paths.Resolve(home).UserConfig, []byte(yaml), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -49,7 +50,7 @@ func TestApplyModels_AppliesOverridesAndRestoresDefaults(t *testing.T) {
 }
 
 // apply-models rewrites the renamed roles' cached agent files from a user
-// nerv.yaml that still holds the legacy keys, and when one file holds both
+// config.yml that still holds the legacy keys, and when one file holds both
 // the legacy and the new key for a role, the new key's entry is applied.
 func TestApplyModels_LegacyRoleKeysApplyToRenamedAgents(t *testing.T) {
 	cases := []struct {
@@ -83,11 +84,11 @@ func TestApplyModels_LegacyRoleKeysApplyToRenamedAgents(t *testing.T) {
 			home := t.TempDir()
 			pv := pluginVersion(t)
 			seedInstalledPlugins(t, home, pv)
-			userConfigDir := filepath.Join(home, ".claude", "nerv")
+			userConfigDir := filepath.Dir(paths.Resolve(home).UserConfig)
 			if err := os.MkdirAll(userConfigDir, 0o755); err != nil {
 				t.Fatal(err)
 			}
-			if err := os.WriteFile(filepath.Join(userConfigDir, "nerv.yaml"), []byte(tc.yaml), 0o644); err != nil {
+			if err := os.WriteFile(paths.Resolve(home).UserConfig, []byte(tc.yaml), 0o644); err != nil {
 				t.Fatal(err)
 			}
 

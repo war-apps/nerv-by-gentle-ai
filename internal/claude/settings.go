@@ -8,6 +8,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"sort"
+	"strings"
 	"time"
 
 	"github.com/war-apps/nerv-by-gentle-ai/internal/atomicfile"
@@ -98,6 +100,26 @@ func (s *Settings) EnablePlugin(id string) bool {
 	enabled[id] = true
 	s.data["enabledPlugins"] = enabled
 	return changed
+}
+
+// PluginEnabled reports whether enabledPlugins[id] is true.
+func (s *Settings) PluginEnabled(id string) bool {
+	enabled, _ := s.data["enabledPlugins"].(map[string]any)
+	return enabled[id] == true
+}
+
+// MarketplacePlugins returns, sorted, every enabledPlugins id from
+// marketplace ("<name>@<marketplace>"), enabled or not.
+func (s *Settings) MarketplacePlugins(marketplace string) []string {
+	enabled, _ := s.data["enabledPlugins"].(map[string]any)
+	var ids []string
+	for id := range enabled {
+		if strings.HasSuffix(id, "@"+marketplace) {
+			ids = append(ids, id)
+		}
+	}
+	sort.Strings(ids)
+	return ids
 }
 
 // Unregister removes extraKnownMarketplaces[marketplaceName] and

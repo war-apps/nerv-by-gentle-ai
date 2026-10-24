@@ -1,0 +1,6 @@
+{
+  "name": "deploy",
+  "version": "4.2.0",
+  "description": "NERV deploy: takes a ship artifact, makes the release commit, tag and push, runs the deploy targets and creates the git host's release (requires ship)",
+  "author": { "name": "Walter Rodriguez" }
+}

@@ -1,7 +1,7 @@
 // Package configure implements the "nerv configure" use case: reading and
-// editing the user-scope nerv.yaml, per-role model overrides, project-scope
-// repo initialization, and installing the Teamwork /task:* slash commands.
-// It is the non-interactive half of "nerv configure"; the interactive
+// editing the user-scope config.yml, per-role model overrides, project-scope
+// repo initialization, and the task provider settings described by the
+// embedded provider manifests. It is the non-interactive half of "nerv configure"; the interactive
 // setup wizard lives in internal/wizard.
 //
 // This package owns file I/O (Store) and process launches (through
@@ -13,7 +13,6 @@ package configure
 
 import (
 	"io/fs"
-	"strings"
 	"time"
 
 	"github.com/war-apps/nerv-by-gentle-ai/internal/env"
@@ -33,6 +32,10 @@ type Deps struct {
 	// so "agents/misato.md" and "skills-manifest.json" are
 	// top-level entries.
 	FS fs.FS
+	// ExtensionsFS holds the optional extension plugins, typically
+	// nerv.ExtensionsFS(): the task provider manifests that describe the
+	// provider settings InitRepo and the wizard accept. Nil holds none.
+	ExtensionsFS fs.FS
 	// Runner launches "git" (InitRepo) and "gentle-ai"/PATH lookups
 	// (Print's prerequisites).
 	Runner env.Runner
@@ -51,16 +54,13 @@ type Deps struct {
 // Paths is every filesystem location "nerv configure" reads or writes,
 // resolved from a home directory and an optional --config override.
 type Paths struct {
-	// Config is the user-scope nerv.yaml path.
+	// Config is the user-scope config.yml path.
 	Config string
 	// State is gentle-ai's state.json path, used to resolve from:<phase>
 	// overrides for -Print's models table.
 	State string
 	// SkillsDir is the Claude Code user-scope skills directory.
 	SkillsDir string
-	// CommandsDir is where InstallCommands copies the Teamwork
-	// /task:* procedures.
-	CommandsDir string
 }
 
 // ResolveHome resolves the home directory to use: override when non-empty,
@@ -73,8 +73,8 @@ func ResolveHome(override string) (string, error) {
 }
 
 // ResolvePaths builds Paths from a resolved home directory and an optional
-// --config override (empty means the default `<home>/.claude/nerv/nerv.yaml`),
-// plus the skills/commands directories --print and --install-commands use.
+// --config override (empty means the default `<os.UserConfigDir()>/ai-workflow/config.yml`),
+// plus the skills directory --print uses.
 // The joins themselves live in the shared internal/paths catalogue.
 func ResolvePaths(home, configOverride string) Paths {
 	resolved := paths.Resolve(home)
@@ -83,10 +83,9 @@ func ResolvePaths(home, configOverride string) Paths {
 		config = resolved.UserConfig
 	}
 	return Paths{
-		Config:      config,
-		State:       resolved.State,
-		SkillsDir:   resolved.SkillsDir,
-		CommandsDir: resolved.CommandsDir,
+		Config:    config,
+		State:     resolved.State,
+		SkillsDir: resolved.SkillsDir,
 	}
 }
 
@@ -99,7 +98,7 @@ type Change struct {
 }
 
 // Result is the JSON summary shape shared by Set, SetModel, InitRepo, and
-// InstallCommands: `{ changed, changes, written, warnings, config_path,
+// SetProviderSettings: `{ changed, changes, written, warnings, config_path,
 // backup }`.
 type Result struct {
 	Changed    bool     `json:"changed"`
@@ -109,18 +108,6 @@ type Result struct {
 	ConfigPath string   `json:"config_path"`
 	// Backup is nil (JSON null) when no backup was written this run.
 	Backup *string `json:"backup"`
-	// Removed names the legacy task provider settings the write stripped
-	// from the config (see RemovedLine); absent when nothing was.
-	Removed []string `json:"removed,omitempty"`
-}
-
-// RemovedLine is the one informational line a write prints when it stripped
-// legacy task provider settings, or "" when removed is empty.
-func RemovedLine(removed []string) string {
-	if len(removed) == 0 {
-		return ""
-	}
-	return "Removed legacy task provider settings: " + strings.Join(removed, ", ")
 }
 
 // RefusalError marks a rejected request — an unknown key, an invalid value,
@@ -132,11 +119,11 @@ func RemovedLine(removed []string) string {
 type RefusalError = refusal.Error
 
 // missingUserConfigHeader seeds the in-memory working document when the
-// user-scope nerv.yaml does not exist yet, so Set/SetModel can auto-vivify
+// user-scope config.yml does not exist yet, so Set/SetModel can auto-vivify
 // the managed blocks the same way against either a real or a bootstrapped
 // file. It is never written to disk by itself — only once a real managed
 // value has actually changed and Store.Save has something new to persist.
-const missingUserConfigHeader = "# ~/.claude/nerv/nerv.yaml -- NERV user-scope configuration\n# Generated/updated by nerv configure\n"
+const missingUserConfigHeader = "# ai-workflow/config.yml -- NERV user-scope configuration\n# Generated/updated by nerv configure\n"
 
 func emptyChanges() []Change {
 	return []Change{}

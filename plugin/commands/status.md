@@ -7,18 +7,18 @@ description: Show NERV activation, config resolution and change status for this 
 Report NERV's state for the current repository. Read-only. Keep the output
 short and imperative — this is a status check, not a narrative.
 
-1. **Activation.** Check whether `.nerv/nerv.yaml` exists in the repo root
+1. **Activation.** Check whether `.ai-workflow.yml` exists in the repo root
    and contains `enabled: true`. Report `NERV: active` or `NERV: inactive`
    accordingly. If inactive, stop here — nothing else applies.
 
-2. **Config resolution.** Read `~/.claude/nerv/nerv.yaml` (user scope) and
-   `<repo>/.nerv/nerv.yaml` (project scope). Print a merged summary: which
+2. **Config resolution.** Read the user config (the path `nerv configure --print --json` reports as `config_path`: `~/.config/ai-workflow/config.yml` on Linux, `%AppData%\ai-workflow\config.yml` on Windows) (user scope) and
+   `<repo>/.ai-workflow.yml` (project scope). Print a merged summary: which
    keys came from the project file, which fell back to the user file, and
    which fell back to a built-in default. The project file always wins key
-   by key. Also print one line: `tasks.provider: <resolved value>` and
-   `session timer: running (task <taskId>)` or `session timer: none`
-   (check `~/.claude/work/timers.json` for an entry matching this
-   session's `sessionId`). Also print `artifacts.commit: <resolved value>`
+   by key. Also print one line: `Task plugin: installed (task:dispatcher
+   available)` or `Task plugin: not installed`; when it is installed, add
+   that `/task:timers` shows the running timers. Also print
+   `artifacts.commit: <resolved value>`
    (`with-change` | `at-close` | `never`; built-in default `at-close` when neither file sets it).
 
 3. **gentle-ai version check.** Run `gentle-ai --version` and parse the
@@ -31,13 +31,16 @@ short and imperative — this is a status check, not a narrative.
      informational note only.
    Never block on either case.
 
-4. **Active changes.** If `openspec/changes/` exists in the repo, for each
-   active change directory read its directory and list which of `proposal.md`, `specs/`,
-   `design.md` and `tasks.md` exist, plus the checked state of `tasks.md`
-   (`[x]` of total), alongside which NERV-owned artifacts are present under that change's
-   `nerv/` subfolder (for example `nerv/run-summary.md`). If no changes
-   exist, say so plainly. For each active change, also read
-   `nerv/.orchestrator.lock` if present (read-only — never refresh or
+4. **Active runs.** If `odd/tasks/` exists in the repo, list each FULL
+   run's ODD feature document `odd/tasks/{feature}.md` whose run folder
+   `odd/{feature}/nerv/state.yaml` has no `closed_at`: its `S#` count, its
+   `## Tasks` rows by `Status` (`done` of total), and which NERV-owned
+   artifacts are present in `odd/{feature}/nerv/` (for example
+   `run-summary.md`). Also list each DIRECT or LIGHT run whose
+   `.nerv/runs/{run-id}/state.yaml` has no `closed_at`: its run id, its
+   `path` and which artifacts are present in that folder (these runs have
+   no ODD document). If no run is active, say so plainly. For each
+   active run, also read `.nerv/locks/{run-id}.lock` if present (read-only — never refresh or
    delete it from this command) and print `lock: session <session_id>,
    step <step>, waiting_on <waiting_on> — fresh (heartbeat <N.N>m ago)`,
    `… — held: parked on a user gate (heartbeat <N.N>m ago)` when
@@ -46,7 +49,9 @@ short and imperative — this is a status check, not a narrative.
    partial lock, or one without a parseable `heartbeat_at`, prints `lock:
    unreadable — treated as held`. Fresh means `heartbeat_at` is under 15
    minutes old and `waiting_on` is not `user` (see the Orchestrator lock
-   section of `nerv-orchestrator/SKILL.md`).
+   section of `nerv-orchestrator/SKILL.md`). A lock past that age is
+   stale, not active: never describe that run as running, even when
+   `heartbeat_at` equals `started_at` (a run that never refreshed it).
 
 5. **Model/effort table.** Resolve every `nerv:<role>` launch's
    model and effort per `nerv-orchestrator/SKILL.md`'s Configuration
@@ -78,7 +83,7 @@ short and imperative — this is a status check, not a narrative.
    Then print a closing line: `models: in sync` when every role's resolved
    effort matches its cached frontmatter effort, or `models: N role(s)
    drift — run nerv apply-models` otherwise (`N` = the
-   count of mismatched roles). Read-only — never write `nerv.yaml`,
+   count of mismatched roles). Read-only — never write the configuration files,
    `state.json`, or any cached agent file.
 
 6. **Phase note.** Always print, verbatim: "Phase 5 adds the orchestrator

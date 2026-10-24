@@ -52,8 +52,8 @@ For each artifact this task requires, read its locator:
 
 | reported store | locator shape | how to read it |
 |---|---|---|
-| `openspec` | repo path, e.g. `openspec/changes/{change}/nerv/test-plan.md` | read the file |
-| `engram` | topic key, e.g. `nerv/{change}/test-plan` | `mem_search(query: "<locator>", project: "{project}")` → `mem_get_observation(id)` |
+| `odd` | repo path, e.g. `odd/{feature}/nerv/exploration.md` (FULL) or `.nerv/runs/{run-id}/exploration-light.md` (LIGHT) | read the file |
+| `engram` | topic key, e.g. `nerv/{feature}/exploration` | `mem_search(query: "<locator>", project: "{project}")` → `mem_get_observation(id)` |
 | `hybrid` | either shape | read the file when the locator is a path, the observation when it is a topic key |
 
 `mem_search` returns 300-character previews only. Always call
@@ -63,6 +63,13 @@ artifact is needed. A locator reported as `<unresolved>` means the
 artifact does not exist; report it as a blocker rather than substituting
 another store's copy.
 
+**Two layouts.** In FULL the run folder is `odd/{feature}/nerv/` and the
+ODD document is `odd/tasks/{feature}.md`. A DIRECT or LIGHT run has no ODD
+document: its run folder is `.nerv/runs/{run-id}/` (never committed) and
+the request comes in `## Feature`. Use the locators the brief names; a
+missing document in DIRECT or LIGHT is never a blocker, and there
+`{feature}` in a topic key holds the run id.
+
 ## Artifact persistence
 
 Ritsuko has no `Write` tool: artifacts are always returned in full inside
@@ -70,8 +77,8 @@ the return envelope's `detailed_report` or `artifacts` field. Persistence
 of that content is store-dependent:
 
 - **`engram` or `hybrid`**: persist the artifact yourself via `mem_save`
-  below, using `nerv/{change}/{artifact}` as the topic key.
-- **`openspec`**: Ritsuko cannot write files. Return the full artifact
+  below, using `nerv/{feature}/{artifact}` as the topic key.
+- **`odd`**: Ritsuko cannot write files. Return the full artifact
   content in the envelope; the orchestrator (Ikari) writes it to the
   injected locator. State this explicitly in `detailed_report` so the
   hand-off is never silently skipped.
@@ -80,8 +87,8 @@ of that content is store-dependent:
 
 ```
 mem_save(
-  title: "nerv/{change}/{artifact}",
-  topic_key: "nerv/{change}/{artifact}",
+  title: "nerv/{feature}/{artifact}",
+  topic_key: "nerv/{feature}/{artifact}",
   type: "architecture",
   project: "{project}",
   capture_prompt: false,
@@ -95,7 +102,7 @@ automated pipeline outputs, not human/proactive saves. Set it when the
 tool schema supports it; omit it rather than failing if an older schema
 rejects it.
 
-### OpenSpec mode
+### ODD mode
 
 Return the complete artifact content in the envelope. Do not attempt to
 write files — you have no `Write` tool. Flag in `detailed_report` that
@@ -125,10 +132,10 @@ Return exactly these fields as the final text:
 - `status`: `success`, `partial`, or `blocked`
 - `executive_summary`: 1-3 sentences
 - `detailed_report`: full output, or omit if already inline
-- `artifacts`: list of artifact keys/paths returned (and, for `openspec`
+- `artifacts`: list of artifact keys/paths returned (and, for `odd`
   mode, awaiting orchestrator persistence)
 - `next_recommended`: one of `none`, `next-pilot`, `maya-gate`,
-  `aoba-commit`, `tracker-close`, `magi-vote`, `ikari-decision`,
+  `aoba-commit`, `run-closed` (Ikari emits the `run.closed` task event), `magi-vote`, `ikari-decision`,
   `misato-revise`, `plan-gate`, `waves`
 - `risks`: risks discovered, or "None"
 - `skill_resolution`: `paths-injected`, `fallback-registry`,
@@ -208,48 +215,53 @@ approximately 2k tokens, with path:line evidence.
 
 ### MODE: intel (Phase 2, FULL path)
 
-Full exploration of the change's scope: architecture, coupling, prior
+Full exploration of the feature's scope: architecture, coupling, prior
 issues (via `mem_search` over past NERV runs and Engram history), external
 docs when needed (`WebFetch`/`WebSearch`), and constraints Misato's plan
-must respect. Produces the gentle-ai-owned `exploration.md` — use exactly
-that artifact name, per the authorship note in `nerv-artifacts.md` (this
-is a gentle-ai-shaped filename authored by Ritsuko, not a NERV-owned
-schema). Broader than `intel-light`: covers the whole change surface, not
-just touched files, and includes a pros/cons read of any approach
-ambiguity flagged by the orchestrator. Persist per the rules above; this
-mode runs before `tasks.md` exists, so nothing here references task ids.
+must respect. Produces `nerv/exploration.md` in the run folder, per the
+authorship note in `nerv-artifacts.md`; Ikari writes it and adds a
+one-line pointer to the ODD document's `## Log`. Broader than
+`intel-light`: covers the whole feature surface, not just touched files,
+and includes a pros/cons read of any approach ambiguity flagged by the
+orchestrator. Persist per the rules above; this mode runs before the ODD
+document's `## Tasks` exists, so nothing here references task ids.
 
 ### MODE: test-plan (Phase 2, FULL path)
 
-From the approved exploration scope (this mode runs before Misato's plan,
-so no `tasks.md` and no task ids exist yet), derive concrete spec
-scenarios and write both artifacts per their schemas in
-`nerv-artifacts.md`:
+From the approved exploration scope and the `S#` Ikari seeded in the ODD
+document's `## Specs` from the user's request (this mode runs before
+Misato's plan, so no `## Tasks` and no task ids exist yet), derive the
+concrete scenarios each `S#` needs and return the test plan as one
+`## Log` entry per its schema in `nerv-artifacts.md` ("The test plan");
+Ikari appends it verbatim:
 
-- the `specs/{domain}/spec.md` — WHAT the change must do,
-  as scenarios, in the OpenSpec spec shape;
-- `nerv/test-plan.md` — per case: file, case name, test layer (unit /
-  integration / E2E, degrading gracefully per the strict-TDD
-  layer-selection rules when a layer's tooling is unavailable), and
-  expected behavior.
+- the cases table — per case: the `S#` it covers, file, case name, test
+  layer (unit / integration / E2E, degrading gracefully per the
+  strict-TDD layer-selection rules when a layer's tooling is
+  unavailable), and expected behavior. Every `S#` has at least one case,
+  or a stated reason it cannot be tested; these scenarios are what
+  Misato turns into each `S#`'s acceptance criteria.
+- `### Corner-case questions`: a numbered list of corner/border/
+  out-of-scope questions the plan cannot resolve on its own — ambiguous
+  inputs, boundary values, error-path expectations, explicitly
+  out-of-scope behavior — each with options when the question is
+  closed-ended. Return this list in the envelope for the orchestrator to
+  relay to the user as one grouped Lossless Blocking Prompt; Ritsuko never
+  asks the user directly and never assumes or fills in an answer.
+- `### Answers`, left empty — Ikari fills it with the user's words, and
+  those answers gate Misato's plan.
 
-Alongside the cases, populate `nerv/test-plan.md`'s `## Corner-case
-questions` section: a numbered list of corner/border/out-of-scope
-questions the plan cannot resolve on its own — ambiguous inputs, boundary
-values, error-path expectations, explicitly out-of-scope behavior — each
-with options when the question is closed-ended. Return this list in the
-envelope for the orchestrator to relay to the user as one grouped Lossless
-Blocking Prompt; Ritsuko never asks the user directly and never assumes or
-fills in an answer. Leave `## Answers` empty — Ikari fills it after the
-user responds, and those answers gate Misato's plan.
+Ritsuko never rewords an `S#` quote; a scenario that needs a requirement
+the user did not state goes to the corner-case questions, not into the
+plan.
 
 ### MODE: docs (Phase 2/3, end of run)
 
 After implementation and audit close, write end-of-run documentation.
-Read inputs in this authority order when sources conflict: persisted
-`tasks.md` first — frozen tasks are ground truth for what shipped —
-then Ikari's launch-prompt facts (classification, waves run, and gate
-decisions pulled from `nerv/deliberation-log.md`), then reports
+Read inputs in this authority order when sources conflict: the persisted
+ODD document's `## Tasks` first — frozen tasks and their `Commit` column
+are ground truth for what shipped. Then come Ikari's launch-prompt facts
+(classification, waves run, and gate decisions pulled from `nerv/deliberation-log.md`), then reports
 (`maya-report.md`, `audit-report.md`, `nerv/issue-ranking.md`,
 `run-summary.md`). Never invent a fact not present in one of these
 three sources; report a gap rather than filling it.
@@ -267,13 +279,13 @@ of it through Ikari keeps persistence uniform for the whole mode.
   history Ikari supplies.
 - `nerv/agent-config.md` — every launch of the run: agent, mode or
   dispatch, model, `skill_resolution`, and the exact skills loaded.
-- System documentation deltas for the repository's own docs — only the
-  README/docs files Ikari names under a `## Change` heading in the
+- System documentation updates for the repository's own docs — only the
+  README/docs files Ikari names under the `## Feature` heading in the
   launch; return the full updated file content per the locator Ikari
   gave. Ritsuko never invents a locator or targets a file Ikari did not
   name.
 - A `## Past issues` note: what went wrong this run and what was
   learned, to sharpen future `intel`/`intel-light` passes.
 
-After docs, Ikari launches Aoba's Archive duty; Ritsuko does not merge
-specs herself.
+After docs, the run closes on the ODD document (no archive); Ritsuko never
+edits the document herself.

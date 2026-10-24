@@ -8,12 +8,10 @@ import (
 	"github.com/war-apps/nerv-by-gentle-ai/internal/shipconfig"
 )
 
-// Render lists every step of the plan per stage, for `nerv ship --dry-run`:
-// preset commands as their argument lists (quoted for reading only),
-// overrides and hooks as [shell] run, in-process steps by what they do.
-// Secrets are named as $<variable>, never shown. The publish stage is
-// marked as run after semantic-release tags the release, or not run in a
-// dry run; the lifecycle hooks follow.
+// Render lists every step of the plan per stage, for `nerv ship`: built-in
+// commands as their argument lists (quoted for reading only), stage
+// commands and hooks as [shell] run, in-process steps by what they do. The
+// lifecycle hooks follow.
 func (p *Plan) Render() string {
 	var b strings.Builder
 	channel := "default channel"
@@ -24,17 +22,12 @@ func (p *Plan) Render() string {
 	if p.Context.Tag != "" {
 		fmt.Fprintf(&b, ", tag %s", p.Context.Tag)
 	}
+	if p.Mode != "" {
+		fmt.Fprintf(&b, ", build mode %s", p.Mode)
+	}
 	b.WriteString(")\n")
 	for _, st := range p.Stages {
-		header := st.Name
-		if st.Name == PublishStage {
-			if p.Context.DryRun {
-				header += " (not run: dry run)"
-			} else {
-				header += " (runs after semantic-release tags the release)"
-			}
-		}
-		fmt.Fprintf(&b, "  %s\n", header)
+		fmt.Fprintf(&b, "  %s\n", st.Name)
 		for _, s := range st.Steps {
 			fmt.Fprintf(&b, "    %s  %s\n", s.Name, renderStep(s))
 		}
@@ -43,7 +36,7 @@ func (p *Plan) Render() string {
 	for _, key := range shipconfig.LifecycleHooks {
 		for _, s := range p.Hooks[key] {
 			if first {
-				b.WriteString("  hooks (prepare: before semantic-release; publish, success: after the publish stage; fail: on a failure once semantic-release started)\n")
+				b.WriteString("  hooks (prepare: after the pipeline, before the artifact is written; fail: when a stage or hook fails)\n")
 				first = false
 			}
 			fmt.Fprintf(&b, "    %s  %s\n", s.Name, renderStep(s))

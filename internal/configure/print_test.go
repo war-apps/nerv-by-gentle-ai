@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	nerv "github.com/war-apps/nerv-by-gentle-ai"
@@ -29,7 +30,7 @@ var errNotFound = errTest("not found")
 
 func TestPrint_ConfigPathAndExists(t *testing.T) {
 	home := t.TempDir()
-	configPath := filepath.Join(home, "nerv.yaml")
+	configPath := filepath.Join(home, "config.yml")
 	writeFixture(t, configPath, richFixtureLF)
 	paths := configure.Paths{Config: configPath, State: filepath.Join(home, "state.json"), SkillsDir: filepath.Join(home, "skills")}
 
@@ -84,7 +85,7 @@ func TestPrint_PrerequisitesShape(t *testing.T) {
 
 func TestPrint_ValuesAndDefaults(t *testing.T) {
 	home := t.TempDir()
-	configPath := filepath.Join(home, "nerv.yaml")
+	configPath := filepath.Join(home, "config.yml")
 	writeFixture(t, configPath, richFixtureLF)
 	paths := configure.Paths{Config: configPath, State: filepath.Join(home, "state.json"), SkillsDir: filepath.Join(home, "skills")}
 
@@ -100,8 +101,10 @@ func TestPrint_ValuesAndDefaults(t *testing.T) {
 	if values["git.base_branch"] != "develop" {
 		t.Errorf("values['git.base_branch'] = %q, want develop", values["git.base_branch"])
 	}
-	if values["tasks.providers.teamwork.stages.inDev"] != "DESARROLLO" {
-		t.Errorf("values['...stages.inDev'] = %q, want DESARROLLO", values["tasks.providers.teamwork.stages.inDev"])
+	for key := range values {
+		if strings.HasPrefix(key, "tasks.") {
+			t.Errorf("--print reports %s, a key core does not manage", key)
+		}
 	}
 
 	defaults := map[string]string{}
@@ -122,7 +125,7 @@ func TestPrint_ValuesAndDefaults(t *testing.T) {
 
 func TestPrint_ModelsTableHasOverrideRole(t *testing.T) {
 	home := t.TempDir()
-	configPath := filepath.Join(home, "nerv.yaml")
+	configPath := filepath.Join(home, "config.yml")
 	writeFixture(t, configPath, richFixtureLF)
 	paths := configure.Paths{Config: configPath, State: filepath.Join(home, "state.json"), SkillsDir: filepath.Join(home, "skills")}
 
@@ -263,7 +266,7 @@ func TestPrint_SkillsStatusNonEmpty(t *testing.T) {
 
 func TestPrint_JSONFieldNames(t *testing.T) {
 	home := t.TempDir()
-	configPath := filepath.Join(home, "nerv.yaml")
+	configPath := filepath.Join(home, "config.yml")
 	writeFixture(t, configPath, richFixtureLF)
 	paths := configure.Paths{Config: configPath, State: filepath.Join(home, "state.json"), SkillsDir: filepath.Join(home, "skills")}
 

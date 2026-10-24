@@ -24,7 +24,8 @@ const marketplaceName = "nerv"
 // registering that directory marketplace and enabling nerv@nerv in
 // settings.json, refreshing the plugin cache through "claude plugin
 // uninstall/install" and verifying it against the embedded version,
-// applying model/effort assignments to the cached agents, ensuring the
+// reporting (and, on confirmation, removing) the old /task:* command copies
+// that shadow the task plugin's commands, applying model/effort assignments to the cached agents, ensuring the
 // Engram "nerv" knowledge base, and installing skills (unless
 // opts.NoSkills). The closing "run nerv configure" hint is cmd/nerv's own
 // responsibility, not this package's. Every step's progress is written to
@@ -35,14 +36,15 @@ func Install(ctx context.Context, deps Deps, opts Options) error {
 	}
 
 	marketplaceDir := paths.Resolve(deps.Home).Marketplace
-	matResult, err := plugin.Materialize(deps.FS, marketplaceDir)
+	matResult, err := plugin.MaterializeBundle(deps.FS, deps.ExtensionsFS, marketplaceDir)
 	if err != nil {
 		return fmt.Errorf("materializing plugin: %w", err)
 	}
 	fmt.Fprintf(deps.Stdout, "Plugin materialized at %s (%d written, %d unchanged, %d removed)\n",
 		marketplaceDir, len(matResult.Written), len(matResult.Unchanged), len(matResult.Removed))
 
-	if err := registerSettings(deps, marketplaceDir); err != nil {
+	selected, err := registerSettings(deps, opts, marketplaceDir)
+	if err != nil {
 		return err
 	}
 
@@ -53,6 +55,13 @@ func Install(ctx context.Context, deps Deps, opts Options) error {
 	if err := refreshCache(ctx, deps, pluginVersion); err != nil {
 		return err
 	}
+	for _, ext := range selected {
+		if err := refreshPlugin(ctx, deps, ext.Name+"@"+marketplaceName, ext.Version); err != nil {
+			return err
+		}
+	}
+
+	reportLegacyCommands(deps)
 
 	if err := applyModelsForVersion(deps, pluginVersion); err != nil {
 		return err
@@ -128,24 +137,38 @@ func loadOrInitSettings(path string) (previous []byte, settings *claude.Settings
 	return previous, s, nil
 }
 
-func registerSettings(deps Deps, marketplaceDir string) error {
+// registerSettings registers the marketplace and enables nerv@nerv plus
+// the extensions selectExtensions picks, returning those extensions.
+func registerSettings(deps Deps, opts Options, marketplaceDir string) ([]plugin.Extension, error) {
 	path := settingsPath(deps)
 	previous, settings, err := loadOrInitSettings(path)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	changedMarketplace := settings.RegisterMarketplace(marketplaceName, marketplaceDir)
-	changedPlugin := settings.EnablePlugin(pluginID)
+	selected, err := selectExtensions(deps, opts, settings)
+	if err != nil {
+		return nil, err
+	}
 
-	if !changedMarketplace && !changedPlugin {
+	changed := settings.RegisterMarketplace(marketplaceName, marketplaceDir)
+	if settings.EnablePlugin(pluginID) {
+		changed = true
+	}
+	for _, ext := range selected {
+		if settings.EnablePlugin(ext.Name + "@" + marketplaceName) {
+			changed = true
+		}
+	}
+
+	if !changed {
 		fmt.Fprintln(deps.Stdout, "settings.json already up to date.")
-		return nil
+		return selected, nil
 	}
 
 	written, backup, err := claude.SaveSettings(path, settings, previous, deps.Now())
 	if err != nil {
-		return fmt.Errorf("writing %s: %w", path, err)
+		return nil, fmt.Errorf("writing %s: %w", path, err)
 	}
 	if written {
 		if backup != "" {
@@ -153,20 +176,43 @@ func registerSettings(deps Deps, marketplaceDir string) error {
 		}
 		fmt.Fprintln(deps.Stdout, "settings.json updated and verified.")
 	}
-	return nil
+	return selected, nil
 }
 
 // RefreshCache re-registers nerv@nerv in the Claude Code plugin cache
 // ("claude plugin marketplace add", then "uninstall/install") and verifies
-// the cached version matches the embedded plugin version. Exported for internal/wizard's
-// closing "apply and refresh" step, wrapping the same tail Install itself
-// runs after registering settings.json.
+// the cached version matches the embedded plugin version, then does the
+// same for every extension plugin of deps.ExtensionsFS that settings.json
+// enables, at that extension's embedded version. Exported for
+// internal/wizard's closing "apply and refresh" step, wrapping the same tail
+// Install itself runs after registering settings.json.
 func RefreshCache(ctx context.Context, deps Deps) error {
 	pluginVersion, err := version.PluginVersion(deps.FS)
 	if err != nil {
 		return fmt.Errorf("reading embedded plugin version: %w", err)
 	}
-	return refreshCache(ctx, deps, pluginVersion)
+	if err := refreshCache(ctx, deps, pluginVersion); err != nil {
+		return err
+	}
+
+	exts, err := plugin.Extensions(deps.ExtensionsFS)
+	if err != nil || len(exts) == 0 {
+		return err
+	}
+	_, settings, err := loadOrInitSettings(settingsPath(deps))
+	if err != nil {
+		return err
+	}
+	for _, ext := range exts {
+		id := ext.Name + "@" + marketplaceName
+		if !settings.PluginEnabled(id) {
+			continue
+		}
+		if err := refreshPlugin(ctx, deps, id, ext.Version); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func refreshCache(ctx context.Context, deps Deps, pluginVersion string) error {
@@ -178,24 +224,32 @@ func refreshCache(ctx context.Context, deps Deps, pluginVersion string) error {
 	if _, err := cli.AddMarketplace(ctx, marketplaceDir); err != nil {
 		return fmt.Errorf("cache not refreshed: %w", err)
 	}
+	return refreshPlugin(ctx, deps, pluginID, pluginVersion)
+}
 
-	fmt.Fprintln(deps.Stdout, "-> claude plugin uninstall nerv@nerv")
-	if _, err := cli.Uninstall(ctx, pluginID); err != nil {
+// refreshPlugin reinstalls id from the already registered marketplace and
+// verifies the cached version is wantVersion.
+func refreshPlugin(ctx context.Context, deps Deps, id, wantVersion string) error {
+	cli := claude.PluginCLI{Runner: deps.Runner}
+	pluginVersion := wantVersion
+
+	fmt.Fprintf(deps.Stdout, "-> claude plugin uninstall %s\n", id)
+	if _, err := cli.Uninstall(ctx, id); err != nil {
 		return fmt.Errorf("cache not refreshed: %w", err)
 	}
 
-	fmt.Fprintln(deps.Stdout, "-> claude plugin install nerv@nerv")
-	if _, err := cli.Install(ctx, pluginID); err != nil {
+	fmt.Fprintf(deps.Stdout, "-> claude plugin install %s\n", id)
+	if _, err := cli.Install(ctx, id); err != nil {
 		return fmt.Errorf("cache not refreshed: %w", err)
 	}
 
 	installedPluginsPath := paths.Resolve(deps.Home).InstalledPlugins
-	info, found, err := claude.InstalledPlugins(installedPluginsPath)
+	info, found, err := claude.InstalledPlugin(installedPluginsPath, id)
 	if err != nil {
 		return fmt.Errorf("reading %s: %w", installedPluginsPath, err)
 	}
 	if !found {
-		return &RefusalError{Err: fmt.Errorf("nerv@nerv not found in %s after install", installedPluginsPath)}
+		return &RefusalError{Err: fmt.Errorf("%s not found in %s after install", id, installedPluginsPath)}
 	}
 	if info.Version != pluginVersion {
 		return &RefusalError{Err: fmt.Errorf(
@@ -203,7 +257,7 @@ func refreshCache(ctx context.Context, deps Deps, pluginVersion string) error {
 			info.Version, pluginVersion)}
 	}
 
-	fmt.Fprintf(deps.Stdout, "nerv@nerv version : %s (matches embedded; installPath: %s)\n", info.Version, info.InstallPath)
+	fmt.Fprintf(deps.Stdout, "%s version : %s (matches embedded; installPath: %s)\n", id, info.Version, info.InstallPath)
 	return nil
 }
 

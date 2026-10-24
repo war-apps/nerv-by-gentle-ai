@@ -1,0 +1,96 @@
+{
+  "name": "dim.comprobantes.api",
+  "version": "2.9.0-alpha.21",
+  "description": "Version anchor + semantic-release para dim.comprobantes.api. @semantic-release/npm (npmPublish:false) bumpea `version`; scripts/bump-csproj.sh lee `repository.url` para reescribir <PackageReleaseNotes> en el csproj; `release` es la config nativa de semantic-release (la corre `npx semantic-release` desde ci-cd.yml).",
+  "private": true,
+  "license": "UNLICENSED",
+  "scripts": {
+    "test": "dotnet test Dim.Comprobantes.slnx --collect:\"XPlat Code Coverage\" --settings coverlet.runsettings",
+    "test:coverage-gate": "node -e \"require('fs').rmSync('TestResults/coverage-gate',{recursive:true,force:true})\" && npm run build && npm test -- -c Release --no-build --results-directory TestResults/coverage-gate && bash scripts/coverage-gate.sh TestResults/coverage-gate",
+    "lint": "dotnet format Dim.Comprobantes.slnx --verify-no-changes",
+    "build": "dotnet build Dim.Comprobantes.slnx -c Release -warnaserror"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/dirm-s-a/dim.comprobantes.api.git"
+  },
+  "release": {
+    "branches": [
+      "main",
+      {
+        "name": "release/rc",
+        "channel": "beta",
+        "prerelease": "rc"
+      },
+      {
+        "name": "develop",
+        "channel": "alpha",
+        "prerelease": "alpha"
+      },
+      {
+        "name": "hotfix/*",
+        "channel": "beta",
+        "prerelease": true
+      }
+    ],
+    "plugins": [
+      [
+        "@semantic-release/commit-analyzer",
+        {
+          "preset": "conventionalcommits",
+          "parserOpts": {
+            "noteKeywords": [
+              "BREAKING CHANGE",
+              "BREAKING CHANGES",
+              "BREAKING"
+            ]
+          }
+        }
+      ],
+      [
+        "@semantic-release/release-notes-generator",
+        {
+          "preset": "conventionalcommits",
+          "parserOpts": {
+            "noteKeywords": [
+              "BREAKING CHANGE",
+              "BREAKING CHANGES",
+              "BREAKING"
+            ]
+          }
+        }
+      ],
+      [
+        "@semantic-release/changelog",
+        {
+          "changelogFile": "src/Api/CHANGELOG.md"
+        }
+      ],
+      [
+        "@semantic-release/npm",
+        {
+          "npmPublish": false,
+          "pkgRoot": "."
+        }
+      ],
+      [
+        "@semantic-release/exec",
+        {
+          "verifyReleaseCmd": "bash scripts/set-release-outputs.sh \"${nextRelease.version}\" \"${nextRelease.channel || ''}\" \"${nextRelease.gitTag}\"",
+          "prepareCmd": "bash scripts/bump-csproj.sh \"${nextRelease.version}\""
+        }
+      ],
+      [
+        "@semantic-release/git",
+        {
+          "assets": [
+            "src/Api/CHANGELOG.md",
+            "package.json",
+            "src/Api/Dim.Comprobantes.Api.csproj"
+          ]
+        }
+      ],
+      "@semantic-release/github"
+    ]
+  }
+}
