@@ -75,10 +75,10 @@ Branch: `feature/ship-deploy-plugins`, cut from `feature/tasks-plugin-split` at 
 | T1 | S2, S3 | delegated writer, in parallel with T2 (Writer trigger (a): independent units with disjoint surfaces, each over 100 lines; also the context backstop) | committed (RED: 14 Compute and Import tests plus the changelog test; GREEN: `go test ./internal/versioning` ok; parity 16/16 against semantic-release 24.2.9) | see `git log -- internal/versioning` |
 | T2 | S4, S5 | delegated writer, in parallel with T1 (same trigger) | committed and verified (no blockers) | f0254d2 |
 | T3 | S6, S7, S8 | delegated writer (context backstop) | committed and verified; fixes in ed99e5d | 322edc0, 367d066, ed99e5d |
-| T4 | S1, S9 | two parallel delegated writers: T4a Go, T4b prose (Writer trigger (a): disjoint surfaces, each well over 100 lines) | committed; verifier running (risk: items 3 and 5) | 2e80414, 16474d7, 3690480 |
+| T4 | S1, S9 | two parallel delegated writers: T4a Go, T4b prose (Writer trigger (a): disjoint surfaces, each well over 100 lines) | committed and verified; fix batch running | 2e80414, 16474d7, 3690480 |
 | T5 | S10 | delegated writer (context backstop; about 38 files of prose) | committed and verified; fixes in d752c90 | 7af0059, d752c90 |
 | T6 | S11 | delegated writer (context backstop; the edit surface spans the whole tree) | committed and verified; fixes in c5c0bf4 | 9c6032c, c5c0bf4 |
-| T7 | S12 | delegated writer (context backstop) | in progress | — |
+| T7 | S12 | delegated writer (context backstop) | committed | 9f6cf70 |
 
 - **T1:** the native version engine (`internal/versioning`), its config schema, and the semantic-release config importer. Parity tests against the behaviours listed in S2, using the dim configs as fixtures.
 - **T2:** the build modes, compose and script, with presets removed. The artifact writer, and ship reworked to produce the artifact with no git writes.
@@ -215,4 +215,25 @@ Forecast: well over 400 lines (about 11.5k lines of Go move or are rewritten), s
     - `ship --version` must fit the branch entry;
     - an unimported semantic-release config only warns.
   - **Open:** the tar name clash (L10).
-- **Next step:** T7, and the T4 verifier. Ask the user the L18 advisory-1 decision. The user's L5 decisions are "ODD + agentes NERV encima (Recommended)", "Se mantiene, renombrado (Recommended)" and "Subcomando nerv migrate (Recommended)". Then T6.
+- **L20** (2026-10-24, user decision): "Solo FULL (Recommended)". DIRECT and LIGHT runs create no ODD document, no Engram copy and no close commit, as gentle-ai's ODD does for small work. Their run files stay in `.nerv/` (runtime).
+- **L21** (2026-10-24): T4 verifier.
+  - **Passed:** S1, and S2 (`version next` identical to semantic-release in 108 of 108 runs).
+  - **End to end without node:** works, and semantic-release reads the deployed lightweight tag's note.
+  - **Blockers:**
+    - B1: `ship setup --import` silently clobbers existing engine keys;
+    - B2: the `pipeline:` message does not name the real keys;
+    - B3: `nerv migrate` did not exist, now fixed by T7 9f6cf70.
+  - **Advisories:**
+    - `ship --version` refuses the computed alpha when a stable tag sits on another branch;
+    - empty notes with `--version`;
+    - `release:` without a semantic-release config is a dead end;
+    - false "dropped" line;
+    - `nerv install --help` is out of date;
+    - deploy `setup.md` names the wrong key;
+    - online `version next` ignores local-only tags (the parent keeps the origin-only behaviour, because ship builds from origin);
+    - `$ARGUMENTS` is unvalidated (a baseline defect).
+- **L22** (2026-10-24): T7 committed.
+  - **Migration:** the four repos migrate with exit 0, and a second run is a no-op.
+  - **Gap:** in script mode no image references are recorded, so deploy would not push dim's images. Fix: `build.images` in script mode, written by migrate from the old docker preset.
+  - **Decision accepted:** a release-only repo also gets `deploy: {host: github}` plus the deploy and deploy-github plugins, because semantic-release used to tag and release.
+- **Next step:** a fix batch with two parallel writers (Go: B1, B2, images in script mode, the advisories; prose: L20 and the L18 prose advisories), then the chain review. The user's L5 decisions are "ODD + agentes NERV encima (Recommended)", "Se mantiene, renombrado (Recommended)" and "Subcomando nerv migrate (Recommended)". Then T6.
