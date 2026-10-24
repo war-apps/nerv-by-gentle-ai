@@ -1,0 +1,95 @@
+{
+  "name": "dim-factura-electronica-service",
+  "version": "1.2.0",
+  "description": "Version anchor + semantic-release para dim-factura-electronica-service. @semantic-release/npm (npmPublish:false) bumpea `version`; scripts/bump-csproj.sh lee `repository.url` para reescribir <PackageReleaseNotes> en el csproj; `release` es la config nativa de semantic-release (la corre `npx semantic-release` desde ci-cd.yml).",
+  "private": true,
+  "license": "UNLICENSED",
+  "scripts": {
+    "test": "dotnet test DimFacturaElectronica.sln --collect:\"XPlat Code Coverage\" --settings coverlet.runsettings",
+    "lint": "dotnet format DimFacturaElectronica.sln --verify-no-changes",
+    "build": "dotnet build DimFacturaElectronica.sln -c Release -warnaserror"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/dirm-s-a/dim-factura-electronica-service.git"
+  },
+  "release": {
+    "branches": [
+      "main",
+      {
+        "name": "release/rc",
+        "channel": "beta",
+        "prerelease": "rc"
+      },
+      {
+        "name": "develop",
+        "channel": "alpha",
+        "prerelease": "alpha"
+      },
+      {
+        "name": "hotfix/*",
+        "channel": "beta",
+        "prerelease": true
+      }
+    ],
+    "plugins": [
+      [
+        "@semantic-release/commit-analyzer",
+        {
+          "preset": "conventionalcommits",
+          "parserOpts": {
+            "noteKeywords": [
+              "BREAKING CHANGE",
+              "BREAKING CHANGES",
+              "BREAKING"
+            ]
+          }
+        }
+      ],
+      [
+        "@semantic-release/release-notes-generator",
+        {
+          "preset": "conventionalcommits",
+          "parserOpts": {
+            "noteKeywords": [
+              "BREAKING CHANGE",
+              "BREAKING CHANGES",
+              "BREAKING"
+            ]
+          }
+        }
+      ],
+      [
+        "@semantic-release/changelog",
+        {
+          "changelogFile": "src/Host/CHANGELOG.md"
+        }
+      ],
+      [
+        "@semantic-release/npm",
+        {
+          "npmPublish": false,
+          "pkgRoot": "."
+        }
+      ],
+      [
+        "@semantic-release/exec",
+        {
+          "verifyReleaseCmd": "bash scripts/set-release-outputs.sh \"${nextRelease.version}\" \"${nextRelease.channel || ''}\" \"${nextRelease.gitTag}\"",
+          "prepareCmd": "bash scripts/bump-csproj.sh \"${nextRelease.version}\""
+        }
+      ],
+      [
+        "@semantic-release/git",
+        {
+          "assets": [
+            "src/Host/CHANGELOG.md",
+            "package.json",
+            "src/Host/DimFacturaElectronica.Host.csproj"
+          ]
+        }
+      ],
+      "@semantic-release/github"
+    ]
+  }
+}

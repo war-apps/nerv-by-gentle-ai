@@ -1,0 +1,64 @@
+# .nerv/nerv.yaml -- NERV project-scope configuration (overrides ~/.claude/nerv/nerv.yaml key by key)
+enabled: true
+tasks:
+  provider: teamwork
+  rounding_minutes: 30              # round every block up
+  providers:
+    teamwork:
+      project_id: 100
+      tasklist_id: 200
+      assignee_id: 42               # personal
+      task_ref_prefix: tw
+    jira:
+      site: acme
+models:
+  misato: { model: fable, effort: high }
+release:
+  semantic_release:
+    version: 24.2.3
+  projects:
+    - name: web
+      path: web
+      presets: [node, npm]
+      node: { package_manager: pnpm }
+      npm: { access: restricted }
+    - name: lib
+      path: lib
+      depends_on:
+        - project: web
+          bump: minor
+      presets: [dotnet, nuget, docker]
+      dotnet:
+        project_file: lib/Lib.csproj
+        coverage_threshold: 80
+      docker:
+        images:
+          - name: ghcr.io/acme/lib
+            dockerfile: lib/Dockerfile
+            build_args: { CHANNEL: "${channel}", TAG: "v-${tag}" }
+            tags: [version, channel]
+      stages:
+        # our own lint
+        lint:
+          run: dotnet format lib/Lib.csproj --verify-no-changes --no-restore
+        publish:
+          run: echo published
+      hooks:
+        before_build:
+          - run: echo before build
+        success:
+          - run: echo released
+pipeline:
+  dotnet: { solution: App.sln }
+  registry: { host: ghcr.io, username_env: GH_USER, token_env: GH_TOKEN }
+  images:
+    - name: ghcr.io/acme/app
+  deploy:
+    source: infisical
+    selection: branches
+    infisical: { project_id: p-1, app_path: /app, domain: https://infisical.acme }
+    environments:
+      - { name: staging, branches: [develop] }
+      - { name: production, branches: [main] }
+    ssh: { auth: key, key_file: ~/.ssh/id_deploy, port: 2222 }
+    verify: { timeout: 300s }

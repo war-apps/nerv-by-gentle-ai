@@ -83,8 +83,8 @@ them with `nerv install --with ship,deploy,deploy-github` (add
 `/deploy:setup` once, then `/ship:build` leaves a local artifact in
 `.nerv/artifacts/<project>/<version>/` and `/deploy:run` releases it. Both
 always rehearse with a dry run and act only after your explicit yes. A
-repository that used the old `release:` or `pipeline:` sections migrates
-with `nerv migrate` (see [docs/pipeline.md](docs/pipeline.md)).
+repository set up with nerv 4.2.0 migrates with `nerv migrate` (see
+[docs/migration.md](docs/migration.md)).
 
 ## Requirements
 
@@ -370,6 +370,10 @@ example YAML, and how to configure per-role models and effort (wizard,
   contract (`deploy-github`, `deploy-ssh-compose`).
 - [docs/pipeline.md](docs/pipeline.md) — migrating from the removed `nerv
   pipeline` and its `pipeline:` section to ship and deploy (`nerv migrate`).
+- [docs/migration.md](docs/migration.md) — `nerv migrate`: moving a
+  repository and the user configuration from nerv 4.2.0 (configuration
+  files, `ship:` and `deploy:`, the semantic-release import, openspec to
+  ODD, the plugins to install).
 - [docs/troubleshooting.md](docs/troubleshooting.md) — known limitations
   and troubleshooting.
 

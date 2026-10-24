@@ -1,0 +1,12 @@
+{
+  "name": "legacy-full",
+  "private": true,
+  "release": {
+    "branches": ["main", { "name": "develop", "prerelease": "alpha", "channel": "alpha" }],
+    "plugins": [
+      ["@semantic-release/commit-analyzer", { "preset": "conventionalcommits" }],
+      ["@semantic-release/release-notes-generator", { "preset": "conventionalcommits" }],
+      "@semantic-release/github"
+    ]
+  }
+}
