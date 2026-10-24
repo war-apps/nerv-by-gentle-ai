@@ -1,0 +1,123 @@
+# Ship and deploy plugins (versioning, build, artifact, deploy, git host)
+
+Locator: `odd/tasks/ship-deploy-plugins.md`. Engram mirror topic: `odd/ship-deploy-plugins/tasks` (project `nerv-gentle-ai`).
+Branch: `feature/ship-deploy-plugins`, cut from `feature/tasks-plugin-split` at 89b10ce, because it depends on the extension-plugin installer. Delivery: `ask-on-risk` with `feature-branch-chain` (cached from the previous feature). Test runner: `go test ./...` plus the root prose tests.
+
+## Specs
+
+- **S1. Plugins of their own.** The user asked: "algo mas que quiero separar es la parte de shipping, versionado y deploy. esto tambien me gustaria que sea un plugin de nerv y q me lo sugiera instalar (como task). ambos plugins instalan sus propios agentes."
+  - Shipping and versioning ship as the extension plugin `ship` (`ship@nerv`); deploy ships as `deploy` (`deploy@nerv`).
+  - `nerv install` suggests them the way it suggests `task`: first `ship`, then `deploy`, which requires `ship`.
+  - Each plugin ships its own agents. Core `plugin/` keeps no ship, version, release-setup, pipeline or deploy command.
+- **S2. Native version engine.** The user asked: "el plugin de shipping, debe tener como plugin el agente o script para saber la version, sin usar semantic-release pero se debe poder comportar igual y debe poder configurarse tambien."
+  - The next version is computed natively in Go, without semantic-release, node or npm.
+  - It must give the same result semantic-release gives for the behaviours nerv relies on today:
+    - Conventional Commits with the `conventionalcommits` preset and the note keywords `BREAKING CHANGE`, `BREAKING CHANGES` and `BREAKING`;
+    - branches, with prerelease ids and channels (`main`, `develop` as alpha, `release/*` as rc on beta, `hotfix/*` as beta);
+    - `tag_format`;
+    - per-project `path`, `shared_paths` and `scopes` filters;
+    - `depends_on` with a minimum bump;
+    - the release notes and CHANGELOG section.
+  - Every one of these is configurable.
+- **S3. Configuration source** (user decision: "nerv.yaml + importar la existente (Recommended)").
+  - The engine's configuration lives in `.nerv/nerv.yaml`, under the ship plugin's section.
+  - A setup command imports, once, an existing JSON or YAML semantic-release config (`package.json` `release`, `.releaserc.json`, `.releaserc.yaml`/`.yml`). It reports what it cannot translate, such as the `npm` and `exec` plugins.
+  - A `.js` config is not imported; it is reported so the user migrates it by hand.
+- **S4. Build mode per project.** The user asked: "otro que sea el modo de build por default si es por dockercompose o script (ambos deben ser seteados por proyecto)."
+  - Each project sets `build.mode: compose | script`.
+  - User decision: "Solo compose | script, sin presets". The dotnet, node, docker, nuget and npm presets are removed. In `script` mode every stage command is written by the project.
+- **S5. Ship produces a local artifact.** The user asked: "debe poder recibir un nuemero de version, buildear, testear, hacer todo lo que hace actualmente "/nerv:ship" y dejar un articfact final local."
+  - `ship` accepts an explicit version, or computes it (S2).
+  - It builds, tests and packages in a throwaway clone of origin, the way `/nerv:ship` does today, with the dry run first, hooks, the `--expect` check, monorepo order and coverage.
+  - It leaves a final local artifact that survives the clone.
+- **S6. Deploy consumes the artifact.** The user asked: "otro plugin seria el de deploy que utiliza ese artifact y deploya en donde debe ademas de generar un tag y release en github o en el entorno git que sea."
+  - `deploy` takes a ship artifact and publishes and deploys it to its targets.
+  - It creates the tag and the release on GitHub or whichever git host the repository uses.
+- **S7. Git writes belong to deploy** (user decision: "Todo en deploy (Recommended)").
+  - `ship` never writes to git: no commit, no tag, no push.
+  - `deploy` creates the release commit (CHANGELOG plus version files), the tag and the push, and the git host release.
+  - An artifact that is never deployed leaves no trace in the repository.
+- **S8. Providers with a contract** (user decision: "Proveedores con contrato (Recommended)").
+  - Deploy targets and git hosts are provider plugins, with a manifest declaring their config, the tools they need and their operations, as with task providers.
+  - The first providers are `deploy-github` (tag, push and release) and `deploy-ssh-compose` (today's SSH, Infisical and compose deploy).
+  - Adding another host or target, such as GitLab or Gitea, is another plugin, with no change to `deploy`.
+- **S9. Migration.** A repository using today's `release:` and `pipeline:` sections must be told exactly what to change, by the setup command. Assumption: the old sections stop being read, and a run with them refuses with a message pointing to the setup command.
+- **S10. Remove SDD and use the gentle-ai mode.** The user asked: "sacar sdd y usemos el modo de gentle-ai". User decision: "ODD + agentes NERV encima (Recommended)".
+  - Remove NERV's OpenSpec-style artifact flow: `openspec/` changes, proposal, design, spec deltas, archive and `nerv spec-compose`.
+  - Track work with gentle-ai's ODD feature document (`odd/tasks/<feature>.md`) and native RDD review.
+  - The NERV agents and their governance (Misato, MAGI, Maya, Kaji, Aoba and the rest) remain, reading and writing the ODD document instead of openspec.
+- **S11. Configuration file.** The user asked: "cambiemos la configuracion dejemosla en un archivo .ai-workflow.yml en el root del proyecto, se mantiene la configuracion por proyecto". User decision: "Se mantiene, renombrado (Recommended)".
+  - Project config is `<repo>/.ai-workflow.yml`.
+  - User config is `~/.config/ai-workflow/config.yml`, holding personal settings such as models and provider user ids.
+  - The same key-by-key merge applies, with the project winning.
+  - Core, `task`, `ship`, `deploy` and their providers all read from these two files.
+- **S12. Migration.** The user asked: "crear scripts de migracion entre la version anterior y esta". User decision: "Subcomando nerv migrate (Recommended)".
+  - `nerv migrate` in Go, cross-platform, with `--dry-run` showing every change before writing, backups and tests.
+  - Run once per repo, plus once for the user config.
+  - It covers:
+    - moving `.nerv/nerv.yaml` and `~/.claude/nerv/nerv.yaml` to the S11 files;
+    - translating `release:` and `pipeline:` into the ship and deploy config;
+    - importing semantic-release (S3);
+    - converting `openspec/` (S10);
+    - installing the plugins the repo used (`task`, `ship`, `deploy` and their providers).
+- **Assumptions to confirm during the work:**
+  - Runtime files (the artifacts, the orchestrator lock, the deliberation logs) stay in a git-ignored runtime folder. Its name (`.nerv/` or `.ai-workflow/`) is decided in T6.
+  - `openspec/changes` still in progress become ODD feature documents, and archived ones stay where they are, read-only.
+  - The Go engines stay in the `nerv` binary, under new subcommands, and the plugins are their only callers.
+  - `nerv pipeline` is folded into ship (validate, test) and deploy (release, docker push, sync back-merge, deploy).
+  - Artifact layout: `.nerv/artifacts/<project>/<version>/` holding `manifest.json` (project, version, channel, base commit, the files changed by the release, the outputs), the notes, the CHANGELOG section, and the packages or image references.
+  - nerv's own maintainer tooling (`nerv release preview|apply|guard`, used by `.github/workflows/release.yml`) stays in core.
+
+## Tasks
+
+| ID | Specs | Route | Status | Commit |
+|---|---|---|---|---|
+| T1 | S2, S3 | delegated writer, in parallel with T2 (Writer trigger (a): independent units with disjoint surfaces, each over 100 lines; also the context backstop) | committed (RED: 14 Compute and Import tests plus the changelog test; GREEN: `go test ./internal/versioning` ok; parity 16/16 against semantic-release 24.2.9) | see `git log -- internal/versioning` |
+| T2 | S4, S5 | delegated writer, in parallel with T1 (same trigger) | in progress | — |
+| T3 | S6, S7, S8 | inline | pending | — |
+| T4 | S1, S9 | inline | pending | — |
+| T5 | S10 | — | pending | — |
+| T6 | S11 | — | pending | — |
+| T7 | S12 | — | pending | — |
+
+- **T1:** the native version engine (`internal/versioning`), its config schema, and the semantic-release config importer. Parity tests against the behaviours listed in S2, using the dim configs as fixtures.
+- **T2:** the build modes, compose and script, with presets removed. The artifact writer, and ship reworked to produce the artifact with no git writes.
+- **T3:** the deploy contract (manifest and operations), the deploy runner (release commit, tag, push, publish, deploy), and the `deploy-github` and `deploy-ssh-compose` providers.
+- **T5:** remove SDD/openspec from the orchestrator, the agents, `internal/specs` and the docs; the agents work on the ODD document.
+- **T6:** central config loader for `.ai-workflow.yml` plus `~/.config/ai-workflow/config.yml`, used by every package and plugin.
+- **T7:** `nerv migrate`.
+- **Order:** T1/T2 → T6 → T3 → T5 → T4 → T7.
+- **T4:** the plugins `ship`, `deploy`, `deploy-github` and `deploy-ssh-compose`, with their agents and commands; installer suggestions and requirements; removal from core; migration messages; docs.
+
+Forecast: well over 400 lines (about 11.5k lines of Go move or are rewritten), so it will be delivered as chained slices.
+
+## Log
+
+- **L1** (2026-10-23, user, verbatim):
+  > algo mas que quiero separar es la parte de shipping, versionado y deploy. esto tambien me gustaria que sea un plugin de nerv y q me lo sugiera instalar (como task). ambos plugins instalan sus propios agentes.
+  > el plugin de shipping, debe tener como plugin el agente o script para saber la version, sin usar semantic-release pero se debe poder comportar igual y debe poder configurarse tambien. otro que sea el modo de build por default si es por dockercompose o script (ambos deben ser seteados por proyecto). debe poder recibir un nuemero de version, buildear, testear, hacer todo lo que hace actualmente "/nerv:ship" y dejar un articfact final local. otro plugin seria el de deploy que utiliza ese artifact y deploya en donde debe ademas de generar un tag y release en github o en el entorno git que sea
+- **L2** (2026-10-23): the user's decisions: "Todo en deploy (Recommended)", "nerv.yaml + importar la existente (Recommended)", "Solo compose | script, sin presets", "Proveedores con contrato (Recommended)".
+- **L3** (2026-10-23): mapping evidence.
+  - `nerv ship` leaves no local artifact: `Workspace.Close` removes `<ws>/artifacts`.
+  - semantic-release, through the embedded node runner in `internal/semrel`, makes the release commit, the CHANGELOG, the tag and the GitHub release.
+  - `internal/release` already has native semver and Conventional Commit parsing, but only for nerv itself.
+  - There is no compose or script build mode today.
+  - Ship, pipeline and deploy have no coupling to the orchestrator, the agents or the config catalogue.
+  - The dim repos keep their semantic-release config as JSON under `package.json` `release`.
+- **L4** (2026-10-23): seam between T1 and T2.
+  - T1 exposes `versioning.Compute(ctx, versioning.Request) ([]versioning.Result, error)`.
+    - `Result` carries the same fields as `semrel.ProjectResult`'s 12 action outputs, plus `ChangelogSection` and `Bump`.
+    - `Request` holds `RepoDir`, `Branch`, `Projects`, `Config` and `Offline`.
+  - T2 consumes the version through an interface (`VersionSource`) that can be fed an explicit version or a computed one. It keeps the existing semrel-backed source until T4 wires in the engine.
+- **L5** (2026-10-23, user, verbatim):
+  > otros puntos que quiero cambiar para tenerlos en cuenta:
+  > * sacar sdd y usemos el modo de gentle-ai
+  > * cambiemos la configuracion dejemosla en un archivo .ai-workflow.yml en el root del proyecto, se mantiene la configuracion por proyecto
+  > * crear scripts de migracion entre la version anterior y esta
+- **L6** (2026-10-23): T1 outcome and decisions.
+  - **Parity:** 16/16 scenarios match semantic-release 24.2.9 field by field, including the notes.
+  - **Not supported:** maintenance branches (`1.x`, range), addChannel, `extends`, and presets other than conventionalcommits. The importer warns about each.
+  - **Decision (parent):** ship fetches origin's tags and `refs/notes/semantic-release*` inside its throwaway clone and calls `Compute` with `Offline: true` there, so the user's repo is never written (S7).
+  - **Decision (parent):** deploy must write the `refs/notes/semantic-release-<tag>` channel note when it creates a prerelease tag, otherwise prerelease numbering resets. This goes into T3.
+  - **Risk: item 6.** Notes parity relies on a hand-written ICU collation approximation; re-run the parity harness when the preset changes.
+- **Next step:** T2 (running), then T6. The user's L5 decisions are "ODD + agentes NERV encima (Recommended)", "Se mantiene, renombrado (Recommended)" and "Subcomando nerv migrate (Recommended)". Then T6.
