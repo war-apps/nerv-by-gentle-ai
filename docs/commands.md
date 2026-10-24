@@ -118,6 +118,7 @@ isn't taking effect.
 | `nerv ship` | Build, test and package origin's code into a local artifact; no git writes (ship plugin) |
 | `nerv ship setup --import` | Import an existing semantic-release config into the `ship:` section |
 | `nerv deploy` | Release and deploy a ship artifact: release commit, tag, push, targets, git host release (deploy plugin) |
+| `nerv migrate` | Move a repository (and, with `--user`, the user configuration) from nerv 4.2.0 to this version |
 | `nerv configure` | Configure NERV non-interactively (or run the wizard) |
 | `nerv install` | Install NERV (plugin, cache, skills, Engram KB) |
 | `nerv uninstall` | Uninstall NERV |
@@ -254,6 +255,27 @@ nerv deploy --artifact .nerv/artifacts/api/1.4.0 --yes
 
 `nerv pipeline` was removed: its steps moved to ship and deploy
 ([pipeline.md](pipeline.md)).
+
+### nerv migrate
+
+Moves a repository from nerv 4.2.0 to this version, once:
+
+- `.nerv/nerv.yaml` becomes `.ai-workflow.yml`;
+- `release:` becomes `ship:`, with the semantic-release config imported;
+- `pipeline:` becomes `deploy:`;
+- the in-flight `openspec/changes` become ODD feature documents;
+- `.nerv/.gitignore` is created.
+
+`--user` also moves `~/.claude/nerv/nerv.yaml` to the user `config.yml`,
+with the personal keys of the project file. `--dry-run` prints every change
+as a unified diff and writes nothing. `--install` installs the plugins the
+repository used. Every changed or removed file is backed up first, and a
+second run changes nothing. See [migration.md](migration.md).
+
+```
+nerv migrate --dry-run
+nerv migrate --user --install
+```
 
 ### nerv install
 

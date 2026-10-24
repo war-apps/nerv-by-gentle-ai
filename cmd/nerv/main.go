@@ -35,6 +35,9 @@ Commands:
                        Release and deploy a ship artifact: release commit,
                        tag, push, targets, git host release
                        (see "nerv deploy --help")
+  migrate [flags]      Move a repository (and, with --user, the user
+                       configuration) from nerv 4.2.0 to this version
+                       (see "nerv migrate --help")
   configure [flags]    Configure NERV (non-interactive; see "nerv configure --help")
   install [flags]      Install NERV (see "nerv install --help")
   uninstall [flags]    Uninstall NERV (see "nerv uninstall --help")
@@ -157,6 +160,8 @@ func run(args []string, stdout, stderr io.Writer, opts options) int {
 		return runShip(args[1:], stdout, stderr, opts)
 	case "deploy":
 		return runDeploy(args[1:], stdout, stderr, opts)
+	case "migrate":
+		return runMigrate(args[1:], stdout, stderr, opts)
 	case "deploy-ssh-compose":
 		// Hidden: the deploy-ssh-compose provider's deploy and verify
 		// operations, run by nerv deploy.

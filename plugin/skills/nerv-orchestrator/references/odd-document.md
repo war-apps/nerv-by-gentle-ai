@@ -15,6 +15,9 @@ actor writes the document.
 | `odd/{feature}/nerv/` | the run folder: `state.yaml`, `deliberation-log.md`, `task-events.yaml`, `run-summary.md`, `audit/` (`diff-round-N.patch`, `round-N.yaml`, `commits-round-N.txt`, `pass-<name>-round-N.json`) and the other governance files of `nerv-artifacts.md` | yes, with the feature, per `artifacts.commit` |
 | `.nerv/locks/{feature}.lock` | the orchestrator lock (`## Orchestrator lock` in the core) | never: `.nerv/` is runtime only and ignores itself |
 
+A feature is never named `tasks`: its run folder would land inside
+`odd/tasks/`.
+
 Every `nerv/...` locator in this skill, the shared contracts and the agent
 files is relative to `odd/{feature}/`: `nerv/maya-report.md` is
 `odd/{feature}/nerv/maya-report.md`. Launch briefs still carry it absolute
@@ -78,7 +81,14 @@ role that owns it.
 | plan gate, issue gate, rulings | one `## Log` entry each (rulings also in their `nerv/` file) | Ikari; Misato for rulings |
 | Maya's verdict, the RDD receipts | one `## Log` evidence line each (detail in `nerv/maya-report.md` and the deliberation log) | Ikari |
 | `status: done` in `tasks.md`, the archive | `Status` and `Commit` per task row, and a close entry in `## Log` | Ikari (Aoba records commits in FULL) |
+| the one task row of DIRECT and LIGHT | `## Tasks` row and line (`Route` `inline (DIRECT)` or `delegated (LIGHT)`) | Ikari |
 | `state.yaml`, deliberation log, audit rounds, run summary, task events | `odd/{feature}/nerv/` | unchanged owners (`nerv-artifacts.md`) |
+
+When Ikari creates the document, it tells the user in one line which
+document it created and how many tasks it holds. Every launch brief names
+the document, the task and its `S#` (`Spec: odd/tasks/{feature}.md, T2,
+S3-S4`); the actor reads the document until `## Log` before acting and
+reports which `S#` it covered.
 
 A MAGI-frozen task's row is never edited again by Misato; Ikari's
 bookkeeping columns (`Criticality`, `MAGI`, `Status`, `Commit`) stay
@@ -88,7 +98,10 @@ writable. Hyuga never edits the document.
 
 Resolved once per feature, before the first launch, and written into the
 header (`Test runner: <command> (strict TDD)`); an explicit user choice
-wins. Discover every project root from the repo root (the explicit
+wins. Next comes the repository's default in `.ai-workflow.yml`: `odd.tdd`
+(`strict` or `standard`) and `odd.test_runner` (a command, or `none`), which
+`nerv migrate` writes from the old configuration; the merged configuration
+reads them like any other key. Without them, discover every project root from the repo root (the explicit
 workspace membership when declared, otherwise the root and at most two
 levels below it; skip `.git`, `node_modules`, `vendor`, `dist`, `build`,
 `out`, `target`, `.cache`, `__pycache__`, `.venv`, `venv` and nested
