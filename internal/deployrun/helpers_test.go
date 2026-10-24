@@ -17,7 +17,9 @@ import (
 // fakeTool records its name, argv and stdin, and answers as the real tool
 // would for what deploy runs: gh release view/create keep a release per
 // tag in the fake's directory; docker push fails while fail-push exists;
-// any other tool (the fake nerv) prints an ok response.
+// the fake nerv runs the real deploy-ssh-compose preflight (the test
+// binary, see TestMain), which writes nothing, and prints an ok response
+// for any other operation.
 const fakeTool = `#!/bin/sh
 name=$(basename "$0")
 { printf '%s' "$name"; for a in "$@"; do printf ' [%s]' "$a"; done; printf '\n'; } >> "$FAKE_DIR/log"
@@ -34,7 +36,10 @@ docker)
   if [ "$1" = push ] && [ -f "$FAKE_DIR/fail-push" ]; then echo "denied: push access" >&2; exit 1; fi
   ;;
 nerv)
-  echo '{"status":"ok","message":"'"$2"' done"}'
+  if [ "$1" = provider ] && [ "$3" = preflight ]; then
+    NERV_FAKE_PROVIDER=1 exec "$NERV_TEST_BINARY" "$@" < "$FAKE_DIR/nerv.stdin"
+  fi
+  echo '{"status":"ok","message":"'"$3"' done"}'
   ;;
 esac
 exit 0
@@ -107,6 +112,11 @@ func newEnv(t *testing.T) *world {
 		writeFile(t, filepath.Join(bin, tool), fakeTool, 0o755)
 	}
 	t.Setenv("FAKE_DIR", e.fake)
+	exe, exeErr := os.Executable()
+	if exeErr != nil {
+		t.Fatal(exeErr)
+	}
+	t.Setenv("NERV_TEST_BINARY", exe)
 	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
 
 	src := filepath.Join(root, "image.tar")
@@ -148,6 +158,25 @@ func (e *world) run(opts Options) (Report, error) {
 func (e *world) log() []string {
 	data, _ := os.ReadFile(filepath.Join(e.fake, "log"))
 	return strings.Split(strings.TrimSpace(string(data)), "\n")
+}
+
+// preflightCall is the fake log line of the ssh-compose target's
+// preflight, which checks its config before anything is written.
+const preflightCall = "nerv [provider] [deploy-ssh-compose] [preflight]"
+
+// effects returns the fake tools' calls that act (every call but the
+// preflights); none is [""].
+func (e *world) effects() []string {
+	out := []string{}
+	for _, c := range e.log() {
+		if c != preflightCall && c != "" {
+			out = append(out, c)
+		}
+	}
+	if len(out) == 0 {
+		return []string{""}
+	}
+	return out
 }
 
 // originRefs lists every ref of origin with its object.

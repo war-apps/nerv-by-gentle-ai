@@ -36,7 +36,6 @@ import (
 	"strings"
 
 	"github.com/war-apps/nerv-by-gentle-ai/internal/artifact"
-	"github.com/war-apps/nerv-by-gentle-ai/internal/deploy"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/deployconfig"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/deployprovider"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/proc"
@@ -61,7 +60,8 @@ type Options struct {
 	// Confirm is asked after the release is prepared, before anything is
 	// pushed or run; an error stops the deploy. Nil proceeds.
 	Confirm func(Report) error
-	// Providers holds the provider plugins: deploy-<name>/deploy-provider.yaml.
+	// Providers holds the extension plugins: deploy/extension.yaml and the
+	// providers' deploy-<name>/provider.yaml.
 	Providers fs.FS
 	// UserValue returns a provider config key's user-scope value
 	// (deploy.providers.<provider>.<key>); nil has none.
@@ -169,7 +169,7 @@ func (d *deployer) run(ctx context.Context, targets []deployconfig.Target) error
 	d.rep.Project, d.rep.Version, d.rep.Tag, d.rep.Channel, d.rep.Branch = m.Project, m.Version, m.Tag, m.Channel, m.Branch
 	tr.set("verify-artifact", StatusDone, "%s %s (%s)", m.Project, m.Version, m.Tag)
 
-	host, provs, err := d.loadProviders(targets)
+	host, provs, err := d.loadProviders(ctx, targets)
 	if err != nil {
 		return err
 	}
@@ -352,11 +352,12 @@ func (d *deployer) releaseCommit(ctx context.Context, head, message string) (str
 }
 
 // loadProviders loads the host and the targets' providers, checks their
-// kind, resolves and checks their config, and checks that every tool they
-// need is on PATH: the providers' requires and, for deploy-ssh-compose, the
-// tools its config needs (sshpass for password authentication, infisical for
-// source infisical). It runs before anything is cloned or pushed.
-func (d *deployer) loadProviders(targets []deployconfig.Target) (*provider, []provider, error) {
+// slot, resolves and checks their config, runs each target's preflight
+// (which refuses a bad config and answers the tools that config needs,
+// such as deploy-ssh-compose's sshpass for password authentication), and
+// checks that every tool they need is on PATH: the providers' requires and
+// the preflights' answers. It runs before anything is cloned or pushed.
+func (d *deployer) loadProviders(ctx context.Context, targets []deployconfig.Target) (*provider, []provider, error) {
 	var host *provider
 	var tools []string
 	needs := map[string][]string{}
@@ -371,7 +372,7 @@ func (d *deployer) loadProviders(targets []deployconfig.Target) (*provider, []pr
 		}
 	}
 	if name := d.o.Config.Host; name != "" {
-		m, err := d.manifest(name, deployprovider.KindGitHost, "deploy.host")
+		m, err := d.manifest(name, deployprovider.SlotHost, "deploy.host")
 		if err != nil {
 			return nil, nil, err
 		}
@@ -385,7 +386,7 @@ func (d *deployer) loadProviders(targets []deployconfig.Target) (*provider, []pr
 	var provs []provider
 	for i, t := range targets {
 		at := fmt.Sprintf("deploy.targets[%d] (%s)", i, t.Name)
-		m, err := d.manifest(t.Provider, deployprovider.KindTarget, at)
+		m, err := d.manifest(t.Provider, deployprovider.SlotTarget, at)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -394,14 +395,19 @@ func (d *deployer) loadProviders(targets []deployconfig.Target) (*provider, []pr
 			return nil, nil, err
 		}
 		need(at, m.Requires...)
-		if m.Name == composeProvider {
-			extra, err := deploy.Preflight(cfg)
-			if err != nil {
-				return nil, nil, refuse("%s: %v", at, err)
-			}
-			need(at, extra...)
+		p := provider{manifest: m, config: cfg, target: t.Name}
+		env, err := d.env(p)
+		if err != nil {
+			return nil, nil, err
 		}
-		provs = append(provs, provider{manifest: m, config: cfg, target: t.Name})
+		// Nothing is cloned yet: the preflight runs in the repository.
+		env.Dir = d.o.RepoRoot
+		extra, err := m.Preflight(ctx, d.o.Proc, env)
+		if err != nil {
+			return nil, nil, refuse("%s: %v", at, err)
+		}
+		need(at, extra...)
+		provs = append(provs, p)
 	}
 	var missing []string
 	for _, tool := range tools {
@@ -415,24 +421,20 @@ func (d *deployer) loadProviders(targets []deployconfig.Target) (*provider, []pr
 	return host, provs, nil
 }
 
-// composeProvider is the deploy-ssh-compose provider, whose config decides
-// some of the tools it needs.
-const composeProvider = "ssh-compose"
-
-func (d *deployer) manifest(name, kind, at string) (*deployprovider.Manifest, error) {
+func (d *deployer) manifest(name, slot, at string) (*deployprovider.Manifest, error) {
 	if d.o.Providers == nil {
 		return nil, refuse("%s: no deploy provider is available", at)
 	}
-	data, err := fs.ReadFile(d.o.Providers, "deploy-"+name+"/"+deployprovider.ManifestFile)
-	if err != nil {
-		return nil, refuse("%s: deploy provider %q is not available (no deploy-%s plugin)", at, name, name)
+	dir := deployprovider.Extension + "-" + name
+	if _, err := fs.Stat(d.o.Providers, dir+"/"+deployprovider.ManifestFile); err != nil {
+		return nil, refuse("%s: deploy provider %q is not available (no %s plugin)", at, name, dir)
 	}
-	m, err := deployprovider.Parse(data)
+	m, err := deployprovider.Load(d.o.Providers, dir)
 	if err != nil {
-		return nil, fmt.Errorf("deploy-%s: %w", name, err)
+		return nil, err
 	}
-	if m.Kind != kind {
-		return nil, refuse("%s: provider %s is a %s provider, not a %s", at, name, m.Kind, kind)
+	if m.Slot != slot {
+		return nil, refuse("%s: provider %s is a %s provider, not a %s", at, name, m.Slot, slot)
 	}
 	return m, nil
 }
@@ -502,8 +504,8 @@ func (d *deployer) env(p provider) (deployprovider.Env, error) {
 		}
 	}
 	return deployprovider.Env{
-		Values: values, Lists: lists, Dir: d.ws.dir, ProcEnv: d.o.ProcEnv, Output: d.o.Output,
-		Request: deployprovider.Request{Target: p.target, Artifact: m, ArtifactDir: dir, Config: p.config},
+		Values: values, Lists: lists, Config: p.config, Dir: d.ws.dir, ProcEnv: d.o.ProcEnv, Output: d.o.Output,
+		Payload: deployprovider.Payload{Target: p.target, Artifact: m, ArtifactDir: dir},
 	}, nil
 }
 

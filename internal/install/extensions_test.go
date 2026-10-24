@@ -14,6 +14,7 @@ import (
 
 	nerv "github.com/war-apps/nerv-by-gentle-ai"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/env/envtest"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/extension/extensiontest"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/install"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/refusal"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/version"
@@ -55,7 +56,8 @@ func fakeExtensions() fstest.MapFS {
 	return fstest.MapFS{
 		"task/.claude-plugin/plugin.json":          manifest("task"),
 		"task-teamwork/.claude-plugin/plugin.json": manifest("task-teamwork"),
-		"task-teamwork/provider.yaml":              &fstest.MapFile{Data: []byte("name: teamwork\n")},
+		"task/extension.yaml":                      &fstest.MapFile{Data: extensiontest.Extension("task", 1)},
+		"task-teamwork/provider.yaml":              &fstest.MapFile{Data: extensiontest.Provider("task", "teamwork")},
 	}
 }
 
@@ -270,11 +272,22 @@ func TestInstall_RequirementNotShippedIsRefused(t *testing.T) {
 	ext := fakeExtensions()
 	v, _ := version.PluginVersion(nerv.PluginFS())
 	ext["deploy-acme/.claude-plugin/plugin.json"] = &fstest.MapFile{Data: []byte(`{"name":"deploy-acme","version":"` + v + `"}`)}
-	ext["deploy-acme/deploy-provider.yaml"] = &fstest.MapFile{Data: []byte("name: acme\n")}
+	ext["deploy-acme/provider.yaml"] = &fstest.MapFile{Data: extensiontest.Provider("deploy", "acme")}
 	var stdout bytes.Buffer
 	deps := install.Deps{Home: home, FS: nerv.PluginFS(), ExtensionsFS: ext, Runner: baseRunner(), Now: fixedNow, LookPath: lookPathAll, Stdout: &stdout}
 	err := install.Install(context.Background(), deps, install.Options{NoSkills: true, Extensions: []string{"deploy-acme"}})
 	if err == nil || !strings.Contains(err.Error(), `"deploy"`) {
 		t.Fatalf("Install() error = %v, want a refusal naming the missing deploy plugin", err)
+	}
+
+	// An extension whose extension.yaml requires an extension this nerv
+	// does not ship is refused when it is requested.
+	ext = fakeExtensions()
+	ext["deploy/.claude-plugin/plugin.json"] = &fstest.MapFile{Data: []byte(`{"name":"deploy","version":"` + v + `"}`)}
+	ext["deploy/extension.yaml"] = &fstest.MapFile{Data: extensiontest.Extension("deploy", 3, "release")}
+	deps.ExtensionsFS = ext
+	err = install.Install(context.Background(), deps, install.Options{NoSkills: true, Extensions: []string{"deploy"}})
+	if !errors.As(err, new(*install.RefusalError)) || !strings.Contains(err.Error(), `extension plugin "deploy" requires "release", which this nerv does not ship`) {
+		t.Fatalf("Install() error = %v, want a refusal naming the missing release extension", err)
 	}
 }

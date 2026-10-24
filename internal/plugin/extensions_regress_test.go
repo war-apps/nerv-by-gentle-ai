@@ -8,6 +8,7 @@ import (
 	"testing/fstest"
 
 	nerv "github.com/war-apps/nerv-by-gentle-ai"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/extension/extensiontest"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/plugin"
 )
 
@@ -32,12 +33,15 @@ func TestMaterializeBundle_RemovesADroppedExtensionFolder(t *testing.T) {
 	}
 	v1 := fstest.MapFS{
 		"task/.claude-plugin/plugin.json": manifest("task"),
+		"task/extension.yaml":             {Data: extensiontest.Extension("task", 1)},
 		"gone/.claude-plugin/plugin.json": manifest("gone"),
+		"gone/extension.yaml":             {Data: extensiontest.Extension("gone", 0)},
 	}
 	if _, err := plugin.MaterializeBundle(nerv.PluginFS(), v1, dest); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := plugin.MaterializeBundle(nerv.PluginFS(), fstest.MapFS{"task/.claude-plugin/plugin.json": manifest("task")}, dest); err != nil {
+	v2 := fstest.MapFS{"task/.claude-plugin/plugin.json": manifest("task"), "task/extension.yaml": {Data: extensiontest.Extension("task", 1)}}
+	if _, err := plugin.MaterializeBundle(nerv.PluginFS(), v2, dest); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(filepath.Join(dest, "plugins", "gone")); !os.IsNotExist(err) {

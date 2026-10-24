@@ -49,7 +49,7 @@ func TestSuggestionOrder(t *testing.T) {
 	if !slices.Equal(got, want) {
 		t.Errorf("SuggestionOrder = %v, want %v", got, want)
 	}
-	other := []plugin.Extension{{Name: "zeta"}, {Name: "deploy", Requires: []string{"release"}}, {Name: "alpha"}, {Name: "release"}}
+	other := []plugin.Extension{{Name: "zeta"}, {Name: "deploy", Order: 3, Requires: []string{"release"}}, {Name: "alpha"}, {Name: "release", Order: 2}}
 	got = nil
 	for _, e := range plugin.SuggestionOrder(other) {
 		got = append(got, e.Name)

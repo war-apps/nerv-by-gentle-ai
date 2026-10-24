@@ -1,0 +1,48 @@
+# The task extension's contract with the NERV core (docs/extensions.md).
+# The core hands every pipeline event below to the task:dispatcher agent,
+# which dispatches it to each installed provider of the provider slot.
+name: task
+contract_version: 1
+suggest_order: 1
+runtime: agent
+agent: task:dispatcher
+events:
+  - run.started
+  - verification.started
+  - audit.ranked
+  - issue.deferred
+  - wave.started
+  - run.closed
+  - run.halted
+
+# Extra top-level fields of a task provider's provider.yaml; the task
+# contract (internal/taskprovider, skills/task/SKILL.md) gives their meaning.
+provider_fields:
+  - name: task_ref_prefix   # the prefix of the provider's task refs, such as TW
+    type: string
+    required: true
+  - name: stages            # canonical stage key -> default board stage substring
+    type: map
+  - name: events            # the pipeline events the provider handles
+    type: list
+
+# Task providers, several active at once. Every operation is optional: a
+# provider declares not_implemented for what its tracker lacks, and an event
+# it subscribes to must not need one of those.
+slots:
+  - name: provider
+    cardinality: many
+    operations:
+      getTask: optional
+      assign: optional
+      moveStage: optional
+      logTime: optional
+      updateTimelog: optional
+      deleteTimelog: optional
+      listTimelogs: optional
+      createTask: optional
+      createSubtask: optional
+      comment: optional
+      complete: optional
+      setPriority: optional
+      listTasks: optional

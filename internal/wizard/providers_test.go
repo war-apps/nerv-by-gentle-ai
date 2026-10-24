@@ -143,6 +143,11 @@ func twoProviders(t *testing.T) fs.FS {
 	manifest := strings.Replace(string(mapFS["task-teamwork/provider.yaml"].Data), "name: teamwork", "name: other", 1)
 	mapFS["task-other/provider.yaml"] = &fstest.MapFile{Data: []byte(manifest)}
 	mapFS["task-other/.claude-plugin/plugin.json"] = &fstest.MapFile{Data: []byte(`{"name":"task-other","version":"1.0.0","description":"other"}`)}
+	for path, file := range mapFS {
+		if rest, ok := strings.CutPrefix(path, "task-teamwork/procedures/"); ok {
+			mapFS["task-other/procedures/"+rest] = file
+		}
+	}
 	return mapFS
 }
 

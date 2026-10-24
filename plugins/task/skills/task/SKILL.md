@@ -5,7 +5,7 @@ description: NERV task plugin contract. Covers how providers are found (provider
 
 # NERV Task Plugin — Contract
 
-The task plugin connects NERV to task trackers (Teamwork today). It does not talk to any tracker itself. Each tracker is a **provider plugin** that ships a `provider.yaml` manifest plus one procedure file per operation. This file defines what both sides agree on.
+The task plugin connects NERV to task trackers (Teamwork today). It does not talk to any tracker itself. Each tracker is a **provider plugin** that ships a `provider.yaml` manifest plus one procedure file per operation. Every provider of every extension has the same `provider.yaml` shape, checked against the slot the extension's `extension.yaml` declares (`docs/extensions.md`); this file defines what the task side adds.
 
 `nerv` core knows nothing about tasks. The core orchestrator emits pipeline **events** only when this plugin is installed. The `task:dispatcher` agent turns each event into provider operations and answers with one envelope per provider (§6).
 
@@ -33,13 +33,17 @@ A provider is installed when its plugin `task-<name>@nerv` appears in `~/.claude
 
 Never read a copied procedure from another place, such as `~/.claude/commands/task/` or a repository checkout. The installed plugin is the only source, from any repository or worktree (S11).
 
-The manifest declares:
+The manifest declares the common provider fields:
 
-- `name`, `contract_version` (1) and `task_ref_prefix` (for example `TW`).
+- `name`, `extension: task`, `slot: provider` (the task extension's only slot, several providers active at once), `contract_version` (1) and `runtime: agent` (this dispatcher follows its procedures).
 - `mcp.server` and `mcp.tools`: the exact MCP server and tool names its procedures call.
 - `config`: the provider's settings (§1).
+- `operations`: one procedure file per operation (§3), or `not_implemented`. Every operation of the slot is declared, and every one is optional: the events decide what a provider needs.
+
+And the task fields, which `plugins/task/extension.yaml` allows under `provider_fields`:
+
+- `task_ref_prefix` (required, for example `TW`).
 - `stages`: the default provider stage name for each canonical stage key (§5).
-- `operations`: one procedure file per operation (§3), or `not_implemented`.
 - `events`: the events it handles (§6).
 
 `nerv` validates every manifest it ships. An operation an event needs can never be `not_implemented`.

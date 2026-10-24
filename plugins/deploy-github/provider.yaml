@@ -1,9 +1,12 @@
-# GitHub git host for nerv deploy (contract: internal/deployprovider).
-# gh runs in nerv deploy's clone of origin, so it releases origin's GitHub
-# repository with the user's `gh auth login` session.
+# GitHub git host of the NERV deploy extension (contract: docs/extensions.md
+# and internal/deployprovider). gh runs in nerv deploy's clone of origin, so
+# it releases origin's GitHub repository with the user's `gh auth login`
+# session.
 name: github
+extension: deploy
+slot: host
 contract_version: 1
-kind: git-host
+runtime: exec
 requires: [gh]
 operations:
   releaseExists:

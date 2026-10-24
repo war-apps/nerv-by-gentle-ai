@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/war-apps/nerv-by-gentle-ai/internal/extension"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/proc"
 )
 
@@ -31,7 +32,7 @@ func (e exitErr) ExitCode() int { return int(e) }
 
 func mustParse(t *testing.T, s string) *Manifest {
 	t.Helper()
-	m, err := Parse([]byte(s))
+	m, err := parse(t, s)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -49,7 +50,8 @@ func sampleEnv(prerelease bool) Env {
 	return Env{
 		Values:  values,
 		Lists:   map[string][]string{"images": {"r/api:1.2.0", "r/web:1.2.0"}, "image_tars": {"/a/outputs/api.tar"}},
-		Request: Request{Artifact: map[string]string{"version": "1.2.0"}, Config: map[string]string{"repo": "acme/api"}},
+		Payload: Payload{Artifact: map[string]string{"version": "1.2.0"}},
+		Config:  map[string]string{"repo": "acme/api"},
 	}
 }
 
@@ -109,11 +111,15 @@ func TestRun_SendsTheRequestAndReadsTheResponse(t *testing.T) {
 	if out.Status != StatusSkipped || out.Message != "disabled" {
 		t.Errorf("outcome %+v", out)
 	}
-	var req Request
+	var req struct {
+		extension.Request
+		Payload Payload `json:"payload"`
+	}
 	if err := json.Unmarshal(f.calls[0].Stdin, &req); err != nil {
 		t.Fatal(err)
 	}
-	if req.Operation != OpDeploy || req.ContractVersion != 1 || req.Config["repo"] != "acme/api" {
+	if req.Operation != OpDeploy || req.Contract != 1 || req.Extension != "deploy" || req.Slot != SlotTarget || req.Provider != "box" ||
+		req.Config["repo"] != "acme/api" || req.Payload.ArtifactDir != "" {
 		t.Errorf("request %+v", req)
 	}
 
@@ -121,10 +127,12 @@ func TestRun_SendsTheRequestAndReadsTheResponse(t *testing.T) {
 	if err != nil || out.Status != StatusOK || len(f.calls) != 4 {
 		t.Errorf("publish: %+v %v, %d calls", out, err, len(f.calls))
 	}
-	var item Request
+	var item struct {
+		Payload Payload `json:"payload"`
+	}
 	_ = json.Unmarshal(f.calls[3].Stdin, &item)
-	if item.Item != "r/web:1.2.0" {
-		t.Errorf("for_each request item %q", item.Item)
+	if item.Payload.Item != "r/web:1.2.0" {
+		t.Errorf("for_each request item %q", item.Payload.Item)
 	}
 
 	f.answer = func(proc.Command) (proc.Result, error) {
@@ -132,6 +140,16 @@ func TestRun_SendsTheRequestAndReadsTheResponse(t *testing.T) {
 	}
 	if _, err := m.Run(context.Background(), f, OpDeploy, sampleEnv(false)); err == nil || !strings.Contains(err.Error(), "unhealthy") {
 		t.Errorf("failed status: %v", err)
+	}
+	// nerv deploy cannot ask: blocked and needs_input fail the operation,
+	// with the provider's message.
+	for _, status := range []string{"blocked", "needs_input"} {
+		f.answer = func(proc.Command) (proc.Result, error) {
+			return proc.Result{Stdout: []byte(`{"status":"` + status + `","message":"which environment?"}`)}, nil
+		}
+		if _, err := m.Run(context.Background(), f, OpDeploy, sampleEnv(false)); err == nil || !strings.Contains(err.Error(), status+": which environment?") {
+			t.Errorf("%s status: %v", status, err)
+		}
 	}
 	f.answer = func(proc.Command) (proc.Result, error) {
 		return proc.Result{Stderr: []byte("denied: push access\n")}, exitErr(1)
@@ -163,9 +181,37 @@ func TestReleaseExists_ReadsTheExitCodeAndAbsentStderr(t *testing.T) {
 		t.Errorf("other failure: %v", err)
 	}
 	f.answer = func(proc.Command) (proc.Result, error) {
-		return proc.Result{Stdout: []byte(`{"status":"ok","exists":false}`)}, nil
+		return proc.Result{Stdout: []byte(`{"status":"ok","data":{"exists":false}}`)}, nil
 	}
 	if ok, err := m.ReleaseExists(context.Background(), f, sampleEnv(false)); err != nil || ok {
 		t.Errorf("JSON exists false: %v %v", ok, err)
+	}
+}
+
+// A target's preflight answers the extra executables its config needs, or
+// refuses the config with its message; without one, nothing is needed.
+func TestPreflight_ReadsRequiresOrTheRefusal(t *testing.T) {
+	withPreflight := strings.Replace(validTarget, "  preflight: not_implemented", "  preflight:\n    - argv: [\"{nerv}\", provider, deploy-box, preflight]", 1)
+	m := mustParse(t, withPreflight)
+	f := &fakeProc{answer: func(proc.Command) (proc.Result, error) {
+		return proc.Result{Stdout: []byte(`{"status":"ok","data":{"requires":["sshpass","sshpass"]}}`)}, nil
+	}}
+	got, err := m.Preflight(context.Background(), f, sampleEnv(false))
+	if err != nil || len(got) != 1 || got[0] != "sshpass" {
+		t.Errorf("Preflight = %v, %v", got, err)
+	}
+	var req extension.Request
+	if err := json.Unmarshal(f.calls[0].Stdin, &req); err != nil || req.Operation != OpPreflight {
+		t.Errorf("preflight request %s: %v", f.calls[0].Stdin, err)
+	}
+	f.answer = func(proc.Command) (proc.Result, error) {
+		return proc.Result{Stdout: []byte(`{"status":"failed","message":"config.environment is required"}`)}, exitErr(1)
+	}
+	if _, err := m.Preflight(context.Background(), f, sampleEnv(false)); err == nil || err.Error() != "config.environment is required" {
+		t.Errorf("refused preflight: %v", err)
+	}
+	none := mustParse(t, validTarget)
+	if got, err := none.Preflight(context.Background(), f, sampleEnv(false)); err != nil || got != nil {
+		t.Errorf("no preflight: %v %v", got, err)
 	}
 }

@@ -1,0 +1,7 @@
+# The release extension's contract with the NERV core (docs/extensions.md).
+# The core runs nerv release; the version and build slots come later.
+name: release
+contract_version: 1
+suggest_order: 2
+runtime: exec
+argv: ["{nerv}", release]

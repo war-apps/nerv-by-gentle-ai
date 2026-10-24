@@ -1,21 +1,33 @@
-// Package taskprovider holds the contract between the task plugin and the
-// provider plugins it dispatches to: the events the NERV pipeline emits,
-// the remote operations a provider implements, the canonical stage keys,
-// and the provider.yaml manifest each provider ships. The prose side of the
-// contract lives in plugins/task/skills/task/SKILL.md; this package is the
-// part the nerv CLI can check mechanically.
+// Package taskprovider is the task extension's side of the provider
+// contract: the remote operations of its provider slot, the canonical
+// stage keys, the pipeline events with the operations each needs, and the
+// task fields of a task provider's provider.yaml (task_ref_prefix, stages,
+// events). The shape every provider shares (name, extension, slot,
+// runtime, mcp, config, operations) is internal/extension's; this package
+// adds what only task providers mean. The prose side of the contract lives
+// in plugins/task/skills/task/SKILL.md.
 package taskprovider
 
+import "github.com/war-apps/nerv-by-gentle-ai/internal/extension"
+
 // ContractVersion is the only contract_version this build understands.
-const ContractVersion = 1
+const ContractVersion = extension.ContractVersion
 
 // NotImplemented declares an operation the provider does not support. An
 // event that needs it makes the manifest invalid.
-const NotImplemented = "not_implemented"
+const NotImplemented = extension.NotImplemented
 
-// Operations are the remote primitives a provider implements. Timers,
-// timelog consolidation and the composite operations (block, cancel,
-// close, done, stopAll) belong to the task plugin and are built from these.
+// Extension and Slot are where a task provider plugs in: the provider
+// slot of the task extension (plugins/task/extension.yaml).
+const (
+	Extension = "task"
+	Slot      = "provider"
+)
+
+// Operations are the remote primitives a provider implements, the
+// operations of the task extension's provider slot. Timers, timelog
+// consolidation and the composite operations (block, cancel, close, done,
+// stopAll) belong to the task plugin and are built from these.
 var Operations = []string{
 	"getTask",
 	"assign",
@@ -37,9 +49,9 @@ var Operations = []string{
 var StageKeys = []string{"pending", "analysis", "inDev", "testing", "implemented", "blocked", "canceled"}
 
 // Results are the outcomes the dispatcher reports per provider for one
-// event; needs_input carries a question the orchestrator relays verbatim
-// before dispatching again.
-var Results = []string{"ok", "skipped", "blocked", "failed", "needs_input"}
+// event: the statuses of the common response envelope. needs_input carries
+// a question the orchestrator relays verbatim before dispatching again.
+var Results = extension.Statuses
 
 // Events maps each event the pipeline emits to the operations a provider
 // must implement to handle it. run.closed never completes the task: that

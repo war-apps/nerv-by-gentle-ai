@@ -33,8 +33,8 @@ func refusedBeforeAnyWrite(t *testing.T, e *world, rep Report, before string) {
 	if got := statuses(rep)["clone"]; got != StatusNotRun {
 		t.Errorf("clone step %q, want not-run: the preflight comes first", got)
 	}
-	if log := e.log(); len(log) != 1 || log[0] != "" {
-		t.Errorf("providers ran: %v", log)
+	if effects := e.effects(); len(effects) != 1 || effects[0] != "" {
+		t.Errorf("providers ran: %v", e.log())
 	}
 }
 

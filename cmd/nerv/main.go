@@ -106,7 +106,7 @@ type options struct {
 	// release clone at repoRoot, streaming to output; tests inject a
 	// recorder. Nil means a releaserun.Runner.
 	ReleaseSteps func(repoRoot string, output io.Writer) releaseplan.StepRunner
-	// DeployProc runs nerv deploy's provider commands and the
+	// DeployProc runs nerv deploy's provider commands and the native
 	// deploy-ssh-compose operations' infisical, ssh and sshpass, and
 	// DeploySleep waits between the health checks; tests inject fakes. Nil
 	// means proc.ExecRunner and a real wait.
@@ -162,10 +162,10 @@ func run(args []string, stdout, stderr io.Writer, opts options) int {
 		return runDeploy(args[1:], stdout, stderr, opts)
 	case "migrate":
 		return runMigrate(args[1:], stdout, stderr, opts)
-	case "deploy-ssh-compose":
-		// Hidden: the deploy-ssh-compose provider's deploy and verify
-		// operations, run by nerv deploy.
-		return runDeploySSHCompose(args[1:], stdout, stderr, opts)
+	case "provider":
+		// Hidden: the operations of nerv's native providers, run by their
+		// extension (nerv deploy runs deploy-ssh-compose's).
+		return runProvider(args[1:], stdout, stderr, opts)
 	case "pipeline":
 		fmt.Fprintln(stderr, pipelineRemoved)
 		return 2

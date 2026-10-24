@@ -483,7 +483,10 @@ the agent type `task:dispatcher` is available in the session. When it is
 not, a run asks no task question, emits no event, writes no `task_event`
 log entry and creates no `task-events.yaml`.
 
-**Events.** With the task plugin installed, Ikari launches
+**Events.** Ikari hands each event to every installed extension whose
+`extension.yaml` subscribes to it under `events`
+([extensions.md](extensions.md)); today that is the task plugin, reached
+through its `agent` entry. With the task plugin installed, Ikari launches
 `task:dispatcher` with one event at each hook point:
 
 | Event | Emitted when | Provider operations |
@@ -533,12 +536,15 @@ the run summary lists it under "Task events pending" with the hint
 file in either location and dispatches the pending envelopes again, in
 order, once the cause is fixed.
 
-**Adding a provider.** A new tracker is a new plugin, with no change to core
-or to the task plugin. It ships a `provider.yaml` that declares its `name`,
-`contract_version`, `task_ref_prefix`, the MCP server and exact tool names
-it calls, its `config` keys (scope, type, default, prompt), its canonical
-stage map, one procedure file per operation (or `not_implemented`), and the
-events it subscribes to. `nerv` validates every manifest it ships: an event
+**Adding a provider.** A new tracker is a new plugin, `task-<name>`, with no
+change to core or to the task plugin. It ships a `provider.yaml`, the shape
+every provider shares ([extensions.md](extensions.md)), that declares its
+`name`, `extension: task`, `slot: provider`, `contract_version`,
+`runtime: agent`, the MCP server and exact tool names it calls, its
+`config` keys (scope, type, default, prompt), one procedure file per
+operation (or `not_implemented`), and the task fields: its
+`task_ref_prefix`, its canonical stage map and the events it subscribes
+to. `nerv` validates every manifest it ships: an event
 whose operations are `not_implemented` makes the manifest invalid. At
 dispatch time the provider is skipped as `blocked`, naming the missing
 tools, when the session lacks any MCP tool the manifest declares.

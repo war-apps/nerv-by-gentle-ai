@@ -1,14 +1,20 @@
-# SSH and docker compose target for nerv deploy (contract:
-# internal/deployprovider): dim's /update-deploy for one environment.
-# publish loads the artifact's image tars and pushes its images (docker
-# login to the registry first); deploy and verify run nerv's own
-# deploy-ssh-compose, which reads the environment's deploy data (the
-# NERV_DEPLOY_<ENVIRONMENT>_<KEY> variables, or Infisical with the
-# infisical CLI), updates the container over SSH with the host's compose
-# script, and checks that it is healthy and labelled with the version.
+# SSH and docker compose target of the NERV deploy extension (contract:
+# docs/extensions.md and internal/deployprovider): dim's /update-deploy for
+# one environment. A native provider: preflight, deploy and verify run
+# nerv's own hidden `nerv provider deploy-ssh-compose <operation>`.
+# preflight checks the config before anything is written and answers the
+# tools it needs (sshpass for password authentication, infisical for source
+# infisical); publish loads the artifact's image tars and pushes its images
+# (docker login to the registry first); deploy reads the environment's
+# deploy data (the NERV_DEPLOY_<ENVIRONMENT>_<KEY> variables, or Infisical
+# with the infisical CLI) and updates the container over SSH with the
+# host's compose script; verify checks that it is healthy and labelled with
+# the version.
 name: ssh-compose
+extension: deploy
+slot: target
 contract_version: 1
-kind: target
+runtime: exec
 requires: [docker, ssh]
 config:
   - key: environment
@@ -77,12 +83,14 @@ config:
     default: 120s
     prompt: The bound of the health wait (a Go duration)
 operations:
+  preflight:
+    - argv: ["{nerv}", provider, deploy-ssh-compose, preflight]
   publish:
     - argv: [docker, load, -i, "{item}"]
       for_each: image_tars
     - argv: [docker, push, "{item}"]
       for_each: images
   deploy:
-    - argv: ["{nerv}", deploy-ssh-compose, deploy]
+    - argv: ["{nerv}", provider, deploy-ssh-compose, deploy]
   verify:
-    - argv: ["{nerv}", deploy-ssh-compose, verify]
+    - argv: ["{nerv}", provider, deploy-ssh-compose, verify]
