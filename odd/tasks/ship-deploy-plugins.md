@@ -250,4 +250,16 @@ Forecast: well over 400 lines (about 11.5k lines of Go move or are rewritten), s
     - the `release:` rename;
     - `install --help` describes the order.
   - **Parity gap found:** the 4.2.0 channel and `latest` image tags are not pushed. The parent restores the 4.2.0 tag kinds (`version`, `channel`, `latest`) in `build.images` (writer running).
-- **Next step:** the image tags writer, then the slice chain for native review. The user's L5 decisions are "ODD + agentes NERV encima (Recommended)", "Se mantiene, renombrado (Recommended)" and "Subcomando nerv migrate (Recommended)". Then T6.
+- **L24** (2026-10-24): 06b7238 restored the 4.2.0 image tag kinds `{name, tags: [version, channel, latest]}`, and migrate writes them. The parent also committed dc1a016, after the slice C review's advisories: release paths refuse every git-directory alias (NTFS trailing dots and spaces, alternate data streams, 8.3 names, HFS+ ignorables), and the symlink check fails closed. RED, then GREEN.
+- **L25** (2026-10-24): native review chain `ship-split/*`. The user granted every review.
+  - **Approved and acknowledged:**
+    - A (collation, 187 lines);
+    - B2 (config and installer fixes on top of 9c6032c, 167);
+    - C (deploy `.git`/image-version fixes, 167);
+    - D (lock and Misato, 94);
+    - E (ship and deploy plugins plus lightweight tags, 1977);
+    - F1 (Solo FULL and MAGI rules, 908);
+    - F2 (fix batch, image tags, `.git` hardening, 1531).
+  - **Over the lens budget even alone, so `size:exception`:** d30bbe5 (engine, 4343 lines), f0254d2 (ship artifact, 7894), 9c6032c (config move, 1620 lines across 129 files; slice B failed), 367d066 (deploy, 3804), 7af0059 (ODD mode, 3197), 2e80414 (semantic-release and pipeline removal, 23274, mostly deletions) and 9f6cf70 (migrate, 4122). Each is covered by its independent verifier (L9, L10, L12, L15, L18, L21; migrate's verifier is running). Splitting them would need hand surgery on tightly coupled code, which the tasks-split 04b attempt showed does not build at intermediate commits.
+  - **Advisories from the reviews:** non-blocking; to be listed in the close.
+- **Next step:** the migrate verifier, then close. The user's L5 decisions are "ODD + agentes NERV encima (Recommended)", "Se mantiene, renombrado (Recommended)" and "Subcomando nerv migrate (Recommended)". Then T6.
