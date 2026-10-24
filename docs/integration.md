@@ -153,8 +153,9 @@ DIRECT is gentle-ai's direct-inline route: a typo, rename, comment, config
 value or small known bug in one already-understood file. Ikari edits it
 itself (the only tier where it may), runs the focused check, shows the
 commit for the user to validate, and runs the RDD hook. No agent is
-launched except Hyuga for a requested tracker task, and Maya only when RDD
-is off or unknown and the native assessment is high or unassessable.
+launched except Maya only when RDD is off or unknown and the native
+assessment is high or unassessable. With the task plugin installed, Ikari
+also emits the task events through `task:dispatcher`.
 
 ### LIGHT pipeline
 
@@ -213,7 +214,7 @@ flowchart TB
     S6 --> S1
     S5 -- yes --> S7["Docs (ritsuko), archive (aoba + nerv spec-compose), curate (fuyutsuki)"]
     S7 --> T["Run summary (aoba)"]
-    T --> U["Close (hyuga tracker close)"]
+    T --> U["Close (run.closed task event)"]
 ```
 
 FULL adds MAGI governance on top of the shared primitives (RED/GREEN/
@@ -228,8 +229,8 @@ freezes the patch, runs four blind passes, compiles them through Kaji (with
 Fuyutsuki's read-only refute mode on inferential severe items), ranks the issues for a user gate,
 routes approved fixes through the work-unit cycle with a re-audit over the
 fix delta (capped at 2), and closes with Ritsuko's documentation, the
-mechanical archive, Fuyutsuki's log summary, the run summary and the
-tracker close.
+mechanical archive, Fuyutsuki's log summary, the run summary and, with the
+task plugin installed, the `run.closed` event.
 
 ### RDD per commit
 
@@ -306,7 +307,7 @@ authority to anyone it launches.
 | `maya` | Quality gate — runs tests/lint/build, reproduces the TDD evidence pilots reported, routes failures to whoever owns them | LIGHT or DIRECT reduced gate when the verification gate requires an independent verifier; FULL baseline (phase 0) and full a-d gate (phase 2) | `nerv/maya-report.md` | sonnet / medium | Read, Bash, Glob, Grep, Write, Engram search/save |
 | `kaji` | Audit compiler — merges and dedupes the four audit passes, prepares the refuter batch, carries unresolved items across re-audit rounds | Phase 3, once per audit round, after the four passes return | `nerv/audit-report.md` | opus / high | Read, Glob, Grep, Write, Engram search/save |
 | `gendo` | Audit pass — implemented tests versus Ritsuko's test plan (missing cases, weakened or tautological assertions, untested acceptance criteria), reliability beyond the plan (invalid inputs, failure paths, contracts, boundaries, regressions, determinism), implementation correctness and edge cases, and resilience and performance: fallbacks and graceful degradation, retry/backoff safety, timeouts and cancellation, rollback or fix-forward safety, latency/load/resource use and SLO risk, performance regressions (N+1, unbounded loops or allocations, blocking I/O on hot paths, missing pagination, accidental quadratic work), observability of failures; keeps full scope regardless of the RDD switch | Phase 3, one of four parallel blind passes | JSON findings, merged by Kaji into `nerv/audit-report.md` | sonnet / medium | Read, Glob, Grep, Engram search |
-| `hyuga` | Plan and issue operations — four dispatches: `criticality`, `waves`, `wave-report`, `ranking`, plus the provider-agnostic task-tracker dispatch | criticality before the MAGI vote; waves after plan approval; wave-report during implementation; ranking after the refuter; tracker at preflight, Maya's full-gate start, the issue gate, and close | `nerv/criticality.md`, `nerv/waves.md`, `nerv/issue-ranking.md`; tracker op result inline | sonnet / medium | Read, Write, Glob, Grep, Bash, Engram search/save, Teamwork MCP |
+| `hyuga` | Plan and issue operations — four dispatches: `criticality`, `waves`, `wave-report`, `ranking` | criticality before the MAGI vote; waves after plan approval; wave-report during implementation; ranking after the refuter | `nerv/criticality.md`, `nerv/waves.md`, `nerv/issue-ranking.md` | sonnet / medium | Read, Write, Glob, Grep, Bash, Engram search/save |
 | `aoba` | Git operations and run telemetry — organizes user-validated commits, freezes audit patches, archives closed changes, writes the run summary | in FULL: after every user-validated work unit, patch freeze before each audit round, archive and run summary at close; in DIRECT/LIGHT only for PR preparation, slicing or archiving | conventional commits, `nerv/audit/diff-round-N.patch`, the archived change folder, `nerv/run-summary.md` | sonnet / low | Bash, Read, Glob, Grep, Write, Engram search/save |
 
 **How a run flows.** Every request is classified once, before the first
@@ -329,7 +330,7 @@ per commit" above.
 
 **Activation.** A repo opts in by creating `.nerv/nerv.yaml` with
 `enabled: true` — `/nerv:init` writes it interactively (base branch,
-worktree policy, worktree location, skill stacks, task-tracker provider),
+worktree policy, worktree location, skill stacks),
 and `/nerv:configure`
 revisits any of those choices afterwards. Without the marker a session
 behaves like plain gentle-ai; with it, SessionStart prints an activation
@@ -344,8 +345,9 @@ adds Ritsuko's spec/test-plan,
 a blind MAGI vote per task, Fuyutsuki's governance veto, a plan-approval
 gate, wave-based implementation, and Kaji's four-pass audit before close.
 
-**Gates a human will see.** The grouped preflight question (task,
-worktree, branch, base) when no task/timer is active; a commit-validation
+**Gates a human will see.** The grouped preflight question (worktree,
+branch, base), plus any task question the task plugin returns as
+`needs_input` when it is installed; a commit-validation
 stop before every commit (Ikari's in DIRECT/LIGHT, Aoba's in FULL); the corner-case questions relayed as one
 grouped prompt in FULL; the whole-plan approval HARD gate in FULL; the
 ranked issue gate after an audit; and the RDD consent envelope after a
@@ -358,7 +360,8 @@ ask before taking over, however long the gate stays open.
 **Artifacts.** Nerv by Gentle-AI writes only under
 `openspec/changes/{change}/nerv/` (deliberation log, exploration, test
 plan, votes, veto ruling, waves,
-Maya reports, audit rounds, run summary) plus the change files
+Maya reports, audit rounds, run summary, and `task-events.yaml` when the
+task plugin is installed) plus the change files
 (`state.yaml`, `proposal.md`, `design.md`, `tasks.md`, `specs/`) at the
 change root, an OpenSpec-style layout that Nerv by Gentle-AI owns now that
 gentle-ai 4.x has retired SDD. `.nerv/nerv.yaml` (project scope) and
@@ -372,18 +375,12 @@ Nerv by Gentle-AI artifacts), `at-close` (default — artifacts land in one
 `never` (artifacts stay untracked; the user commits them manually, if
 ever).
 
-**Task tracker.** `tasks.provider` selects `teamwork` (implemented today) or
-`none` (no tracker calls; the preflight still asks worktree/branch). Another
-provider can be added: see "Adding a provider" in
-`plugin/skills/nerv-tasks/SKILL.md`. Hyuga's
-`DISPATCH: tracker` drives create/start/moveStage/block/close/done against
-the configured provider. The 16 `/task:*` commands read the same single
-`nerv.yaml` config (user + project scope) instead of hardcoded values.
-
 **`/nerv:status`.** Reports gentle-ai major-version compatibility, the
 active config (merged user + project), and — while a run is in progress —
 the orchestrator lock state (`nerv/.orchestrator.lock`: holder, step,
 `waiting_on`, heartbeat age); the lock line disappears once the run closes.
+It also prints whether the task plugin is installed (`task:dispatcher`
+available); timers are shown by `/task:timers`.
 
 **`/nerv:configure`.** Configures `nerv.yaml` (user and project scope),
 per-role models, skills, and repository registration through grouped
@@ -391,6 +388,84 @@ guided questions instead of hand-editing YAML or the terminal wizard — see
 "Setup" in [README.md](../README.md). Read-only in `claude -p`, where it
 prints the current config and the exact `--set`/`--set-model` syntax
 instead of asking.
+
+### Task plugin
+
+Core holds no task, timer or tracker logic. Task tracking is split across
+optional plugins from the same marketplace:
+
+- **`task@nerv`**, the task plugin. It owns the `/task:*` commands, the
+  local timer store, timelog consolidation, the composite operations
+  (block, cancel, done, close, stopAll) and the `task:dispatcher` agent.
+  Its contract is `plugins/task/skills/task/SKILL.md`.
+- **Provider plugins**, such as `task-teamwork@nerv`. Each one ships a
+  `provider.yaml` manifest and one procedure file per remote operation.
+
+**Detection.** The orchestrator treats the task plugin as installed when
+the agent type `task:dispatcher` is available in the session. When it is
+not, a run asks no task question, emits no event, writes no `task_event`
+log entry and creates no `task-events.yaml`.
+
+**Events.** With the task plugin installed, Ikari launches
+`task:dispatcher` with one event at each hook point:
+
+| Event | Emitted when | Provider operations |
+|---|---|---|
+| `run.started` | Preflight, after classification | `getTask`, `assign`, `moveStage` (plus the local timer) |
+| `verification.started` | Maya's full gate starts (FULL), or the work unit's verification starts (LIGHT, DIRECT) | `moveStage` |
+| `audit.ranked` | The FULL issue ranking is accepted | `comment` |
+| `issue.deferred` | Once per accepted `DEFER` issue | `createTask` |
+| `wave.started` | A FULL wave starts (a subtask only with `tasks.subtasks_per_wave: true`) | `createSubtask` |
+| `run.closed` | The run closes complete | `moveStage`, `logTime`; it never completes the task, which stays an explicit `/task:close` |
+| `run.halted` | The run halts, with the cause in `data` | `comment`, `moveStage`, `logTime` |
+
+Every event carries `task_ref`, `repo`, `change`, `branch`, `worktree`,
+`session_id`, `data` and `disabled_events`. The `task_ref` returned by
+`run.started` feeds `git.branch_pattern` (`{prefix}`, `{id}`),
+`git.commit_ref_pattern` and the change's `state.yaml`.
+
+**Envelope.** The dispatcher answers one envelope per provider:
+
+```yaml
+- event: run.started
+  provider: teamwork
+  result: ok            # ok | skipped | blocked | failed | needs_input
+  task_ref: TW-49076279
+  data: {stage: "En Desarrollo", timer: started}
+  error: "<exact error text>"   # when blocked or failed
+  replay: true                   # when re-dispatching later can still apply it
+```
+
+A `needs_input` envelope carries a question; Ikari relays it verbatim and
+dispatches the event again with the answer in `data`. Dispatch is
+fail-soft: a `blocked` or `failed` envelope never halts or retries the run.
+
+**Per-event switches.** `tasks.events.<event>: off` in either `nerv.yaml`
+scope turns one event off, and a run can switch events off for itself
+(`disabled_events`). A switched-off event is answered `skipped`. See
+[configuration.md](configuration.md#tasks-task-plugin).
+
+**`task-events.yaml` and `/task:replay`.** Ikari appends every envelope to
+`openspec/changes/<change>/nerv/task-events.yaml` and logs one `task_event`
+entry `{event, provider, result, task_ref}` in the deliberation log. An
+envelope that is `blocked` or `failed` with `replay: true` stays pending:
+the run summary lists it under "Task events pending" with the hint
+`/task:replay <change>`, which dispatches the pending envelopes again, in
+order, once the cause is fixed.
+
+**Adding a provider.** A new tracker is a new plugin, with no change to core
+or to the task plugin. It ships a `provider.yaml` that declares its `name`,
+`contract_version`, `task_ref_prefix`, the MCP server and exact tool names
+it calls, its `config` keys (scope, type, default, prompt), its canonical
+stage map, one procedure file per operation (or `not_implemented`), and the
+events it subscribes to. `nerv` validates every manifest it ships: an event
+whose operations are `not_implemented` makes the manifest invalid. At
+dispatch time the provider is skipped as `blocked`, naming the missing
+tools, when the session lacks any MCP tool the manifest declares.
+
+**Commands.** The `/task:*` commands are served by the `task` plugin, so
+nothing is copied to `~/.claude/commands/task/` any more. They read the
+same `nerv.yaml` (user and project scope) as the rest of NERV.
 
 ### Engram project detection
 

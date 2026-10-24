@@ -28,15 +28,16 @@ git:
   worktree_pattern: ".claude/worktrees/{slug}"   # where task worktrees are created; {slug} {branch} {prefix} {id} {repo}
                                                   # `nerv configure`'s wizard offers default / herdr / custom; herdr
                                                   # reuses its own [worktrees] directory as <directory>/{repo}/{slug}
-  branch_pattern: "feature/{prefix}-{id}-{slug}"   # prefix comes from the provider (tw)
+  branch_pattern: "feature/{prefix}-{id}-{slug}"   # {prefix}/{id} come from the run.started task_ref (tw-123)
   commit_ref_pattern: "({PREFIX}-{id})"
-tasks:
-  provider: teamwork                # teamwork | none ; "ask" when absent
-  ask_when_missing: true            # preflight asks task + worktree + branch if no active task
-  subtasks_per_wave: false
-  providers:                        # one block per provider, only the enabled one is required
+tasks:                              # read only by the optional task plugin (task@nerv); core ignores it
+  provider: teamwork                # provider for bare task ids; "none" turns the task plugin off in this scope
+  ask_when_missing: true            # at run.started with no task, the dispatcher asks for one
+  subtasks_per_wave: false          # whether wave.started creates one subtask per FULL wave
+  events:                           # per-event switches, on (default) | off
+    verification.started: off       # e.g. leave the testing stage move manual
+  providers:                        # one block per installed provider; keys come from its provider.yaml
     teamwork:
-      task_ref_prefix: tw           # {prefix} in branch_pattern / commit_ref_pattern
       assignee_id: 686035           # user scope
       project_id: 1271726           # project scope
       tasklist_id: 3951970          # project scope
@@ -87,6 +88,38 @@ step automatically at the end of its own cache refresh.
 and warns when the cached agent frontmatter has drifted from it, so a
 pending `nerv apply-models` run is visible without inspecting the cache by
 hand.
+
+## `tasks:` (task plugin)
+
+Core never reads `tasks:`. The block belongs to the optional task plugin
+(`task@nerv`) and its provider plugins, such as `task-teamwork@nerv`. The
+full key reference is in the task plugin's contract
+(`plugins/task/skills/task/SKILL.md`, section 1).
+
+- **Per-event switches.** `tasks.events.<event>: off` stops one pipeline
+  event from reaching any provider, per repository (project file) or for
+  everyone (user file). A run can also switch events off for itself; the
+  dispatcher then answers `skipped` with `reason: switched off`.
+- **Provider settings.** `tasks.providers.<name>.*` holds the keys that the
+  provider's `provider.yaml` declares under `config`, each with its scope
+  (`user` or `repo`), type, default and prompt. `tasks.providers.<name>.enabled:
+  false` keeps a provider installed but stops sending it events.
+- **Setting them.** When `task@nerv` is enabled, the `nerv configure`
+  wizard shows a "Task providers" section that prompts each enabled
+  provider's scalar keys, plus `tasks.provider` when more than one
+  provider is enabled. `nerv configure --init-repo <path>
+  --repo-provider-config <provider>.<key>=<value>` (repeatable) writes
+  `tasks.providers.<provider>.<key>` into the repository's
+  `.nerv/nerv.yaml`.
+
+**Migration.** A `tasks:` block written by an older release keeps working:
+
+- with the task plugin installed, it is read under the layout above, so the
+  Teamwork keys under `tasks.providers.teamwork.*` keep their paths;
+- without it, core ignores the block and never deletes it;
+- copies of the `/task:*` commands that an older release put in
+  `~/.claude/commands/task/` are reported by `nerv install` and removed only
+  after you confirm. The `task` plugin now serves those commands itself.
 
 ### Roles and their gentle-ai equivalents
 
