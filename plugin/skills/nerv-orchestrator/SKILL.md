@@ -137,7 +137,7 @@ Inject only the configuration each agent needs, never the full document:
 |---|---|
 | every agent | its `skills.<category>` stack (resolved to paths, see Delegation) |
 | pilots, Aoba | `git` block, `commit_ref`, delivery-budget state |
-| Hyuga | `tasks` block, `git` block |
+| `task:dispatcher` (only when the task plugin is installed) | `tasks` block, `git` block |
 | Fuyutsuki, Hyuga | `critical_paths` |
 
 **Model and effort per role.** Resolve every `nerv:<role>` launch's
@@ -180,64 +180,58 @@ agent's behalf.
 
 ## Preflight
 
-Before any intel or code, on the first implementation request of the
-session, Ikari resolves configuration and checks whether work may proceed
-without asking:
+On the first implementation request of the session, before any intel or
+code, Ikari:
 
-1. **Resolve `nerv.yaml`.** Merge `~/.claude/nerv/nerv.yaml` (user scope)
+1. **Resolves `nerv.yaml`.** Merge `~/.claude/nerv/nerv.yaml` (user scope)
    and `<repo>/.nerv/nerv.yaml` (project scope) per `## Configuration
-   resolution` above.
-2. **Detect an active task.** Is there a running local timer in
-   `~/.claude/work/timers.json` scoped to this session, or a task ref
-   already given by the user in this conversation?
-3. **Check `tasks.provider`.** Resolved (one of `teamwork` |
-   `none`), or absent with
-   `ask_when_missing: true`?
-
-If step 2 finds an active task and step 3 resolves, preflight is
-**silent** — proceed straight to classification. `tasks.provider: none`
-counts as resolved: no tracker ops run and no timer is expected, but the
-worktree and branch groups below still apply.
-
-If either check fails, ask **one grouped blocking prompt** (native
-`AskUserQuestion` when the groups fit representably — up to four —
-plain-text fallback otherwise, per the Lossless Blocking Prompts
-contract) with these groups, in this order:
-
-1. **Task** — one of:
-   - create a new task with the minimal data: title, provider/source
-     (one of the configured `tasks.providers` or `none`), project/list
-     (only when the chosen provider needs one — e.g. Teamwork's
-     `project_id`/`tasklist_id`), priority (`high`|`medium`|`low`);
-   - use an existing task, by id;
-   - work without a task.
-2. **Worktree** — create a new git worktree, or work in place. Skip this
-   group entirely when `git.worktree` is `always` or `never` (act on that
-   value instead of asking). The worktree path itself comes from
-   `git.worktree_pattern` (default `.claude/worktrees/{slug}`), never asked
-   here.
-3. **Branch name** — proposed from `git.branch_pattern` filled with
-   `{prefix}` (lowercase `task_ref_prefix` of the chosen provider, e.g.
-   `tw`), `{id}`, and `{slug}`; editable. With no task (`none`, or
-   `tasks.provider: none`), `{prefix}-{id}` is omitted and the slug comes
-   from the request text.
-4. **Base branch** — proposed from `git.base_branch`, editable.
-
-After the answers, once Classification (below) has picked the tier:
-
-- `nerv:hyuga` runs `DISPATCH: tracker` (`createTask` if requested, then
-  `start`) through the port (`nerv-tasks/SKILL.md`) in every tier; skipped
-  when the provider is `none` or the user chose to work without a task.
-- The worktree and branch are created from the confirmed names, at the path
-  resolved from `git.worktree_pattern`: by Ikari itself in DIRECT and LIGHT
-  (git state is inline work), by `nerv:aoba` in FULL.
-- Ikari offers **once** to persist the resolved provider and base branch
-  into the project `.nerv/nerv.yaml`; writes only on explicit "yes".
+   resolution` above. Core reads no `tasks` key and never deletes a
+   `tasks:` block; it only relays it to the task plugin.
+2. **Detects the task plugin.** It is installed when the agent type
+   `task:dispatcher` is available in this session. When it is not, the run
+   asks no task question, runs no task step, writes no `task_event` entry
+   and creates no `task-events.yaml`; `task_ref` stays empty.
+3. **Classifies** the change (below), then, with the task plugin installed,
+   emits `run.started` (see `## Task events`) in every tier, carrying any
+   task ref the user already gave. A `needs_input` envelope (for example,
+   which task to start) is relayed verbatim as a blocking prompt and
+   `run.started` is dispatched again with the answer in `data`. The
+   envelope's `task_ref` feeds `{prefix}` and `{id}` below, `commit_ref`
+   and the `state.yaml` `task_ref`.
+4. **Asks one grouped blocking prompt** (native `AskUserQuestion` when the
+   groups fit representably, plain-text fallback otherwise, per the
+   Lossless Blocking Prompts contract), in this order:
+   1. **Worktree** — create a new git worktree, or work in place. Skip this
+      group when `git.worktree` is `always` or `never` (act on that value).
+      The path comes from `git.worktree_pattern` (default
+      `.claude/worktrees/{slug}`), never asked here.
+   2. **Branch name** — proposed from `git.branch_pattern` filled with
+      `{prefix}` (the lowercase prefix of `task_ref`, e.g. `tw`), `{id}`,
+      and `{slug}`; editable. With no task (no task plugin, or no
+      `task_ref` in its envelopes), `{prefix}-{id}` is omitted and the slug
+      comes from the request text.
+   3. **Base branch** — proposed from `git.base_branch`, editable.
+5. **Creates the worktree and branch** from the confirmed names, at the
+   path resolved from `git.worktree_pattern`: Ikari itself in DIRECT and
+   LIGHT (git state is inline work), `nerv:aoba` in FULL. Ikari offers
+   **once** to persist the base branch into the project `.nerv/nerv.yaml`;
+   writes only on explicit "yes".
 
 `commit_ref` is `git.commit_ref_pattern` filled with the task ref (e.g.
 `(TW-49132010)`) and goes into every work-unit commit (Ikari's own in
 DIRECT/LIGHT, every Aoba launch that commits in FULL); with no task,
-`commit_ref` is empty and the commit subject carries no tracker suffix.
+`commit_ref` is empty and the commit subject carries no task suffix.
+
+## Task events
+
+Core never talks to a task tracker. With the task plugin installed, Ikari
+emits `run.started`, `verification.started`, `audit.ranked`,
+`issue.deferred`, `wave.started`, `run.closed` and `run.halted` through
+`task:dispatcher`, records every envelope in `nerv/task-events.yaml` plus
+one `task_event` log entry, and lists pending ones in the run summary with
+the `/task:replay <change>` hint. A `blocked` or `failed` envelope never
+halts or retries the run. Payload, emission points and recording rules:
+`references/task-events.md`, loaded before the first dispatch.
 
 Once per change (not per request), also resolve and cache: **pace**
 (interactive | fast-forward), **artifact store** (default `openspec`;
@@ -481,11 +475,14 @@ them.
   and its verification gate. Load when Classification resolves LIGHT, or
   the moment a DIRECT run ratchets to LIGHT.
 - `references/pipeline-full.md` — the FULL pipeline step table (Phase 3)
-  and all its subsections (Tracker dispatch, Plan gatekeeper, Pilot
+  and all its subsections (Task events, Plan gatekeeper, Pilot
   selection, Audit stage mechanics, Ratchet handling, MAGI vote mechanics,
   Revise loop, Governance veto, Plan approval, Implementation wave
   execution). Load when Classification resolves FULL, or the moment a
   DIRECT or LIGHT run ratchets to FULL.
+- `references/task-events.md` — the task-event payload, emission points
+  and recording rules. Load before the first `task:dispatcher` launch, and
+  only when the task plugin is installed.
 - `references/rdd-relay.md` — the RDD assessment and consent relay. Load
   right before the first work-unit commit of the change.
 - `references/delivery.md` — the work-unit commit cadence, PR-strategy

@@ -128,7 +128,7 @@ Return exactly these fields as the final text:
 - `artifacts`: list of artifact keys/paths returned (and, for `openspec`
   mode, awaiting orchestrator persistence)
 - `next_recommended`: one of `none`, `next-pilot`, `maya-gate`,
-  `aoba-commit`, `tracker-close`, `magi-vote`, `ikari-decision`,
+  `aoba-commit`, `run-closed` (Ikari emits the `run.closed` task event), `magi-vote`, `ikari-decision`,
   `misato-revise`, `plan-gate`, `waves`
 - `risks`: risks discovered, or "None"
 - `skill_resolution`: `paths-injected`, `fallback-registry`,

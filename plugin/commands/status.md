@@ -15,10 +15,10 @@ short and imperative — this is a status check, not a narrative.
    `<repo>/.nerv/nerv.yaml` (project scope). Print a merged summary: which
    keys came from the project file, which fell back to the user file, and
    which fell back to a built-in default. The project file always wins key
-   by key. Also print one line: `tasks.provider: <resolved value>` and
-   `session timer: running (task <taskId>)` or `session timer: none`
-   (check `~/.claude/work/timers.json` for an entry matching this
-   session's `sessionId`). Also print `artifacts.commit: <resolved value>`
+   by key. Also print one line: `Task plugin: installed (task:dispatcher
+   available)` or `Task plugin: not installed`; when it is installed, add
+   that `/task:timers` shows the running timers. Also print
+   `artifacts.commit: <resolved value>`
    (`with-change` | `at-close` | `never`; built-in default `at-close` when neither file sets it).
 
 3. **gentle-ai version check.** Run `gentle-ai --version` and parse the

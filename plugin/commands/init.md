@@ -19,17 +19,6 @@ overwrites silently, and bootstraps `openspec/` and the skill registry itself.
    `AskUserQuestion` when representable, plain-text fallback otherwise, per
    the Lossless Blocking Prompts contract). Do not ask about a key already
    resolved from either file. Candidate groups:
-   - **Task provider**: `teamwork` | `none`.
-     Omit this group entirely if `tasks.provider` already resolves.
-   - **Teamwork project/tasklist** (only when the chosen or already-
-     resolved provider is `teamwork` and `tasks.providers.teamwork.
-     project_id` or `.tasklist_id` is still missing from the project
-     file): project and tasklist, each by id or name. When the Teamwork
-     MCP is reachable, offer to list candidates first
-     (`teamwork_list_projects`, `teamwork_list_tasklists`) so the user
-     picks rather than types raw ids; fall back to free text otherwise.
-     Omit this group when the provider is not `teamwork`, or when both
-     ids already resolve.
    - **Base branch**: free text, defaulting to the current branch's upstream
      default if detectable, else `main`. Omit if `git.base_branch` already
      resolves.
@@ -38,19 +27,13 @@ overwrites silently, and bootstraps `openspec/` and the skill registry itself.
      them now; mention once that they can be added to `.nerv/nerv.yaml`
      later.
 
-   User-scope-only keys — `tasks.providers.teamwork.assignee_id` and
-   `.stages` — are read from `~/.claude/nerv/nerv.yaml` and are never
-   asked here.
-
    If every required key already resolves, skip the prompt entirely and
    proceed silently to step 4.
 
 4. **Write `.nerv/nerv.yaml`.** Compose the project file with `enabled: true`
    plus the resolved answers, following the schema in the approved NERV
    config (see `skills/nerv-orchestrator/SKILL.md` → Configuration
-   resolution) — never the user-scope-only keys
-   (`tasks.providers.teamwork.assignee_id`, `.stages`), which stay in
-   `~/.claude/nerv/nerv.yaml` alone. Append a fully commented-out `models:`
+   resolution). Append a fully commented-out `models:`
    block showing the syntax and today's plugin defaults, so the user can see
    how to override a role's model/effort without guessing a value:
 
@@ -83,9 +66,8 @@ overwrites silently, and bootstraps `openspec/` and the skill registry itself.
    only). If `.nerv/nerv.yaml` already exists, do **not** overwrite it
    without confirmation — show the diff between the existing file and the
    proposed one, and ask a single yes/no confirmation before writing. (The
-   `nerv configure --init-repo` CLI never overwrites it either; it only
-   removes the removed task providers `github-projects` and `jira` from an
-   existing file, with a backup.)
+   `nerv configure --init-repo` CLI never overwrites it either, and leaves
+   any `tasks:` block in it untouched.)
 
 5. **Bootstrap `openspec/` and the skill registry.** NERV owns this step; it
    no longer delegates to a gentle-ai agent (gentle-ai 4.x removed
