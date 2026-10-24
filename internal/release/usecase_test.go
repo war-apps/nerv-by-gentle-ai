@@ -283,3 +283,33 @@ func TestGuard_MissingPluginJSON_ReturnsEnvironmentError(t *testing.T) {
 		t.Error("missing plugin.json should not be a refusal (it maps to exit 2)")
 	}
 }
+
+func TestApply_BumpsEveryExtensionPluginToTheSameVersion(t *testing.T) {
+	repo := fixtureRepo(t, "0.1.0")
+	extJSON := filepath.Join(repo, "plugins", "task", ".claude-plugin", "plugin.json")
+	if err := os.MkdirAll(filepath.Dir(extJSON), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(extJSON, []byte("{\n  \"name\": \"task\",\n  \"version\": \"0.1.0\"\n}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	runner := &envtest.FakeRunner{Responses: map[string]envtest.Response{
+		tagsKey(repo, "v*"): {Stdout: ""},
+		logKey(repo, ""):    {Stdout: oneCommit(1, "feat: add applied feature")},
+	}}
+
+	result, err := release.Apply(testDeps(repo, runner), release.PreviewOptions{})
+	if err != nil {
+		t.Fatalf("Apply() error = %v", err)
+	}
+	got, err := os.ReadFile(extJSON)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(got), `"version": "0.2.0"`) {
+		t.Errorf("extension plugin.json not bumped: %q", got)
+	}
+	if len(result.Written) != 3 || result.Written[2] != extJSON {
+		t.Errorf("Written = %v, want the extension plugin.json last", result.Written)
+	}
+}

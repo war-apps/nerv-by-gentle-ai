@@ -146,6 +146,11 @@ func compute(deps Deps, opts PreviewOptions, apply bool) (PreviewResult, error) 
 		if err != nil {
 			return result, err
 		}
+		extensions, err := applyExtensionVersions(deps.Repo, nextVersion)
+		if err != nil {
+			return result, err
+		}
+		written = append(written, extensions...)
 		result.Applied = true
 		result.Written = written
 	}
@@ -235,6 +240,31 @@ func applyVersion(pluginJSONPath, pluginJSONContent, nextVersion, changelogPath,
 	}
 
 	return []string{pluginJSONPath, changelogPath}, nil
+}
+
+// applyExtensionVersions writes nextVersion into every extension plugin's
+// plugins/<name>/.claude-plugin/plugin.json: all the plugins of the
+// marketplace ship in one release. It returns the files written, in path
+// order.
+func applyExtensionVersions(repo, nextVersion string) ([]string, error) {
+	paths, err := filepath.Glob(filepath.Join(repo, "plugins", "*", ".claude-plugin", "plugin.json"))
+	if err != nil {
+		return nil, err
+	}
+	for _, path := range paths {
+		content, err := os.ReadFile(path)
+		if err != nil {
+			return nil, fmt.Errorf("reading %s: %w", path, err)
+		}
+		updated, _, err := SetPluginVersion(string(content), nextVersion)
+		if err != nil {
+			return nil, fmt.Errorf("%s: %w", path, err)
+		}
+		if err := os.WriteFile(path, []byte(updated), 0o644); err != nil {
+			return nil, fmt.Errorf("writing %s: %w", path, err)
+		}
+	}
+	return paths, nil
 }
 
 // GuardResult is Guard's outcome: version, tag, changelog_section,
