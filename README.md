@@ -41,13 +41,17 @@ engine and contracts unchanged — ODD (Organic Driven Development) and its
 feature document, RDD (receipt-driven review), the skill registry and
 resolver, the `jd` judgment agents, delivery budgeting with chained PRs,
 and the lossless blocking-prompt contract — and expresses Nerv by
-Gentle-AI's own governance on top. Every run is tracked on an ODD feature
-document, `odd/tasks/<feature>.md`, which the NERV agents write: Misato
-authors its `## Specs` and `## Tasks`, the MAGI vote is recorded per task
-row, and Ritsuko's test plan goes into its `## Log`. NERV's governance
-files (state, deliberation log, audit rounds, run summary) sit next to it
-in `odd/<feature>/nerv/` and are committed with the feature; the
-orchestrator lock is runtime only, in `.nerv/locks/`. Nerv by
+Gentle-AI's own governance on top. Each FULL run is tracked on an ODD
+feature document, `odd/tasks/{feature}.md`, which the NERV agents write:
+Misato authors its `## Specs` and `## Tasks`, the MAGI vote is recorded per
+task row, Aoba records each commit, and Ritsuko's test plan goes into its
+`## Log`. NERV's governance files (state, deliberation log, audit rounds,
+run summary) sit next to it in `odd/{feature}/nerv/` and are committed
+with the feature in the close commit. DIRECT and LIGHT runs, like
+gentle-ai's ODD for small work, create no document and no close commit:
+their run files stay in the runtime folder `.nerv/runs/{run-id}/`, and
+their only commit is the work commit. The orchestrator lock is runtime
+only, in `.nerv/locks/`. Nerv by
 Gentle-AI never modifies any gentle-ai file: nothing is ever written
 under `~/.claude/agents` or `~/.claude/skills`, so `gentle-ai sync` cannot
 see or touch it.
@@ -267,7 +271,8 @@ answer per line) instead of prompting, for scripted setup.
 After the wizard, open Claude Code in each configured repository and run
 `/nerv:init` once — this refreshes the skill registry; the wizard itself
 only writes `.ai-workflow.yml`. Runs are tracked on gentle-ai's ODD feature
-documents (`odd/tasks/<feature>.md`), which the orchestrator creates.
+documents (`odd/tasks/{feature}.md`), which the orchestrator creates for
+FULL runs.
 
 Outside the wizard, the plugin stays self-contained apart from these
 requirements: **gentle-ai 4.x** installed and configured (`gentle-ai

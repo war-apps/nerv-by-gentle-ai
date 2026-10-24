@@ -1,27 +1,55 @@
 ## ODD document and run folder
 
-NERV tracks every run on gentle-ai's ODD (Organic Driven Development)
+NERV tracks FULL runs on gentle-ai's ODD (Organic Driven Development)
 feature document, and keeps its own governance files in a run folder next
 to it. OpenSpec is no longer used: there is no `openspec/` folder, no
 proposal, design or spec-delta file, and no archive step.
-Loaded with the core at the feature's creation, and again whenever an
-actor writes the document.
+Loaded with the core when the run id is named, and again whenever an
+actor writes the document or a run ratchets to FULL.
+
+### Which runs get a document
+
+**Only FULL runs create** the ODD feature document `odd/tasks/{feature}.md`,
+its Engram copy `odd/{feature}/tasks`, the run folder `odd/{feature}/nerv/`
+and the close commit (`docs: close nerv run for {feature}`). DIRECT and
+LIGHT runs create none of them: like gentle-ai's ODD for small work, they
+work from the request and the diff. Their run files (`state.yaml`, the
+deliberation log, `task-events.yaml`, `run-summary.md`, `maya-report.md`,
+`exploration-light.md`) stay in the runtime folder `.nerv/runs/{run-id}/`,
+which is never committed, and a DIRECT or LIGHT run asks the user to
+approve only its work commit.
 
 ### Layout
 
-| Path | Holds | Committed |
-|---|---|---|
-| `odd/tasks/{feature}.md` | the ODD feature document: header, `## Specs`, `## Tasks`, `## Log` | yes, per `artifacts.commit` |
-| `odd/{feature}/nerv/` | the run folder: `state.yaml`, `deliberation-log.md`, `task-events.yaml`, `run-summary.md`, `audit/` (`diff-round-N.patch`, `round-N.yaml`, `commits-round-N.txt`, `pass-<name>-round-N.json`) and the other governance files of `nerv-artifacts.md` | yes, with the feature, per `artifacts.commit` |
-| `.nerv/locks/{feature}.lock` | the orchestrator lock (`## Orchestrator lock` in the core) | never: `.nerv/` is runtime only and ignores itself |
+| Path | Holds | Tier | Committed |
+|---|---|---|---|
+| `odd/tasks/{feature}.md` | the ODD feature document: header, `## Specs`, `## Tasks`, `## Log` | FULL | yes, per `artifacts.commit` |
+| `odd/{feature}/nerv/` | the run folder: `state.yaml`, `deliberation-log.md`, `task-events.yaml`, `run-summary.md`, `audit/` (`diff-round-N.patch`, `round-N.yaml`, `commits-round-N.txt`, `pass-<name>-round-N.json`) and the other governance files of `nerv-artifacts.md` | FULL | yes, with the feature, per `artifacts.commit` |
+| `.nerv/runs/{run-id}/` | the run folder of a DIRECT or LIGHT run, same file names | DIRECT, LIGHT | never: `.nerv/` is runtime only and ignores itself |
+| `.nerv/locks/{run-id}.lock` | the orchestrator lock (`## Orchestrator lock` in the core) | every tier | never |
 
-A feature is never named `tasks`: its run folder would land inside
-`odd/tasks/`.
+**Run id.** Ikari names the run once at Preflight, as a kebab-case slug:
+from the task ref when there is one (`tw-49132010-short-slug`), otherwise
+from the request (`short-slug`), unique under `odd/tasks/` and
+`.nerv/runs/`, and never `tasks` (a FULL run folder would land inside
+`odd/tasks/`). In FULL the feature name `{feature}` is the run id. In
+DIRECT and LIGHT, `{feature}` holds the run id wherever it still appears:
+`state.yaml`'s `feature`, Engram topic keys, the task event payload's
+`feature` and the `/task:replay {feature}` argument.
 
-Every `nerv/...` locator in this skill, the shared contracts and the agent
-files is relative to `odd/{feature}/`: `nerv/maya-report.md` is
-`odd/{feature}/nerv/maya-report.md`. Launch briefs still carry it absolute
-(`references/launch-discipline.md`).
+**Locators.** Every `nerv/...` locator in this skill, the shared contracts
+and the agent files resolves against the run's folder: `nerv/maya-report.md`
+is `odd/{feature}/nerv/maya-report.md` in FULL and
+`.nerv/runs/{run-id}/maya-report.md` in DIRECT and LIGHT. Launch briefs
+still carry it absolute (`references/launch-discipline.md`).
+
+**Ratchet to FULL.** When a DIRECT or LIGHT run ratchets to FULL, Ikari
+creates the document `odd/tasks/{feature}.md` with `{feature}` = the run
+id (header, `L1` = the original request verbatim, `S#` seeded from it,
+one `## Log` entry recording the ratchet), moves every file of
+`.nerv/runs/{run-id}/` into `odd/{feature}/nerv/`, and keeps the lock
+name. A work commit already made becomes the `implemented-pre-plan` task
+row (`references/pipeline-full.md`, Ratchet handling).
 
 **Engram.** The document's mirror is the ODD topic `odd/{feature}/tasks`
 in the repo's own Engram project, saved by whoever wrote the document
@@ -51,10 +79,10 @@ Shape, in this fixed order (gentle-ai's ODD protocol):
    | T1 | S1, S2 | delegated (FULL) | shinji | — | standard | approved, majority-2:1, round 1, frozen | done | a1b2c3d |
    ```
 
-   `Route` is `inline` (DIRECT) or `delegated` with the tier and the
-   trigger evidence. `Status` is `pending`, `implemented-pre-plan` (a
+   `Route` is `delegated (FULL)` with the trigger evidence, or
+   `inline (DIRECT)` / `delegated (LIGHT)` for the pre-plan row of a
+   ratcheted run. `Status` is `pending`, `implemented-pre-plan` (a
    ratcheted DIRECT or LIGHT diff), `in progress`, `done` or `killed`.
-   DIRECT and LIGHT leave `Criticality` and `MAGI` as `—`.
 4. **`## Log`**, last: `L1` is the user's original request verbatim; later
    user corrections are appended verbatim with their date, and analysis,
    decisions, evidence, progress and the next step are appended as
@@ -68,9 +96,9 @@ role that owns it.
 
 | Former artifact or role output | Now | Written by |
 |---|---|---|
-| the per-change folder | `odd/tasks/{feature}.md` plus `odd/{feature}/nerv/` | Ikari creates both |
+| the per-change folder | `odd/tasks/{feature}.md` plus `odd/{feature}/nerv/` | Ikari creates both (FULL only) |
 | user request | header and `L1` verbatim; the request's rules seeded as `S1`..`Sn`, quotes only | Ikari, at the feature's creation |
-| `proposal.md` (why, scope) | the `## Specs` scope and acceptance criteria | Misato (FULL); Ikari in DIRECT and LIGHT, from the request alone |
+| `proposal.md` (why, scope) | the `## Specs` scope and acceptance criteria | Misato |
 | `specs/{domain}/spec.md` (scenarios) | acceptance criteria under each `S#`, and the test plan's cases | Misato, from Ritsuko's test plan |
 | `design.md` | one `## Log` entry, `design`, with `### Decisions` and `### New skills, scripts and commands` (a list, or `none`) | Misato |
 | `tasks.md` | `## Tasks` rows and lines (`ID`, `Specs`, `Route`, `Pilot`, `Depends on`, `Status`) | Misato |
@@ -80,9 +108,13 @@ role that owns it.
 | `nerv/test-plan.md` | one `## Log` entry, `test plan`: cases per `S#`, `### Corner-case questions`, `### Answers` | Ikari, verbatim from Ritsuko; Ikari fills `### Answers` with the user's words |
 | plan gate, issue gate, rulings | one `## Log` entry each (rulings also in their `nerv/` file) | Ikari; Misato for rulings |
 | Maya's verdict, the RDD receipts | one `## Log` evidence line each (detail in `nerv/maya-report.md` and the deliberation log) | Ikari |
-| `status: done` in `tasks.md`, the archive | `Status` and `Commit` per task row, and a close entry in `## Log` | Ikari (Aoba records commits in FULL) |
-| the one task row of DIRECT and LIGHT | `## Tasks` row and line (`Route` `inline (DIRECT)` or `delegated (LIGHT)`) | Ikari |
+| `status: done` in `tasks.md`, the archive | `Status` per task row, and a close entry in `## Log` | Ikari |
+| the commit of each task | the `Commit` column | Aoba, who makes the commits |
 | `state.yaml`, deliberation log, audit rounds, run summary, task events | `odd/{feature}/nerv/` | unchanged owners (`nerv-artifacts.md`) |
+
+Aoba writes the `Commit` column: after each work-unit commit he records
+its hash in the task's row (both commits of a task, RED then GREEN, as
+`a1b2c3d, e4f5a6b`), and nobody else edits that column.
 
 When Ikari creates the document, it tells the user in one line which
 document it created and how many tasks it holds. Every launch brief names
@@ -90,14 +122,15 @@ the document, the task and its `S#` (`Spec: odd/tasks/{feature}.md, T2,
 S3-S4`); the actor reads the document until `## Log` before acting and
 reports which `S#` it covered.
 
-A MAGI-frozen task's row is never edited again by Misato; Ikari's
-bookkeeping columns (`Criticality`, `MAGI`, `Status`, `Commit`) stay
-writable. Hyuga never edits the document.
+A MAGI-frozen task's row is never edited again by Misato; the bookkeeping
+columns stay writable (`Criticality`, `MAGI` and `Status` by Ikari,
+`Commit` by Aoba). Hyuga never edits the document.
 
 ### TDD mode and runner
 
-Resolved once per feature, before the first launch, and written into the
-header (`Test runner: <command> (strict TDD)`); an explicit user choice
+Resolved once per run, before the first launch; in FULL it is written
+into the header (`Test runner: <command> (strict TDD)`), in DIRECT and
+LIGHT into `state.yaml` (`tdd`, `test_runner`). An explicit user choice
 wins. Next comes the repository's default in `.ai-workflow.yml`: `odd.tdd`
 (`strict` or `standard`) and `odd.test_runner` (a command, or `none`), which
 `nerv migrate` writes from the old configuration; the merged configuration
@@ -115,17 +148,22 @@ RED is observed before GREEN for every behavior change.
 
 ### Close
 
-There is no archive. A feature closes when every task row carries its
+There is no archive. A FULL feature closes when every task row carries its
 `Status` and `Commit`, the `## Log` records the close (outcome, failed,
 skipped or pending checks, next step), `state.yaml` has `closed_at`, and
 the lock is deleted. The document and the run folder then reach git per
-`artifacts.commit` (`delivery.md`); they stay in `odd/` for later runs and
-reviews to read.
+`artifacts.commit` in the close commit `docs: close nerv run for
+{feature}` (`delivery.md`); they stay in `odd/` for later runs and
+reviews to read. A DIRECT or LIGHT run closes in its runtime folder:
+`closed_at` in `.nerv/runs/{run-id}/state.yaml`, the lock deleted, and
+no commit beyond its work commit.
 
 ### Resume
 
-gentle-ai's ODD resume order: `mem_context`, then `mem_search` scoped to
-this project and feature (`odd/{feature}/tasks`, `nerv/{feature}`), then
-`mem_get_observation` for the full document, then the file
-`odd/tasks/{feature}.md` itself. Reconcile the two before continuing the
-next unfinished task (`references/resume.md`).
+gentle-ai's ODD resume order, for FULL: `mem_context`, then `mem_search`
+scoped to this project and feature (`odd/{feature}/tasks`,
+`nerv/{feature}`), then `mem_get_observation` for the full document, then
+the file `odd/tasks/{feature}.md` itself. Reconcile the two before
+continuing the next unfinished task. A DIRECT or LIGHT run resumes from
+`.nerv/runs/{run-id}/state.yaml`, its request and the diff
+(`references/resume.md`).

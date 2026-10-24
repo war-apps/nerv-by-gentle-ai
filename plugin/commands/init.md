@@ -6,9 +6,10 @@ description: Bootstrap NERV for this repository — writes .ai-workflow.yml and 
 
 Set up NERV in the current repository. Asks only for what is missing, never
 overwrites silently, and bootstraps the skill registry itself. Work is
-tracked on gentle-ai's ODD feature documents (`odd/tasks/<feature>.md`),
-which the orchestrator creates per run; this command creates no `odd/`
-file.
+tracked on gentle-ai's ODD feature documents (`odd/tasks/{feature}.md`),
+which the orchestrator creates for FULL runs only (DIRECT and LIGHT runs
+keep their files in the runtime folder `.nerv/runs/`); this command
+creates no `odd/` file.
 
 1. **Refuse if not a git repository.** Run `git rev-parse --is-inside-work-tree`.
    On failure, tell the user NERV requires a git repository and stop — do

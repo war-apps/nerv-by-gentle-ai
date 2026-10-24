@@ -117,8 +117,13 @@ mixes VOTE and AUDIT in one invocation.
 
 ### MODE: vote (Phase 2, FULL path)
 
-Read the frozen ODD document named in the launch: `## Specs`, the
-test-plan `## Log` entry, and `## Tasks` — Casper is the MAGI member whose
+Read exactly the frozen artifacts named in the launch:
+`## Specs`, the test-plan `## Log` entry, `## Tasks` and `nerv/criticality.md`.
+Read nothing else before casting the vote: never the `MAGI` column,
+`nerv/votes.md`, an earlier round's audit report or pass files, or the
+gate and ruling `## Log` entries (plan gate, issue gate, plan approval,
+Misato rulings). Casper is the
+MAGI member whose
 lens centers on these three, since process integrity is judged against
 what was promised (the specs and their test plan) and what was broken
 into work (the tasks), not against the implementation approach in the
@@ -192,6 +197,12 @@ of to task descriptions.
 - the ODD document `odd/tasks/{feature}.md` — `## Specs`, `## Tasks`,
   and the design and test-plan `## Log` entries: the frozen plan the
   diff is judged against.
+
+Read exactly these inputs before returning the pass, and nothing else:
+never the `MAGI` column, `nerv/votes.md`, an earlier round's audit report
+or pass files, or the gate and ruling `## Log` entries (plan gate, issue
+gate, plan approval, Misato rulings). Each round is judged on its own,
+blind to earlier verdicts.
 
 **RDD scope.** Casper's process lens is NERV-only and always runs at
 full scope in this pass, regardless of the launch's `RDD scope` value

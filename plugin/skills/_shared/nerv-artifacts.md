@@ -1,16 +1,20 @@
 # NERV Artifact Schemas
 
 One definition per NERV-owned artifact, referenced by every agent instead of
-repeating the shape inline. Every run is tracked on gentle-ai's ODD feature
-document, `odd/tasks/{feature}.md` (header, `## Specs`, `## Tasks`,
-`## Log`; Engram mirror `odd/{feature}/tasks`); which role writes which
-section is defined in `nerv-orchestrator/references/odd-document.md` and
-summarized in `## ODD document sections authored by NERV roles` below. The
-NERV governance files below live in the run folder `odd/{feature}/nerv/`
-and are committed with the feature per `artifacts.commit`; every `nerv/...`
-locator is relative to `odd/{feature}/`. The orchestrator lock is the one
-exception: it lives in the runtime folder, `.nerv/locks/{feature}.lock`,
-and is never committed. Engram topic key for every run-folder artifact:
+repeating the shape inline. Only FULL runs are tracked on gentle-ai's ODD
+feature document, `odd/tasks/{feature}.md` (header, `## Specs`,
+`## Tasks`, `## Log`; Engram mirror `odd/{feature}/tasks`); which role
+writes which section is defined in
+`nerv-orchestrator/references/odd-document.md` and summarized in `## ODD
+document sections authored by NERV roles` below. The NERV run files below
+live in the run's folder: `odd/{feature}/nerv/` in FULL, committed with
+the feature per `artifacts.commit`, and `.nerv/runs/{run-id}/` in DIRECT
+and LIGHT, never committed. Every `nerv/...` locator resolves against that
+folder (`nerv/state.yaml` is `odd/{feature}/nerv/state.yaml` or
+`.nerv/runs/{run-id}/state.yaml`). The orchestrator lock lives in the
+runtime folder, `.nerv/locks/{run-id}.lock`, and is never committed. In
+FULL `{feature}` is the run id; in DIRECT and LIGHT `{feature}` holds the
+run id. Engram topic key for every run-folder artifact:
 `nerv/{feature}/{artifact}` (artifact = file name without extension).
 
 ## state.yaml
@@ -19,16 +23,21 @@ and is never committed. Engram topic key for every run-folder artifact:
   session knows which pipeline governed the feature without
   re-classifying.
 - Author: Ikari only; never hand-edited by NERV agents.
-- Location: `nerv/state.yaml` (`odd/{feature}/nerv/state.yaml`).
+- Location: `nerv/state.yaml` (`odd/{feature}/nerv/state.yaml` in FULL,
+  `.nerv/runs/{run-id}/state.yaml` in DIRECT and LIGHT).
 - Engram key: `nerv/{feature}/state` (mirror of the `nerv:` block only).
-- `feature` is the feature name, the `{feature}` of every locator.
+- `feature` is the run id, the `{feature}` of every locator.
+- `request`, `tdd` and `test_runner` are written in DIRECT and LIGHT only,
+  which have no ODD document: the user's request verbatim, and the TDD
+  mode and runner (FULL keeps them in the document's `L1` and header).
+  Resume and a ratchet to FULL read them from here.
 - `task_ref` holds `{PREFIX}-{id}`, e.g. `TW-49132010`, taken from the
   `run.started` envelope the task plugin returns at Preflight, or `null`
   when the change has no task (the task plugin is not installed, or its
   envelopes carry no `task_ref`).
 - `closed_at` is `null` until the feature closes, then set once by Ikari at
   Close (DIRECT's or LIGHT's Close step, or FULL's step 19), the same
-  write that deletes `.nerv/locks/{feature}.lock`.
+  write that deletes `.nerv/locks/{run-id}.lock`.
 - The merged configuration's `models` section (per-role `model`/`effort`,
   resolved as described in `nerv-orchestrator/SKILL.md`'s Configuration
   resolution) is not mirrored into `state.yaml`; it is resolved fresh each
@@ -40,6 +49,9 @@ nerv:
   path: light                     # direct | light | full
   classification_reason: "single domain, no critical path, under budget"
   task_ref: "TW-49132010"         # or null when no task
+  request: "..."                  # DIRECT and LIGHT only: verbatim
+  tdd: strict                     # DIRECT and LIGHT only: strict | standard
+  test_runner: "go test ./..."    # DIRECT and LIGHT only: a command or none
   created_at: "2026-09-24T14:03:00Z"
   closed_at: null                 # set once, at Close
 ```
@@ -52,7 +64,7 @@ nerv:
 - Author: Ikari only; no other agent reads or writes this file. Never
   persisted to Engram or committed to git — local, ephemeral, machine-scoped
   state in the runtime folder `.nerv/`, which ignores itself.
-- Location: `.nerv/locks/{feature}.lock`.
+- Location: `.nerv/locks/{run-id}.lock`.
 - Engram key: none.
 
 ```yaml
@@ -215,10 +227,11 @@ error), then: replay them with `/task:replay {feature}`}
 ## task-events.yaml (Ikari, append-only)
 
 - Purpose: every envelope the task plugin's `task:dispatcher` returned for
-  this change, so undelivered events can be replayed.
+  this run, so undelivered events can be replayed.
 - Author: Ikari, after every dispatch. Never created when the task plugin
   is not installed (`task:dispatcher` unavailable).
-- Location: `nerv/task-events.yaml`.
+- Location: `nerv/task-events.yaml` (`odd/{feature}/nerv/task-events.yaml`
+  in FULL, `.nerv/runs/{run-id}/task-events.yaml` in DIRECT and LIGHT).
 - Shape: one list item per envelope, verbatim from the dispatcher
   (`{event, provider, result, task_ref, data, error, replay}`), plus the
   `payload` it was dispatched with. An envelope with `result` `blocked` or
@@ -306,8 +319,8 @@ FULL adds these event types to the same append-only log, same shape
 
 ## ODD document sections authored by NERV roles
 
-The ODD document `odd/tasks/{feature}.md` replaces the former per-change
-plan files; its sections are authored by NERV roles (full table in
+The ODD document `odd/tasks/{feature}.md` of a FULL run replaces the
+former per-change plan files; its sections are authored by NERV roles (full table in
 `nerv-orchestrator/references/odd-document.md`):
 
 - Header, `L1` and the seeded `S#` — Ikari, from the user's request
@@ -330,9 +343,9 @@ plan files; its sections are authored by NERV roles (full table in
     A task ratcheted in from a DIRECT- or LIGHT-path diff carries
     `Status` `implemented-pre-plan`, and MAGI votes on it exactly like any
     other task — there is no free pass for pre-plan work.
-- `Criticality`, `MAGI`, `Status` and `Commit` columns — Ikari's
-  bookkeeping, copied from `nerv/criticality.md`, `nerv/votes.md` and the
-  commits.
+- `Criticality`, `MAGI` and `Status` columns — Ikari's bookkeeping, copied
+  from `nerv/criticality.md`, `nerv/votes.md` and the task outcomes. Aoba
+  writes the `Commit` column, recording each commit he makes.
 
 ### The test plan (Ritsuko, in the `## Log`)
 
@@ -810,7 +823,7 @@ payload_ref}`):
 - `resume` — a NERV session resumed an interrupted change (payload:
   `{from_step, took_over_from}` — `took_over_from` carries the stale
   session's `session_id` on a takeover, or is absent on a normal resume).
-- `lock_refused` — a resume attempt found a fresh orchestrator lock (`.nerv/locks/{feature}.lock`) held
+- `lock_refused` — a resume attempt found a fresh orchestrator lock (`.nerv/locks/{run-id}.lock`) held
   by another session and the user chose to wait rather than take over
   (payload: the other session's `session_id` and `heartbeat_at`).
 

@@ -18,7 +18,8 @@
 - **"Task events pending" in the run summary.** A provider answered
   `blocked` or `failed` (for example, missing MCP tools); the run went on
   without it. Fix the cause named in the envelope's `error`, then run
-  `/task:replay <feature>`.
+  `/task:replay {feature}` with the name the hint printed (the run id for a
+  DIRECT or LIGHT run).
 - **Interactive gates can't be driven by `claude -p`.** Non-interactive
   harness runs (`bench/journeys.md`'s default variant) pre-answer every
   blocking prompt in the launch context; the interactive variants exist
@@ -26,8 +27,8 @@
   `AskUserQuestion`-shaped prompt itself.
 - **RDD advisory findings aren't a separate backlog.** Non-blocking
   findings from an acknowledged review receipt are recorded inline in the
-  feature document (`odd/tasks/<feature>.md`), not tracked in a dedicated
-  issue list.
+  feature document (`odd/tasks/{feature}.md`) of a FULL run, or in the run
+  summary of a DIRECT or LIGHT run, not tracked in a dedicated issue list.
 - **Reviewed-boundary bookkeeping is per branch.** The "last reviewed
   commit" that RDD assessment walks forward from is tracked per branch,
   not per feature or per worktree; rebasing or cherry-picking across
@@ -68,10 +69,15 @@
   the same `.git`), and keep individual commits near the ~400-line
   delivery-budget heuristic so each fits.
 - **Looking for an archive step or `openspec/changes/`.** There is none any
-  more: Nerv by Gentle-AI tracks every run on gentle-ai's ODD feature
-  document (`odd/tasks/<feature>.md`) and keeps its governance files in
-  `odd/<feature>/nerv/`. A feature closes in place: its `## Tasks` rows
-  carry their commits and its `## Log` records the close. An `openspec/`
+  more: Nerv by Gentle-AI tracks each FULL run on gentle-ai's ODD feature
+  document (`odd/tasks/{feature}.md`) and keeps its governance files in
+  `odd/{feature}/nerv/`. A feature closes in place: its `## Tasks` rows
+  carry their commits and its `## Log` records the close.
+- **A DIRECT or LIGHT run left no `odd/` file and no close commit.** That
+  is by design: only FULL runs create the ODD document and the close
+  commit. DIRECT and LIGHT runs keep their state, deliberation log, task
+  events and run summary in the runtime folder `.nerv/runs/{run-id}/`,
+  which is never committed, and their only commit is the work commit. An `openspec/`
   folder left from an older release is no longer read; `nerv migrate`
   converts the changes still in progress.
 - **An agent reports `partial` because `mem_save` was rejected** ("session
@@ -95,7 +101,7 @@
 - **`issue.deferred` or `/task:start` blocks with "tasklist not found."** A
   stale `tasks.providers.teamwork.tasklist_id` (or `project_id`) in
   the configuration. Fix the config (project or user scope), then replay the
-  pending envelope with `/task:replay <feature>`; the task plugin never
+  pending envelope with `/task:replay {feature}`; the task plugin never
   silently creates the task elsewhere.
 - **Old `/task:*` copies in `~/.claude/commands/task/`.** An older release
   copied the commands there. The `task` plugin now serves them itself;

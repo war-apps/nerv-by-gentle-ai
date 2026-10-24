@@ -31,13 +31,16 @@ short and imperative — this is a status check, not a narrative.
      informational note only.
    Never block on either case.
 
-4. **Active features.** If `odd/tasks/` exists in the repo, list each ODD
-   feature document `odd/tasks/<feature>.md` whose run folder
-   `odd/<feature>/nerv/state.yaml` has no `closed_at`: its `S#` count, its
+4. **Active runs.** If `odd/tasks/` exists in the repo, list each FULL
+   run's ODD feature document `odd/tasks/{feature}.md` whose run folder
+   `odd/{feature}/nerv/state.yaml` has no `closed_at`: its `S#` count, its
    `## Tasks` rows by `Status` (`done` of total), and which NERV-owned
-   artifacts are present in `odd/<feature>/nerv/` (for example
-   `run-summary.md`). If no feature is active, say so plainly. For each
-   active feature, also read `.nerv/locks/<feature>.lock` if present (read-only — never refresh or
+   artifacts are present in `odd/{feature}/nerv/` (for example
+   `run-summary.md`). Also list each DIRECT or LIGHT run whose
+   `.nerv/runs/{run-id}/state.yaml` has no `closed_at`: its run id, its
+   `path` and which artifacts are present in that folder (these runs have
+   no ODD document). If no run is active, say so plainly. For each
+   active run, also read `.nerv/locks/{run-id}.lock` if present (read-only — never refresh or
    delete it from this command) and print `lock: session <session_id>,
    step <step>, waiting_on <waiting_on> — fresh (heartbeat <N.N>m ago)`,
    `… — held: parked on a user gate (heartbeat <N.N>m ago)` when
@@ -47,7 +50,7 @@ short and imperative — this is a status check, not a narrative.
    unreadable — treated as held`. Fresh means `heartbeat_at` is under 15
    minutes old and `waiting_on` is not `user` (see the Orchestrator lock
    section of `nerv-orchestrator/SKILL.md`). A lock past that age is
-   stale, not active: never describe its feature as running, even when
+   stale, not active: never describe that run as running, even when
    `heartbeat_at` equals `started_at` (a run that never refreshed it).
 
 5. **Model/effort table.** Resolve every `nerv:<role>` launch's

@@ -60,19 +60,20 @@ func TestExtensions_NeverMentionOpenSpec(t *testing.T) {
 	}
 }
 
-// The orchestrator names the ODD document as the tracking surface.
+// The orchestrator names the ODD document as the FULL tracking surface.
 func TestOrchestrator_NamesTheODDDocument(t *testing.T) {
 	assertContainsAll(t, orchestratorCore, readPluginText(t, orchestratorCore), "odd/tasks/{feature}.md")
 }
 
-// The orchestrator keeps the per-run governance files in odd/<feature>/nerv/.
+// The orchestrator keeps the per-run governance files in odd/{feature}/nerv/
+// for FULL and in the runtime folder .nerv/runs/{run-id}/ for DIRECT and LIGHT.
 func TestOrchestrator_NamesTheRunFolder(t *testing.T) {
-	assertContainsAll(t, orchestratorCore, readPluginText(t, orchestratorCore), "odd/{feature}/nerv/")
+	assertContainsAll(t, orchestratorCore, readPluginText(t, orchestratorCore), "odd/{feature}/nerv/", ".nerv/runs/{run-id}/")
 }
 
-// The orchestrator lock lives in the runtime folder, per feature.
+// The orchestrator lock lives in the runtime folder, per run.
 func TestOrchestrator_LockLivesUnderNervLocks(t *testing.T) {
-	assertContainsAll(t, orchestratorCore, readPluginText(t, orchestratorCore), ".nerv/locks/{feature}.lock")
+	assertContainsAll(t, orchestratorCore, readPluginText(t, orchestratorCore), ".nerv/locks/{run-id}.lock")
 }
 
 // The ODD reference is named in the core, so it loads.

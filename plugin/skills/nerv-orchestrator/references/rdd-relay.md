@@ -16,11 +16,12 @@ boundary advances to this commit only once its review is acknowledged, or
 immediately for `passive`. A failed or unavailable assessment is always
 treated as due — never inferred as low risk. Log every assessment and every
 receipt as `rdd_assess` / `rdd_receipt` events in `deliberation-log.md`. The
-first boundary of a change is its branch point.
+first boundary of a run is its branch point.
 
 **NERV runtime folders.** gentle-ai refuses to assess while any path is
 untracked (`unassessable`, even with `--committed-only`), and the untracked
-NERV paths — the runtime folder `.nerv/`, and the ODD document and run
+NERV paths — the runtime folder `.nerv/` (which holds the DIRECT and LIGHT
+run folders `.nerv/runs/{run-id}/`), and in FULL the ODD document and run
 folder the run has not committed yet (`odd/tasks/{feature}.md`,
 `odd/{feature}/`; see `artifacts.commit` in `delivery.md`) — trip it on
 every run.

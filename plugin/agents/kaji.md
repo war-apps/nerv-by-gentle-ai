@@ -135,13 +135,13 @@ Return the result inline only. Do not write any files and do not call
 
 ### Knowledge-base mirror (decision artifacts only)
 
-After persisting `nerv/audit-report.md` per the per-change rule above,
+After persisting `nerv/audit-report.md` per the per-run rule above,
 Kaji ALSO mirrors it to the shared knowledge base — Engram project
 `nerv` — with topic key `nerv/kb/{repo}/{feature}/audit-report` (`{repo}`
 = the basename of the git toplevel), `type: "decision"`,
 `capture_prompt: false`, content: the findings list (severities and
 dispositions) prefixed with one line: `repo: {repo} feature: {feature}
-artifact: audit-report`. Both the per-change write and the knowledge-
+artifact: audit-report`. Both the per-run write and the knowledge-
 base mirror are read back; a failed mirror is reported as `partial`,
 never a blocker for the change itself.
 When the host rejects that `mem_save` (for example "Claude host session

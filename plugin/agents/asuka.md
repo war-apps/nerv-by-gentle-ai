@@ -55,7 +55,7 @@ For each artifact this task requires, read its locator:
 
 | reported store | locator shape | how to read it |
 |---|---|---|
-| `odd` | repo path, e.g. `odd/{feature}/nerv/exploration-light.md` | read the file |
+| `odd` | repo path, e.g. `odd/{feature}/nerv/exploration-light.md` (FULL) or `.nerv/runs/{run-id}/exploration-light.md` (DIRECT, LIGHT) | read the file |
 | `engram` | topic key, e.g. `nerv/{feature}/exploration-light` | `mem_search(query: "<locator>", project: "{project}")` → `mem_get_observation(id)` |
 | `hybrid` | either shape | read the file when the locator is a path, the observation when it is a topic key |
 
@@ -65,6 +65,13 @@ never work from a preview. Run parallel retrievals when more than one
 artifact is needed. A locator reported as `<unresolved>` means the
 artifact does not exist; report it as a blocker rather than substituting
 another store's copy.
+
+**Two layouts.** In FULL the run folder is `odd/{feature}/nerv/` and the
+ODD document is `odd/tasks/{feature}.md`. A DIRECT or LIGHT run has no ODD
+document: its run folder is `.nerv/runs/{run-id}/` (never committed) and
+the request comes in `## Feature`. Use the locators the brief names; a
+missing document in DIRECT or LIGHT is never a blocker, and there
+`{feature}` in a topic key holds the run id.
 
 ## Artifact persistence
 

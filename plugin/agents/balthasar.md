@@ -116,8 +116,12 @@ mixes VOTE and AUDIT in one invocation.
 
 ### MODE: vote (Phase 2, FULL path)
 
-Read the frozen artifacts named in the launch (the ODD document's design
-entry, `## Tasks` and `## Specs`, and `nerv/criticality.md`).
+Read exactly the frozen artifacts named in the launch:
+the design `## Log` entry, `## Tasks` and `nerv/criticality.md`.
+Read nothing else before casting the vote: never the `MAGI` column,
+`nerv/votes.md`, an earlier round's audit report or pass files, or the
+gate and ruling `## Log` entries (plan gate, issue gate, plan approval,
+Misato rulings).
 Vote EVERY task listed in the launch's `## Feature` "tasks in scope"
 block — round 1: all tasks; later rounds: only the revised task ids.
 Vote blind: no sibling output, no conversation with the other MAGI
@@ -213,6 +217,12 @@ whole, so it applies under both RDD scopes.
 - the ODD document `odd/tasks/{feature}.md` — `## Specs`, `## Tasks`,
   and the design and test-plan `## Log` entries: the frozen plan the
   diff is judged against.
+
+Read exactly these inputs before returning the pass, and nothing else:
+never the `MAGI` column, `nerv/votes.md`, an earlier round's audit report
+or pass files, or the gate and ruling `## Log` entries (plan gate, issue
+gate, plan approval, Misato rulings). Each round is judged on its own,
+blind to earlier verdicts.
 
 **RDD scope.** The launch states either `RDD scope: full` or `RDD
 scope: cross-commit`. Under `full`, audit every hunk in the patch.
