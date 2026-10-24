@@ -10,66 +10,21 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// The build modes.
-const (
-	// ModeCompose builds with docker compose build, tests with docker
-	// compose run --rm <test_service> and packages the images with docker
-	// save.
-	ModeCompose = "compose"
-	// ModeScript runs the project's own stage commands.
-	ModeScript = "script"
-)
-
-// Modes are the build modes.
-var Modes = []string{ModeCompose, ModeScript}
-
-// ComposeStages are the stages a compose-mode project may still write
-// commands for: compose runs build, test and package itself.
-var ComposeStages = []string{"restore", "lint", "coverage"}
-
-// VersionFileExtensions are the MSBuild project files build.version_files
-// may name: nerv release writes <Version> (and <PackageReleaseNotes>) in them.
+// VersionFileExtensions are the MSBuild project files version_files may
+// name: nerv release writes <Version> (and <PackageReleaseNotes>) in them.
 var VersionFileExtensions = []string{".csproj", ".fsproj", ".vbproj", ".props", ".targets"}
 
-// Build is a project's build: section.
-type Build struct {
-	// Mode is compose or script. Required by nerv release; no default.
-	Mode string `yaml:"mode"`
-	// File is the compose file (compose mode, required).
-	File string `yaml:"file"`
-	// TestService is the compose service whose exit code is the test
-	// result (compose mode). Default: empty, meaning no test stage.
-	TestService string `yaml:"test_service"`
-	// Images are the image references docker save packages into the
-	// artifact after the package stage, recorded in its manifest so
-	// deploy can push them; they may use ${version}, ${channel} and
-	// ${tag}. Compose mode builds them with docker compose build; in
-	// script mode the project's own commands (the package stage, usually)
-	// must build them.
-	Images []BuildImage `yaml:"images"`
-	// SharedHost gives the restore, lint, build, test and package stage
-	// commands the build-server-safe dotnet environment under their own env
-	// (script mode). Default: false.
-	SharedHost bool `yaml:"shared_host"`
-	// VersionFiles are MSBuild project files that receive the version in
-	// the release clone before the pipeline.
-	VersionFiles []string `yaml:"version_files"`
-	// Coverage checks coverage floors over Cobertura reports after the
-	// coverage stage.
-	Coverage *Coverage `yaml:"coverage"`
-}
-
-// DockerTagKinds are the tag kinds a build.images mapping may list, as
+// DockerTagKinds are the tag kinds an images mapping may list, as
 // 4.2.0's docker preset tagged its images: version always; channel only
 // off the default channel; latest only on the default channel.
 var DockerTagKinds = []string{"version", "channel", "latest"}
 
-// DefaultDockerTags returns the tag kinds of a build.images mapping
+// DefaultDockerTags returns the tag kinds of an images mapping
 // without tags: every kind (DockerTagKinds), as in 4.2.0. Each call
 // returns a fresh slice, so a caller cannot change later defaults.
 func DefaultDockerTags() []string { return slices.Clone(DockerTagKinds) }
 
-// BuildImage is one build.images entry: either a plain image reference
+// BuildImage is one images entry: either a plain image reference
 // (Ref, the string form) or a repository with tag kinds (Name and Tags,
 // the mapping form {name, tags}).
 type BuildImage struct {
@@ -103,10 +58,10 @@ func (i *BuildImage) UnmarshalYAML(n *yaml.Node) error {
 		*i = BuildImage{Name: m.Name, Tags: m.Tags}
 		return nil
 	}
-	return fmt.Errorf("line %d: a build.images entry is an image reference or a mapping {name, tags}", n.Line)
+	return fmt.Errorf("line %d: an images entry is an image reference or a mapping {name, tags}", n.Line)
 }
 
-// Coverage is build.coverage.
+// Coverage is a project's coverage.
 type Coverage struct {
 	// Dir is the directory searched for *.cobertura.xml reports, relative
 	// to the repository root. Default: empty, meaning
@@ -123,17 +78,18 @@ func (c Coverage) Floors() CoverageThreshold {
 }
 
 // CheckBuild is nerv release's requirement on top of Load: at least one
-// project, and every project has a build mode. (nerv version next needs
-// neither: a section without projects versions the whole repository.) It
-// returns a *ValidationError naming each problem.
+// project, and every project has a build provider (its build, or the
+// section's). (nerv version next needs neither: a section without projects
+// versions the whole repository.) It returns a *ValidationError naming
+// each problem.
 func (r *Release) CheckBuild() error {
 	var problems []string
 	if len(r.Projects) == 0 {
-		problems = append(problems, "release.projects: nerv release needs at least one project, each with its build.mode (compose or script)")
+		problems = append(problems, "release.projects: nerv release needs at least one project, each with its build provider (release.build, or release.projects[].build: docker-compose or bash)")
 	}
 	for i, p := range r.Projects {
-		if p.Build == nil || p.Build.Mode == "" {
-			problems = append(problems, fmt.Sprintf("release.projects[%d].build.mode: required by nerv release (compose or script): there is no default", i))
+		if r.BuildProvider(p) == "" {
+			problems = append(problems, fmt.Sprintf("release.projects[%d].build: required by nerv release (the build provider, such as docker-compose or bash; or set release.build for every project): there is no default", i))
 		}
 	}
 	if len(problems) > 0 {
@@ -142,55 +98,20 @@ func (r *Release) CheckBuild() error {
 	return nil
 }
 
-var (
-	serviceRe = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_.-]*$`)
-	imageRe   = regexp.MustCompile(`^[^\s]+$`)
-)
+var imageRe = regexp.MustCompile(`^[^\s]+$`)
 
-// checkBuild validates the build: block of p (Load: a missing block is
-// fine, CheckBuild requires it).
+// checkBuild validates the build keys of project p: its build provider's
+// name, images, version_files and coverage (Load: a missing build is
+// fine, CheckBuild requires one; the provider checks its own keys).
 func (v *validator) checkBuild(at string, p Project) {
-	b := p.Build
-	if b == nil {
-		return
+	if p.Build != "" && !nameRe.MatchString(p.Build) {
+		v.addf("%s.build: %q is not a provider name", at, p.Build)
 	}
-	bat := at + ".build"
-	switch {
-	case b.Mode == "":
-		v.addf("%s.mode: required (compose or script)", bat)
-	case !slices.Contains(Modes, b.Mode):
-		v.addf("%s.mode: unknown mode %q (want %s)", bat, b.Mode, list(Modes))
+	for j, img := range p.Images {
+		v.checkImage(fmt.Sprintf("%s.images[%d]", at, j), img)
 	}
-	if b.Mode == ModeCompose {
-		if b.File == "" {
-			v.addf("%s.file: required by compose mode", bat)
-		} else {
-			v.checkPath(bat+".file", b.File)
-		}
-		if b.TestService != "" && !serviceRe.MatchString(b.TestService) {
-			v.addf("%s.test_service: %q is not a compose service name", bat, b.TestService)
-		}
-		for _, stage := range sortedKeys(p.Stages) {
-			if slices.Contains(Stages, stage) && !slices.Contains(ComposeStages, stage) {
-				v.addf("%s.stages.%s: compose mode runs %s itself (docker compose build, run and save); remove it, or use build.mode: script", at, stage, stage)
-			}
-		}
-		if b.SharedHost {
-			v.addf("%s.shared_host: only for script mode", bat)
-		}
-	} else if b.Mode == ModeScript {
-		if b.File != "" {
-			v.addf("%s.file: only for compose mode", bat)
-		}
-		if b.TestService != "" {
-			v.addf("%s.test_service: only for compose mode", bat)
-		}
-	}
-	for j, img := range b.Images {
-		v.checkImage(fmt.Sprintf("%s.images[%d]", bat, j), img)
-	}
-	for j, f := range b.VersionFiles {
-		fat := fmt.Sprintf("%s.version_files[%d]", bat, j)
+	for j, f := range p.VersionFiles {
+		fat := fmt.Sprintf("%s.version_files[%d]", at, j)
 		if problem := v.pathProblem(fat, f); problem {
 			continue
 		}
@@ -198,8 +119,8 @@ func (v *validator) checkBuild(at string, p Project) {
 			v.addf("%s: %q is not an MSBuild project file (%s)", fat, f, list(VersionFileExtensions))
 		}
 	}
-	if c := b.Coverage; c != nil {
-		cat := bat + ".coverage"
+	if c := p.Coverage; c != nil {
+		cat := at + ".coverage"
 		if c.Dir != "" {
 			v.checkPath(cat+".dir", c.Dir)
 		}
@@ -212,7 +133,7 @@ func (v *validator) checkBuild(at string, p Project) {
 	}
 }
 
-// checkImage validates one build.images entry.
+// checkImage validates one images entry.
 func (v *validator) checkImage(at string, img BuildImage) {
 	if img.Ref == "" && (img.Name != "" || img.Tags != nil) {
 		v.checkImageMapping(at, img)
@@ -266,22 +187,22 @@ type removedKey struct {
 // removedProjectKeys are the preset keys removed with the presets: Load
 // reports each with its replacement instead of an unknown field.
 var removedProjectKeys = []removedKey{
-	{"presets", `the presets were removed; set build.mode instead: "build: { mode: script }" with each stage's command under stages (e.g. ` +
+	{"presets", `the presets were removed; set the build provider instead: "build: bash" with each stage's command under stages (e.g. ` +
 		`"stages: { build: { run: "dotnet build -c Release" } }"), or ` +
-		`"build: { mode: compose, file: docker-compose.yml, test_service: tests, images: ["ghcr.io/org/api:${version}"] }"`},
-	{"dotnet", `the dotnet preset was removed; with build: { mode: script } write its commands as stages, e.g. ` +
+		`"build: docker-compose" with "providers: { docker-compose: { file: docker-compose.yml, test_service: tests } }" and "images: ["ghcr.io/org/api:${version}"]"`},
+	{"dotnet", `the dotnet preset was removed; with build: bash write its commands as stages, e.g. ` +
 		`"stages: { restore: { run: "dotnet restore" }, lint: { run: "dotnet format --verify-no-changes" }, build: { run: "dotnet build -c Release --no-restore" }, test: { run: "dotnet test -c Release --no-build" } }"; ` +
-		`project_file goes to build.version_files, coverage_threshold to build.coverage (line, branch, method; the tests write *.cobertura.xml under build.coverage.dir), ` +
-		`shared_host to build.shared_host, and for sdk: write global.json in a before_restore hook`},
-	{"node", `the node preset was removed; with build: { mode: script } write its commands as stages, e.g. ` +
+		`project_file goes to version_files, coverage_threshold to coverage (line, branch, method; the tests write *.cobertura.xml under coverage.dir), ` +
+		`shared_host to providers.bash.shared_host, and for sdk: write global.json in a before_restore hook`},
+	{"node", `the node preset was removed; with build: bash write its commands as stages, e.g. ` +
 		`"stages: { restore: { run: "npm ci" }, lint: { run: "npm run lint" }, build: { run: "npm run build" }, test: { run: "npm test" } }"`},
 	{"docker", `the docker preset was removed; use ` +
-		`"build: { mode: compose, file: docker-compose.yml, images: ["ghcr.io/org/api:${version}"] }", or with build: { mode: script } a package stage such as ` +
+		`"build: docker-compose" with "providers: { docker-compose: { file: docker-compose.yml } }" and "images: ["ghcr.io/org/api:${version}"]", or with build: bash a package stage such as ` +
 		`"stages: { package: { run: "docker build -t ghcr.io/org/api:$NERV_RELEASE_VERSION . && docker save -o \"$NERV_RELEASE_OUTPUTS_DIR/api.tar\" ghcr.io/org/api:$NERV_RELEASE_VERSION" } }"; ` +
 		`pushing moved to nerv deploy`},
-	{"nuget", `the nuget preset was removed; package in a script stage instead: ` +
+	{"nuget", `the nuget preset was removed; package in a bash stage instead: ` +
 		`"stages: { package: { run: "dotnet pack -c Release --no-build -o \"$NERV_RELEASE_OUTPUTS_DIR\"" } }"; pushing moved to nerv deploy`},
-	{"npm", `the npm preset was removed; package in a script stage instead: ` +
+	{"npm", `the npm preset was removed; package in a bash stage instead: ` +
 		`"stages: { package: { run: "npm pack --pack-destination \"$NERV_RELEASE_OUTPUTS_DIR\"" } }"; publishing moved to nerv deploy`},
 }
 
@@ -310,6 +231,7 @@ func takeRemovedKeys(release *yaml.Node) []string {
 		problems = append(problems, msg)
 	}
 	problems = append(problems, takeRemovedSectionKeys(release)...)
+	problems = append(problems, takeMovedKeys(release)...)
 	projects := mappingValue(release, "projects")
 	if projects == nil || projects.Kind != yaml.SequenceNode {
 		return problems

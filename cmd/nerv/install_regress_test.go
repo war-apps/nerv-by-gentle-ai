@@ -248,19 +248,26 @@ func TestRunInstall_WithDeployProvider_BringsDeployAndRelease(t *testing.T) {
 	if release < 0 || deploy < 0 || github < 0 || !(release < deploy) {
 		t.Errorf("want release, then deploy added, then deploy-github installed:\n%s", out)
 	}
+	// S4: release and deploy bring every provider they ship, never asked.
+	for _, p := range []string{"release-bash", "release-conventional-commits", "release-docker-compose", "deploy-ssh-compose"} {
+		owner, _, _ := strings.Cut(p, "-")
+		if !strings.Contains(out, "Adding "+p+" (bundled with "+owner+")") || !strings.Contains(out, "-> claude plugin install "+p+"@nerv") {
+			t.Errorf("want %s added with %s and installed:\n%s", p, owner, out)
+		}
+	}
 }
 
-// S1: on a terminal the suggestions are task, its providers, release, deploy
-// (only once release is accepted) and the deploy providers (only once deploy
-// is accepted).
+// S1, S4: on a terminal the suggestions are task, its providers, release
+// and deploy (only once release is accepted); release and deploy bring
+// their providers with them, unasked.
 func TestRunInstall_Terminal_SuggestionOrder(t *testing.T) {
 	tests := []struct {
 		name, answers string
 		asked         []string
 	}{
-		{"everything accepted", "y\ny\ny\ny\ny\ny\n", []string{"task", "task-teamwork", "release", "deploy", "deploy-github", "deploy-ssh-compose"}},
+		{"everything accepted", "y\ny\ny\ny\n", []string{"task", "task-teamwork", "release", "deploy"}},
 		{"release declined: no deploy", "n\nn\n", []string{"task", "release"}},
-		{"deploy declined: no deploy provider", "n\ny\nn\n", []string{"task", "release", "deploy"}},
+		{"deploy declined", "n\ny\nn\n", []string{"task", "release", "deploy"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

@@ -1,7 +1,31 @@
 # The release extension's contract with the NERV core (docs/extensions.md).
-# The core runs nerv release; the version and build slots come later.
+# The core runs nerv release (and nerv version next, nerv release setup),
+# which calls the providers of its two slots with the common envelope: the
+# payloads and answers are in docs/extensions.md (the release slots) and
+# internal/releaseplan/contract.go.
 name: release
 contract_version: 1
 suggest_order: 2
+# Every release provider is installed with release, never asked.
+providers: bundled
 runtime: exec
 argv: ["{nerv}", release]
+slots:
+  # The version engine (release.version): the next version, channel, tag,
+  # notes and CHANGELOG section of each project on a branch; conventional-commits
+  # when release.version names none.
+  - name: version
+    cardinality: one
+    default: conventional-commits
+    operations:
+      validate: optional
+      next: required
+      branch: required
+      import: optional
+  # How a project is built, tested and packaged (release.build, overridden
+  # by release.projects[].build).
+  - name: build
+    cardinality: per-target
+    operations:
+      validate: optional
+      plan: required

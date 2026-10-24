@@ -68,7 +68,7 @@ The marketplace ships seven plugins:
 | `nerv@nerv` | yes | Core: adapts gentle-ai's agents to the NERV pipeline. It holds no task, timer or tracker logic. |
 | `task@nerv` | no | The task plugin: the `/task:*` commands, local timers, and the `task:dispatcher` agent that turns pipeline events into tracker operations. |
 | `task-teamwork@nerv` | no | A task provider for Teamwork, shipped as its own plugin with a `provider.yaml` manifest. |
-| `release@nerv` | no | The release plugin: `/release:version`, `/release:setup`, `/release:build`, the `release:versioner` and `release:builder` agents. A native version engine (no semantic-release) and a build in `compose` or `script` mode that leaves a local artifact; it never writes to git. |
+| `release@nerv` | no | The release plugin: `/release:version`, `/release:setup`, `/release:build`, the `release:versioner` and `release:builder` agents. Its providers come with it: the native `conventional-commits` version engine (no semantic-release) and the `docker-compose` and `bash` builds, which leave a local artifact; it never writes to git. |
 | `deploy@nerv` | no | The deploy plugin (requires `release`): `/deploy:run`, `/deploy:setup` and the `deploy:deployer` agent. It turns an artifact into a release: release commit, tag, push, targets, git host release. |
 | `deploy-github@nerv` | no | A deploy git host for GitHub releases (`gh`), with a `provider.yaml` manifest. |
 | `deploy-ssh-compose@nerv` | no | A deploy target: pushes the artifact's images and updates the containers over SSH with the host's compose script. |
@@ -171,8 +171,9 @@ Flags: `--no-configure` (skip the closing wizard/hint entirely),
 exit 1 when gentle-ai is missing or not 4.x), `--with <names>` (install
 extension plugins such as `task,task-teamwork` or
 `release,deploy,deploy-github`; in a terminal, install offers the task plugin,
-its providers, the release plugin, the deploy plugin, then the deploy
-providers; `deploy` requires `release`).
+its providers, the release plugin, then the deploy plugin; release and deploy
+bring every provider they ship with them, unasked; `deploy` requires
+`release`).
 
 ### Updating
 

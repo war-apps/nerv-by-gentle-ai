@@ -17,7 +17,8 @@ func TestExtensions_EmbeddedRequirements(t *testing.T) {
 	}
 	want := map[string][]string{
 		"task": nil, "task-teamwork": {"task"},
-		"release": nil, "deploy": {"release"}, "deploy-github": {"deploy"}, "deploy-ssh-compose": {"deploy"},
+		"release": nil, "release-conventional-commits": {"release"}, "release-docker-compose": {"release"}, "release-bash": {"release"},
+		"deploy": {"release"}, "deploy-github": {"deploy"}, "deploy-ssh-compose": {"deploy"},
 	}
 	for _, e := range exts {
 		req, ok := want[e.Name]
@@ -34,8 +35,9 @@ func TestExtensions_EmbeddedRequirements(t *testing.T) {
 	}
 }
 
-// S1: the suggestion order is task and its providers, then release, then
-// deploy, then the deploy providers; anything else after, by name.
+// S1: the suggestion order is task and its providers, then release and
+// its providers, then deploy, then the deploy providers; anything else
+// after, by name.
 func TestSuggestionOrder(t *testing.T) {
 	exts, err := plugin.Extensions(nerv.ExtensionsFS())
 	if err != nil {
@@ -45,7 +47,7 @@ func TestSuggestionOrder(t *testing.T) {
 	for _, e := range plugin.SuggestionOrder(exts) {
 		got = append(got, e.Name)
 	}
-	want := []string{"task", "task-teamwork", "release", "deploy", "deploy-github", "deploy-ssh-compose"}
+	want := []string{"task", "task-teamwork", "release", "release-bash", "release-conventional-commits", "release-docker-compose", "deploy", "deploy-github", "deploy-ssh-compose"}
 	if !slices.Equal(got, want) {
 		t.Errorf("SuggestionOrder = %v, want %v", got, want)
 	}
@@ -56,5 +58,26 @@ func TestSuggestionOrder(t *testing.T) {
 	}
 	if want := []string{"release", "deploy", "alpha", "zeta"}; !slices.Equal(got, want) {
 		t.Errorf("SuggestionOrder = %v, want %v", got, want)
+	}
+}
+
+// S4 (L-change): release and deploy bundle every provider they ship
+// (installed with them, never asked); task's are suggested.
+func TestExtensions_BundledProviders(t *testing.T) {
+	exts, err := plugin.Extensions(nerv.ExtensionsFS())
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string][]string{
+		"release": {"release-bash", "release-conventional-commits", "release-docker-compose"},
+		"deploy":  {"deploy-github", "deploy-ssh-compose"},
+	}
+	for _, e := range exts {
+		if !slices.Equal(e.Bundle, want[e.Name]) {
+			t.Errorf("%s bundle = %v, want %v", e.Name, e.Bundle, want[e.Name])
+		}
+		if bundled := e.Provider && e.Owner != "task"; e.Bundled != bundled {
+			t.Errorf("%s bundled = %v, want %v", e.Name, e.Bundled, bundled)
+		}
 	}
 }

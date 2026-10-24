@@ -83,7 +83,7 @@ func TestRunProvider_DeploySSHComposeAnswersJSON(t *testing.T) {
 func TestRunProvider_RefusesAnUnknownProvider(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	if code := run([]string{"provider", "deploy-github", "createRelease"}, &stdout, &stderr, testOptions(t.TempDir())); code != 2 ||
-		!strings.Contains(stderr.String(), `"deploy-github" is not a native provider (deploy-ssh-compose)`) {
+		!strings.Contains(stderr.String(), `"deploy-github" is not a native provider (deploy-ssh-compose, release-bash, release-conventional-commits, release-docker-compose)`) {
 		t.Errorf("exit %d, stderr %s", code, stderr.String())
 	}
 	stderr.Reset()
@@ -93,5 +93,29 @@ func TestRunProvider_RefusesAnUnknownProvider(t *testing.T) {
 	stderr.Reset()
 	if code := run([]string{"deploy-ssh-compose", "deploy"}, &stdout, &stderr, testOptions(t.TempDir())); code == 0 {
 		t.Errorf("the removed deploy-ssh-compose command still runs: exit %d", code)
+	}
+}
+
+// S4, S6: the release providers are native exec providers: the hidden nerv
+// provider release-<name> <operation> reads the common request on stdin
+// and prints the common response on stdout.
+func TestRunProvider_RunsTheNativeReleaseProviders(t *testing.T) {
+	call := func(plugin, op, request string) (int, string, string) {
+		var stdout, stderr bytes.Buffer
+		opts := testOptions(t.TempDir())
+		opts.Stdin = strings.NewReader(request)
+		code := run([]string{"provider", plugin, op}, &stdout, &stderr, opts)
+		return code, stdout.String(), stderr.String()
+	}
+	code, out, _ := call("release-docker-compose", "plan", `{"contract":1,"extension":"release","operation":"plan","config":{"file":"docker-compose.yml"},"payload":{"project":"api","at":"release.projects[0]","stages":[]}}`)
+	if code != 0 || !strings.Contains(out, `"status":"ok"`) || !strings.Contains(out, `"exec":["docker","compose","-f","docker-compose.yml","build"]`) {
+		t.Errorf("plan: exit %d, stdout %s", code, out)
+	}
+	code, out, _ = call("release-conventional-commits", "validate", `{"contract":1,"extension":"release","operation":"validate","config":{"tag_format":"v1"},"payload":{"projects":[]}}`)
+	if code != 1 || !strings.Contains(out, `"status":"failed"`) || !strings.Contains(out, `release.providers.conventional-commits.tag_format`) {
+		t.Errorf("validate: exit %d, stdout %s", code, out)
+	}
+	if code, _, stderr := call("release-bash", "plan", "not json"); code != 2 || !strings.Contains(stderr, "not the JSON envelope") {
+		t.Errorf("bad request: exit %d, stderr %s", code, stderr)
 	}
 }

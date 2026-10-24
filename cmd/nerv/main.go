@@ -112,6 +112,11 @@ type options struct {
 	// means proc.ExecRunner and a real wait.
 	DeployProc  proc.Runner
 	DeploySleep func(context.Context, time.Duration) error
+	// ReleaseProc runs the release extension's provider steps (the
+	// version engine's and the build providers' `nerv provider
+	// release-<name> <operation>`); tests may inject a fake. Nil means
+	// proc.ExecRunner.
+	ReleaseProc proc.Runner
 }
 
 func defaultOptions() options {
@@ -164,7 +169,8 @@ func run(args []string, stdout, stderr io.Writer, opts options) int {
 		return runMigrate(args[1:], stdout, stderr, opts)
 	case "provider":
 		// Hidden: the operations of nerv's native providers, run by their
-		// extension (nerv deploy runs deploy-ssh-compose's).
+		// extension (nerv deploy runs deploy-ssh-compose's, nerv release
+		// the release-* ones).
 		return runProvider(args[1:], stdout, stderr, opts)
 	case "pipeline":
 		fmt.Fprintln(stderr, pipelineRemoved)
@@ -226,4 +232,15 @@ Move the pipeline: section of .ai-workflow.yml with nerv migrate, or by hand (/r
 
 func pluginFS() fs.FS {
 	return nerv.PluginFS()
+}
+
+// releaseProviders calls the release extension's providers from the
+// extensions tree (the embedded one when opts has none: the release
+// extension always ships its own), their stderr streamed to output.
+func releaseProviders(opts options, output io.Writer) releaseplan.Providers {
+	fsys := opts.ExtensionsFS
+	if fsys == nil {
+		fsys = nerv.ExtensionsFS()
+	}
+	return releaseplan.Providers{FS: fsys, Runner: opts.ReleaseProc, Output: output}
 }

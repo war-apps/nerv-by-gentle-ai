@@ -8,27 +8,46 @@ import (
 	"io"
 	"os"
 
+	"gopkg.in/yaml.v3"
+
 	"github.com/war-apps/nerv-by-gentle-ai/internal/atomicfile"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/config"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/paths"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/refusal"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/releaseconfig"
-	"github.com/war-apps/nerv-by-gentle-ai/internal/versioning"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/releaseconfig/yamlsection"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/releaseplan"
 )
+
+// sectionVersion is the release.version of a .ai-workflow.yml text, read
+// without loading the section (a scalar; "" when it has none).
+func sectionVersion(data []byte) string {
+	node, err := yamlsection.Locate(data, releaseconfig.SectionKey)
+	if err != nil || node == nil || node.Kind != yaml.MappingNode {
+		return ""
+	}
+	for i := 0; i+1 < len(node.Content); i += 2 {
+		if node.Content[i].Value == "version" && node.Content[i+1].Kind == yaml.ScalarNode {
+			return node.Content[i+1].Value
+		}
+	}
+	return ""
+}
 
 const releaseSetupUsage = `Usage: nerv release setup --import [--force] [--dry-run] [--cwd <dir>]
 
 Imports, once, the repository's semantic-release configuration (package.json
 "release", .releaserc, .releaserc.json, .releaserc.yaml or .yml) into the
-release: section of .ai-workflow.yml: its branches, release rules, tag format,
-repository URL and changelog become the native version engine's settings.
-The section's other keys (the projects and their builds) and the rest of
-the file are kept. A 4.2.0 release: section (semantic_release: or the
-presets) is refused: nerv migrate converts it. An engine key
-the release: section already sets to another value is never replaced
-silently: the import refuses, listing each one with its current and
-imported values, unless --force is given, which replaces them and prints
-each replaced value. Each part
+release: section of .ai-workflow.yml, through the version engine's import
+(release.version, by default conventional-commits): its branches, release
+rules, tag format, repository URL and changelog become the engine's keys,
+under release.providers.<engine>. The section's other keys (the projects
+and their builds, the other providers) and the rest of the file are kept. A
+4.2.0 release: section (semantic_release: or the presets) is refused: nerv
+migrate converts it. An engine key release.providers.<engine> already sets
+to another value is never replaced silently: the import refuses, listing
+each one with its current and imported values, unless --force is given,
+which replaces them and prints each replaced value. Each part
 that cannot be translated is printed as a warning (the npm and exec
 plugins, presetConfig.types, extends, maintenance branches; git and github
 belong to the deploy: section). A JavaScript configuration is never
@@ -37,7 +56,7 @@ semantic-release configuration is no longer used.
 
 Flags:
   --import       Import the semantic-release configuration (required)
-  --force        Replace engine keys the release: section already sets
+  --force        Replace engine keys release.providers.<engine> already sets
   --dry-run      Print the new release: section; write nothing
   --cwd <dir>    A directory inside the repository (default ".")
 
@@ -94,17 +113,25 @@ func releaseSetupImport(ctx context.Context, cwd string, dryRun, force bool, std
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
-	imported, err := versioning.Import(top)
-	var manual *versioning.ManualMigrationError
+	// The engine is the section's (its release.version), read before the
+	// section is validated: the import may be what makes it valid.
+	engine, err := releaseplan.NewVersionEngine(releaseProviders(opts, stderr), &releaseconfig.Release{Version: sectionVersion(data)})
+	if err != nil {
+		return err
+	}
+	imported, err := engine.Import(ctx, top)
+	var ierr *releaseplan.ImportError
 	switch {
-	case errors.As(err, &manual):
-		return &refusal.Error{Err: fmt.Errorf("%w; write the release: section's branches and release_rules from it (see /release:setup)", err)}
-	case errors.Is(err, versioning.ErrNoSemanticReleaseConfig):
+	case errors.Is(err, releaseplan.ErrNotImplemented):
+		return &refusal.Error{Err: fmt.Errorf("the version engine %s imports nothing: write release.providers.%s by hand (see /release:setup)", engine.Name(), engine.Name())}
+	case errors.As(err, &ierr) && ierr.Manual != "":
+		return &refusal.Error{Err: fmt.Errorf("%w; write release.providers.%s's branches and release_rules from it (see /release:setup)", err, engine.Name())}
+	case errors.As(err, &ierr) && ierr.Absent:
 		return &refusal.Error{Err: fmt.Errorf("%v in %s (package.json \"release\", .releaserc, .releaserc.json, .releaserc.yaml or .yml): nothing to import", err, top)}
 	case err != nil:
 		return &refusal.Error{Err: err}
 	}
-	text, notes, err := releaseconfig.ImportSection(data, imported.Config, force)
+	text, notes, err := releaseconfig.ImportSection(data, engine.Name(), imported.Config, force)
 	var conflict *releaseconfig.EngineConflictError
 	if errors.As(err, &conflict) {
 		return &refusal.Error{Err: fmt.Errorf("%w; nothing was written: keep them, edit them by hand, or run again with --force to replace them with the imported values", err)}

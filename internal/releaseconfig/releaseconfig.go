@@ -1,9 +1,10 @@
 // Package releaseconfig reads the release: section of a repository's
 // project-scope .ai-workflow.yml: the typed, validated configuration behind
-// `nerv version next` and `nerv release`. The section embeds the native version
-// engine's settings (internal/versioning: branches, release rules, tag
-// format, changelog) and holds the one project list both the engine and the
-// build use.
+// `nerv version next` and `nerv release`. The section selects the providers
+// of the release extension's slots (version: the version engine; build: a
+// project's build), holds their keys under providers: (each provider
+// checks its own when it is called, internal/releaseplan) and the one
+// project list the engine and the build use.
 //
 // The rest of .ai-workflow.yml is owned by internal/config, a line-based editor
 // that cannot hold lists of maps. This package cuts the top-level release:
@@ -26,7 +27,6 @@ import (
 
 	"github.com/war-apps/nerv-by-gentle-ai/internal/paths"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/releaseconfig/yamlsection"
-	"github.com/war-apps/nerv-by-gentle-ai/internal/versioning"
 	"gopkg.in/yaml.v3"
 )
 
@@ -37,27 +37,23 @@ const SectionKey = "release"
 // .ai-workflow.yml or the file has no release: key.
 var ErrNotConfigured = errors.New("release: not configured in .ai-workflow.yml")
 
-// Release is the release: section: the version engine's settings and the
-// projects.
+// Release is the release: section: the providers of the release
+// extension's two slots, their config, and the projects.
 type Release struct {
-	// Branches are the release branches (versioning.Config.Branches).
-	// Default: versioning.DefaultBranches.
-	Branches []versioning.Branch `yaml:"branches"`
-	// ReleaseRules are extra commit-analyzer rules
-	// (versioning.Config.ReleaseRules). Default: none.
-	ReleaseRules []versioning.ReleaseRule `yaml:"release_rules"`
-	// NoteKeywords start a breaking-change note. Default:
-	// versioning.DefaultNoteKeywords.
-	NoteKeywords []string `yaml:"note_keywords"`
-	// TagFormat is the tag of a release, with ${version}; each project's
-	// default derives from it. Default: DefaultTagFormat.
-	TagFormat string `yaml:"tag_format"`
-	// RepositoryURL is what the release notes link to. Default: origin's
-	// URL without credentials.
-	RepositoryURL string `yaml:"repository_url"`
-	// Changelog is the CHANGELOG file name under each project's path, and
-	// its title. Default: DefaultChangelog, no title.
-	Changelog versioning.Changelog `yaml:"changelog"`
+	// Version is the version engine, the provider of the version slot.
+	// Default: the slot's default, conventional-commits.
+	Version string `yaml:"version"`
+	// Build is the build provider of every project that names none
+	// (Project.Build), such as docker-compose or bash. nerv release
+	// requires one per project (CheckBuild); other commands ignore it.
+	Build string `yaml:"build"`
+	// Providers are the providers' keys, by provider name
+	// (release.providers.<provider>.<key>), as each provider's
+	// provider.yaml declares them: the version engine's (branches,
+	// release_rules, tag_format, changelog, ... of conventional-commits)
+	// and the build providers' (a project overrides those under its own
+	// providers). nerv checks them against the provider when it calls it.
+	Providers map[string]map[string]any `yaml:"providers"`
 	// Projects are the releasable units. A single-repo setup is one project
 	// with path ".". nerv release needs at least one (CheckBuild); without any,
 	// nerv version next versions the whole repository.
@@ -79,20 +75,39 @@ type Project struct {
 	Scopes []string `yaml:"scopes"`
 	// TagFormat is the project's tag; it must contain ${version} and no
 	// other placeholder, and be unique across projects. Default: the
-	// section's tag_format with one project, "<name>-" + it otherwise.
+	// version engine's (conventional-commits: its tag_format with one
+	// project, "<name>-" + it otherwise).
 	TagFormat string `yaml:"tag_format"`
-	// Changelog is the CHANGELOG file. Default: <path>/<changelog.file>.
+	// Changelog is the CHANGELOG file. Default: the version engine's
+	// (conventional-commits: <path>/<changelog.file>).
 	Changelog string `yaml:"changelog"`
 	// DependsOn lists the projects whose new release bumps this one.
 	DependsOn []Dependency `yaml:"depends_on"`
-	// Build is how nerv release builds, tests and packages the project: its
-	// mode (compose or script) and settings. nerv release requires it
-	// (CheckBuild); other commands ignore it.
-	Build *Build `yaml:"build"`
+	// Build is the project's build provider (docker-compose, bash),
+	// overriding the section's build. nerv release requires one
+	// (CheckBuild); other commands ignore it. Read it through
+	// BuildProvider.
+	Build string `yaml:"build"`
+	// Providers override the section's providers' keys for this project
+	// (release.projects[].providers.<provider>.<key>).
+	Providers map[string]map[string]any `yaml:"providers"`
+	// Images are the image references docker save packages into the
+	// artifact after the package stage, recorded in its manifest so
+	// deploy can push them; they may use ${version}, ${channel} and
+	// ${tag}. docker-compose builds them with docker compose build; with
+	// bash the project's own commands (the package stage, usually) must
+	// build them.
+	Images []BuildImage `yaml:"images"`
+	// VersionFiles are MSBuild project files that receive the version in
+	// the release clone before the pipeline.
+	VersionFiles []string `yaml:"version_files"`
+	// Coverage checks coverage floors over Cobertura reports after the
+	// coverage stage.
+	Coverage *Coverage `yaml:"coverage"`
 	// Stages are the commands of the pipeline stages, keyed by one of
-	// Stages (restore, lint, build, test, coverage, package): every stage
-	// in script mode; in compose mode only restore, lint and coverage
-	// (compose runs build, test and package itself).
+	// Stages (restore, lint, build, test, coverage, package), as the build
+	// provider takes them: bash runs every stage's; docker-compose only
+	// restore, lint and coverage (it runs build, test and package itself).
 	Stages map[string]Command `yaml:"stages"`
 	// Submodules runs git submodule update --init --recursive in the
 	// release clone before the restore stage (the clone has no submodules
@@ -154,30 +169,13 @@ func (c Command) TimeoutDuration() time.Duration {
 	return d
 }
 
-// Versioning is the version engine's configuration of the section: its
-// settings and its projects, with the section's defaults applied.
-func (r *Release) Versioning() versioning.Config {
-	cfg := r.engineSettings()
-	for _, p := range r.Projects {
-		deps := make([]versioning.Dependency, len(p.DependsOn))
-		for i, d := range p.DependsOn {
-			deps[i] = versioning.Dependency{Project: d.Project, Bump: d.Bump}
-		}
-		cfg.Projects = append(cfg.Projects, versioning.Project{
-			Name: p.Name, Path: p.Path, SharedPaths: append([]string(nil), p.SharedPaths...), Scopes: append([]string(nil), p.Scopes...),
-			TagFormat: p.TagFormat, Changelog: p.Changelog, DependsOn: deps,
-		})
+// BuildProvider is the project's build provider: its own build, else the
+// section's; empty when neither names one.
+func (r *Release) BuildProvider(p Project) string {
+	if p.Build != "" {
+		return p.Build
 	}
-	return cfg.WithDefaults()
-}
-
-// engineSettings is the section's version engine settings, without the
-// projects.
-func (r *Release) engineSettings() versioning.Config {
-	return versioning.Config{
-		Branches: append([]versioning.Branch(nil), r.Branches...), ReleaseRules: append([]versioning.ReleaseRule(nil), r.ReleaseRules...),
-		NoteKeywords: append([]string(nil), r.NoteKeywords...), TagFormat: r.TagFormat, RepositoryURL: r.RepositoryURL, Changelog: r.Changelog,
-	}
+	return r.Build
 }
 
 // Project returns the project called name.
@@ -195,7 +193,9 @@ func (r *Release) Project(name string) (Project, bool) {
 // the key is absent, and an error listing every problem, each prefixed by
 // its path in the section (e.g. release.projects[1].depends_on[0].project),
 // when the section is invalid. A file that still has the removed release:
-// or pipeline: section is refused (RemovedSections), with what to do.
+// or pipeline: section is refused (RemovedSections), with what to do, and
+// so is a key that moved (an engine key under release:, a build: mapping),
+// naming its new place.
 func Load(repoRoot string) (*Release, error) {
 	path := paths.ProjectConfig(repoRoot)
 	data, err := os.ReadFile(path)

@@ -22,6 +22,7 @@ import (
 	"github.com/war-apps/nerv-by-gentle-ai/internal/refusal"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/releaseclone"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/releaseconfig"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/releaseplan"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/versioning"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/workflowconfig"
 )
@@ -30,10 +31,11 @@ const versionNextUsage = `Usage: nerv version next [flags]
 
 Computes the next semantic version of the repository (or of each project of
 the release: section of .ai-workflow.yml) with nerv's native version engine,
-which behaves as semantic-release with the conventionalcommits preset, as
-the release: section configures it (branches, release_rules, tag_format,
-changelog; the defaults without a section). Nothing in the repository
-changes. Needs git only.
+the release: section's version engine (release.version, by default
+conventional-commits: semantic-release with the conventionalcommits
+preset), as release.providers.<engine> configures it (branches,
+release_rules, tag_format, changelog; the defaults without a section).
+Nothing in the repository changes. Needs git only.
 
 Flags:
   --cwd <dir>              A directory inside the repository (default ".")
@@ -173,6 +175,12 @@ func runVersionNext(args []string, stdout, stderr io.Writer, opts options) int {
 	if err == nil {
 		shape, err = requestShape(top, *project)
 	}
+	if err == nil {
+		shape.Engine, err = releaseplan.NewVersionEngine(releaseProviders(opts, stderr), shape.Release)
+	}
+	if err == nil {
+		err = shape.Engine.Validate(ctx)
+	}
 	if err != nil {
 		return report(err)
 	}
@@ -205,7 +213,7 @@ func runVersionNext(args []string, stdout, stderr io.Writer, opts options) int {
 		RepoRoot:     top,
 		Branch:       *branch,
 		Projects:     projects,
-		Config:       shape.Config,
+		Engine:       shape.Engine,
 		Offline:      *offline,
 		FetchTimeout: *fetchTimeout,
 	})
@@ -232,14 +240,15 @@ func runVersionNext(args []string, stdout, stderr io.Writer, opts options) int {
 // the release: section declares more than one project and no --project is
 // given; otherwise exactly one result: the project named Only, or, for a
 // repository without a release: section (Whole), the single project the
-// engine computed, whatever name it gave it. Config is the engine's
-// configuration: the section's, or the defaults.
+// engine computed, whatever name it gave it. Release is the section (nil
+// without one) and Engine its version engine.
 type outputShape struct {
 	Several bool
 	Whole   bool
 	Only    string
-	Config  versioning.Config
-	// BuiltIn: there is no release: section, Config is the defaults.
+	Release *releaseconfig.Release
+	Engine  *releaseplan.VersionEngine
+	// BuiltIn: there is no release: section, the engine's defaults apply.
 	BuiltIn bool
 }
 
@@ -417,26 +426,25 @@ func requestShape(top, name string) (outputShape, error) {
 		if name != "" {
 			return outputShape{}, &refusal.Error{Err: errors.New(withLegacyHint(fmt.Sprintf("--project %q: the repository has no release: section in .ai-workflow.yml, so it is a single project; drop --project", name), top))}
 		}
-		return outputShape{Whole: true, BuiltIn: true, Config: versioning.Config{}.WithDefaults()}, nil
+		return outputShape{Whole: true, BuiltIn: true}, nil
 	}
 	if err != nil {
 		return outputShape{}, err
 	}
-	cfg := rel.Versioning()
 	if len(rel.Projects) == 0 {
 		if name != "" {
 			return outputShape{}, &refusal.Error{Err: fmt.Errorf("--project %q: the release: section declares no project, so the repository is a single project; drop --project", name)}
 		}
-		return outputShape{Whole: true, Config: cfg}, nil
+		return outputShape{Whole: true, Release: rel}, nil
 	}
 	if name == "" {
 		if len(rel.Projects) == 1 {
-			return outputShape{Only: rel.Projects[0].Name, Config: cfg}, nil
+			return outputShape{Only: rel.Projects[0].Name, Release: rel}, nil
 		}
-		return outputShape{Several: true, Config: cfg}, nil
+		return outputShape{Several: true, Release: rel}, nil
 	}
 	if _, ok := rel.Project(name); ok {
-		return outputShape{Only: name, Config: cfg}, nil
+		return outputShape{Only: name, Release: rel}, nil
 	}
 	names := make([]string, 0, len(rel.Projects))
 	for _, p := range rel.Projects {

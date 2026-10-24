@@ -4,8 +4,9 @@
 // repository is never written), holding exactly origin's branches, tags and
 // semantic-release channel notes (refs/notes/semantic-release-<tag>, which
 // the native version engine reads for prerelease numbering). The version is
-// computed in the clone with internal/versioning, offline: origin was already
-// read into it.
+// computed in the clone by the release: section's version engine (the
+// release extension's version provider, internal/releaseplan), offline:
+// origin was already read into it.
 package releaseclone
 
 import (
@@ -19,9 +20,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/war-apps/nerv-by-gentle-ai/internal/env"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/proc"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/releaseconfig"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/releaseplan"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/versioning"
 )
 
@@ -51,9 +52,10 @@ type Options struct {
 	FetchTimeout time.Duration
 	// Runner runs git; nil means proc.ExecRunner.
 	Runner proc.Runner
-	// VersionRunner runs the version engine's git in the clone; nil means
-	// env.ExecRunner.
-	VersionRunner env.Runner
+	// Providers runs the release: section's version engine; without its
+	// extensions tree (FS nil) the workspace has no engine, and Compute,
+	// Explicit and Branch fail.
+	Providers releaseplan.Providers
 	// LocalHead, when set, is the commit the clone's Branch is set to (the
 	// user's local branch, for nerv version next) instead of checking out
 	// origin's: nothing is checked out then.
@@ -69,16 +71,16 @@ type Options struct {
 // .ai-workflow.yml, committed or not, loaded once by New), never the clone's
 // copy: only the code comes from origin. Close removes everything.
 type Workspace struct {
-	runner   proc.Runner
-	versions env.Runner
-	root     string
-	dir      string
-	branch   string
-	env      []string
-	pushURL  string
-	public   string
-	head     string
-	timeout  time.Duration
+	runner  proc.Runner
+	engine  *releaseplan.VersionEngine
+	root    string
+	dir     string
+	branch  string
+	env     []string
+	pushURL string
+	public  string
+	head    string
+	timeout time.Duration
 	// rel is the user's local release: section; nil when there is none.
 	rel *releaseconfig.Release
 }
@@ -103,12 +105,9 @@ func New(ctx context.Context, opts Options) (*Workspace, error) {
 	if timeout <= 0 {
 		timeout = DefaultFetchTimeout
 	}
-	w := &Workspace{runner: opts.Runner, versions: opts.VersionRunner, branch: opts.Branch, timeout: timeout}
+	w := &Workspace{runner: opts.Runner, branch: opts.Branch, timeout: timeout}
 	if w.runner == nil {
 		w.runner = proc.ExecRunner{}
-	}
-	if w.versions == nil {
-		w.versions = env.ExecRunner{}
 	}
 	top, err := w.git(ctx, opts.RepoRoot, envv, "rev-parse", "--show-toplevel")
 	if err != nil {
@@ -122,6 +121,11 @@ func New(ctx context.Context, opts Options) (*Workspace, error) {
 		return nil, err
 	default:
 		w.rel = rel
+	}
+	if opts.Providers.FS != nil {
+		if w.engine, err = releaseplan.NewVersionEngine(opts.Providers, w.rel); err != nil {
+			return nil, err
+		}
 	}
 	remotes, err := w.git(ctx, top, envv, "remote")
 	if err != nil {
@@ -241,21 +245,23 @@ func (w *Workspace) Config() *releaseconfig.Release { return w.rel }
 // Close removes the clone and every file the workspace wrote.
 func (w *Workspace) Close() error { return os.RemoveAll(w.root) }
 
-// VersionConfig is the version engine's configuration: the local release:
-// section's, or the defaults when there is none.
-func (w *Workspace) VersionConfig() versioning.Config {
-	if w.rel == nil {
-		return versioning.Config{}.WithDefaults()
-	}
-	return w.rel.Versioning()
-}
+// Engine is the version engine of the local release: section (its
+// defaults when there is none); nil without Options.Providers.
+func (w *Workspace) Engine() *releaseplan.VersionEngine { return w.engine }
+
+// errNoEngine is the workspace's answer without a version engine.
+var errNoEngine = errors.New("release clone: no version engine (Options.Providers has no extensions tree)")
 
 // Compute computes the next release of each project (only projects, with
-// their dependencies, when not empty) in the clone with the native engine,
-// offline: the clone already holds origin's branches, tags and notes, so
-// origin is not read again and the user's repository is never written.
+// their dependencies, when not empty) in the clone with the version
+// engine, offline: the clone already holds origin's branches, tags and
+// notes, so origin is not read again and the user's repository is never
+// written.
 func (w *Workspace) Compute(ctx context.Context, projects []string) ([]versioning.Result, error) {
-	return versioning.Compute(ctx, w.request(projects))
+	if w.engine == nil {
+		return nil, errNoEngine
+	}
+	return w.engine.Next(ctx, w.dir, w.branch, projects, "")
 }
 
 // Explicit is the release of project at the explicit version (nerv release
@@ -263,9 +269,10 @@ func (w *Workspace) Compute(ctx context.Context, projects []string) ([]versionin
 // project on the branch, and the notes and CHANGELOG section of the
 // version from the commits since then.
 func (w *Workspace) Explicit(ctx context.Context, project, version string) (versioning.Result, error) {
-	req := w.request([]string{project})
-	req.Version = version
-	results, err := versioning.Compute(ctx, req)
+	if w.engine == nil {
+		return versioning.Result{}, errNoEngine
+	}
+	results, err := w.engine.Next(ctx, w.dir, w.branch, []string{project}, version)
 	if err != nil {
 		return versioning.Result{}, err
 	}
@@ -280,11 +287,10 @@ func (w *Workspace) Explicit(ctx context.Context, project, version string) (vers
 // Branch resolves the branch against the configured release branches (its
 // prerelease identifier and channel) in the clone.
 func (w *Workspace) Branch(ctx context.Context) (versioning.ReleaseBranch, error) {
-	return versioning.BranchChannel(ctx, w.request(nil))
-}
-
-func (w *Workspace) request(projects []string) versioning.Request {
-	return versioning.Request{RepoDir: w.dir, Branch: w.branch, Projects: projects, Config: w.VersionConfig(), Offline: true, Runner: w.versions}
+	if w.engine == nil {
+		return versioning.ReleaseBranch{}, errNoEngine
+	}
+	return w.engine.Branch(ctx, w.dir, w.branch)
 }
 
 // BranchOnOrigin returns origin's current commit of the branch ("" when

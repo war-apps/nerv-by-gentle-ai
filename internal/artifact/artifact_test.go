@@ -33,7 +33,7 @@ func sample(t *testing.T) Input {
 	return Input{
 		Manifest: Manifest{
 			Project: "api", Version: "1.4.0-alpha.2", Channel: "alpha", Tag: "api-v1.4.0-alpha.2",
-			BaseCommit: strings.Repeat("a", 40), Branch: "develop", BuildMode: "compose",
+			BaseCommit: strings.Repeat("a", 40), Branch: "develop", BuildProvider: "docker-compose",
 			CreatedAt: time.Date(2026, 10, 23, 12, 0, 0, 0, time.UTC),
 			Images:    []string{"ghcr.io/acme/api:1.4.0-alpha.2"},
 		},
@@ -94,7 +94,7 @@ func TestWrite_LaysOutTheArtifactUnderTheRepository(t *testing.T) {
 	for key, want := range map[string]any{
 		"schema": "nerv.release-artifact/v1", "project": "api", "version": "1.4.0-alpha.2", "channel": "alpha",
 		"tag": "api-v1.4.0-alpha.2", "base_commit": strings.Repeat("a", 40), "branch": "develop",
-		"build_mode": "compose", "created_at": "2026-10-23T12:00:00Z",
+		"build_provider": "docker-compose", "created_at": "2026-10-23T12:00:00Z",
 	} {
 		if doc[key] != want {
 			t.Errorf("manifest %s = %v, want %v", key, doc[key], want)

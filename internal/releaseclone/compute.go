@@ -8,8 +8,8 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/war-apps/nerv-by-gentle-ai/internal/env"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/proc"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/releaseplan"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/versioning"
 )
 
@@ -22,8 +22,9 @@ type ComputeOptions struct {
 	// Projects restricts the results to these projects (their dependencies
 	// are still computed, for depends_on).
 	Projects []string
-	// Config is the version engine's configuration.
-	Config versioning.Config
+	// Engine is the version engine (releaseplan.NewVersionEngine of the
+	// release: section). Required.
+	Engine *releaseplan.VersionEngine
 	// Offline computes from the local tags and notes, in the repository
 	// itself (read only). Otherwise origin's branches, tags and notes are
 	// read into a throwaway clone first.
@@ -33,10 +34,9 @@ type ComputeOptions struct {
 	FetchTimeout time.Duration
 	// Env is git's environment; nil means os.Environ().
 	Env []string
-	// Runner runs the clone's git and VersionRunner the engine's; nil means
-	// the real ones.
-	Runner        proc.Runner
-	VersionRunner env.Runner
+	// Runner runs the clone's git; nil means proc.ExecRunner. The engine
+	// runs its own (its provider's).
+	Runner proc.Runner
 }
 
 // Compute is `nerv version next`'s computation: the next release of the
@@ -47,6 +47,9 @@ type ComputeOptions struct {
 // never written. Offline, or without an origin, the engine reads the
 // repository as it is.
 func Compute(ctx context.Context, o ComputeOptions) ([]versioning.Result, error) {
+	if o.Engine == nil {
+		return nil, errors.New("version next: no version engine")
+	}
 	runner := o.Runner
 	if runner == nil {
 		runner = proc.ExecRunner{}
@@ -71,19 +74,17 @@ func Compute(ctx context.Context, o ComputeOptions) ([]versioning.Result, error)
 	if err != nil || local == "" {
 		return nil, fmt.Errorf("branch %q: not a local branch", branch)
 	}
-	req := versioning.Request{RepoDir: top, Branch: branch, Projects: o.Projects, Config: o.Config, Offline: true, Runner: o.VersionRunner}
 	if o.Offline {
-		return versioning.Compute(ctx, req)
+		return o.Engine.Next(ctx, top, branch, o.Projects, "")
 	}
-	ws, err := New(ctx, Options{RepoRoot: top, Branch: branch, Env: envv, FetchTimeout: o.FetchTimeout, Runner: runner, VersionRunner: o.VersionRunner, LocalHead: local})
+	ws, err := New(ctx, Options{RepoRoot: top, Branch: branch, Env: envv, FetchTimeout: o.FetchTimeout, Runner: runner, LocalHead: local})
 	if errors.Is(err, ErrNoOrigin) {
 		// Nothing to read from: the local tags and notes are all there is.
-		return versioning.Compute(ctx, req)
+		return o.Engine.Next(ctx, top, branch, o.Projects, "")
 	}
 	if err != nil {
 		return nil, err
 	}
 	defer ws.Close()
-	req.RepoDir = ws.Dir()
-	return versioning.Compute(ctx, req)
+	return o.Engine.Next(ctx, ws.Dir(), branch, o.Projects, "")
 }

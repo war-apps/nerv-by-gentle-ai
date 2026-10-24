@@ -24,6 +24,11 @@ type Manifest struct {
 	// first, each extension followed by its providers; 0 (unset) comes
 	// after every ordered extension, by name.
 	SuggestOrder int `yaml:"suggest_order"`
+	// Providers is how nerv install installs the extension's providers:
+	// ProvidersBundled (every provider shipped is installed with the
+	// extension, never asked) or ProvidersSuggested (each is offered after
+	// it; the default when unset).
+	Providers string `yaml:"providers"`
 	// Runtime is how the core reaches the extension: through its entry
 	// Agent (RuntimeAgent, as <plugin>:<agent>) or by running Argv
 	// (RuntimeExec).
@@ -72,6 +77,10 @@ func (s Slot) OperationNames() []string {
 	sort.Strings(names)
 	return names
 }
+
+// Bundles reports whether the extension's providers are installed with
+// it (providers: bundled).
+func (m *Manifest) Bundles() bool { return m.Providers == ProvidersBundled }
 
 // Slot returns the slot named name.
 func (m *Manifest) Slot(name string) (Slot, bool) {
@@ -126,6 +135,9 @@ func (m *Manifest) problems() []string {
 	}
 	if m.ContractVersion != ContractVersion {
 		add("contract_version %d is not supported (this nerv understands %d)", m.ContractVersion, ContractVersion)
+	}
+	if m.Providers != "" && !slices.Contains(ProvidersModes, m.Providers) {
+		add("providers %q must be one of %s", m.Providers, strings.Join(ProvidersModes, ", "))
 	}
 	if m.SuggestOrder < 0 {
 		add("suggest_order %d must be 0 (unset) or positive", m.SuggestOrder)

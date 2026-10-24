@@ -89,7 +89,7 @@ func TestReleaseDeployPlugins_SetupNamesImportAndProviders(t *testing.T) {
 		return string(data)
 	}
 	assertContainsAll(t, "release/commands/setup.md", read("release/commands/setup.md"),
-		"nerv release setup --import", "build.mode", "compose", "script", "nerv version next")
+		"nerv release setup --import", "build provider", "docker-compose", "bash", "nerv version next")
 	assertContainsAll(t, "deploy/commands/setup.md", read("deploy/commands/setup.md"),
 		"deploy-github", "deploy-ssh-compose", "nerv install --with")
 	assertContainsAll(t, "deploy/commands/run.md", read("deploy/commands/run.md"),
@@ -104,7 +104,7 @@ var semanticReleaseRun = regexp.MustCompile(`(?im)(^\s*(\$\s*)?|\b(npx|npm\s+exe
 // The release and deploy plugins never run semantic-release: the version engine
 // is native, and an existing semantic-release config is only imported.
 func TestReleaseDeployPlugins_NeverRunSemanticRelease(t *testing.T) {
-	for _, root := range []string{"release", "deploy", "deploy-github", "deploy-ssh-compose"} {
+	for _, root := range []string{"release", "release-conventional-commits", "release-docker-compose", "release-bash", "deploy", "deploy-github", "deploy-ssh-compose"} {
 		err := fs.WalkDir(ExtensionsFS(), root, func(path string, d fs.DirEntry, err error) error {
 			if err != nil || d.IsDir() || !strings.HasSuffix(path, ".md") {
 				return err

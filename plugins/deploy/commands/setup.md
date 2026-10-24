@@ -35,7 +35,7 @@ English.
      from its `pipeline.deploy` environments instead (one
      `deploy-ssh-compose` target each). Its `pipeline.images` are not a
      `deploy:` key: release builds the images now, from the `release:` project's
-     `build.images` (`/release:setup` writes them), and `deploy-ssh-compose`
+     the release project's `images` (`/release:setup` writes them), and `deploy-ssh-compose`
      pushes them.
 
 Only the `deploy:` block is added or replaced, with the same rule as

@@ -125,13 +125,13 @@ var pipelineParts = []struct {
 	keys []string
 	text string
 }{
-	{[]string{"dotnet"}, "pipeline.dotnet: the script stages (restore, lint, build, test) of the project's build: { mode: script } in the release: section"},
+	{[]string{"dotnet"}, "pipeline.dotnet: the stages (restore, lint, build, test) of a project with build: bash in the release: section"},
 	{[]string{"validate", "test"}, "validate and test: nerv release (stages of each project in the release: section)"},
-	{[]string{"branches"}, "pipeline.branches: release.branches (the version engine's branches)"},
-	{[]string{"registry", "images"}, "pipeline.registry and pipeline.images: the project's build.images (built and saved into the artifact by nerv release), " +
+	{[]string{"branches"}, "pipeline.branches: release.providers.conventional-commits.branches (the version engine's branches)"},
+	{[]string{"registry", "images"}, "pipeline.registry and pipeline.images: the project's images (built and saved into the artifact by nerv release), " +
 		"pushed by the deploy-ssh-compose target's publish (the registry login is its config)"},
 	{[]string{"docker"}, "docker and release: nerv release, then nerv deploy (the image is built and saved into the artifact by release and pushed by deploy)"},
-	{[]string{"release"}, "pipeline.release.version_files: the project's build.version_files; the release itself is nerv release, then nerv deploy (tag, release commit and host release)"},
+	{[]string{"release"}, "pipeline.release.version_files: the project's version_files; the release itself is nerv release, then nerv deploy (tag, release commit and host release)"},
 	{[]string{"deploy"}, "pipeline.deploy: the deploy-ssh-compose targets of the deploy: section (one per environment)"},
 	{[]string{"sync"}, "pipeline.sync: not ported yet (no back-merge after a release)"},
 }

@@ -60,6 +60,17 @@ const (
 // Cardinalities are the cardinalities a slot may declare.
 var Cardinalities = []string{CardinalityOne, CardinalityMany, CardinalityPerTarget}
 
+// How nerv install installs an extension's providers (extension.yaml's
+// providers): all of them with the extension, or each one offered after
+// it.
+const (
+	ProvidersBundled   = "bundled"
+	ProvidersSuggested = "suggested"
+)
+
+// ProvidersModes are the values extension.yaml's providers may take.
+var ProvidersModes = []string{ProvidersBundled, ProvidersSuggested}
+
 // The operation requirement levels of a slot.
 const (
 	Required = "required"

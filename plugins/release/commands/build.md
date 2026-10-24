@@ -6,8 +6,8 @@ argument-hint: [--branch <name>] [--project <name>] [--version <semver>] (nothin
 # /release:build
 
 Build, test and package what is on origin from this machine, as the CI
-build would, per project in dependency order, in a throwaway clone, in each
-project's build mode (`compose` or `script`), and leave a local artifact
+build would, per project in dependency order, in a throwaway clone, with each
+project's build provider (`docker-compose` or `bash`), and leave a local artifact
 per project in `.nerv/artifacts/<project>/<version>/` for `/deploy:run`.
 `nerv release` never writes to git (no commit, no tag, no push) and never
 publishes. Load the `release` skill first: it is the contract the steps below
@@ -29,14 +29,14 @@ which part is not accepted, that `/release:build` takes only `--branch`,
    ```
 
    If `nerv` is not on PATH, give the install line of §1 and stop. The dry
-   run is real work in the clone (every stage and the `prepare` hooks; in
-   compose mode `docker compose build`, `docker compose run --rm
+   run is real work in the clone (every stage and the `prepare` hooks; with
+   `docker-compose`, `docker compose build`, `docker compose run --rm
    <test_service>` and `docker save`), so it can take minutes; it writes no
    artifact.
 
 2. **On a refusal or failure, stop.** Show `error` and the relevant stderr
    lines as they are, in a short message, with the meaning of the exit code
-   (§5). For a project without `build.mode`, a removed preset key or a 4.2.0
+   (§5). For a project without a build provider, a moved or removed key or a 4.2.0
    `release:` section, suggest `nerv migrate` (or `/release:setup`). `status`
    `nothing-to-release` is a normal result: say so and stop.
 

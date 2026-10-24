@@ -18,7 +18,7 @@ The launch prompt may carry `--branch <name>`, `--project <name>` and `--offline
 
 1. **Compute.** Run `nerv version next --json` with the given flags and nothing else. Never compute a version by hand, and never run semantic-release, node or npm.
 2. **On a non-zero exit**, return stderr as it is with the exit code and its meaning (§3). For a 4.2.0 `release:` section, name `nerv migrate` and `/release:setup`.
-3. **Explain.** For each project with a new release, read the commits since `last_release_git_tag` that count for it (`git log --format='%h %s' <tag>..origin/<branch> -- <path> <shared_paths>`, plus its scopes), and name the commits that decided the bump (a breaking-change note, `feat`, `fix`, or a `release_rules` entry), and a `depends_on` bump when that is the reason. Read-only git commands only.
+3. **Explain.** For each project with a new release, read the commits since `last_release_git_tag` that count for it (`git log --format='%h %s' <tag>..origin/<branch> -- <path> <shared_paths>`, plus its scopes), and name the commits that decided the bump (a breaking-change note, `feat`, `fix`, or a `release.providers.conventional-commits.release_rules` entry), and a `depends_on` bump when that is the reason. Read-only git commands only.
 
 ## Output
 

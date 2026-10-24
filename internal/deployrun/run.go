@@ -488,7 +488,7 @@ func (d *deployer) env(p provider) (deployprovider.Env, error) {
 	}
 	values := map[string]string{
 		"project": m.Project, "version": m.Version, "channel": m.Channel, "tag": m.Tag, "base_commit": m.BaseCommit,
-		"branch": m.Branch, "build_mode": m.BuildMode, "prerelease": prerelease, "artifact_dir": dir,
+		"branch": m.Branch, "build_mode": m.BuildProvider, "prerelease": prerelease, "artifact_dir": dir,
 		"notes_file": filepath.Join(dir, artifact.NotesFile), "changelog_file": filepath.Join(dir, artifact.ChangelogFile),
 		"target": p.target, "nerv": nerv,
 	}

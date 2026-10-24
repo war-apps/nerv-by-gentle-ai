@@ -56,8 +56,13 @@ tasks:                              # read only by the optional task plugin (tas
   sources:                          # extra work sources for listings (replaces ~/.claude/work/sources.md)
     - { name: erp-proveedores, type: google-sheets, ... }
 release:                               # release plugin; project scope only, never merged with the user file; see release-commands.md
+  version: conventional-commits     # the version engine (the default); its keys under providers.conventional-commits
+  build: docker-compose             # every project's build provider: docker-compose or bash
+  providers:                        # release.providers.<provider>.<key>, as each provider.yaml declares
+    conventional-commits: { tag_format: "v${version}" }
+    docker-compose: { file: docker-compose.yml }
   projects:
-    - { name: api, path: ., build: { mode: compose, file: docker-compose.yml, images: ["ghcr.io/acme/app:${version}"] } }
+    - { name: api, path: ., images: ["ghcr.io/acme/app:${version}"] }
 deploy:                             # deploy plugin; see deploy.md
   host: github
   targets:
@@ -65,11 +70,17 @@ deploy:                             # deploy plugin; see deploy.md
 ```
 
 `release:` configures the release plugin (`nerv version next` and `nerv release`,
-also `/release:version`, `/release:setup` and `/release:build`): the version engine
-(branches and channels, release rules, note keywords, tag format,
-changelog), the projects and their dependencies, and each project's
-`build.mode` (`compose` or `script`; there are no presets) with its
-stages, hooks and coverage. Its full reference is
+also `/release:version`, `/release:setup` and `/release:build`): its two
+provider slots, `release.version` (the version engine, by default
+`conventional-commits`) and `release.build` (the build provider of every
+project, overridden by `release.projects[].build`: `docker-compose` or
+`bash`; there is no default and there are no presets); each provider's keys
+under `release.providers.<provider>.<key>` (the engine's branches and
+channels, release rules, note keywords, tag format and changelog; the
+compose file and test service; bash's `shared_host`), which a project
+overrides for its build provider under
+`release.projects[].providers.<provider>`; and the projects, their
+dependencies, images, version files, stages, hooks and coverage. Its full reference is
 [release-commands.md](release-commands.md#configuration-release).
 
 `deploy:` configures the deploy plugin (`nerv deploy`, `/deploy:run`,

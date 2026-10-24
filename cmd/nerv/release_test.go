@@ -7,6 +7,7 @@ import (
 	"errors"
 	"io"
 	"os"
+	"path"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -30,7 +31,7 @@ const releaseMonorepoYAML = `release:
   projects:
     - name: core
       path: core
-      build: { mode: script }
+      build: bash
       stages:
         build: { run: "echo build core" }
         package: { run: "echo package core" }
@@ -39,12 +40,12 @@ const releaseMonorepoYAML = `release:
         fail: [{ run: "echo fail core" }]
     - name: cli
       path: cli
-      build: { mode: script }
+      build: bash
       stages:
         build: { run: "echo build cli" }
     - name: web
       path: web
-      build: { mode: script }
+      build: bash
       depends_on:
         - project: core
           bump: minor
@@ -60,9 +61,8 @@ const releaseVersionFilesYAML = `release:
   projects:
     - name: api
       path: .
-      build:
-        mode: script
-        version_files: [src/Api/Api.csproj]
+      build: bash
+      version_files: [src/Api/Api.csproj]
       stages:
         build: { run: "echo build api" }
 `
@@ -72,11 +72,10 @@ const releaseComposeYAML = `release:
   projects:
     - name: api
       path: api
-      build:
-        mode: compose
-        file: api/docker-compose.yml
-        test_service: tests
-        images: ["ghcr.io/acme/api:${version}"]
+      build: docker-compose
+      providers:
+        docker-compose: { file: api/docker-compose.yml, test_service: tests }
+      images: ["ghcr.io/acme/api:${version}"]
       hooks:
         fail: [{ run: "echo fail api" }]
 `
@@ -139,7 +138,35 @@ func (w *fakeWorkspace) Close() error {
 func (w *fakeWorkspace) Compute(_ context.Context, projects []string) ([]versioning.Result, error) {
 	w.computed = append(w.computed, strings.Join(projects, ","))
 	w.f.log("compute")
-	return w.results, w.computeErr
+	results := slices.Clone(w.results)
+	for i := range results {
+		if results[i].Changelog == "" {
+			results[i].Changelog = w.defaultChangelog(results[i].Project)
+		}
+	}
+	return results, w.computeErr
+}
+
+// defaultChangelog and defaultTagFormat are the version engine's defaults
+// for the project (the engine's own tests check them).
+func (w *fakeWorkspace) defaultChangelog(project string) string {
+	p, _ := w.Config().Project(project)
+	if p.Changelog != "" {
+		return p.Changelog
+	}
+	return path.Join(p.Path, "CHANGELOG.md")
+}
+
+func (w *fakeWorkspace) defaultTagFormat(project string) string {
+	rel := w.Config()
+	p, _ := rel.Project(project)
+	switch {
+	case p.TagFormat != "":
+		return p.TagFormat
+	case len(rel.Projects) == 1:
+		return "v${version}"
+	}
+	return project + "-v${version}"
 }
 
 // Explicit stands in for the engine's explicit release: the last release
@@ -149,16 +176,17 @@ func (w *fakeWorkspace) Compute(_ context.Context, projects []string) ([]version
 // notes name the version.
 func (w *fakeWorkspace) Explicit(ctx context.Context, project, version string) (versioning.Result, error) {
 	w.f.log("explicit")
-	p, _ := w.Config().Project(project)
+	format := w.defaultTagFormat(project)
 	out, _, _, err := w.f.runner.Run(ctx, "git", "-C", w.dir, "tag", "--list")
 	if err != nil {
 		return versioning.Result{}, err
 	}
-	r := versioning.Result{Project: project, NewReleasePublished: true, NewReleaseVersion: version, NewReleaseGitTag: releaseplan.TagFor(p.TagFormat, version),
+	r := versioning.Result{Project: project, NewReleasePublished: true, NewReleaseVersion: version, NewReleaseGitTag: releaseplan.TagFor(format, version),
+		Changelog:        w.defaultChangelog(project),
 		NewReleaseNotes:  "## " + version + "\n\n* " + project + " change\n",
 		ChangelogSection: "## " + version + " (2026-10-24)\n\n* " + project + " change\n"}
 	for _, tag := range strings.Fields(out) {
-		tv, ok := releaseplan.VersionFromTag(p.TagFormat, tag)
+		tv, ok := releaseplan.VersionFromTag(format, tag)
 		if !ok {
 			continue
 		}
@@ -468,20 +496,36 @@ func TestRelease_UnknownProjectAndNoOrigin(t *testing.T) {
 	}
 }
 
-// build.mode is required, with no default; a preset key says what to
-// write instead. Each is refused before origin is read.
-func TestRelease_RequiresTheBuildMode(t *testing.T) {
+// The build provider is required, with no default; a preset key says what
+// to write instead; an unknown build provider or a key it does not declare
+// is refused, and so is a provider's own refusal of its keys (its
+// validate). Each is refused before origin is read.
+func TestRelease_RequiresTheBuildProvider(t *testing.T) {
 	tests := []struct {
 		name, yaml string
 		want       []string
 	}{
-		{"no release section", "", []string{"no release: section", "build.mode (compose or script)"}},
-		{"no build mode", "release:\n  projects:\n    - { name: api, path: . }\n", []string{"release.projects[0].build.mode: required by nerv release (compose or script): there is no default"}},
+		{"no release section", "", []string{"no release: section", "build provider (build: docker-compose or bash)"}},
+		{"no build provider", "release:\n  projects:\n    - { name: api, path: . }\n", []string{"release.projects[0].build: required by nerv release (the build provider, such as docker-compose or bash; or set release.build for every project): there is no default"}},
+		{"unknown build provider", "release:\n  build: maven\n  projects:\n    - { name: api, path: . }\n", []string{`release.build: unknown build provider "maven" (want bash, docker-compose)`}},
+		{"unknown provider key", "release:\n  projects:\n    - name: api\n      path: .\n      build: bash\n      providers:\n        bash: { sdk: \"8\" }\n", []string{"release.projects[0].providers.bash.sdk: unknown key (want shared_host)"}},
+		{"provider refusal", "release:\n  projects:\n    - name: api\n      path: .\n      build: docker-compose\n      stages:\n        build: { run: make }\n", []string{
+			"release.projects[0].providers.docker-compose.file: required by the docker-compose build",
+			"release.projects[0].stages.build: docker-compose runs build itself",
+		}},
+		{"engine refusal", "release:\n  providers:\n    conventional-commits: { release_rules: [{ type: docs, release: huge }] }\n  projects:\n    - { name: api, path: ., build: bash }\n", []string{
+			`release.providers.conventional-commits.release_rules[0]: release "huge" is not major, minor, patch or none`,
+		}},
+		{"old shape", "release:\n  branches: [main]\n  projects:\n    - name: api\n      path: .\n      build: { mode: compose, file: c.yml }\n", []string{
+			"release.branches: moved to release.providers.conventional-commits.branches",
+			"release.projects[0].build.mode: build is the build provider's name now",
+			"release.projects[0].build.file: moved to release.projects[0].providers.docker-compose.file",
+		}},
 		{"old preset", "release:\n  projects:\n    - name: api\n      path: .\n      presets: [dotnet]\n      dotnet: { project_file: Api.csproj }\n", []string{
-			"release.projects[0].presets: the presets were removed; set build.mode instead",
+			"release.projects[0].presets: the presets were removed; set the build provider instead",
 			"release.projects[0].dotnet: the dotnet preset was removed",
 		}},
-		{"old publish stage", "release:\n  projects:\n    - name: api\n      path: .\n      build: { mode: script }\n      stages:\n        publish: { run: x }\n", []string{"publishing moved to nerv deploy"}},
+		{"old publish stage", "release:\n  projects:\n    - name: api\n      path: .\n      build: bash\n      stages:\n        publish: { run: x }\n", []string{"publishing moved to nerv deploy"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -571,7 +615,7 @@ func TestRelease_PackagesInDependencyOrderAndSkipsUnreleased(t *testing.T) {
 			t.Errorf("summary lacks %q:\n%s", s, stdout)
 		}
 	}
-	for _, s := range []string{"2 project(s) to package", "core 1.1.0 (default channel, tag core-v1.1.0, build mode script)", "last release 1.0.0", "echo package core", "artifact " + coreDir, "nerv release: core 1.1.0: artifact " + coreDir} {
+	for _, s := range []string{"2 project(s) to package", "core 1.1.0 (default channel, tag core-v1.1.0, build bash)", "last release 1.0.0", "echo package core", "artifact " + coreDir, "nerv release: core 1.1.0: artifact " + coreDir} {
 		if !strings.Contains(stderr, s) {
 			t.Errorf("listing lacks %q:\n%s", s, stderr)
 		}
@@ -582,7 +626,7 @@ func TestRelease_PackagesInDependencyOrderAndSkipsUnreleased(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if m.Project != "core" || m.Version != "1.1.0" || m.Tag != "core-v1.1.0" || m.BaseCommit != localHead || m.Branch != "main" || m.BuildMode != "script" || m.CreatedAt.IsZero() {
+	if m.Project != "core" || m.Version != "1.1.0" || m.Tag != "core-v1.1.0" || m.BaseCommit != localHead || m.Branch != "main" || m.BuildProvider != "bash" || m.CreatedAt.IsZero() {
 		t.Errorf("manifest %+v", m)
 	}
 	if len(m.Outputs) != 2 || m.Outputs[0].Path != "outputs/core.zip" || m.Outputs[0].Kind != artifact.KindFile || m.Outputs[1].Kind != artifact.KindDir {
@@ -901,7 +945,7 @@ func TestRelease_ComposeModeBuildsTestsAndSavesTheImages(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if m.BuildMode != "compose" || !slices.Equal(m.Images, []string{"ghcr.io/acme/api:1.4.0"}) || len(m.Outputs) != 1 ||
+	if m.BuildProvider != "docker-compose" || !slices.Equal(m.Images, []string{"ghcr.io/acme/api:1.4.0"}) || len(m.Outputs) != 1 ||
 		m.Outputs[0] != (artifact.Output{Path: "outputs/ghcr.io_acme_api_1.4.0.tar", Kind: artifact.KindImageTar, SHA256: m.Outputs[0].SHA256}) {
 		t.Errorf("manifest %+v", m)
 	}
@@ -1204,10 +1248,10 @@ const releasePathsYAML = `release:
     - name: api
       path: api
       shared_paths: [libs/common, "libs/**/gen"]
-      build:
-        mode: compose
-        file: api/compose.yml
-        version_files: [api/Api.csproj]
+      build: docker-compose
+      providers:
+        docker-compose: { file: api/compose.yml }
+      version_files: [api/Api.csproj]
       stages:
         lint: { run: "echo lint", workdir: tools/build }
       hooks:
@@ -1223,11 +1267,13 @@ func TestRelease_LocalPathsMissingOnOriginAreRefused(t *testing.T) {
 		{"every path on origin (the glob is not checked)", nil, nil},
 		{"project path", []string{"api"}, []string{`"api" (project api, path)`}},
 		{"shared path", []string{"libs/common"}, []string{`"libs/common" (project api, shared_paths)`}},
-		{"compose file", []string{"api/compose.yml"}, []string{`"api/compose.yml" (project api, build.file)`}},
-		{"version file", []string{"api/Api.csproj"}, []string{`"api/Api.csproj" (project api, build.version_files)`}},
+		{"version file", []string{"api/Api.csproj"}, []string{`"api/Api.csproj" (project api, version_files)`}},
 		{"stage workdir", []string{"tools/build"}, []string{`"tools/build" (project api, stages.lint.workdir)`}},
 		{"hook workdir", []string{"tools/hooks"}, []string{`"tools/hooks" (project api, hooks.prepare.workdir)`}},
-		{"several, all listed", []string{"api/compose.yml", "tools/hooks"}, []string{`"api/compose.yml" (project api, build.file)`, `"tools/hooks" (project api, hooks.prepare.workdir)`}},
+		{"several, all listed", []string{"api/Api.csproj", "tools/hooks"}, []string{`"api/Api.csproj" (project api, version_files)`, `"tools/hooks" (project api, hooks.prepare.workdir)`}},
+		// The build provider's own files are checked when it plans the
+		// releasing project, before any stage runs.
+		{"compose file", []string{"api/compose.yml"}, []string{`"api/compose.yml" (project api, providers.docker-compose.file)`}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -1266,8 +1312,13 @@ func TestRelease_LocalPathsMissingOnOriginAreRefused(t *testing.T) {
 			if strings.Contains(doc.Error, "libs/**/gen") {
 				t.Errorf("the glob shared path was checked: %s", doc.Error)
 			}
-			// Refused before any version is computed.
-			if want := []string{"open", "close"}; !slices.Equal(f.events, want) {
+			// Refused before any version is computed, or, for the build
+			// provider's files, before any stage runs.
+			want := []string{"open", "close"}
+			if tt.name == "compose file" {
+				want = []string{"open", "compute", "close"}
+			}
+			if !slices.Equal(f.events, want) {
 				t.Errorf("events %v, want %v", f.events, want)
 			}
 		})

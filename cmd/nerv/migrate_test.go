@@ -139,13 +139,14 @@ func TestMigrate_InstallRunsTheInstallStep(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("exit %d\n%s\n%s", code, out, errOut)
 	}
-	for _, plugin := range []string{"task@nerv", "task-teamwork@nerv", "release@nerv", "deploy@nerv", "deploy-github@nerv"} {
+	for _, plugin := range []string{"task@nerv", "task-teamwork@nerv", "release@nerv", "release-conventional-commits@nerv", "release-docker-compose@nerv", "release-bash@nerv", "deploy@nerv", "deploy-github@nerv"} {
 		if !strings.Contains(out, "claude plugin install "+plugin) {
 			t.Errorf("%s not installed:\n%s", plugin, out)
 		}
 	}
-	if strings.Contains(out, "claude plugin install deploy-ssh-compose@nerv") {
-		t.Errorf("deploy-ssh-compose installed, but the repository never used pipeline.deploy:\n%s", out)
+	// deploy bundles its providers: deploy-ssh-compose comes with it.
+	if !strings.Contains(out, "claude plugin install deploy-ssh-compose@nerv") {
+		t.Errorf("deploy-ssh-compose not installed with deploy:\n%s", out)
 	}
 }
 

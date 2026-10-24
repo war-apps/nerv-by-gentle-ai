@@ -48,7 +48,7 @@ agents are `release:versioner` and `release:builder`. Reference:
 | Command | What it does |
 |---|---|
 | `/release:version` | Show the next release version of the repository (or of each project), computed by the native engine |
-| `/release:setup` | Write the `release:` section of `.ai-workflow.yml`: import an existing semantic-release config (`nerv release setup --import`), ask each project's `build.mode` (`compose` or `script`) and its stage commands or compose file |
+| `/release:setup` | Write the `release:` section of `.ai-workflow.yml`: import an existing semantic-release config (`nerv release setup --import`), ask each project's build provider (`docker-compose` or `bash`) and its stage commands or compose file |
 | `/release:build` | Build, test and package origin's code into a local artifact: dry run first, the real run only after your explicit yes; never writes to git |
 
 ### Deploy plugin commands (`/deploy:*`)
@@ -209,7 +209,7 @@ nerv version next --offline --format env >> "$GITHUB_OUTPUT"
 ### nerv release
 
 Builds, tests and packages what is on origin, in a throwaway clone, in each
-project's build mode (`compose` or `script`), per project in dependency
+project's build provider (`docker-compose` or `bash`), per project in dependency
 order, and leaves the artifact `.nerv/artifacts/<project>/<version>/`. It
 never writes to git. It asks for confirmation (`--yes` to skip; required
 without a terminal); `--dry-run` runs every stage and writes no artifact;
@@ -296,11 +296,17 @@ offers the others, in this order:
 1. the task plugin (`task@nerv`, the `/task:*` commands);
 2. its providers (`task-<name>@nerv`, such as `task-teamwork@nerv`), only
    once task is installed;
-3. the release plugin (`release@nerv`: `nerv release` and the version engine);
+3. the release plugin (`release@nerv`: `nerv release`), which brings its
+   providers with it, unasked (`release-conventional-commits@nerv`, the
+   version engine, `release-docker-compose@nerv` and `release-bash@nerv`);
 4. the deploy plugin (`deploy@nerv`: `nerv deploy`), only once release is
-   installed;
-5. the deploy providers (`deploy-<name>@nerv`: `deploy-github@nerv`,
-   `deploy-ssh-compose@nerv`), only once deploy is installed.
+   installed, which brings its providers with it, unasked
+   (`deploy-github@nerv`, `deploy-ssh-compose@nerv`).
+
+An extension whose `extension.yaml` says `providers: bundled` (release,
+deploy) installs every provider it ships with it, each listed as `Adding
+<provider> (bundled with <extension>)`; one that says `providers:
+suggested` (task) has each provider offered after it.
 
 Requirements: `deploy` requires `release`, a task provider requires `task`,
 and a deploy provider requires `deploy`; each is offered only once what it

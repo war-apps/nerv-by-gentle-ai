@@ -9,13 +9,8 @@ import (
 
 	"github.com/war-apps/nerv-by-gentle-ai/internal/config"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/releaseconfig/yamlsection"
-	"github.com/war-apps/nerv-by-gentle-ai/internal/versioning"
 	"gopkg.in/yaml.v3"
 )
-
-// engineKeys are the release: section's version engine keys, in the order
-// ImportSection writes them, before the projects.
-var engineKeys = []string{"branches", "release_rules", "note_keywords", "tag_format", "repository_url", "changelog"}
 
 // EngineConflict is one engine key ImportSection would change: the
 // section already sets it to Current, and the import gives Imported (both
@@ -25,7 +20,8 @@ type EngineConflict struct {
 }
 
 // EngineConflictError is ImportSection's refusal to replace engine keys the
-// section already sets to other values, without force.
+// section already sets to other values, without force. Section is the
+// keys' path (release.providers.conventional-commits).
 type EngineConflictError struct {
 	Section   string
 	Conflicts []EngineConflict
@@ -36,22 +32,23 @@ func (e *EngineConflictError) Error() string {
 	for i, c := range e.Conflicts {
 		parts[i] = fmt.Sprintf("%s.%s is %s, the import gives %s", e.Section, c.Key, c.Current, c.Imported)
 	}
-	return fmt.Sprintf("the %s: section already sets %d engine key(s) to other values: %s", e.Section, len(parts), strings.Join(parts, "; "))
+	return fmt.Sprintf("%s already sets %d engine key(s) to other values: %s", e.Section, len(parts), strings.Join(parts, "; "))
 }
 
-// ImportSection returns the .ai-workflow.yml text data with the version
-// engine settings of cfg (an imported semantic-release configuration)
-// written into its release: section: each engine key cfg sets is written, and
-// every other key of the section (the projects, their builds, the engine
-// keys cfg leaves unset) is kept, with its comments. An engine key the
-// section already sets to another value is never replaced silently:
-// without force the result is an *EngineConflictError listing each one;
-// with force it is replaced in place and notes names the replaced value.
-// A 4.2.0 release: section is not converted here: the result does not
-// load, and the refusal names nerv migrate. The rest of the file is kept
-// verbatim (internal/config's line editor). The result must load: an invalid one is an error, and nothing
-// should be written.
-func ImportSection(data []byte, cfg versioning.Config, force bool) (string, []string, error) {
+// ImportSection returns the .ai-workflow.yml text data with imported (the
+// YAML mapping a version engine's import answered, such as an imported
+// semantic-release configuration) written under
+// release.providers.<provider>: each key it sets is written, and every
+// other key (of the section, of the provider, the projects and their
+// builds) is kept, with its comments. A key the provider's block already
+// sets to another value is never replaced silently: without force the
+// result is an *EngineConflictError listing each one; with force it is
+// replaced in place and notes names the replaced value. A 4.2.0 release:
+// section is not converted here: the result does not load, and the refusal
+// names nerv migrate. The rest of the file is kept verbatim
+// (internal/config's line editor). The result must load: an invalid one is
+// an error, and nothing should be written.
+func ImportSection(data []byte, provider, imported string, force bool) (string, []string, error) {
 	var notes []string
 	doc := config.Parse(string(data))
 	section, err := yamlsection.Locate(data, SectionKey)
@@ -64,47 +61,77 @@ func ImportSection(data []byte, cfg versioning.Config, force bool) (string, []st
 	if section.Kind != yaml.MappingNode {
 		return "", nil, &ValidationError{Problems: []string{SectionKey + ": must be a mapping"}}
 	}
-	values, err := engineValues(cfg)
-	if err != nil {
-		return "", nil, err
+	var values yaml.Node
+	if err := yaml.Unmarshal([]byte(imported), &values); err != nil {
+		return "", nil, fmt.Errorf("the imported keys: %w", err)
 	}
+	importedMap := &yaml.Node{Kind: yaml.MappingNode, Tag: "!!map"}
+	if len(values.Content) == 1 && values.Content[0].Kind == yaml.MappingNode {
+		importedMap = values.Content[0]
+	}
+	at := SectionKey + ".providers." + provider
+	providers := mappingValue(section, "providers")
+	if providers == nil || providers.ShortTag() == "!!null" {
+		if providers == nil {
+			providers = &yaml.Node{Kind: yaml.MappingNode, Tag: "!!map"}
+			section.Content = append([]*yaml.Node{scalarNode("providers"), providers}, section.Content...)
+		} else {
+			*providers = yaml.Node{Kind: yaml.MappingNode, Tag: "!!map"}
+		}
+	}
+	if providers.Kind != yaml.MappingNode {
+		return "", nil, &ValidationError{Problems: []string{SectionKey + ".providers: must be a mapping"}}
+	}
+	block := mappingValue(providers, provider)
+	if block == nil || block.ShortTag() == "!!null" {
+		if block == nil {
+			block = &yaml.Node{Kind: yaml.MappingNode, Tag: "!!map"}
+			providers.Content = append([]*yaml.Node{scalarNode(provider), block}, providers.Content...)
+		} else {
+			*block = yaml.Node{Kind: yaml.MappingNode, Tag: "!!map"}
+		}
+	}
+	if block.Kind != yaml.MappingNode {
+		return "", nil, &ValidationError{Problems: []string{at + ": must be a mapping"}}
+	}
+
 	var conflicts []EngineConflict
 	existing := map[string]bool{}
-	for i := 0; i+1 < len(section.Content); i += 2 {
-		key := section.Content[i].Value
-		v, engine := values[key]
-		if !engine {
+	for i := 0; i+1 < len(block.Content); i += 2 {
+		key := block.Content[i].Value
+		v := mappingValue(importedMap, key)
+		if v == nil {
 			continue
 		}
 		existing[key] = true
-		cur := section.Content[i+1]
+		cur := block.Content[i+1]
 		if sameValue(cur, v) {
 			continue
 		}
 		conflicts = append(conflicts, EngineConflict{Key: key, Current: oneLine(cur), Imported: oneLine(v)})
 		if force {
 			v.HeadComment, v.LineComment, v.FootComment = cur.HeadComment, cur.LineComment, cur.FootComment
-			section.Content[i+1] = v
+			block.Content[i+1] = v
 		}
 	}
 	if len(conflicts) > 0 && !force {
-		return "", nil, &EngineConflictError{Section: SectionKey, Conflicts: conflicts}
+		return "", nil, &EngineConflictError{Section: at, Conflicts: conflicts}
 	}
 	for _, c := range conflicts {
-		notes = append(notes, fmt.Sprintf("replaced %s.%s: %s (now %s)", SectionKey, c.Key, c.Current, c.Imported))
+		notes = append(notes, fmt.Sprintf("replaced %s.%s: %s (now %s)", at, c.Key, c.Current, c.Imported))
 	}
 	var added []*yaml.Node
-	for _, key := range engineKeys {
-		if v, ok := values[key]; ok && !existing[key] {
-			added = append(added, &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: key}, v)
+	for i := 0; i+1 < len(importedMap.Content); i += 2 {
+		if key := importedMap.Content[i].Value; !existing[key] {
+			added = append(added, importedMap.Content[i], importedMap.Content[i+1])
 		}
 	}
-	section.Content = append(added, section.Content...)
+	block.Content = append(added, block.Content...)
 
 	var b bytes.Buffer
 	enc := yaml.NewEncoder(&b)
 	enc.SetIndent(2)
-	root := &yaml.Node{Kind: yaml.MappingNode, Tag: "!!map", Content: []*yaml.Node{{Kind: yaml.ScalarNode, Tag: "!!str", Value: SectionKey}, section}}
+	root := &yaml.Node{Kind: yaml.MappingNode, Tag: "!!map", Content: []*yaml.Node{scalarNode(SectionKey), section}}
 	if err := enc.Encode(root); err != nil {
 		return "", nil, err
 	}
@@ -117,6 +144,10 @@ func ImportSection(data []byte, cfg versioning.Config, force bool) (string, []st
 		return "", nil, err
 	}
 	return out, notes, nil
+}
+
+func scalarNode(v string) *yaml.Node {
+	return &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: v}
 }
 
 // sameValue reports whether two YAML nodes hold the same data, whatever
@@ -154,100 +185,4 @@ func flowCopy(n *yaml.Node) *yaml.Node {
 		c.Content[i] = flowCopy(child)
 	}
 	return &c
-}
-
-// engineValues are cfg's engine settings as YAML nodes, keyed by their
-// section key; empty settings are left out.
-func engineValues(cfg versioning.Config) (map[string]*yaml.Node, error) {
-	values := map[string]*yaml.Node{}
-	set := func(key string, v any) error {
-		var n yaml.Node
-		if err := n.Encode(v); err != nil {
-			return fmt.Errorf("%s: %w", key, err)
-		}
-		values[key] = &n
-		return nil
-	}
-	var branches []any
-	for _, br := range cfg.Branches {
-		if !br.Prerelease.IsSet() && br.Channel == "" {
-			branches = append(branches, br.Name)
-			continue
-		}
-		m := yaml.Node{Kind: yaml.MappingNode, Style: yaml.FlowStyle}
-		add := func(k string, v any) {
-			var n yaml.Node
-			_ = n.Encode(v)
-			m.Content = append(m.Content, &yaml.Node{Kind: yaml.ScalarNode, Value: k}, &n)
-		}
-		add("name", br.Name)
-		switch {
-		case br.Prerelease.UsesName():
-			add("prerelease", true)
-		case br.Prerelease.ID() != "":
-			add("prerelease", br.Prerelease.ID())
-		}
-		if br.Channel != "" {
-			add("channel", br.Channel)
-		}
-		branches = append(branches, &m)
-	}
-	if len(branches) > 0 {
-		if err := set("branches", branches); err != nil {
-			return nil, err
-		}
-	}
-	if len(cfg.ReleaseRules) > 0 {
-		var rules []any
-		for _, r := range cfg.ReleaseRules {
-			m := yaml.Node{Kind: yaml.MappingNode, Style: yaml.FlowStyle}
-			add := func(k string, v any) {
-				var n yaml.Node
-				_ = n.Encode(v)
-				m.Content = append(m.Content, &yaml.Node{Kind: yaml.ScalarNode, Value: k}, &n)
-			}
-			if r.Type != "" {
-				add("type", r.Type)
-			}
-			if r.Scope != "" {
-				add("scope", r.Scope)
-			}
-			if r.Breaking {
-				add("breaking", true)
-			}
-			if r.Revert {
-				add("revert", true)
-			}
-			add("release", r.Release)
-			rules = append(rules, &m)
-		}
-		if err := set("release_rules", rules); err != nil {
-			return nil, err
-		}
-	}
-	if len(cfg.NoteKeywords) > 0 {
-		if err := set("note_keywords", cfg.NoteKeywords); err != nil {
-			return nil, err
-		}
-	}
-	for key, v := range map[string]string{"tag_format": cfg.TagFormat, "repository_url": cfg.RepositoryURL} {
-		if v != "" {
-			if err := set(key, v); err != nil {
-				return nil, err
-			}
-		}
-	}
-	changelog := map[string]string{}
-	if cfg.Changelog.File != "" {
-		changelog["file"] = cfg.Changelog.File
-	}
-	if cfg.Changelog.Title != "" {
-		changelog["title"] = cfg.Changelog.Title
-	}
-	if len(changelog) > 0 {
-		if err := set("changelog", changelog); err != nil {
-			return nil, err
-		}
-	}
-	return values, nil
 }

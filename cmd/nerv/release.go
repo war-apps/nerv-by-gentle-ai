@@ -33,10 +33,11 @@ artifact for nerv deploy. The version is computed natively (see "nerv
 version next --help"), or given with --version. In a fresh temporary clone
 of origin's branch, for
 each project with a new release in dependency order, it writes the version
-into build.version_files and the CHANGELOG section into the project's
-CHANGELOG (in the clone only), runs the pipeline of the project's
-build.mode (compose or script: restore, lint, build, test, coverage,
-package) and the prepare hooks, then writes the artifact
+into version_files and the CHANGELOG section into the project's CHANGELOG
+(in the clone only), runs the pipeline its build provider plans
+(release.projects[].build or release.build: docker-compose or bash;
+restore, lint, build, test, coverage, package) and the prepare hooks, then
+writes the artifact
 .nerv/artifacts/<project>/<version>/ in your repository: manifest.json, the
 notes, the CHANGELOG section, the outputs and the changed release files.
 
@@ -144,6 +145,10 @@ type releaseRun struct {
 	top  string
 	ws   releaseWorkspace
 	exec releaseplan.Executor
+	// providers calls the release extension's providers; builds are the
+	// projects' build providers, by project.
+	providers releaseplan.Providers
+	builds    map[string]*releaseplan.BuildProvider
 	// configSource is where the computed versions' configuration came from
 	// (configRepository: the release: section); empty with --version.
 	configSource string
@@ -346,7 +351,8 @@ func (s *releaseRun) execute(ctx context.Context) ([]releaseOutcome, error) {
 	if _, err := requestShape(top, s.project); err != nil {
 		return nil, err
 	}
-	if err := s.checkReleaseConfig(top); err != nil {
+	s.providers = releaseProviders(s.opts, s.stderr)
+	if err := s.checkReleaseConfig(ctx, top); err != nil {
 		return nil, err
 	}
 	local, err := s.localBranch(ctx, top)
@@ -361,7 +367,7 @@ func (s *releaseRun) execute(ctx context.Context) ([]releaseOutcome, error) {
 			return releaseclone.New(ctx, o)
 		}
 	}
-	ws, err := open(ctx, releaseclone.Options{RepoRoot: top, Branch: s.branch, FetchTimeout: s.timeout})
+	ws, err := open(ctx, releaseclone.Options{RepoRoot: top, Branch: s.branch, FetchTimeout: s.timeout, Providers: s.providers})
 	if errors.Is(err, releaseclone.ErrNoOrigin) {
 		return nil, refuse("the repository has no origin remote: nerv release builds what is on origin")
 	}
@@ -393,19 +399,51 @@ func (s *releaseRun) execute(ctx context.Context) ([]releaseOutcome, error) {
 }
 
 // checkReleaseConfig refuses, before origin is read, a repository nerv release
-// cannot build: no release: section, a project without build.mode, --version
-// with several projects and no --project, or a .nerv/artifacts that leads
-// outside the repository (before any stage runs).
-func (s *releaseRun) checkReleaseConfig(top string) error {
+// cannot build: no release: section, a project without a build provider,
+// a version engine or build provider that refuses its keys (each
+// provider's validate), --version with several projects and no --project,
+// or a .nerv/artifacts that leads outside the repository (before any stage
+// runs).
+func (s *releaseRun) checkReleaseConfig(ctx context.Context, top string) error {
 	rel, err := releaseconfig.Load(top)
 	if errors.Is(err, releaseconfig.ErrNotConfigured) {
-		return refuse("%s", withLegacyHint("the repository has no release: section in .ai-workflow.yml: nerv release needs one, with build.mode (compose or script) for each project; see /release:setup", top))
+		return refuse("%s", withLegacyHint("the repository has no release: section in .ai-workflow.yml: nerv release needs one, with the build provider (build: docker-compose or bash) of each project; see /release:setup", top))
 	}
 	if err != nil {
 		return err
 	}
 	if err := rel.CheckBuild(); err != nil {
 		return err
+	}
+	engine, err := releaseplan.NewVersionEngine(s.providers, rel)
+	if err != nil {
+		return err
+	}
+	var problems []string
+	collect := func(err error) error {
+		var invalid *releaseconfig.ValidationError
+		if errors.As(err, &invalid) {
+			problems = append(problems, invalid.Problems...)
+			return nil
+		}
+		return err
+	}
+	if err := collect(engine.Validate(ctx)); err != nil {
+		return err
+	}
+	s.builds = map[string]*releaseplan.BuildProvider{}
+	for i, p := range rel.Projects {
+		b, err := releaseplan.NewBuildProvider(s.providers, rel, i)
+		if err == nil {
+			err = b.Validate(ctx)
+			s.builds[p.Name] = b
+		}
+		if err := collect(err); err != nil {
+			return err
+		}
+	}
+	if len(problems) > 0 {
+		return &releaseconfig.ValidationError{Problems: problems}
 	}
 	if s.version != "" && s.project == "" && len(rel.Projects) > 1 {
 		return refuse("--version %s: the release: section declares %d projects, each with its own version: pass --project too", s.version, len(rel.Projects))
@@ -449,10 +487,11 @@ func short(sha string) string {
 }
 
 // checkPathsOnOrigin refuses when a path the local release: section names
-// (project path, shared path without glob characters, compose file,
-// version file, stage and hook workdirs) does not exist in the release
-// clone: the configuration is the user's local one, but the code is
-// origin's branch.
+// (project path, shared path without glob characters, version file, stage
+// and hook workdirs) does not exist in the release clone: the
+// configuration is the user's local one, but the code is origin's branch.
+// The paths a build provider reads (docker-compose's file) are checked
+// when it plans (checkPlanPaths).
 func checkPathsOnOrigin(rel *releaseconfig.Release, clone, branch string) error {
 	if rel == nil {
 		return nil
@@ -475,11 +514,8 @@ func checkPathsOnOrigin(rel *releaseconfig.Release, clone, branch string) error 
 		for _, sp := range p.SharedPaths {
 			check(p.Name, "shared_paths", sp)
 		}
-		if b := p.Build; b != nil {
-			check(p.Name, "build.file", b.File)
-			for _, f := range b.VersionFiles {
-				check(p.Name, "build.version_files", f)
-			}
+		for _, f := range p.VersionFiles {
+			check(p.Name, "version_files", f)
 		}
 		for _, stage := range slices.Sorted(maps.Keys(p.Stages)) {
 			check(p.Name, "stages."+stage+".workdir", p.Stages[stage].Workdir)
@@ -490,11 +526,33 @@ func checkPathsOnOrigin(rel *releaseconfig.Release, clone, branch string) error 
 			}
 		}
 	}
+	return missingOnOrigin(branch, missing)
+}
+
+// missingOnOrigin is the refusal of the paths missing on origin's branch
+// (nil when none is).
+func missingOnOrigin(branch string, missing []string) error {
 	if len(missing) == 0 {
 		return nil
 	}
 	return refuse("the release: section names paths that are not on origin's %s: %s (the configuration is your local one, the code is origin's branch: push them, or fix the section)",
 		branch, strings.Join(missing, "; "))
+}
+
+// checkPlanPaths refuses a build whose provider reads a file (its Paths,
+// by config key) that the release clone does not have.
+func checkPlanPaths(build releaseplan.BuildSteps, project, clone, branch string) error {
+	var missing []string
+	for _, key := range slices.Sorted(maps.Keys(build.Paths)) {
+		path := build.Paths[key]
+		if path == "" || path == "." {
+			continue
+		}
+		if _, err := os.Stat(filepath.Join(clone, filepath.FromSlash(path))); err != nil {
+			missing = append(missing, fmt.Sprintf("%q (project %s, providers.%s.%s)", path, project, build.Provider, key))
+		}
+	}
+	return missingOnOrigin(branch, missing)
 }
 
 // releaseItem is one releasing project with its version, configuration and
@@ -550,7 +608,18 @@ func (s *releaseRun) releaseProjects(ctx context.Context) ([]releaseOutcome, err
 			}
 		}
 		pctx := releaseplan.Context{Version: v.Version, Channel: v.Channel, Tag: v.Tag, GitHead: v.BaseCommit, DryRun: s.dryRun, ArtifactsDir: s.ws.ArtifactsDir()}
-		plan, err := releaseplan.Build(s.ws.Dir(), p, pctx)
+		bp, ok := s.builds[p.Name]
+		if !ok {
+			return nil, refuse("project %s: the release: section changed while nerv release ran: run it again", p.Name)
+		}
+		steps, err := bp.Plan(ctx)
+		if err != nil {
+			return nil, refuse("project %s: %v", p.Name, err)
+		}
+		if err := checkPlanPaths(steps, p.Name, s.ws.Dir(), s.branch); err != nil {
+			return nil, err
+		}
+		plan, err := releaseplan.Build(s.ws.Dir(), p, pctx, steps)
 		if err != nil {
 			return nil, refuse("project %s: %v", p.Name, err)
 		}
@@ -620,7 +689,7 @@ func (v *computedVersions) Next(ctx context.Context, project string) (releasepla
 		return out, nil
 	}
 	out.Version, out.Channel, out.Tag = r.NewReleaseVersion, r.NewReleaseChannel, r.NewReleaseGitTag
-	out.Notes, out.ChangelogSection = r.NewReleaseNotes, r.ChangelogSection
+	out.Notes, out.ChangelogSection, out.Changelog = r.NewReleaseNotes, r.ChangelogSection, r.Changelog
 	out.BaseCommit = r.NewReleaseGitHead
 	if out.BaseCommit == "" {
 		out.BaseCommit = v.s.ws.OriginHead()
@@ -677,7 +746,7 @@ func (v *explicitVersion) Next(ctx context.Context, project string) (releaseplan
 	}
 	return releaseplan.Version{
 		Version: s.version, Channel: v.branch.Channel, Tag: r.NewReleaseGitTag,
-		Notes: r.NewReleaseNotes, ChangelogSection: r.ChangelogSection,
+		Notes: r.NewReleaseNotes, ChangelogSection: r.ChangelogSection, Changelog: r.Changelog,
 		LastTag: r.LastReleaseGitTag, LastVersion: r.LastReleaseVersion, BaseCommit: s.ws.OriginHead(),
 	}, nil
 }
@@ -784,7 +853,7 @@ func (s *releaseRun) releaseOne(ctx context.Context, it releaseItem) error {
 	}
 	m := artifact.Manifest{
 		Project: name, Version: v.Version, Channel: v.Channel, Tag: v.Tag, BaseCommit: v.BaseCommit,
-		Branch: s.branch, BuildMode: it.plan.Mode, CreatedAt: time.Now().UTC().Truncate(time.Second),
+		Branch: s.branch, BuildProvider: it.plan.Provider, CreatedAt: time.Now().UTC().Truncate(time.Second),
 	}
 	for _, img := range it.plan.Images {
 		m.Images = append(m.Images, img.Refs...)
@@ -799,7 +868,7 @@ func (s *releaseRun) releaseOne(ctx context.Context, it releaseItem) error {
 }
 
 // writeReleaseFiles writes, in the release clone only, the version into
-// each of build.version_files (with the release link as the package notes
+// each of version_files (with the release link as the package notes
 // when origin has a public address) and the CHANGELOG section into the
 // project's changelog, and returns their new contents for the artifact.
 func (s *releaseRun) writeReleaseFiles(it releaseItem) ([]artifact.ReleaseFileSource, error) {
@@ -813,10 +882,7 @@ func (s *releaseRun) writeReleaseFiles(it releaseItem) ([]artifact.ReleaseFileSo
 		out = append(out, artifact.ReleaseFileSource{Path: rel, Content: data})
 		return nil
 	}
-	var files []string
-	if p.Build != nil {
-		files = p.Build.VersionFiles
-	}
+	files := p.VersionFiles
 	link := releaseclone.ReleaseURL(s.ws.PublicURL(), v.Tag)
 	for _, f := range files {
 		path := filepath.Join(s.ws.Dir(), filepath.FromSlash(f))
@@ -834,8 +900,8 @@ func (s *releaseRun) writeReleaseFiles(it releaseItem) ([]artifact.ReleaseFileSo
 			return nil, err
 		}
 	}
-	if p.Changelog != "" && strings.TrimSpace(v.ChangelogSection) != "" {
-		path := filepath.Join(s.ws.Dir(), filepath.FromSlash(p.Changelog))
+	if v.Changelog != "" && strings.TrimSpace(v.ChangelogSection) != "" {
+		path := filepath.Join(s.ws.Dir(), filepath.FromSlash(v.Changelog))
 		old, err := os.ReadFile(path)
 		if err != nil && !errors.Is(err, os.ErrNotExist) {
 			return nil, err
@@ -846,7 +912,7 @@ func (s *releaseRun) writeReleaseFiles(it releaseItem) ([]artifact.ReleaseFileSo
 		if err := os.WriteFile(path, []byte(prependChangelog(string(old), v.ChangelogSection)), 0o644); err != nil {
 			return nil, err
 		}
-		if err := read(p.Changelog); err != nil {
+		if err := read(v.Changelog); err != nil {
 			return nil, err
 		}
 	}

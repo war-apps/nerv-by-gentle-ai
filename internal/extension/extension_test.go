@@ -91,6 +91,20 @@ func TestParseManifest_AcceptsAValidExtension(t *testing.T) {
 	}
 }
 
+// An extension's providers are suggested unless it bundles them.
+func TestParseManifest_ProvidersInstallMode(t *testing.T) {
+	m, err := extension.ParseManifest([]byte(acmeExtension))
+	if err != nil || m.Bundles() {
+		t.Fatalf("default: %+v, %v; want suggested", m, err)
+	}
+	for mode, want := range map[string]bool{"bundled": true, "suggested": false} {
+		m, err := extension.ParseManifest([]byte(replace(t, acmeExtension, "suggest_order: 4", "suggest_order: 4\nproviders: "+mode)))
+		if err != nil || m.Bundles() != want || m.Providers != mode {
+			t.Errorf("providers: %s: %+v, %v; want bundles %v", mode, m, err, want)
+		}
+	}
+}
+
 func TestParseManifest_RefusesInvalidExtensions(t *testing.T) {
 	tests := []struct{ name, from, to, want string }{
 		{"unknown field", "suggest_order: 4", "suggest_order: 4\nshell: bash", "field shell not found"},
@@ -107,6 +121,7 @@ func TestParseManifest_RefusesInvalidExtensions(t *testing.T) {
 		{"field shadows a common one", "- name: tags", "- name: slot", `"slot" is a common provider.yaml field`},
 		{"config prompt", "    prompt: The Acme region\n", "", "config[0].prompt is required"},
 		{"negative order", "suggest_order: 4", "suggest_order: -1", "suggest_order -1"},
+		{"providers install mode", "suggest_order: 4", "suggest_order: 4\nproviders: always", `providers "always" must be one of bundled, suggested`},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

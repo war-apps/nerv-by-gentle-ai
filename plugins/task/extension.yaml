@@ -4,6 +4,8 @@
 name: task
 contract_version: 1
 suggest_order: 1
+# Each task provider is offered after task.
+providers: suggested
 runtime: agent
 agent: task:dispatcher
 events:

@@ -74,10 +74,12 @@ type Manifest struct {
 	Channel string `json:"channel"`
 	Tag     string `json:"tag"`
 	// BaseCommit is the origin commit that was built.
-	BaseCommit string    `json:"base_commit"`
-	Branch     string    `json:"branch"`
-	BuildMode  string    `json:"build_mode"`
-	CreatedAt  time.Time `json:"created_at"`
+	BaseCommit string `json:"base_commit"`
+	Branch     string `json:"branch"`
+	// BuildProvider is the build provider that built it (docker-compose,
+	// bash).
+	BuildProvider string    `json:"build_provider"`
+	CreatedAt     time.Time `json:"created_at"`
 	// Outputs are the packaged outputs, under outputs/.
 	Outputs []Output `json:"outputs"`
 	// Images are the references of the images saved in the image tars.

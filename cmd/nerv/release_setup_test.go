@@ -53,13 +53,14 @@ const dimPackageJSON = `{
 }
 `
 
-// S3: setup --import translates the semantic-release configuration into
-// the release: section, keeps the rest of the file, and prints what it could
-// not translate.
+// S3, S4, S7: setup --import has the version engine translate the
+// semantic-release configuration into its keys,
+// release.providers.conventional-commits; it keeps the rest of the file,
+// and prints what it could not translate.
 func TestReleaseSetup_ImportWritesTheReleaseSectionAndPrintsTheWarnings(t *testing.T) {
 	repo := setupRepo(t, map[string]string{
 		"package.json":     dimPackageJSON,
-		".ai-workflow.yml": "# team settings\nenabled: true\nrelease:\n  projects:\n    - name: api\n      path: .\n      build: { mode: script }\ntasks:\n  provider: none\n",
+		".ai-workflow.yml": "# team settings\nenabled: true\nrelease:\n  projects:\n    - name: api\n      path: .\n      build: bash\ntasks:\n  provider: none\n",
 	})
 	code, stdout, stderr := runSetup(t, repo, "--import")
 	if code != 0 {
@@ -76,8 +77,14 @@ func TestReleaseSetup_ImportWritesTheReleaseSectionAndPrintsTheWarnings(t *testi
 	if err != nil {
 		t.Fatalf("the written section does not load: %v\n%s", err, text)
 	}
-	if len(rel.Branches) != 3 || rel.Branches[1].Channel != "alpha" || len(rel.ReleaseRules) != 1 || rel.ReleaseRules[0].Type != "docs" || rel.Projects[0].Name != "api" {
+	engine := rel.Providers["conventional-commits"]
+	branches, _ := engine["branches"].([]any)
+	rules, _ := engine["release_rules"].([]any)
+	if len(branches) != 3 || branches[1].(map[string]any)["channel"] != "alpha" || len(rules) != 1 || rules[0].(map[string]any)["type"] != "docs" || rel.Projects[0].Name != "api" {
 		t.Errorf("imported section = %+v", rel)
+	}
+	if !strings.Contains(text, "release:\n  providers:\n    conventional-commits:\n      branches:\n") {
+		t.Errorf("the keys are not under release.providers.conventional-commits:\n%s", text)
 	}
 	for _, want := range []string{"@semantic-release/exec", "package.json"} {
 		if !strings.Contains(stderr+stdout, want) {
@@ -136,7 +143,7 @@ func TestReleaseSetup_UsageErrors(t *testing.T) {
 // B1 (L21): an existing engine key with a different value is never
 // replaced silently.
 func TestReleaseSetup_ExistingEngineKeysAreNotClobberedSilently(t *testing.T) {
-	const before = "release:\n  # hand-tuned\n  tag_format: custom-${version}\n  branches:\n    - main\n    - {name: next, prerelease: beta, channel: next}\n  projects:\n    - name: api\n      path: .\n      build: { mode: script }\n"
+	const before = "release:\n  providers:\n    conventional-commits:\n      # hand-tuned\n      tag_format: custom-${version}\n      branches:\n        - main\n        - {name: next, prerelease: beta, channel: next}\n  projects:\n    - name: api\n      path: .\n      build: bash\n"
 	repo := setupRepo(t, map[string]string{
 		".releaserc.json":  `{"branches":["main",{"name":"develop","prerelease":"alpha","channel":"alpha"}],"tagFormat":"v${version}","plugins":[["@semantic-release/commit-analyzer",{"preset":"conventionalcommits"}],["@semantic-release/release-notes-generator",{"preset":"conventionalcommits"}]]}`,
 		".ai-workflow.yml": before,
@@ -153,7 +160,7 @@ func TestReleaseSetup_ExistingEngineKeysAreNotClobberedSilently(t *testing.T) {
 
 const conflictingReleaserc = `{"branches":["main",{"name":"develop","prerelease":"alpha","channel":"alpha"}],"tagFormat":"v${version}","plugins":[["@semantic-release/commit-analyzer",{"preset":"conventionalcommits"}],["@semantic-release/release-notes-generator",{"preset":"conventionalcommits"}]]}`
 
-const handTunedRelease = "release:\n  # hand-tuned\n  tag_format: custom-${version}\n  branches:\n    - main\n    - {name: next, prerelease: beta, channel: next}\n  projects:\n    - name: api\n      path: .\n      build: { mode: script }\n"
+const handTunedRelease = "release:\n  providers:\n    conventional-commits:\n      # hand-tuned\n      tag_format: custom-${version}\n      branches:\n        - main\n        - {name: next, prerelease: beta, channel: next}\n  projects:\n    - name: api\n      path: .\n      build: bash\n"
 
 // B1: without --force the import refuses (exit 1), writes nothing and lists
 // every conflicting key with its current and imported values.
@@ -201,7 +208,7 @@ func TestReleaseSetup_ForceReplacesAndPrintsTheReplacedValues(t *testing.T) {
 // S1: with no semantic-release configuration there is nothing to import,
 // whatever the release: section holds, and nothing is written.
 func TestReleaseSetup_ReleaseSectionWithoutSemanticReleaseConfigIsRefused(t *testing.T) {
-	section := "enabled: true\nrelease:\n  projects:\n    - name: api\n      path: .\n      build: { mode: script }\n"
+	section := "enabled: true\nrelease:\n  projects:\n    - name: api\n      path: .\n      build: bash\n"
 	repo := setupRepo(t, map[string]string{".ai-workflow.yml": section})
 	code, stdout, stderr := runSetup(t, repo, "--import")
 	if code != 1 || !strings.Contains(stderr, "nothing to import") {

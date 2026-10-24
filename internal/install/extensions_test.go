@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -289,5 +290,91 @@ func TestInstall_RequirementNotShippedIsRefused(t *testing.T) {
 	err = install.Install(context.Background(), deps, install.Options{NoSkills: true, Extensions: []string{"deploy"}})
 	if !errors.As(err, new(*install.RefusalError)) || !strings.Contains(err.Error(), `extension plugin "deploy" requires "release", which this nerv does not ship`) {
 		t.Fatalf("Install() error = %v, want a refusal naming the missing release extension", err)
+	}
+}
+
+// bundleExtensions is an extension rel that bundles its providers rel-a
+// and rel-b, and an extension sug whose provider sug-x is suggested.
+func bundleExtensions() fstest.MapFS {
+	v, _ := version.PluginVersion(nerv.PluginFS())
+	manifest := func(name string) *fstest.MapFile {
+		return &fstest.MapFile{Data: []byte(`{"name":"` + name + `","version":"` + v + `","description":"` + name + ` plugin"}`)}
+	}
+	ext := func(name string, order int, mode string) *fstest.MapFile {
+		return &fstest.MapFile{Data: []byte(fmt.Sprintf("name: %s\ncontract_version: 1\nsuggest_order: %d\nproviders: %s\nruntime: agent\nagent: %s:entry\nslots:\n  - name: engine\n    cardinality: one\n    operations: { ping: optional }\n", name, order, mode, name))}
+	}
+	provider := func(owner, name string) *fstest.MapFile {
+		return &fstest.MapFile{Data: []byte("name: " + name + "\nextension: " + owner + "\nslot: engine\ncontract_version: 1\nruntime: agent\nmcp: { server: x, tools: [x_ping] }\noperations:\n  ping: not_implemented\n")}
+	}
+	return fstest.MapFS{
+		"sug/.claude-plugin/plugin.json":   manifest("sug"),
+		"sug/extension.yaml":               ext("sug", 1, "suggested"),
+		"sug-x/.claude-plugin/plugin.json": manifest("sug-x"),
+		"sug-x/provider.yaml":              provider("sug", "x"),
+		"rel/.claude-plugin/plugin.json":   manifest("rel"),
+		"rel/extension.yaml":               ext("rel", 2, "bundled"),
+		"rel-a/.claude-plugin/plugin.json": manifest("rel-a"),
+		"rel-a/provider.yaml":              provider("rel", "a"),
+		"rel-b/.claude-plugin/plugin.json": manifest("rel-b"),
+		"rel-b/provider.yaml":              provider("rel", "b"),
+	}
+}
+
+// S4 (L-change): an extension that bundles its providers brings every one
+// of them, never asked; declining the extension skips them; a suggested
+// extension's providers are still asked.
+func TestInstall_BundledProvidersComeWithTheirExtension(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		opts      install.Options
+		answers   map[string]bool
+		wantAsked []string
+		wantOn    []string
+		wantOff   []string
+	}{
+		{name: "accepted", answers: map[string]bool{"sug": true, "sug-x": true, "rel": true}, wantAsked: []string{"sug", "sug-x", "rel"},
+			wantOn: []string{"sug@nerv", "sug-x@nerv", "rel@nerv", "rel-a@nerv", "rel-b@nerv"}},
+		{name: "bundling extension declined", answers: map[string]bool{"sug": true}, wantAsked: []string{"sug", "sug-x", "rel"},
+			wantOn: []string{"sug@nerv"}, wantOff: []string{"sug-x@nerv", "rel@nerv", "rel-a@nerv", "rel-b@nerv"}},
+		{name: "requested provider", opts: install.Options{Extensions: []string{"rel-b"}}, answers: map[string]bool{}, wantAsked: []string{"sug"},
+			wantOn: []string{"rel@nerv", "rel-a@nerv", "rel-b@nerv"}, wantOff: []string{"sug@nerv"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			home := t.TempDir()
+			seedInstalledIDs(t, home, pluginVersion(t), "sug@nerv", "sug-x@nerv", "rel@nerv", "rel-a@nerv", "rel-b@nerv")
+			var asked []string
+			var stdout bytes.Buffer
+			deps := install.Deps{
+				Home: home, FS: nerv.PluginFS(), ExtensionsFS: bundleExtensions(), Runner: baseRunner(), Now: fixedNow, LookPath: lookPathAll, Stdout: &stdout,
+				ConfirmExtension: func(name, _ string) bool {
+					asked = append(asked, name)
+					return tc.answers[name]
+				},
+			}
+			opts := tc.opts
+			opts.NoSkills = true
+			if err := install.Install(context.Background(), deps, opts); err != nil {
+				t.Fatalf("Install() error = %v; output:\n%s", err, stdout.String())
+			}
+			if !slices.Equal(asked, tc.wantAsked) {
+				t.Errorf("asked %v, want %v", asked, tc.wantAsked)
+			}
+			enabled := enabledPlugins(t, home)
+			for _, id := range tc.wantOn {
+				if !enabled[id] {
+					t.Errorf("%s not enabled", id)
+				}
+			}
+			for _, id := range tc.wantOff {
+				if enabled[id] {
+					t.Errorf("%s enabled, want off", id)
+				}
+			}
+			for _, p := range []string{"rel-a", "rel-b"} {
+				if want := slices.Contains(tc.wantOn, p+"@nerv") && !slices.Contains(tc.opts.Extensions, p); strings.Contains(stdout.String(), "Adding "+p+" (bundled with rel)") != want {
+					t.Errorf("notice for %s: want %v in\n%s", p, want, stdout.String())
+				}
+			}
+		})
 	}
 }

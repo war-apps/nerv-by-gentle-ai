@@ -9,7 +9,7 @@ with a local artifact between them.
 | Old step | Now |
 |---|---|
 | `validate` | A `lint` stage of the project in the `release:` section, run by `nerv release` ([release](release-commands.md)). |
-| `test` | The `build`, `test` and `coverage` stages, with `build.coverage` floors. |
+| `test` | The `build`, `test` and `coverage` stages, with `coverage` floors. |
 | `release` | `nerv release` (version, CHANGELOG section, version files, packages, into the artifact), then `nerv deploy` (release commit, tag, channel note, push, GitHub release with `deploy-github`). |
 | `docker` | Building and saving the images: `nerv release` (`compose` mode, or a script `package` stage). Pushing them: the `publish` operation of the `deploy-ssh-compose` target. |
 | `sync` | Not ported. Merge the release back into `develop` and `release/*` by hand; an opt-in `deploy.sync` may come later. |
@@ -34,7 +34,7 @@ is no longer read, and the commands point to `/release:setup` and
    writing anything. `nerv migrate` applies it, with backups.
 3. **Or migrate by hand** with the two setup commands: `/release:setup`
    (offers `nerv release setup --import` for the semantic-release config in
-   `package.json`, and asks each project's `build.mode`), then
+   `package.json`, and asks each project's build provider), then
    `/deploy:setup` (the host, the targets, git).
 4. **Rehearse**: `/release:build` (a dry run in a clone, then the artifact on
    your yes) and `/deploy:run` (a dry run, then the deploy on your yes).
@@ -109,29 +109,30 @@ pipeline:
 
 The same repository. The images are built by a compose file
 (`docker/compose.release.yml`, building both images with `APP_VERSION`), so
-compose mode saves them into the artifact and `deploy-ssh-compose` pushes
+the docker-compose build saves them into the artifact and `deploy-ssh-compose` pushes
 them; a script `package` stage running `docker build` and `docker save`
 works too.
 
 ```text
 release:
-  branches:
-    - main
-    - { name: release/rc, prerelease: rc, channel: beta }
-    - { name: develop, prerelease: alpha, channel: alpha }
-    - { name: "hotfix/*", prerelease: beta, channel: beta }
+  providers:
+    conventional-commits:
+      branches:
+        - main
+        - { name: release/rc, prerelease: rc, channel: beta }
+        - { name: develop, prerelease: alpha, channel: alpha }
+        - { name: "hotfix/*", prerelease: beta, channel: beta }
   projects:
     - name: api
       path: .
-      build:
-        mode: compose
-        file: docker/compose.release.yml
-        test_service: tests
-        images:
-          - "ghcr.io/dirm-s-a/dim.comprobantes.api:${version}"
-          - "ghcr.io/dirm-s-a/dim.comprobantes.api-login-broker:${version}"
-        version_files: [src/Dim.Comprobantes.Api/Dim.Comprobantes.Api.csproj]
-        coverage: { line: 89, branch: 80, method: 92 }
+      build: docker-compose
+      providers:
+        docker-compose: { file: docker/compose.release.yml, test_service: tests }
+      images:
+        - "ghcr.io/dirm-s-a/dim.comprobantes.api:${version}"
+        - "ghcr.io/dirm-s-a/dim.comprobantes.api-login-broker:${version}"
+      version_files: [src/Dim.Comprobantes.Api/Dim.Comprobantes.Api.csproj]
+      coverage: { line: 89, branch: 80, method: 92 }
       stages:
         restore: { run: dotnet restore Dim.Comprobantes.slnx }
         lint: { run: dotnet format Dim.Comprobantes.slnx --verify-no-changes --no-restore }
@@ -158,13 +159,13 @@ And in the user configuration (`deploy.providers.ssh-compose.*`, the
 | Old key (default) | Now |
 |---|---|
 | `pipeline.dotnet.solution`, `configuration` (`Release`), `warnings_as_errors` (`true`) | The `restore`, `build` and `test` stage commands, written in full (`dotnet build <solution> -c Release -warnaserror`). There are no presets. |
-| `pipeline.dotnet.env` | Each stage's `env`, or `build.shared_host: true` for the build-server variables. |
-| `pipeline.dotnet.runsettings`, `coverage.mode` (`enforce`), `coverage.thresholds` | `--settings` in the test stage, and `build.coverage` `{line, branch, method}`, always enforced. `report` and `off` have no equivalent: leave `build.coverage` out. |
-| `pipeline.branches` | `release.branches` (same meaning; `prerelease: true` is accepted when the branch name is a valid id). |
+| `pipeline.dotnet.env` | Each stage's `env`, or `providers.bash.shared_host: true` for the build-server variables. |
+| `pipeline.dotnet.runsettings`, `coverage.mode` (`enforce`), `coverage.thresholds` | `--settings` in the test stage, and the project's `coverage` `{line, branch, method}`, always enforced. `report` and `off` have no equivalent: leave `coverage` out. |
+| `pipeline.branches` | `release.providers.conventional-commits.branches` (same meaning; `prerelease: true` is accepted when the branch name is a valid id). |
 | `pipeline.registry.host` (`ghcr.io`), `username_env` (`GHCR_USER`), `token_env` (`GHCR_TOKEN`) | Log in with `docker login` before `nerv deploy`: the target pushes with docker's own credentials. |
-| `pipeline.images[].name`, `title`, `dockerfile` (`Dockerfile`), `context` (`.`), `platform` (`linux/amd64`), `build_args`, `computed_args` (shell `bash`), `tags`, `required` | The compose file's services (or a script `package` stage), and `build.images` with `${version}`. The pushed tags are exactly the `build.images` references; the moving tags (`channel`, `latest`) are not produced automatically. |
+| `pipeline.images[].name`, `title`, `dockerfile` (`Dockerfile`), `context` (`.`), `platform` (`linux/amd64`), `build_args`, `computed_args` (shell `bash`), `tags`, `required` | The compose file's services (or a bash `package` stage), and the project's `images` with `${version}`. The pushed tags are exactly the `images` references; the moving tags (`channel`, `latest`) are not produced automatically. |
 | `pipeline.sync.enabled`, `develop` (`develop`), `release` (`release/*`) | Not ported. |
-| `pipeline.release.version_files` | `build.version_files`. |
+| `pipeline.release.version_files` | the project's `version_files`. |
 | `pipeline.deploy.source` (`env`) | The target's `source`. |
 | `pipeline.deploy.infisical.project_id`, `app_path`, `domain` | `infisical_project_id`, `infisical_app_path` (repo), `infisical_domain` (user). |
 | `pipeline.deploy.selection` (`target`) | Always `target`: an environment is deployed when its `DOCKER_IMAGE_VERSION` points at the release. `branches` has no equivalent. |

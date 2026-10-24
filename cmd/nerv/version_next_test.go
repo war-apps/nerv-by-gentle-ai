@@ -19,6 +19,7 @@ import (
 	"github.com/war-apps/nerv-by-gentle-ai/internal/env/envtest"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/releaseclone"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/releaseconfig"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/releaseplan"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/versioning"
 )
 
@@ -215,14 +216,15 @@ func TestVersionNext_FlagsReachTheEngine(t *testing.T) {
 		t.Fatalf("engine calls = %+v", f.calls)
 	}
 	got := f.calls[0]
-	cfg := got.Config
-	got.Config = versioning.Config{}
+	engine := got.Engine
+	got.Engine = nil
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("engine options = %+v, want %+v", got, want)
 	}
-	// The release: section's projects configure the engine.
-	if len(cfg.Projects) != 2 || cfg.Projects[0].Name != "api" || cfg.Projects[1].TagFormat != "web-app-v${version}" {
-		t.Errorf("engine config = %+v", cfg)
+	// The release: section's projects reach its version engine, the
+	// default conventional-commits.
+	if engine == nil || engine.Name() != "conventional-commits" || len(engine.Projects()) != 2 || engine.Projects()[0].Name != "api" || engine.Projects()[1].Path != "web" {
+		t.Errorf("engine = %+v", engine)
 	}
 }
 
@@ -235,7 +237,14 @@ func TestVersionNext_DefaultsReadOriginOnTheCurrentBranch(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("exit code = %d, stderr = %q", code, stderr)
 	}
-	want := releaseclone.ComputeOptions{RepoRoot: f.top, FetchTimeout: releaseclone.DefaultFetchTimeout, Config: versioning.Config{}.WithDefaults()}
+	want := releaseclone.ComputeOptions{RepoRoot: f.top, FetchTimeout: releaseclone.DefaultFetchTimeout}
+	var engine *releaseplan.VersionEngine
+	if len(f.calls) == 1 {
+		engine, f.calls[0].Engine = f.calls[0].Engine, nil
+	}
+	if engine == nil || engine.Name() != "conventional-commits" || len(engine.Projects()) != 0 {
+		t.Errorf("engine = %+v, want the default engine for the whole repository", engine)
+	}
 	if len(f.calls) != 1 || !reflect.DeepEqual(f.calls[0], want) {
 		t.Fatalf("engine options = %+v, want %+v (current branch, origin read, default timeout, the default configuration)", f.calls, want)
 	}
@@ -600,7 +609,9 @@ func TestVersionNext_RunsUnderTheSignalContext(t *testing.T) {
 
 	code, stdout, stderr := f.run(t)
 
-	if len(f.ctxErrs) != 1 || f.ctxErrs[0] == nil {
+	// The engine's validate already runs under the cancelled context, so
+	// the computation, when it is reached at all, sees it cancelled too.
+	if len(f.ctxErrs) > 1 || (len(f.ctxErrs) == 1 && f.ctxErrs[0] == nil) {
 		t.Fatalf("the engine did not run under the signal context: %v", f.ctxErrs)
 	}
 	if code != 130 || stdout != "" || !strings.Contains(stderr, "interrupted") {
@@ -873,14 +884,35 @@ func TestVersionNext_WarnsAboutAnUnimportedSemanticReleaseConfig(t *testing.T) {
 // A release: section without projects configures the engine for the whole
 // repository: one result, its settings reach the engine.
 func TestVersionNext_ReleaseSectionWithoutProjects(t *testing.T) {
-	f := newNextFixture(t, "release:\n  tag_format: release-${version}\n")
+	f := newNextFixture(t, "release:\n  providers:\n    conventional-commits:\n      tag_format: release-${version}\n")
 	f.results = []versioning.Result{released("repo", "1.2.0", "")}
 	code, stdout, stderr := f.run(t, "--json")
 	var got map[string]any
 	if code != 0 || json.Unmarshal([]byte(stdout), &got) != nil || got["semantic_release_config"] != "repository" {
 		t.Fatalf("code=%d stdout=%q stderr=%q", code, stdout, stderr)
 	}
-	if len(f.calls) != 1 || f.calls[0].Config.TagFormat != "release-${version}" {
+	if len(f.calls) != 1 || f.calls[0].Engine.Config()["tag_format"] != "release-${version}" {
 		t.Errorf("engine config = %+v", f.calls)
+	}
+}
+
+// S4, S7: release.version selects the version engine; an unknown one, a
+// key the engine does not declare, a refusal of the engine's own validate
+// and the old engine keys under release: are refused (exit 1) before the
+// engine computes anything.
+func TestVersionNext_RefusesAnInvalidVersionEngine(t *testing.T) {
+	for _, tt := range []struct{ name, yaml, want string }{
+		{"unknown engine", "release:\n  version: semver\n", `release.version: unknown version provider "semver" (want conventional-commits)`},
+		{"unknown key", "release:\n  providers:\n    conventional-commits: { tagformat: v1 }\n", "release.providers.conventional-commits.tagformat: unknown key (want branches, release_rules, note_keywords, tag_format, repository_url, changelog)"},
+		{"engine refusal", "release:\n  providers:\n    conventional-commits: { tag_format: v1 }\n", `release.providers.conventional-commits.tag_format: "v1" must contain ${version} exactly once`},
+		{"old engine key", "release:\n  tag_format: v${version}\n", "release.tag_format: moved to release.providers.conventional-commits.tag_format"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			f := newNextFixture(t, tt.yaml)
+			code, stdout, stderr := f.run(t)
+			if code != 1 || stdout != "" || !strings.Contains(stderr, tt.want) || len(f.calls) != 0 {
+				t.Errorf("exit %d, calls %d, stdout %q\nstderr %s\nwant %q", code, len(f.calls), stdout, stderr, tt.want)
+			}
+		})
 	}
 }

@@ -44,6 +44,12 @@ type Extension struct {
 	// Order is the extension's suggest_order (its owner's for a provider);
 	// 0 is unset.
 	Order int
+	// Bundle is, for an extension whose extension.yaml says providers:
+	// bundled, every provider fsys ships for it, by plugin name in name
+	// order: they are installed with the extension, without being asked.
+	// Bundled marks such a provider.
+	Bundle  []string
+	Bundled bool
 }
 
 // Extensions lists the extension plugins of fsys, one per top-level
@@ -62,6 +68,7 @@ func Extensions(fsys fs.FS) ([]Extension, error) {
 	}
 
 	var exts []Extension
+	bundles := map[string]bool{}
 	for _, e := range entries {
 		if !e.IsDir() {
 			continue
@@ -83,17 +90,37 @@ func Extensions(fsys fs.FS) ([]Extension, error) {
 			return nil, fmt.Errorf("%s: name %q must match its folder %q", manifestPath, manifest.Name, e.Name())
 		}
 		ext := Extension{Name: manifest.Name, Version: manifest.Version, Description: manifest.Description}
-		if err := describe(fsys, &ext); err != nil {
+		bundles[ext.Name], err = describe(fsys, &ext)
+		if err != nil {
 			return nil, err
 		}
 		exts = append(exts, ext)
 	}
 	sort.Slice(exts, func(i, j int) bool { return exts[i].Name < exts[j].Name })
+	markBundles(exts, bundles)
 	return exts, nil
 }
 
-// describe fills ext from the manifest in its folder.
-func describe(fsys fs.FS, ext *Extension) error {
+// markBundles fills Bundle and Bundled: an extension in bundles gets
+// every provider of its own (exts is in name order).
+func markBundles(exts []Extension, bundles map[string]bool) {
+	for i := range exts {
+		e := &exts[i]
+		if e.Provider || !bundles[e.Name] {
+			continue
+		}
+		for j := range exts {
+			if p := &exts[j]; p.Provider && p.Owner == e.Name {
+				e.Bundle = append(e.Bundle, p.Name)
+				p.Bundled = true
+			}
+		}
+	}
+}
+
+// describe fills ext from the manifest in its folder and reports whether
+// an extension bundles its providers.
+func describe(fsys fs.FS, ext *Extension) (bool, error) {
 	has := func(file string) bool {
 		_, err := fs.Stat(fsys, ext.Name+"/"+file)
 		return err == nil
@@ -101,24 +128,25 @@ func describe(fsys fs.FS, ext *Extension) error {
 	isExt, isProvider := has(extension.ManifestFile), has(extension.ProviderFile)
 	switch {
 	case isExt && isProvider:
-		return fmt.Errorf("%s: both %s and %s: a plugin is an extension or a provider (docs/extensions.md)", ext.Name, extension.ManifestFile, extension.ProviderFile)
+		return false, fmt.Errorf("%s: both %s and %s: a plugin is an extension or a provider (docs/extensions.md)", ext.Name, extension.ManifestFile, extension.ProviderFile)
 	case isExt:
 		m, err := extension.LoadManifest(fsys, ext.Name)
 		if err != nil {
-			return err
+			return false, err
 		}
 		ext.Requires, ext.Order = slices.Clone(m.Requires), m.SuggestOrder
+		return m.Bundles(), nil
 	case isProvider:
 		p, owner, err := extension.LoadProvider(fsys, ext.Name)
 		if err != nil {
-			return err
+			return false, err
 		}
 		ext.Provider, ext.Owner, ext.Slot = true, owner.Name, p.Slot
 		ext.Requires, ext.Order = []string{owner.Name}, owner.SuggestOrder
 	default:
-		return fmt.Errorf("%s: neither %s nor %s: every extension plugin speaks the extension contract (docs/extensions.md)", ext.Name, extension.ManifestFile, extension.ProviderFile)
+		return false, fmt.Errorf("%s: neither %s nor %s: every extension plugin speaks the extension contract (docs/extensions.md)", ext.Name, extension.ManifestFile, extension.ProviderFile)
 	}
-	return nil
+	return false, nil
 }
 
 // SuggestionOrder returns exts in the order nerv install suggests them:
