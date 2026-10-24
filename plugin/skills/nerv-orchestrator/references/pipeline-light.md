@@ -16,8 +16,8 @@ itself; Aoba is launched only for PR preparation, slicing or archiving.
 | 5. Verification gate | Ikari; `nerv:maya` (MODE: reduced) only when the gate below requires it; `task:dispatcher` `verification.started` when the task plugin is installed | touched test/lint/build scope only | spot-check result; `maya-report.md` when Maya ran | obvious fail → back to the pilot; ambiguous → Ikari asks the user |
 | 6. Work-unit commit | Ikari | diff, `commit_ref` | commit shown, hash | **user validates before commit** |
 | 7. RDD hook | native engine (via Ikari) | see `rdd-relay.md` | receipt or `review_due: false` | per RDD relay |
-| 8. Run summary | Ikari; `task:dispatcher` when the task plugin is installed | usage table | `run.closed` emitted first, so its envelope is in the summary; then `nerv/run-summary.md` per its schema in `nerv-artifacts.md` | none |
-| 9. Close | Ikari | — | change closed; a run that halts instead emits `run.halted` with the cause | none |
+| 8. Run summary | Ikari; `task:dispatcher` when the task plugin is installed | usage table | Engram flush at close (`usage-and-log.md`) and `run.closed` first, so both are in the summary; then `nerv/run-summary.md` per its schema in `nerv-artifacts.md` | none |
+| 9. Close and archive | Ikari, then `nerv:aoba` (Archive duty) | change locator, `artifacts.commit`, whether the repo ignores the artifacts | change archived to `openspec/changes/archive/YYYY-MM-DD-{change}/` (see below); a run that halts instead emits `run.halted` with the cause and is not archived | **user validates** the artifacts and archive commits |
 
 LIGHT is one coherent work unit (more than one is a FULL criterion); a fix
 after a failing gate re-enters step 4 with the failure quoted. When the
@@ -60,4 +60,9 @@ report schema.
 
 At step 9, Ikari sets `status: done` on every completed task in `tasks.md`
 when the change has one (that field only, a mechanical write), records
-`closed_at` in `state.yaml`, and deletes `nerv/.orchestrator.lock`.
+`closed_at` in `state.yaml`, appends the `stop` event, deletes
+`nerv/.orchestrator.lock`, then launches `nerv:aoba` for its Archive duty as
+the run's last write: the artifacts commit per `artifacts.commit`, `nerv
+spec-compose` for any delta spec, the move into the archive and the archive
+commit — no commit at all when the repo ignores the artifacts (see
+`delivery.md`). A LIGHT run is never left delivered but unarchived.

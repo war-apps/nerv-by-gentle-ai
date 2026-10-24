@@ -167,6 +167,10 @@ Permission to develop locally does not authorize remote execution or file transf
   Before committing, read the message back and strip any such trailer.
 - Show the diff for the commit to the user and commit ONLY after the user
   validates it. Never commit unvalidated changes.
+- `.orchestrator.lock` is never staged. Stage NERV paths file by file,
+  never with `git add -f` on a change folder (that stages the ignored
+  lock); after staging, `git diff --cached --name-only` must not list it —
+  unstage it if it does.
 - Never push, merge, rebase, or open a pull request yourself. Prepare the
   exact commands (as text) and hand them to the user to execute.
 - When the launch context supplies a `commit_ref` (a task reference such as
@@ -202,13 +206,25 @@ head: "{HEAD commit hash}"
 created_at: "{ISO 8601 timestamp}"
 ```
 
+Also write `openspec/changes/{change}/nerv/audit/commits-round-N.txt`, the
+audit passes' only window into commit-level history:
+
+```
+git log --format='%h %s' --stat <base>..HEAD > openspec/changes/{change}/nerv/audit/commits-round-N.txt
+```
+
 Obtain the HEAD hash with `git rev-parse HEAD` at freeze time — never
-invent it. Never hand-edit either file after generating it.
+invent it. Never hand-edit any of the three files after generating them.
 
 ### Artifacts commit policy
 
 `artifacts.commit` (from the merged `nerv.yaml`: `with-change` | `at-close`
-| `never`) decides whether the change folder is tracked in git. `with-change`
+| `never`) decides whether the change folder is tracked in git. First
+check whether the repo ignores the artifacts: `git check-ignore -q .nerv/
+openspec/changes/{change}/` (either path ignored counts). When it does,
+the artifacts stay local whatever `artifacts.commit` says: commit nothing
+from them, never force-add them, archive with a plain `mv` instead of
+`git mv`, make no archive commit, and say so in `detailed_report`. `with-change`
 is handled per work-unit commit (see Commit rules above) and needs no
 Archive-time action. At close (DIRECT's or LIGHT's Close step, when Ikari
 launches Aoba to archive, or FULL's step 19), when
@@ -234,11 +250,13 @@ mechanically:
    stop with `status: blocked` naming the section and requirement that
    failed — never hand-merge spec content.
 2. `git mv openspec/changes/{change} openspec/changes/archive/YYYY-MM-DD-{change}`
-   (date = today, UTC), moving the whole folder including `nerv/`.
+   (date = today, UTC), moving the whole folder including `nerv/`; a
+   plain `mv` when the repo ignores the artifacts (see above).
 3. Verify with `diff -r` and `git status` that nothing was lost in the move.
 4. Return the archive path and the list of composed specs. The archive
    commit (`docs: archive change {change}`) goes through the normal
-   user-validated Aoba commit rules above. Aoba never edits spec content by
+   user-validated Aoba commit rules above; there is none when the
+   artifacts stay local. Aoba never edits spec content by
    hand.
 
 ### Run summary
@@ -247,9 +265,11 @@ In FULL (in DIRECT and LIGHT Ikari writes it itself), write `nerv/run-summary.md
 above) covering:
 
 - Work done: a short narrative of what the run accomplished.
-- Agents table with columns `agent, model, tokens_in, tokens_out,
-  duration_s`, built from the usage data the orchestrator injects — never
-  invent or estimate figures that were not supplied.
+- Agents table with columns `agent, model, tokens_in, tokens_out, tokens_total, duration_s`,
+  built from the usage data the orchestrator injects — never invent or
+  estimate figures that were not supplied.
+- KB mirrors still unflushed after Ikari's Engram flush at close, when the
+  orchestrator injects any.
 - RDD receipts encountered during the run, if any.
 - Commits made, with hashes and subjects.
 - PR slices prepared (chained/stacked), if any.

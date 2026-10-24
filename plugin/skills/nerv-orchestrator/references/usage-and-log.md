@@ -1,16 +1,31 @@
 ## Usage collection
 
-Every Agent tool result carries the launch's usage (tokens, tool uses,
-duration). After each launch Ikari records one row
-`{agent, model, tokens_total, duration_s}` from that result —
-`tokens_total` because the Agent tool reports one combined usage figure per
-launch, not separate input/output counts. The accumulated table feeds the run
-summary (written by Ikari in DIRECT and LIGHT, handed to Aoba in FULL's
-run-summary launch); figures are never estimated, and Ikari
-never omits a launch, including retries and failed ones (mark them in the
-row). `model` in this row is the REPORTED model from the Agent result, kept
-as-is — it is not the resolved model from the Mandatory model gate, though
-the two are compared at envelope readback (see Delegation triggers).
+After each launch Ikari records one row `{agent, model, tokens_in,
+tokens_out, tokens_total, duration_s}`. Figures are never estimated, and
+Ikari never omits a launch, including retries and failed ones (mark them in
+the row). Each value has one source:
+
+- `tokens_total` and `duration_s`: the usage block of the Agent tool result,
+  or of its task notification for a background launch — `total_tokens` (the
+  subagent's tokens) and `duration_ms` divided by 1000.
+- `tokens_in` and `tokens_out`: that usage block carries one combined
+  figure, so Ikari reads the split from the launch's own transcript,
+  `~/.claude/projects/<project dir>/<session_id>/subagents/agent-<agentId>.jsonl`
+  (`agentId` from the same Agent result, `session_id` as in the
+  orchestrator lock). Over its assistant records, counted once per
+  `message.id`, `tokens_in` is the sum of `input_tokens`,
+  `cache_creation_input_tokens` and `cache_read_input_tokens`, and
+  `tokens_out` the sum of `output_tokens`. When that transcript is missing
+  or unreadable, both read `n/a (no transcript)` and the row still carries
+  `tokens_total`; this is the only allowed gap.
+- `model`: the `message.model` that transcript reports — the REPORTED
+  model, compared with the resolved one at envelope readback (see
+  Delegation triggers). Without a transcript, it is the resolved model of
+  the Mandatory model gate, else the agent file's frontmatter `model:`,
+  and the row says which (`model source: resolved|frontmatter`).
+
+The accumulated table feeds the run summary (written by Ikari in DIRECT and
+LIGHT, handed to Aoba in FULL's run-summary launch).
 
 ## Deliberation log
 
@@ -52,6 +67,17 @@ empty NOW set, the DEFER ids). Recording a decision only in
 files are the artifact, the log line is the event. With the task plugin
 installed, a `task_event` is logged for every `issue.deferred` envelope as
 well, including `result=skipped` ones.
+
+**Engram flush at close.** Right before the run summary (LIGHT step 8,
+FULL step 19), Ikari collects every `Pending KB mirror` block an envelope
+of this change carried — an agent whose knowledge-base `mem_save` the host
+rejected reported `partial`, with the topic key and the exact content — and
+any of its own votes or gate-decision mirrors that failed. Ikari saves it
+itself: `mem_save` to project `nerv` under that same topic key, `type:
+"decision"`, `capture_prompt: false`, content verbatim, then reads it back,
+and logs one `kb_mirror_flushed` event per mirror (payload: topic key,
+result). A mirror that still fails never stops the run: the run summary
+lists it under `## KB mirrors unflushed` (topic key and error).
 
 **Close ordering.** The close commit (`docs: close nerv run for {change}`)
 is the run's last write. Ikari appends the `stop` event before launching

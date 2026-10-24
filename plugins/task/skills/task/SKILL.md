@@ -144,7 +144,7 @@ The core orchestrator emits these events. Each one lists the operations it needs
 | `verification.started` | The quality gate (FULL) or the work unit's check (LIGHT, DIRECT) starts | `moveStage` | Moves the task to `testing`. |
 | `audit.ranked` | The FULL issue ranking is accepted | `comment` | Posts the ranked audit summary. |
 | `issue.deferred` | The user accepts a DEFER issue | `createTask` | Creates one task per deferred issue, linked from the parent in its description. |
-| `wave.started` | A FULL wave starts and `tasks.subtasks_per_wave` is `true` | `createSubtask` | Creates the wave's subtask. |
+| `wave.started` | Every FULL wave starts | `createSubtask` | Creates the wave's subtask, but only when `tasks.subtasks_per_wave` is `true`. Otherwise it answers `skipped` with `reason: subtasks_per_wave is off`. Core emits the event every time; this plugin owns the check. |
 | `run.closed` | A run ends complete | `moveStage`, `logTime` | Stops this session's timer (§4.2) and moves the task to `implemented`. **It never calls `complete`.** One task can span several changes and repositories; completing it stays an explicit `/task:close` (S13). |
 | `run.halted` | A run halts before completion | `comment`, `moveStage`, `logTime` | Comments the halt cause, moves the task to `blocked` and stops this session's timer. |
 
@@ -179,7 +179,7 @@ For each event, the dispatcher works through these steps:
 ```yaml
 - event: run.started
   provider: teamwork
-  result: ok | skipped | blocked | failed
+  result: ok | skipped | blocked | failed | needs_input
   task_ref: TW-49076279
   data: {stage: "En Desarrollo", timer: started}
   error: "<exact error text>"   # when blocked or failed

@@ -34,7 +34,14 @@ disabled_events: []  # per-run switches the user chose
 - **Recording.** Ikari appends every envelope to
   `openspec/changes/<change>/nerv/task-events.yaml` and logs one
   `task_event` entry `{event, provider, result, task_ref}` per envelope in
-  `nerv/deliberation-log.md`.
+  `nerv/deliberation-log.md`. There is one exception (S18). An envelope
+  with `result` `skipped` whose provider is `provider: none` (no provider
+  handles the event), or whose reason is `switched off` (the plugin is off
+  in this scope, or the event is turned off), is not recorded: no
+  `task-events.yaml` line and no log entry. When every envelope of
+  `run.started` is such a skip, Ikari dispatches no further event in this
+  run, so a plugin that is installed but off or has no provider behaves
+  like an absent one.
 - **Run summary.** When any envelope is pending (`blocked` or `failed`
   with `replay: true`), the run summary lists it under "Task events
   pending", with the hint `/task:replay <change>`.

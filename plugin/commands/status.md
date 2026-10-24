@@ -46,7 +46,9 @@ short and imperative — this is a status check, not a narrative.
    partial lock, or one without a parseable `heartbeat_at`, prints `lock:
    unreadable — treated as held`. Fresh means `heartbeat_at` is under 15
    minutes old and `waiting_on` is not `user` (see the Orchestrator lock
-   section of `nerv-orchestrator/SKILL.md`).
+   section of `nerv-orchestrator/SKILL.md`). A lock past that age is
+   stale, not active: never describe its change as running, even when
+   `heartbeat_at` equals `started_at` (a run that never refreshed it).
 
 5. **Model/effort table.** Resolve every `nerv:<role>` launch's
    model and effort per `nerv-orchestrator/SKILL.md`'s Configuration

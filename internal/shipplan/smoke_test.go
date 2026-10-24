@@ -83,7 +83,7 @@ func TestSmoke_DotnetPipeline(t *testing.T) {
 	defer srv.Close()
 	feedURL := srv.URL
 	p := shipconfig.Project{Name: "calc", Path: ".", Presets: []string{"dotnet", "nuget"},
-		Dotnet: &shipconfig.Dotnet{ProjectFile: "Calc/Calc.csproj", Solution: sln, Configuration: "Release", CoverageThreshold: 90},
+		Dotnet: &shipconfig.Dotnet{ProjectFile: "Calc/Calc.csproj", Solution: sln, Configuration: "Release", CoverageThreshold: shipconfig.CoverageThreshold{Line: 90}},
 		NuGet:  &shipconfig.NuGet{Source: feedURL + "/v3/index.json", APIKeyEnv: "NERV_SMOKE_KEY"}}
 	artifacts := t.TempDir()
 	plan, err := Build(root, p, Context{Version: "1.2.3-smoke.1", Tag: "v1.2.3-smoke.1", ArtifactsDir: artifacts})

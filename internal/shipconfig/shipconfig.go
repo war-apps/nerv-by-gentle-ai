@@ -93,6 +93,10 @@ type Project struct {
 	// Stages overrides or adds the command of a pipeline stage, keyed by one
 	// of Stages (restore, lint, build, test, coverage, package, publish).
 	Stages map[string]Command `yaml:"stages"`
+	// Submodules runs git submodule update --init --recursive in the
+	// release clone before the restore stage (the clone has no submodules
+	// otherwise). Default: false.
+	Submodules bool `yaml:"submodules"`
 	// Hooks run scripts around stages and at semantic-release lifecycle
 	// steps, keyed by before_<stage>, after_<stage>, prepare, publish,
 	// success or fail. Each key runs its commands in order.
@@ -117,13 +121,55 @@ type Dotnet struct {
 	// Solution is the .sln/.slnx the stages run against. Default: empty,
 	// meaning ProjectFile.
 	Solution string `yaml:"solution"`
-	// CoverageThreshold is the minimum line coverage percentage (0-100);
-	// 0 disables the check.
-	CoverageThreshold float64 `yaml:"coverage_threshold"`
+	// CoverageThreshold are the minimum coverage percentages (0-100). A
+	// number is the line floor alone; a mapping sets line, branch and
+	// method floors. A 0 floor is not checked; all 0 disables the check.
+	CoverageThreshold CoverageThreshold `yaml:"coverage_threshold"`
 	// Configuration is the build configuration.
 	// Default: DefaultDotnetConfiguration.
 	Configuration string `yaml:"configuration"`
+	// SharedHost also gives the stage overrides of restore, lint, build,
+	// test and package the build-server environment the preset commands
+	// always get (their own env wins key by key). Default: false.
+	SharedHost bool `yaml:"shared_host"`
+	// SDK pins the .NET SDK: before the restore stage, nerv writes a
+	// global.json with this version (rollForward latestFeature) at the
+	// release clone's root. Default: empty, meaning the repository's own
+	// global.json, if any.
+	SDK string `yaml:"sdk"`
 }
+
+// CoverageThreshold are the dotnet preset's coverage floors, as coverlet's
+// ThresholdType names them: line, branch and method percentages (0-100),
+// over every report together. 0 leaves a metric unchecked.
+type CoverageThreshold struct {
+	Line   float64 `yaml:"line"`
+	Branch float64 `yaml:"branch"`
+	Method float64 `yaml:"method"`
+}
+
+// UnmarshalYAML reads the number form (the line floor, as
+// coverage_threshold has always meant) or the mapping form.
+func (c *CoverageThreshold) UnmarshalYAML(node *yaml.Node) error {
+	if node.Kind == yaml.ScalarNode {
+		var line float64
+		if err := node.Decode(&line); err != nil {
+			return err
+		}
+		*c = CoverageThreshold{Line: line}
+		return nil
+	}
+	type plain CoverageThreshold
+	var p plain
+	if err := node.Decode(&p); err != nil {
+		return err
+	}
+	*c = CoverageThreshold(p)
+	return nil
+}
+
+// Enabled reports whether any floor is checked.
+func (c CoverageThreshold) Enabled() bool { return c.Line > 0 || c.Branch > 0 || c.Method > 0 }
 
 // Node configures the node preset.
 type Node struct {

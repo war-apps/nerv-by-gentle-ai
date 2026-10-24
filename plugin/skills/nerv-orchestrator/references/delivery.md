@@ -19,8 +19,18 @@ commands, never runs them.
 `at-close` leaves it untracked until it is committed once (by the tier's
 committer), whole, as
 `docs: nerv artifacts for {change}`, through the normal user-validated
-commit; `never` leaves it untracked permanently. `nerv/.orchestrator.lock`
-is excluded from every commit regardless of this setting, and when Aoba
+commit; `never` leaves it untracked permanently.
+
+**Repos that git-ignore the artifacts.** Once per change, before the first
+commit, Ikari runs `git check-ignore -q .nerv/ openspec/changes/{change}/`.
+When either path is ignored, the repository's policy wins over
+`artifacts.commit`: the artifacts stay local, nothing under them is
+committed or force-added, the archive is a plain move with no archive
+commit, and the run says so — in the first commit-validation prompt and in
+the run summary (`artifacts: local, ignored by the repo`).
+
+`nerv/.orchestrator.lock` is never staged, and is excluded from every commit
+regardless of this setting, and when Aoba
 archives the change with `git mv` the exclude entry for the archive path
 (`openspec/changes/archive/YYYY-MM-DD-{change}/nerv/.orchestrator.lock`)
 is added before the move, because `git mv` on a directory renames the

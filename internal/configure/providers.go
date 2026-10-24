@@ -134,6 +134,9 @@ func ParseProviderConfig(fsys fs.FS, args []string) ([]ProviderSetting, error) {
 		if err := ValidateProviderValue(name, c, value); err != nil {
 			return nil, &RefusalError{Err: err}
 		}
+		if c.Scope != "repo" {
+			return nil, &RefusalError{Err: fmt.Errorf("Key '%s' of task provider '%s' is %s-scope; set it with nerv configure, not --repo-provider-config.", key, name, c.Scope)}
+		}
 		settings = append(settings, ProviderSetting{Key: ProviderKeyPath(name, key), Value: value})
 	}
 	return settings, nil

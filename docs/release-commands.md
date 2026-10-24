@@ -275,6 +275,7 @@ At least one project is required. A single-repo setup is one project with
 | `presets` | `[]` | Built-in stages and publishers: any of `dotnet`, `node`, `docker`, `nuget`, `npm`. A settings block (`dotnet:`, `docker:`, ...) without its preset enabled is an error. |
 | `stages` | preset commands | Override or add a pipeline stage command; see [Stages, hooks and commands](#stages-hooks-and-commands). |
 | `hooks` | `{}` | Extra scripts around stages and release steps; same section. |
+| `submodules` | `false` | `true` runs `git submodule update --init --recursive` at the very start of `restore` (the stage is created if the project has no restore command). |
 
 ### The project's changelog
 
@@ -318,7 +319,9 @@ dependency order, otherwise in declaration order.
 |---|---|---|---|
 | `dotnet` | `project_file` | required | The `.csproj` that receives `<Version>` and `<PackageReleaseNotes>` ([The dotnet project file](#the-dotnet-project-file)). |
 | | `solution` | the project file | The `.sln`/`.slnx` restore, build and test run against. |
-| | `coverage_threshold` | `0` (off) | Minimum line coverage percentage, 0-100. |
+| | `coverage_threshold` | `0` (off) | Minimum line coverage percentage, 0-100. The map form `{ line, branch, method }` sets separate floors (see [Coverage](#coverage)). |
+| | `shared_host` | `false` | `true` also gives stage overrides of restore, lint, build, test and package the build-server environment the preset commands get. An override's own `env` wins key by key, and its `run:` is never rewritten. |
+| | `sdk` | none | An SDK version such as `8.0.100`. It adds a `dotnet:sdk` step at the start of restore that writes `global.json` at the clone root with `rollForward: latestFeature`, replacing any existing one. |
 | | `configuration` | `Release` | Build configuration. |
 | `node` | `package_manager` | `npm` | `npm`, `pnpm` or `yarn`. |
 | `docker` | `images[]` | required (one or more) | Images built, tagged and pushed in order. |
@@ -753,7 +756,8 @@ flags go in a stage override, e.g.
   note in the step's output. `dotnet format` rejects the flag, so it gets
   only the variables. Reused MSBuild nodes and compiler servers
   make dotnet die mid-release on shared hosts ("Internal CLR error
-  (0x80131506)"). A stage override's `run:` is never rewritten: it runs as
+  (0x80131506)"). With `dotnet.shared_host: true`, stage overrides get the same
+  variables, so they no longer need their own `env` block. A stage override's `run:` is never rewritten: it runs as
   written, so a repository that overrode every stage only for this (as
   dim.comprobantes.api did) can drop those overrides.
 - The node preset never writes the package version: semantic-release's
@@ -795,6 +799,14 @@ threshold 80%`. No report, a malformed report or no coverable line also
 fail. A line covered in two test projects' reports counts in both. When
 `test` is overridden, the override must write the reports there (or
 override `coverage` too).
+
+The map form `coverage_threshold: { line: 80, branch: 60, method: 70 }` sets
+separate floors over all reports combined. Each one is optional, and the
+number form is the `line` floor. Branch counts come from each report's
+`branches-covered`/`branches-valid` (they are required only when a branch
+floor is set). A method counts as covered when any of its lines has a hit.
+As in coverlet, a branch or method metric with nothing to cover counts
+as 100%.
 
 ### The dotnet project file
 
@@ -1091,8 +1103,9 @@ what to do:
   command (`taskkill /T`), the Git Bash lookup and pwsh/node script-file
   runs are unit-tested with a fake OS, never on a real Windows machine. On
   Windows, a descendant process that outlives its command keeps running.
-- **No submodules or Git LFS**: the release clone initialises neither, so
-  a build that needs them fails (or uses LFS pointer files).
+- **No Git LFS**: the release clone does not fetch LFS objects, so a build
+  that needs them uses LFS pointer files. Submodules are initialised only
+  for projects with `submodules: true`.
 - **NuGet feeds whose service index needs credentials** (GitHub Packages,
   Azure Artifacts) are not supported by the `nuget` preset: use a `publish`
   stage override for them.

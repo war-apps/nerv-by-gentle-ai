@@ -144,6 +144,11 @@ dispositions) prefixed with one line: `repo: {repo} change: {change}
 artifact: audit-report`. Both the per-change write and the knowledge-
 base mirror are read back; a failed mirror is reported as `partial`,
 never a blocker for the change itself.
+When the host rejects that `mem_save` (for example "Claude host session
+registration could not be confirmed"), the status is `partial`, not
+`blocked`: put the unsaved mirror in `detailed_report` under a
+`Pending KB mirror` heading (its topic key, then the exact content), and
+Ikari flushes it at close.
 
 ## Return envelope
 

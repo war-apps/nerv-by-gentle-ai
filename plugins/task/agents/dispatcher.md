@@ -24,7 +24,7 @@ It also carries the merged `tasks:` block and the `git:` block of the configurat
 
 ## Steps
 
-1. **Event switch.** Apply the event switch from §6.2 step 1. When the event is switched off, answer immediately.
+1. **Event switch.** Apply the event switch from §6.2 step 1. When the event is switched off, answer immediately. `wave.started` while `tasks.subtasks_per_wave` is not `true` also answers `skipped` immediately, with `reason: subtasks_per_wave is off` (§6).
 2. **Providers.** Resolve the installed providers (§2): their `installPath`, then `provider.yaml`. Keep the ones that are enabled, subscribe to the event and match the `task_ref` prefix.
 3. **Tool check.** Run the tool check for each kept provider. A provider with a missing tool gets `blocked`, naming the missing tools.
 4. **Operations.** Run the event's operations in the order of the §6 table. For each operation, read the provider's procedure file at `<installPath>/<operations.<op>>` and follow it exactly. The local timer work (§4) is done here, not by the provider.

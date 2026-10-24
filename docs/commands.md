@@ -193,7 +193,8 @@ With --init-repo:
   --repo-base <branch>      Base branch override
   --repo-provider-config <provider>.<key>=<value>
                             Write tasks.providers.<provider>.<key> into the
-                            repository's .nerv/nerv.yaml (repeatable)
+                            repository's .nerv/nerv.yaml (repeatable; repo-scope
+                            keys of the provider's provider.yaml only)
 
 If `.nerv/nerv.yaml` already exists it is not recreated, and an existing
 `tasks:` block in it is left untouched.

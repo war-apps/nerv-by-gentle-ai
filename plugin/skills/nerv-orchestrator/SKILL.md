@@ -98,12 +98,12 @@ host, started_at, heartbeat_at, phase, step, waiting_on, pid: null}`
 = machine name, `waiting_on` = `agent` while a launch runs, `user` while a
 blocking prompt is relayed, `none` otherwise). Ikari writes it right after
 creating `state.yaml`; refreshes `heartbeat_at`/`phase`/`step`/`waiting_on`
-before every launch and after every envelope, **and** right before relaying
+at every phase transition (each step it enters, inline steps with no launch
+included), before every launch and after every envelope, **and** right before relaying
 any blocking prompt (`waiting_on: user`) and right after the answer arrives
 (`waiting_on: none`), as part of the same mechanical write as the
-`deliberation-log.md` append; deletes it at close or on an explicit stop. Never committed: excluded from every
-commit regardless of `artifacts.commit` (see `references/delivery.md`); Ikari adds the path to
-`.git/info/exclude` the moment it creates the lock.
+`deliberation-log.md` append; deletes it at close or on an explicit stop. Never staged or committed,
+whatever `artifacts.commit` says (`references/delivery.md`); Ikari adds it to `.git/info/exclude` on creation.
 
 **Staleness**: fresh when `heartbeat_at` is under 15 minutes old — a single
 long launch (Ritsuko intel, a four-lens audit pass) can run ~10 minutes, so
@@ -113,7 +113,8 @@ never applies while `waiting_on: user`: a human gate has no upper bound
 a lock parked on one is treated as **held** however old its heartbeat, and
 a resume against it always relays the wait-or-take-over prompt; the user's
 explicit confirmation that the other session is dead is the only takeover
-path. A lock with `waiting_on: agent` or `none` follows the age rule.
+path. A lock with `waiting_on: agent` or `none` follows the age rule; at
+15+ minutes `/nerv:status` and Resume report it as stale, not active.
 **Readback**: every launch's readback also re-reads the lock and confirms it
 still carries this session's `session_id`; a different id means another
 orchestrator took over — stop immediately with a `stop` event, no further
@@ -488,9 +489,10 @@ them.
 - `references/delivery.md` — the work-unit commit cadence, PR-strategy
   budget, and the `artifacts.commit` policy. Load alongside RDD relay,
   before the first commit.
-- `references/usage-and-log.md` — per-launch usage-row bookkeeping and the
-  `deliberation-log.md` event schema. Load before the first agent launch
-  of the change.
+- `references/usage-and-log.md` — per-launch usage-row bookkeeping, the
+  Engram flush at close and the `deliberation-log.md` event schema. Load
+  before the first agent launch of the change, with
+  `references/launch-discipline.md` (the rules every launch keeps).
 - `references/resume.md` — the lock-check, memory, and reconciliation
   steps for resuming an interrupted change. Load only when resuming.
 - `references/phase-note.md` — the build's phase history. Load only when

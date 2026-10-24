@@ -179,14 +179,16 @@ table.
 {short narrative}
 
 ## Agents
-| agent | model | tokens_total | duration_s |
-|---|---|---|---|
-| nerv:kaworu | sonnet | {n} | {n} |
+| agent | model | tokens_in | tokens_out | tokens_total | duration_s |
+|---|---|---|---|---|---|
+| nerv:kaworu | sonnet | {n} | {n} | {n} | {n} |
 
-`tokens_total` is the single combined usage figure the Agent tool result
-reports per launch (it does not split input/output tokens). Figures come
-only from usage data Ikari collected from each Agent tool result — never
-estimated.
+Each figure has the source named in the Usage collection section of
+`nerv-orchestrator/references/usage-and-log.md`: `tokens_total` and
+`duration_s` from the Agent tool's usage block, `tokens_in` and
+`tokens_out` from the launch's subagent transcript, `model` as that
+transcript reports it. Figures are never estimated; the only allowed gap
+is `n/a (no transcript)`.
 
 ## RDD receipts
 | commit | review_due | outcome | boundary_advanced_to |
@@ -198,6 +200,10 @@ estimated.
 
 ## PR slices
 {none, or the chained/stacked slice list with boundaries}
+
+## KB mirrors unflushed
+{only when the Engram flush at close left some knowledge-base mirror
+unsaved: one line per mirror (topic key, error); else omit}
 
 ## Task events pending
 {only when the task plugin is installed and some envelope in
@@ -221,7 +227,7 @@ error), then: replay them with `/task:replay {change}`}
 ```yaml
 - event: run.started
   provider: <provider name>
-  result: ok                      # ok | skipped | blocked | failed
+  result: ok                      # ok | skipped | blocked | failed | needs_input
   task_ref: "TW-49132010"
   data: {stage: "<provider stage>", timer: started}
   payload: {task_ref: "", repo: "<repo>", change: "{change}", branch: "<branch>", worktree: "", session_id: "<uuid>", data: {}, disabled_events: []}
@@ -804,6 +810,12 @@ payload_ref}`):
 - `lock_refused` — a resume attempt found a fresh `.orchestrator.lock` held
   by another session and the user chose to wait rather than take over
   (payload: the other session's `session_id` and `heartbeat_at`).
+
+### Run hygiene event types
+
+- `kb_mirror_flushed` — Ikari saved a knowledge-base mirror an agent
+  handed back as `Pending KB mirror` (payload: topic key, result), at the
+  Engram flush at close.
 
 ## Knowledge base (Engram project nerv)
 

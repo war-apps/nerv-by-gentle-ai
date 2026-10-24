@@ -279,6 +279,11 @@ a Nerv by Gentle-AI pilot applies only if one is required, and an
 acknowledged receipt is
 logged as `rdd_receipt`; on a decline, the run continues under ordinary
 repository policy. Ikari itself never enables or disables the RDD switch.
+Untracked Nerv by Gentle-AI folders (`.nerv/`, `openspec/`) never need a
+`.git/info/exclude` entry from the user: Ikari declares the untracked scope
+to `review assess` itself (`--untracked-scope=select` with the real new
+files, or `exclude` when only those folders are untracked), because
+gentle-ai has no per-path exclude flag.
 
 ## Roles
 
@@ -373,7 +378,10 @@ folder is committed: `with-change` (each work-unit commit includes its own
 Nerv by Gentle-AI artifacts), `at-close` (default — artifacts land in one
 `docs: nerv artifacts for {change}` commit when the run closes), or
 `never` (artifacts stay untracked; the user commits them manually, if
-ever).
+ever). When the repository git-ignores `.nerv/` or `openspec/` (checked
+with `git check-ignore`), the artifacts stay local whatever this says: no
+artifacts or archive commit, and the run summary says so. The lock file is
+never staged.
 
 **`/nerv:status`.** Reports gentle-ai major-version compatibility, the
 active config (merged user + project), and — while a run is in progress —

@@ -82,13 +82,13 @@ Source: `~/projects/docs/nerv-learnings-from-projects-2026-10-23.md`. The number
 
 | ID | Specs | Route | Status | Commit |
 |---|---|---|---|---|
-| T1 | S6 | inline | pending | — |
+| T1 | S6 | inline | committed and verified; correction f4e4072; native review pending (it needs a clean tree) | 5747eb2, f4e4072 |
 | T2 | S3, S5, S8, S12, S14 | inline | Go part done (RED: build failed; GREEN: go test ./internal/taskprovider ok). Prose contract goes with T3 | see L7 |
-| T3 | S2, S4, S9, S10, S11, S13, S15, S17, S18 | inline | pending | — |
-| T4 | S3, S14, S15, S16 | inline | pending | — |
-| T5 | S1, S7 | inline | pending | — |
-| T6 | S19, S20, S21, S22, S23 | inline | pending | — |
-| T7 | S24 | inline | pending | — |
+| T3 | S2, S4, S9, S10, S11, S13, S15, S17, S18 | inline | committed (prose plugin; checks: `go test ./internal/taskprovider/` ok) | 29ac930 |
+| T4 | S3, S14, S15, S16 | inline | committed (`TestEmbeddedProviders_AreValid` ok) | a7f142a |
+| T5 | S1, S7 | delegated: two parallel writers, prose and Go (Writer trigger (a): independent units over disjoint surfaces, each well over 100 lines; also the context backstop) | committed and verified; corrections in 8f421c9 | cedd28f, d86ceec, a7c2e28, 8f421c9 |
+| T6 | S19, S20, S21, S22, S23 | delegated writer (context backstop), run in parallel with T7 | committed (RED: 5 tests and 41 missing phrases; GREEN: `go test ./...`) | 73e3145 |
+| T7 | S24 | delegated writer, run in parallel with T6 | committed (RED: build failed; GREEN: shipconfig and shipplan tests ok; differential check identical) | 23db6f9 |
 
 - **T1:** multi-plugin embed, materialize, install, uninstall and version check, plus the suggestion prompts. Risk item 5 (installer).
 - **T2:** the provider contract (the `provider.yaml` schema, the event list, the response envelope, `contract_version`) and its Go validator.
@@ -122,3 +122,53 @@ The order is T2 → T1 → T3/T4 → T5 → T6 → T7. Every task runs inline: t
   - `Events` maps each event to the ops it needs. A manifest that subscribes to an event whose op is `not_implemented` is invalid. `run.closed` needs `moveStage` and `logTime` only, never `complete` (S13).
   - `MissingTools` accepts a bare tool name or `mcp__<server>__<tool>`, never a same-named tool from another server (S8).
   - Code is in `internal/taskprovider`.
+- **L8** (2026-10-23): T1 committed in 5747eb2.
+  - Checks: `go test ./...` all ok; RED observed for the materialize, install, CLI and release tests.
+  - Assessment: `review assess` reported `high` (configuration_change, plus escalation item 5); `review_due: true`.
+  - An independent verifier was launched before native review.
+  - Known gap: the wizard's `RefreshCache` refreshes only `nerv@nerv`, not the enabled extensions. It is revisited in T5, when the wizard is reworked.
+- **L9** (2026-10-23): the T1 verifier found 2 blockers and 4 advisories.
+  - **B1:** the embedded `task-teamwork` had no `provider.yaml`. Already fixed by a7f142a; the regression tests are now GREEN.
+  - **B2:** a failed extension uninstall was not retried. Fixed in f4e4072: extensions are uninstalled before settings.json changes.
+  - **Advisories:** advisory 1 (partial release write) fixed with two-phase prepare; advisory 2 (other `*@nerv` ids) fixed; advisory 3 (uninstall message) fixed; advisory 4 (release guard does not check extension versions) left open.
+  - The verifier's regression tests were committed in f4e4072.
+  - **Native review:** STATUS asks for an intended-untracked selection while the T5 writers have files in the tree, so the review waits until the tree is clean.
+- **L10** (2026-10-23): T5 written by two parallel writers, prose and Go.
+  - **Prose:** RED was `task_split_prose_test.go` failing on the Teamwork mentions and the missing events; now GREEN.
+  - **Go:** RED/GREEN reported per rule. The differential check against a7f142a found only the expected differences.
+  - **Integration:** the parent fixed `cmd/nerv/terminal_test.go`, which still passed `--skip-commands`. The task plugin now owns the `subtasks_per_wave` check (a7c2e28).
+  - **Checks:** `go build/vet/test ./...` all ok; `tests/hook-*.test.sh` ok.
+  - **Known environmental failure:** `tests/install-sh.test.sh` fails with exit 127 at HEAD without these changes too.
+  - **Advisories open:** `taskprovider.validValue` is duplicated in `configure.ValidateProviderValue`; `release guard` does not check extension versions.
+- **L11** (2026-10-23): the T5 verifier found 2 blockers.
+  - **B1:** the result lists lacked `needs_input`.
+  - **B2:** S18 was not met with the plugin installed but off.
+  - Both were fixed in 8f421c9, with the verifier's regression tests (`task_events_regress_test.go`). Advisory A2 (the user-scope key in `--repo-provider-config`) was fixed too, after a RED test. A4 (the reason for the wave skip) was aligned.
+  - **Left open:** A1, where "tracker" still appears in the "no tracker" statements and the eval graders (accepted); A3 (no CLI way to add provider settings to an already-initialized repo); A5 (the `tasks:` blocks in the eval scaffolds; harmless).
+- **L12** (2026-10-23): evidence for T6, from the learnings report.
+  - **S19:** obs #2344, #2255, #2122; CA/DPC deliberation-log:42; CA/AF deliberation-log:49.
+  - **S20:** CA/AR deliberation-log:210-216, 173; CA/AF deliberation-log:17, 140; obs #1753.
+  - **S21:** CA/AR run-summary:25; FE `.orchestrator.lock`.
+  - **S22:** comprobantes a9bd1f7; dim.docker 262b4f4; obs #2393, #1849; CA/DPC deliberation-log:94-96. A gentle-ai 4.2.0 probe also found that any untracked path makes `review assess` unassessable, and that `--intended-untracked` takes file paths only.
+  - **S23:** CA/DPC run-summary:43-61; CA/AR run-summary:9-13.
+- **L13** (2026-10-23): T7 design.
+  - `dotnet.shared_host` and `dotnet.sdk` are two keys, because the SDK version is per repo. A project gets `submodules: true`. `coverage_threshold` gets a map form `{line, branch, method}`, and the number form stays the line floor.
+  - `docs/release-commands.md` was updated by the parent.
+  - **Risk: item 3.** The exported `shipconfig.Dotnet.CoverageThreshold` changed type; behaviour stays the same for existing configs.
+- **L14** (2026-10-23): delivery.
+  - **Chain.** The whole branch exceeded the native review's lens budget (`lens_context_budget_exceeded`). The user chose "feature-branch-chain (Recommended)", then "Sí, partir y rebasear (Recommended)" for slice 4 and "Partir y rebasear (Recommended)" for slice 5.
+  - **Rewrite.** The local, unpushed history was rewritten: cedd28f became c48900d (4a) + 4eb326a (4b), and fbcef1d became 8ecff2a (5a) + 40bf6ff (5b). The final tree is identical to the pre-split HEAD (checked with `git diff --quiet`). The backup branches are `backup/tasks-plugin-split-pre-split` and `backup/tasks-plugin-split-pre-split5`.
+  - **Chain branches:** `tasks-split/01-contract-installer`, `02-task-plugins`, `03-install-fixes`, `04a-install-legacy`, `04b-core-config`, `05a-core-orchestrator`, `05b-docs`, `06-learnings`.
+  - **Native review:** every review was granted by the user, and every receipt below was acknowledged.
+    - Slices 01, 02, 03, 04a and 05a were approved.
+    - Slice 06 was approved together with 05b (5b alone assessed `under_budget`).
+    - **Exception:** 04b (4eb326a, about 3.5k tightly coupled lines that only build together) still exceeds the lens budget. It has no native receipt; it is covered by the independent T5 verifier (L11).
+  - **Advisory follow-ups (non-blocking):**
+    - `selectExtensions` adds a zero-value extension when a requirement is not shipped (R1-001, slice 01);
+    - Teamwork REST procedures repeat their boilerplate, and `comment_rest` is misnamed for non-comment calls (slice 02);
+    - `run.closed` ops are understated in the skill (slice 02);
+    - an empty `task_ref` on later events; an unbounded `needs_input` loop; a legacy `tasks.provider` silently ignored (slice 05a);
+    - `dotnet.sdk` overwrites an existing `global.json` without a note; a `run.started` skip suppresses later events even if the config changes mid-run (slice 06);
+    - `release guard` does not check extension versions;
+    - `validValue` is duplicated.
+  - **Delivery** (push, PRs and the draft tracker PR for the chain) is the user's decision.

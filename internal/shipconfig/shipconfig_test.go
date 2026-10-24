@@ -437,7 +437,7 @@ func TestLoad_PresetDefaults(t *testing.T) {
             shell: pwsh
 `)
 	p := rel.Projects[0]
-	if p.Dotnet.Configuration != shipconfig.DefaultDotnetConfiguration || p.Dotnet.ProjectFile != "src/Api/Api.csproj" || p.Dotnet.CoverageThreshold != 80 {
+	if p.Dotnet.Configuration != shipconfig.DefaultDotnetConfiguration || p.Dotnet.ProjectFile != "src/Api/Api.csproj" || p.Dotnet.CoverageThreshold != (shipconfig.CoverageThreshold{Line: 80}) {
 		t.Errorf("dotnet = %+v", *p.Dotnet)
 	}
 	if p.Node.PackageManager != shipconfig.DefaultPackageManager {

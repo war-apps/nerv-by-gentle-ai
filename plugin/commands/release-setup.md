@@ -97,8 +97,12 @@ choice (why this project file, why a stage override, why a hook). Rules:
   changelog plugin's own `changelogFile`: leave `changelog` unset unless
   it should override it.
 - **Presets** in pipeline order: `dotnet` (with `project_file`, the
-  `solution` CI builds, `coverage_threshold` when CI enforces a line
-  threshold), `node` (with `package_manager`), `docker`, `nuget` (only
+  `solution` CI builds, `coverage_threshold` when CI enforces coverage:
+  a number for a line floor alone, `{ line: 80, branch: 70, method: 85 }`
+  for coverlet's line, branch and method floors; `sdk` when CI or a
+  `global.json` pins the .NET SDK; `shared_host: true` when the stage
+  overrides need the no-build-server environment), `node` (with
+  `package_manager`), `docker`, `nuget` (only
   for packable projects), `npm` (only when `@semantic-release/npm` does
   not already publish: `npmPublish: false` or the plugin absent).
   Never a settings block without its preset.
@@ -114,7 +118,13 @@ choice (why this project file, why a stage override, why a hook). Rules:
   copying the preset's command and adding them (preset commands in
   `docs/release-commands.md` → Preset commands). A `test` override with a
   coverage threshold must still write the cobertura reports to
-  `$NERV_RELEASE_ARTIFACTS_DIR/coverage`.
+  `$NERV_RELEASE_ARTIFACTS_DIR/coverage`. Do not copy the build-server
+  `env` block (`MSBUILDDISABLENODEREUSE`, `UseSharedCompilation`,
+  `DOTNET_CLI_USE_MSBUILD_SERVER`) into each override: set
+  `dotnet.shared_host: true` once instead.
+- **`submodules: true`** on the project when the repository has a
+  `.gitmodules` file: the release clone has no submodules otherwise. Do
+  not add a `git submodule update` hook for it.
 - **Hooks** for repository-specific steps no preset covers, with the right
   `shell` (`bash` for `.sh`, `pwsh` for `.ps1`, `node` for `.js`). A script
   the repository's own semantic-release configuration already runs (an

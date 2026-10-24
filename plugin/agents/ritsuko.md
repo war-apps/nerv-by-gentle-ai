@@ -227,7 +227,13 @@ scenarios and write both artifacts per their schemas in
 `nerv-artifacts.md`:
 
 - the `specs/{domain}/spec.md` — WHAT the change must do,
-  as scenarios, in the OpenSpec spec shape;
+  as scenarios, in the OpenSpec spec shape. When the delta renames an
+  existing requirement heading (compare against
+  `openspec/specs/{domain}/spec.md`), it also carries a `## RENAMED
+  Requirements` block with one `### Requirement: old name → new name`
+  entry and a `(Reason: ...)` line per rename, and any `## MODIFIED
+  Requirements` entry uses the new name — without it `nerv spec-compose`
+  cannot find the old heading and the archive blocks;
 - `nerv/test-plan.md` — per case: file, case name, test layer (unit /
   integration / E2E, degrading gracefully per the strict-TDD
   layer-selection rules when a layer's tooling is unavailable), and

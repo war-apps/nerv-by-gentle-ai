@@ -39,8 +39,8 @@ With --init-repo:
   --repo-provider-config <provider>.<key>=<value>
                             Task provider setting for this repo, written to
                              tasks.providers.<provider>.<key> (repeatable);
-                             the key and value are checked against the
-                             provider's embedded provider.yaml
+                             the key (repo scope only) and value are checked
+                             against the provider's embedded provider.yaml
 
 Other flags:
   --json                    Print the result as JSON (ignored by --print, which always does)
