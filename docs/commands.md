@@ -214,8 +214,10 @@ order, and leaves the artifact `.nerv/artifacts/<project>/<version>/`. It
 never writes to git. It asks for confirmation (`--yes` to skip; required
 without a terminal); `--dry-run` runs every stage and writes no artifact;
 `--expect <project>=<version>` packages only the approved versions;
-`--version <semver>` skips the computation and takes the channel from the
-branch's `branches` entry. Flow, failure handling and exit codes:
+`--version <semver>` skips the version computation (it must fit the branch
+and be newer than the branch's last release; the notes and CHANGELOG
+section are still written from the commits since then) and takes the
+channel from the branch's `branches` entry. Flow, failure handling and exit codes:
 [release-commands.md](release-commands.md#nerv-ship).
 
 ```
@@ -229,13 +231,18 @@ Translates an existing JSON or YAML semantic-release config (`package.json`
 `release`, `.releaserc.json`, `.releaserc.yaml`/`.yml`) into the `ship:`
 section, once, and lists every part it cannot translate (the `npm` and
 `exec` plugins, `presetConfig.types`, `extends`, maintenance branches). A
-`.js` config is reported, never imported. `--dry-run` prints the result and
-writes nothing. See
+`.js` config is reported, never imported. An engine key the `ship:` section
+already sets to another value is never replaced silently: the import
+refuses (exit 1) and lists each key with its current and imported values;
+`--force` replaces them and prints each replaced value. An old `release:`
+section is renamed to `ship:`, even when there is no semantic-release
+config to import. `--dry-run` prints the result and writes nothing. See
 [release-commands.md](release-commands.md#importing-a-semantic-release-config).
 
 ```
 nerv ship setup --import --dry-run
 nerv ship setup --import
+nerv ship setup --import --force
 ```
 
 ### nerv deploy
@@ -284,13 +291,21 @@ Materializes the embedded plugin, registers it in Claude Code's
 assignments, ensures the Engram "nerv" knowledge base, and installs
 skills. It also installs the optional extension plugins named by `--with`,
 keeps the ones already enabled up to date, and, when stdin is a terminal,
-offers the others, in this order: the task plugin (`task@nerv`, the
-`/task:*` commands), then, only if it is installed, its providers
-(`task-teamwork@nerv`); the ship plugin (`ship@nerv`); the deploy plugin
-(`deploy@nerv`), which requires `ship`; then, only if deploy is installed,
-the deploy providers (`deploy-github@nerv`, `deploy-ssh-compose@nerv`). A
-provider named in `--with` brings its plugin with it, and `deploy` brings
-`ship`. Copies of the `/task:*` commands that an older release put in
+offers the others, in this order:
+
+1. the task plugin (`task@nerv`, the `/task:*` commands);
+2. its providers (`task-<name>@nerv`, such as `task-teamwork@nerv`), only
+   once task is installed;
+3. the ship plugin (`ship@nerv`: `nerv ship` and the version engine);
+4. the deploy plugin (`deploy@nerv`: `nerv deploy`), only once ship is
+   installed;
+5. the deploy providers (`deploy-<name>@nerv`: `deploy-github@nerv`,
+   `deploy-ssh-compose@nerv`), only once deploy is installed.
+
+Requirements: `deploy` requires `ship`, a task provider requires `task`,
+and a deploy provider requires `deploy`; each is offered only once what it
+requires is installed or chosen. A plugin named in `--with` brings what it
+requires with it, and a requirement this nerv does not ship is refused. Copies of the `/task:*` commands that an older release put in
 `~/.claude/commands/task/` are reported, and removed only after you
 confirm. See the README's "Install" section for the shell one-liners and
 environment variables (`NERV_CHANNEL`, `NERV_INSTALL_DIR`,
@@ -305,7 +320,8 @@ Flags:
   --no-skills           Skip installing skills
   --no-configure        Skip the closing wizard/hint entirely
   --with <names>        Comma-separated extension plugins to install, such as
-                        task,task-teamwork (a provider brings the task plugin)
+                        task,task-<provider>,ship,deploy,deploy-<provider>
+                        (each brings what it requires)
 ```
 
 ```

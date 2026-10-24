@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -83,7 +84,7 @@ func scriptProject() shipconfig.Project {
 func composeProject() shipconfig.Project {
 	return shipconfig.Project{Name: "api", Path: "api", Build: &shipconfig.Build{
 		Mode: shipconfig.ModeCompose, File: "api/docker-compose.yml", TestService: "tests",
-		Images: []string{"ghcr.io/acme/api:${version}", "ghcr.io/acme/worker:${channel}-${tag}"},
+		Images: refs("ghcr.io/acme/api:${version}", "ghcr.io/acme/worker:${channel}-${tag}"),
 	}}
 }
 
@@ -205,9 +206,9 @@ func TestBuild_ComposeMode(t *testing.T) {
 		"package|compose:save ghcr.io/acme/worker:beta-v1.4.0-rc.1|docker save -o " + filepath.Join(out, "ghcr.io_acme_worker_beta-v1.4.0-rc.1.tar") + " ghcr.io/acme/worker:beta-v1.4.0-rc.1",
 	})
 	if want := []Image{
-		{Ref: "ghcr.io/acme/api:1.4.0-rc.1", Tar: "ghcr.io_acme_api_1.4.0-rc.1.tar"},
-		{Ref: "ghcr.io/acme/worker:beta-v1.4.0-rc.1", Tar: "ghcr.io_acme_worker_beta-v1.4.0-rc.1.tar"},
-	}; !slices.Equal(plan.Images, want) {
+		{Ref: "ghcr.io/acme/api:1.4.0-rc.1", Refs: []string{"ghcr.io/acme/api:1.4.0-rc.1"}, Tar: "ghcr.io_acme_api_1.4.0-rc.1.tar"},
+		{Ref: "ghcr.io/acme/worker:beta-v1.4.0-rc.1", Refs: []string{"ghcr.io/acme/worker:beta-v1.4.0-rc.1"}, Tar: "ghcr.io_acme_worker_beta-v1.4.0-rc.1.tar"},
+	}; !reflect.DeepEqual(plan.Images, want) {
 		t.Errorf("images %+v, want %+v", plan.Images, want)
 	}
 	// No test service: no test stage; the default channel has no channel.
@@ -225,7 +226,7 @@ func TestBuild_ComposeMode(t *testing.T) {
 
 func TestBuild_ComposeImageRefMustBeValid(t *testing.T) {
 	p := composeProject()
-	p.Build.Images = []string{"ghcr.io/acme/api:${channel}"}
+	p.Build.Images = refs("ghcr.io/acme/api:${channel}")
 	if _, err := Build(t.TempDir(), p, ctxFor("1.0.0", "a b")); err == nil || !strings.Contains(err.Error(), "image") {
 		t.Errorf("Build = %v, want a refusal of the expanded reference", err)
 	}
@@ -545,4 +546,153 @@ func TestPlan_OutputsListsWhatThePackageStageLeft(t *testing.T) {
 	if _, err := plan.Outputs(); err == nil || !strings.Contains(err.Error(), "ghcr.io/acme/api:1.0.0") {
 		t.Errorf("missing image tar: %v", err)
 	}
+}
+
+// L22: in script mode the package stage's commands build build.images, and
+// ship then saves each one into the artifact and records its reference,
+// as compose mode does.
+func TestBuild_ScriptModeSavesItsImagesAfterThePackageStage(t *testing.T) {
+	p := scriptProject()
+	p.Stages = map[string]shipconfig.Command{"package": bash("docker build -t ghcr.io/acme/api:$NERV_RELEASE_VERSION .")}
+	p.Hooks = map[string][]shipconfig.Command{"after_package": {bash("echo packaged")}}
+	p.Build.Images = refs("ghcr.io/acme/api:${version}", "ghcr.io/acme/api:${channel}", "ghcr.io/acme/api:${version}")
+	plan, err := Build(t.TempDir(), p, ctxFor("1.4.0-alpha.2", "alpha"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	out := filepath.Join(artifacts, "api", "outputs")
+	assertLines(t, lines(plan), []string{
+		"package|package|bash: docker build -t ghcr.io/acme/api:$NERV_RELEASE_VERSION .",
+		"package|docker:save ghcr.io/acme/api:1.4.0-alpha.2|docker save -o " + filepath.Join(out, "ghcr.io_acme_api_1.4.0-alpha.2.tar") + " ghcr.io/acme/api:1.4.0-alpha.2",
+		"package|docker:save ghcr.io/acme/api:alpha|docker save -o " + filepath.Join(out, "ghcr.io_acme_api_alpha.tar") + " ghcr.io/acme/api:alpha",
+		"after_package|after_package|bash: echo packaged",
+	})
+	if want := []Image{
+		{Ref: "ghcr.io/acme/api:1.4.0-alpha.2", Refs: []string{"ghcr.io/acme/api:1.4.0-alpha.2"}, Tar: "ghcr.io_acme_api_1.4.0-alpha.2.tar"},
+		{Ref: "ghcr.io/acme/api:alpha", Refs: []string{"ghcr.io/acme/api:alpha"}, Tar: "ghcr.io_acme_api_alpha.tar"},
+	}; !reflect.DeepEqual(plan.Images, want) {
+		t.Errorf("images %+v, want %+v", plan.Images, want)
+	}
+}
+
+// refs is build.images in the plain-string form.
+func refs(raw ...string) []shipconfig.BuildImage {
+	out := make([]shipconfig.BuildImage, len(raw))
+	for i, r := range raw {
+		out[i] = shipconfig.BuildImage{Ref: r}
+	}
+	return out
+}
+
+// tagged plans a script-mode project whose package stage builds
+// ghcr.io/acme/api:<version>, with one build.images mapping of kinds.
+func tagged(t *testing.T, channel string, kinds ...string) (*Plan, error) {
+	t.Helper()
+	p := scriptProject()
+	p.Stages = map[string]shipconfig.Command{"package": bash("docker build -t ghcr.io/acme/api:$NERV_RELEASE_VERSION .")}
+	p.Build.Images = []shipconfig.BuildImage{{Name: "ghcr.io/acme/api", Tags: kinds}}
+	return Build(t.TempDir(), p, ctxFor("1.4.0", channel))
+}
+
+// assertTagged checks the package stage tags the version reference with
+// every other reference, saves them all into one archive, and records them.
+func assertTagged(t *testing.T, plan *Plan, mode string, want ...string) {
+	t.Helper()
+	out := filepath.Join(artifacts, "api", "outputs")
+	tar := "ghcr.io_acme_api_1.4.0.tar"
+	var steps []string
+	for _, ref := range want[1:] {
+		steps = append(steps, "package|"+mode+":tag "+ref+"|docker tag "+want[0]+" "+ref)
+	}
+	steps = append(steps, "package|"+mode+":save "+want[0]+"|docker save -o "+filepath.Join(out, tar)+" "+strings.Join(want, " "))
+	got := lines(plan)
+	if i := slices.IndexFunc(got, func(l string) bool { return strings.HasPrefix(l, "package|"+mode+":") }); i < 0 {
+		t.Errorf("no tag or save step in %v", got)
+	} else {
+		assertLines(t, got[i:], steps)
+	}
+	if wantImages := []Image{{Ref: want[0], Refs: want, Tar: tar}}; !reflect.DeepEqual(plan.Images, wantImages) {
+		t.Errorf("images %+v, want %+v", plan.Images, wantImages)
+	}
+}
+
+// 4.2.0's rule: on the default channel an image gets its version and latest.
+func TestBuild_ImageTagsStableGivesVersionAndLatest(t *testing.T) {
+	for _, channel := range []string{"", "default"} {
+		plan, err := tagged(t, channel, "version", "channel", "latest")
+		if err != nil {
+			t.Fatal(err)
+		}
+		assertTagged(t, plan, "docker", "ghcr.io/acme/api:1.4.0", "ghcr.io/acme/api:latest")
+	}
+}
+
+// 4.2.0's rule: off the default channel an image gets its version and the
+// channel, never latest.
+func TestBuild_ImageTagsAlphaGivesVersionAndChannel(t *testing.T) {
+	plan, err := tagged(t, "alpha", "version", "channel", "latest")
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertTagged(t, plan, "docker", "ghcr.io/acme/api:1.4.0", "ghcr.io/acme/api:alpha")
+}
+
+// A mapping without tags gets the default kinds, and compose mode tags and
+// saves the same way.
+func TestBuild_ImageTagsDefaultInComposeMode(t *testing.T) {
+	p := composeProject()
+	p.Build.Images = []shipconfig.BuildImage{{Name: "ghcr.io/acme/api"}}
+	plan, err := Build(t.TempDir(), p, ctxFor("1.4.0", "beta"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertTagged(t, plan, "compose", "ghcr.io/acme/api:1.4.0", "ghcr.io/acme/api:beta")
+}
+
+// Duplicate tags are dropped: a repeated kind, and a reference another
+// image already saves.
+func TestBuild_ImageTagsDropDuplicates(t *testing.T) {
+	plan, err := tagged(t, "", "version", "latest", "version", "latest")
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertTagged(t, plan, "docker", "ghcr.io/acme/api:1.4.0", "ghcr.io/acme/api:latest")
+
+	p := scriptProject()
+	p.Build.Images = []shipconfig.BuildImage{{Ref: "ghcr.io/acme/api:latest"}, {Name: "ghcr.io/acme/api", Tags: []string{"version", "latest"}}}
+	if plan, err = Build(t.TempDir(), p, ctxFor("1.4.0", "")); err != nil {
+		t.Fatal(err)
+	}
+	if len(plan.Images) != 2 || !slices.Equal(plan.Images[1].Refs, []string{"ghcr.io/acme/api:1.4.0"}) {
+		t.Errorf("images %+v, want the second without latest", plan.Images)
+	}
+}
+
+// An unknown tag kind, or a channel that is not a valid docker tag, is
+// refused.
+func TestBuild_ImageTagsRefuseInvalidTags(t *testing.T) {
+	if _, err := tagged(t, "", "version", "nightly"); err == nil || !strings.Contains(err.Error(), `unknown tag kind "nightly"`) {
+		t.Errorf("unknown kind: Build = %v", err)
+	}
+	if _, err := tagged(t, "a/b", "version", "channel"); err == nil || !strings.Contains(err.Error(), `channel tag "a/b" is not a valid docker tag`) {
+		t.Errorf("invalid channel tag: Build = %v", err)
+	}
+}
+
+// The plain-string form keeps working next to a mapping: one reference,
+// no docker tag.
+func TestBuild_ImagePlainStringNextToAMapping(t *testing.T) {
+	p := scriptProject()
+	p.Stages = map[string]shipconfig.Command{}
+	p.Build.Images = []shipconfig.BuildImage{{Ref: "ghcr.io/acme/web:${version}"}, {Name: "ghcr.io/acme/api", Tags: []string{"version", "latest"}}}
+	plan, err := Build(t.TempDir(), p, ctxFor("1.4.0", ""))
+	if err != nil {
+		t.Fatal(err)
+	}
+	out := filepath.Join(artifacts, "api", "outputs")
+	assertLines(t, lines(plan), []string{
+		"package|docker:save ghcr.io/acme/web:1.4.0|docker save -o " + filepath.Join(out, "ghcr.io_acme_web_1.4.0.tar") + " ghcr.io/acme/web:1.4.0",
+		"package|docker:tag ghcr.io/acme/api:latest|docker tag ghcr.io/acme/api:1.4.0 ghcr.io/acme/api:latest",
+		"package|docker:save ghcr.io/acme/api:1.4.0|docker save -o " + filepath.Join(out, "ghcr.io_acme_api_1.4.0.tar") + " ghcr.io/acme/api:1.4.0 ghcr.io/acme/api:latest",
+	})
 }

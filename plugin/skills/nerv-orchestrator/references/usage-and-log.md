@@ -70,7 +70,7 @@ well, including `result=skipped` ones.
 
 **Engram flush at close.** Right before the run summary (LIGHT step 8,
 FULL step 19), Ikari collects every `Pending KB mirror` block an envelope
-of this change carried — an agent whose knowledge-base `mem_save` the host
+of this run carried — an agent whose knowledge-base `mem_save` the host
 rejected reported `partial`, with the topic key and the exact content — and
 any of its own votes or gate-decision mirrors that failed. Ikari saves it
 itself: `mem_save` to project `nerv` under that same topic key, `type:
@@ -79,12 +79,14 @@ and logs one `kb_mirror_flushed` event per mirror (payload: topic key,
 result). A mirror that still fails never stops the run: the run summary
 lists it under `## KB mirrors unflushed` (topic key and error).
 
-**Close ordering.** The close commit (`docs: close nerv run for {feature}`)
-is the run's last write. Ikari appends the `stop` event before launching
+**Close ordering.** In FULL, the close commit (`docs: close nerv run for
+{feature}`) is the run's last write. Ikari appends the `stop` event before launching
 it, so the committed log is complete; the close commit's own hash is
 reported in the run's final message, never appended to the log
 afterwards. After close, `git status` must show nothing under
 `odd/tasks/{feature}.md` or `odd/{feature}/` (J4/J6 check; with
 `artifacts.commit: never` they stay untracked by design): a `commit_recorded` or `stop` line appended after the close
-commit is a protocol violation, not a known limitation.
+commit is a protocol violation, not a known limitation. DIRECT and LIGHT
+have no close commit: their log lives in `.nerv/runs/{run-id}/`, which is
+never committed, so the `stop` event is simply the log's last line.
 

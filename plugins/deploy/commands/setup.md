@@ -32,7 +32,11 @@ English.
      over**. Stop and wait.
    - An old `pipeline:` key: it is no longer read. Say `nerv migrate
      --dry-run` shows its translation, and offer to build `deploy:` here
-     from its `deploy` environments and `docker` images instead.
+     from its `pipeline.deploy` environments instead (one
+     `deploy-ssh-compose` target each). Its `pipeline.images` are not a
+     `deploy:` key: ship builds the images now, from the `ship:` project's
+     `build.images` (`/ship:setup` writes them), and `deploy-ssh-compose`
+     pushes them.
 
 Only the `deploy:` block is added or replaced, with the same rule as
 `/ship:setup` (from the `deploy:` line up to the next column-0 key); every
@@ -48,7 +52,7 @@ plugins. Suggest what is missing, without installing it:
   say no provider ships for it yet, and leave `host` unset (no host
   release).
 - **Targets.** A compose file with images and a host compose script, an old
-  `pipeline:` `deploy` step, or Infisical deploy data: suggest
+  `pipeline.deploy` section, or Infisical deploy data: suggest
   `deploy-ssh-compose` (needs `docker`, `ssh`, and `sshpass` or a key, and
   the `infisical` CLI with `source: infisical`).
 

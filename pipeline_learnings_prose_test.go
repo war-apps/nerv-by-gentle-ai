@@ -59,11 +59,14 @@ func TestS20_LaunchDiscipline(t *testing.T) {
 	assertPluginContains(t, "agents/aoba.md", "commits-round-N.txt")
 }
 
-// S21: close robustness — a LIGHT close on the ODD document with no
-// archive, and a lock heartbeat (the RENAMED-delta rule went with OpenSpec
-// in odd/tasks/ship-deploy-plugins.md, S10).
+// S21: close robustness — a LIGHT close in its runtime folder with no
+// archive and no close commit, a FULL close commit on the ODD document,
+// and a lock heartbeat (the RENAMED-delta rule went with OpenSpec in
+// odd/tasks/ship-deploy-plugins.md, S10; the LIGHT close commit went with
+// L20, "Solo FULL").
 func TestS21_CloseRobustness(t *testing.T) {
-	assertPluginContains(t, pipelineLightRef, "| 9. Close |", "There is no archive", "docs: close nerv run for {feature}")
+	assertPluginContains(t, pipelineLightRef, "| 9. Close |", "There is no archive", "A LIGHT run is never left delivered but unclosed", "`closed_at`", ".nerv/locks/{run-id}.lock")
+	assertPluginContains(t, pipelineFullRef, "docs: close nerv run for {feature}")
 	assertPluginContains(t, orchestratorCore,
 		"at every phase transition",
 		"report it as stale, not active")
@@ -78,7 +81,7 @@ func TestS22_ArtifactsThatGitIgnores(t *testing.T) {
 		"the artifacts stay local",
 		"no archive commit")
 	assertPluginContains(t, "agents/aoba.md",
-		"The orchestrator lock `.nerv/locks/{feature}.lock` is never staged",
+		"The orchestrator lock `.nerv/locks/{run-id}.lock` is never staged",
 		"git check-ignore")
 	assertPluginContains(t, rddRelayRef,
 		"--untracked-scope=select",

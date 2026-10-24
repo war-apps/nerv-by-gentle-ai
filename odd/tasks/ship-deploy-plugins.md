@@ -78,7 +78,7 @@ Branch: `feature/ship-deploy-plugins`, cut from `feature/tasks-plugin-split` at 
 | T4 | S1, S9 | two parallel delegated writers: T4a Go, T4b prose (Writer trigger (a): disjoint surfaces, each well over 100 lines) | committed and verified; fix batch running | 2e80414, 16474d7, 3690480 |
 | T5 | S10 | delegated writer (context backstop; about 38 files of prose) | committed and verified; fixes in d752c90 | 7af0059, d752c90 |
 | T6 | S11 | delegated writer (context backstop; the edit surface spans the whole tree) | committed and verified; fixes in c5c0bf4 | 9c6032c, c5c0bf4 |
-| T7 | S12 | delegated writer (context backstop) | committed | 9f6cf70 |
+| T7 | S12 | delegated writer (context backstop) | committed and verified; fixes in 771b0f9 | 9f6cf70, 771b0f9 |
 
 - **T1:** the native version engine (`internal/versioning`), its config schema, and the semantic-release config importer. Parity tests against the behaviours listed in S2, using the dim configs as fixtures.
 - **T2:** the build modes, compose and script, with presets removed. The artifact writer, and ship reworked to produce the artifact with no git writes.
@@ -236,4 +236,51 @@ Forecast: well over 400 lines (about 11.5k lines of Go move or are rewritten), s
   - **Migration:** the four repos migrate with exit 0, and a second run is a no-op.
   - **Gap:** in script mode no image references are recorded, so deploy would not push dim's images. Fix: `build.images` in script mode, written by migrate from the old docker preset.
   - **Decision accepted:** a release-only repo also gets `deploy: {host: github}` plus the deploy and deploy-github plugins, because semantic-release used to tag and release.
-- **Next step:** a fix batch with two parallel writers (Go: B1, B2, images in script mode, the advisories; prose: L20 and the L18 prose advisories), then the chain review. The user's L5 decisions are "ODD + agentes NERV encima (Recommended)", "Se mantiene, renombrado (Recommended)" and "Subcomando nerv migrate (Recommended)". Then T6.
+- **L23** (2026-10-24): the fix batch is committed.
+  - **487ccd0 (prose):**
+    - L20: DIRECT and LIGHT runs keep their files in `.nerv/runs/{run-id}/`, with no ODD document or close commit;
+    - only Aoba writes the `Commit` column;
+    - the MAGI and Gendo read fixed inputs and are blind to earlier rounds;
+    - the deploy setup command names the real keys.
+  - **d25d8ff (Go):**
+    - B1: `--import` refuses on a conflict, `--force` replaces;
+    - B2: the message names every `pipeline.*` key;
+    - `build.images` in script mode, written by migrate;
+    - `ship --version` compares with the branch's own last release and writes notes;
+    - the `release:` rename;
+    - `install --help` describes the order.
+  - **Parity gap found:** the 4.2.0 channel and `latest` image tags are not pushed. The parent restores the 4.2.0 tag kinds (`version`, `channel`, `latest`) in `build.images` (writer running).
+- **L24** (2026-10-24): 06b7238 restored the 4.2.0 image tag kinds `{name, tags: [version, channel, latest]}`, and migrate writes them. The parent also committed dc1a016, after the slice C review's advisories: release paths refuse every git-directory alias (NTFS trailing dots and spaces, alternate data streams, 8.3 names, HFS+ ignorables), and the symlink check fails closed. RED, then GREEN.
+- **L25** (2026-10-24): native review chain `ship-split/*`. The user granted every review.
+  - **Approved and acknowledged:**
+    - A (collation, 187 lines);
+    - B2 (config and installer fixes on top of 9c6032c, 167);
+    - C (deploy `.git`/image-version fixes, 167);
+    - D (lock and Misato, 94);
+    - E (ship and deploy plugins plus lightweight tags, 1977);
+    - F1 (Solo FULL and MAGI rules, 908);
+    - F2 (fix batch, image tags, `.git` hardening, 1531).
+  - **Over the lens budget even alone, so `size:exception`:** d30bbe5 (engine, 4343 lines), f0254d2 (ship artifact, 7894), 9c6032c (config move, 1620 lines across 129 files; slice B failed), 367d066 (deploy, 3804), 7af0059 (ODD mode, 3197), 2e80414 (semantic-release and pipeline removal, 23274, mostly deletions) and 9f6cf70 (migrate, 4122). Each is covered by its independent verifier (L9, L10, L12, L15, L18, L21; migrate's verifier is running). Splitting them would need hand surgery on tightly coupled code, which the tasks-split 04b attempt showed does not build at intermediate commits.
+  - **Advisories from the reviews:** non-blocking; to be listed in the close.
+- **L26** (2026-10-24): the migrate verifier.
+  - **Parity with 4.2.0** on copies of the dim repos:
+    - ship's dotnet and docker argv, env, hooks and coverage gate are identical;
+    - `version next` is identical on 6 of 6 branches;
+    - the deploy SSH and Infisical commands are identical;
+    - no secret leaked.
+  - **Blocker:** an interrupted run left a half-migrated repo that the next run refused. Fixed in 771b0f9: `Apply` is a transaction with rollback, and a rerun finishes its own output thanks to a marker.
+  - **Also fixed:** a live lock is refused unless `--force`; DIRECT and LIGHT changes go to `.nerv/runs/` (L20); backups keep the source file's mode.
+  - Slice G (771b0f9) was approved and acknowledged in native review.
+- **L27** (2026-10-24): close.
+  - **Done:** every task T1–T7 is committed and verified.
+  - **Native review:** slices A, B2, C, D, E, F1, F2 and G are approved. Seven commits are `size:exception`, each covered by an independent verifier (L25).
+  - **Open advisories, non-blocking:**
+    - the tar name clash (L10);
+    - `manifest.json` is not hashed (local artifact);
+    - deploy pushes the images once per target;
+    - the 4.2.0 SDK-version check for `--disable-build-servers` is not ported;
+    - `pipeline.sync` back-merges are not ported;
+    - in migrate: rerun edge cases (a light rerun misclassified, a stale marker adopted, a hostname failure skipping the lock check);
+    - migrated ODD documents have no numbered `S#` and a placeholder `L1`;
+    - personal keys moved with `--user` become defaults for every repo.
+  - **Delivery** (push, the chained PRs with a draft tracker) is the user's decision. The user's L5 decisions are "ODD + agentes NERV encima (Recommended)", "Se mantiene, renombrado (Recommended)" and "Subcomando nerv migrate (Recommended)". Then T6.

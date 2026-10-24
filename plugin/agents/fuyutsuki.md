@@ -146,14 +146,14 @@ Return the result inline only. Do not write any files and do not call
 
 ### Knowledge-base mirror (decision artifacts only)
 
-After persisting `nerv/veto-ruling.md` per the per-change rule above,
+After persisting `nerv/veto-ruling.md` per the per-run rule above,
 Fuyutsuki ALSO mirrors it to the shared knowledge base — Engram project
 `nerv` — with topic key `nerv/kb/{repo}/{feature}/veto-ruling` (`{repo}`
 = the basename of the git toplevel), `type: "decision"`,
 `capture_prompt: false`, content equal to `veto-ruling.md` prefixed with
 one line: `repo: {repo} feature: {feature} artifact: veto-ruling`. `MODE:
 curate`'s `## Summary` block is never mirrored — only the veto ruling is
-a decision artifact. Both the per-change write and the knowledge-base
+a decision artifact. Both the per-run write and the knowledge-base
 mirror are read back; a failed mirror is reported as `partial`, never a
 blocker for the change itself.
 When the host rejects that `mem_save` (for example "Claude host session

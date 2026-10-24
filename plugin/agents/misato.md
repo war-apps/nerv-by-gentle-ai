@@ -139,7 +139,7 @@ Return the result inline only. Do not write any other file and do not call
 
 ### Knowledge-base mirror (decision artifacts only)
 
-After the per-change persistence above, Misato ALSO mirrors two kinds of
+After the per-run persistence above, Misato ALSO mirrors two kinds of
 decision to the shared knowledge base — Engram project `nerv` — with
 topic key `nerv/kb/{repo}/{feature}/{artifact}` (`{repo}` = the basename
 of the git toplevel), `type: "decision"`, `capture_prompt: false`: a
@@ -147,7 +147,7 @@ of the git toplevel), `type: "decision"`, `capture_prompt: false`: a
 ruling`, and a compact `## Decisions` extract from her design entry — not the
 whole document — whenever `MODE: plan` or `MODE: revise` changes it.
 Content is the artifact prefixed with one line: `repo: {repo} feature:
-{feature} artifact: {artifact}`. Both the per-feature write and the
+{feature} artifact: {artifact}`. Both the per-run write and the
 knowledge-base mirror are read back; a failed mirror is reported as
 `partial`, never a blocker for the feature itself.
 When the host rejects that `mem_save` (for example "Claude host session
@@ -232,8 +232,7 @@ corner-case answers already resolved by the user) and
 - `## Tasks` — one row per task with stable ids `T1..Tn` and these
   columns: `Specs` (the linked `S#`), `Route` (`delegated (FULL)`),
   `Pilot` (`rei|shinji|asuka|toji`), `Depends on`, `Status` (`pending`
-  or `implemented-pre-plan`), leaving `Criticality`, `MAGI` and `Commit`
-  to Ikari; then one `- **T#:** ...` line per task with its acceptance
+  or `implemented-pre-plan`), leaving `Criticality` and `MAGI` to Ikari and `Commit` to Aoba; then one `- **T#:** ...` line per task with its acceptance
   criteria and the exact test-plan cases it must satisfy.
 
 Define which agents this run uses (only the pilots whose domains the

@@ -121,11 +121,15 @@ mixes VOTE and AUDIT in one invocation.
 
 ### MODE: vote (Phase 2, FULL path)
 
-Read the frozen artifacts named in the launch (the ODD document's design
-entry, `## Tasks`, and `## Specs` for boundary checks — Melchior is the
-only MAGI member who reads the specs for this purpose, because
-architecture and security boundaries are defined there, not in the
-design entry alone). Also read `nerv/criticality.md`. Vote
+Read exactly the frozen artifacts named in the launch:
+the design `## Log` entry, `## Tasks`, `## Specs` and `nerv/criticality.md`
+(`## Specs` for boundary checks — Melchior is the only MAGI member who
+reads the specs for this purpose, because architecture and security
+boundaries are defined there, not in the design entry alone).
+Read nothing else before casting the vote: never the `MAGI` column,
+`nerv/votes.md`, an earlier round's audit report or pass files, or the
+gate and ruling `## Log` entries (plan gate, issue gate, plan approval,
+Misato rulings). Vote
 EVERY task listed in the launch's `## Feature` "tasks in scope" block —
 round 1: all tasks; later rounds: only the revised task ids. Vote
 blind: no sibling output, no conversation with the other MAGI members,
@@ -195,8 +199,15 @@ inspects only the changed hunks; she does not re-audit unchanged code.
 - the ODD document `odd/tasks/{feature}.md` — `## Specs`, `## Tasks`,
   and the design and test-plan `## Log` entries: the frozen plan the
   diff is judged against.
+
   Melchior reads `## Specs` closely here, as in VOTE mode, since layer
   and trust boundaries are defined there.
+
+Read exactly these inputs before returning the pass, and nothing else:
+never the `MAGI` column, `nerv/votes.md`, an earlier round's audit report
+or pass files, or the gate and ruling `## Log` entries (plan gate, issue
+gate, plan approval, Misato rulings). Each round is judged on its own,
+blind to earlier verdicts.
 
 **RDD scope.** The launch states either `RDD scope: full` or `RDD
 scope: cross-commit`. Under `full`, audit every hunk in the patch.

@@ -75,15 +75,19 @@ type Plan struct {
 	// OutputsDir is the package stage's output directory (OutputsEnv):
 	// what it holds after the run becomes the artifact's outputs/.
 	OutputsDir string
-	// Images are the images compose mode saves, each to its tar under
-	// OutputsDir.
+	// Images are the images of build.images, saved after the package
+	// stage's commands, each to its tar under OutputsDir.
 	Images []Image
 }
 
-// Image is one image compose mode saves.
+// Image is one image of build.images, saved into the artifact.
 type Image struct {
-	// Ref is the image reference, placeholders expanded.
+	// Ref is the image's first reference (Refs[0]), placeholders expanded.
 	Ref string
+	// Refs are every reference saved in Tar and recorded in the manifest:
+	// the one reference of a plain-string entry, or the tags of a {name,
+	// tags} entry, in order, without a reference an earlier image saves.
+	Refs []string
 	// Tar is the archive's name under Plan.OutputsDir.
 	Tar string
 }
@@ -122,10 +126,12 @@ var sharedHostStages = []string{"restore", "lint", "build", "test", "package"}
 // The project is expected as shipconfig.Load returns it (defaults applied,
 // paths normalised); its build.mode is required.
 //
-// Rules: in script mode each stage runs the project's command; in compose
-// mode build is docker compose -f <file> build, test is docker compose -f
-// <file> run --rm <test_service> (no test_service: no test stage), package
-// is one docker save per image of build.images, and only the restore, lint
+// Rules: in script mode each stage runs the project's command, and the
+// package stage ends with the images of build.images (saveImages: docker
+// tag for a {name, tags} entry's other tags, then one docker save per
+// image); in compose mode build is docker compose -f <file> build, test is
+// docker compose -f <file> run --rm <test_service> (no test_service: no
+// test stage), package is the same image steps, and only the restore, lint
 // and coverage stages may have the project's commands. A stage with no
 // command is skipped together with its before_/after_ hooks. The restore
 // stage starts with git submodule update when submodules is set, and the
@@ -149,11 +155,7 @@ func Build(repoRoot string, project shipconfig.Project, c Context) (*Plan, error
 	plan := &Plan{Project: project.Name, Mode: bc.Mode, Context: c, Hooks: map[string][]Step{}, OutputsDir: filepath.Join(dir, "outputs")}
 	b.resetDirs = []string{plan.OutputsDir}
 	if bc.Mode == shipconfig.ModeCompose {
-		images, err := b.compose(plan.OutputsDir)
-		if err != nil {
-			return nil, fmt.Errorf("project %q: %w", project.Name, err)
-		}
-		plan.Images = images
+		b.compose()
 	}
 	for _, stage := range shipconfig.Stages {
 		if cmd, ok := project.Stages[stage]; ok {
@@ -165,6 +167,13 @@ func Build(repoRoot string, project shipconfig.Project, c Context) (*Plan, error
 			b.add(stage, Step{Name: stage, Command: cmd})
 		}
 	}
+	// The images are saved once the package stage's commands (script mode)
+	// or compose build have built them.
+	images, err := b.saveImages(plan.OutputsDir)
+	if err != nil {
+		return nil, fmt.Errorf("project %q: %w", project.Name, err)
+	}
+	plan.Images = images
 	b.coverage()
 
 	for _, stage := range shipconfig.Stages {
@@ -253,28 +262,104 @@ var imageRefRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._/:@-]*$`)
 // placeholderRe matches a ${name} placeholder of an image reference.
 var placeholderRe = regexp.MustCompile(`\$\{([a-z_]+)\}`)
 
-// compose plans compose mode's build, test and package commands and
-// returns the images package saves.
-func (b *builder) compose(outputs string) ([]Image, error) {
+// compose plans compose mode's build and test commands.
+func (b *builder) compose() {
 	file := b.build.File
 	b.add("build", Step{Name: "compose:build", Exec: []string{"docker", "compose", "-f", file, "build"}})
 	if svc := b.build.TestService; svc != "" {
 		b.add("test", Step{Name: "compose:test", Exec: []string{"docker", "compose", "-f", file, "run", "--rm", svc}})
 	}
+}
+
+// saveImages plans, at the end of the package stage, one docker save per
+// image of build.images, and returns the images saved. A {name, tags}
+// entry is built as <name>:<version>: it is first given its other tags
+// with docker tag, then saved with all of them, as 4.2.0 tagged it.
+func (b *builder) saveImages(outputs string) ([]Image, error) {
+	prefix := "docker:"
+	if b.build.Mode == shipconfig.ModeCompose {
+		prefix = "compose:"
+	}
 	var images []Image
-	for _, raw := range b.build.Images {
-		ref := b.expand(raw)
-		if !imageRefRe.MatchString(ref) {
-			return nil, fmt.Errorf("build.images: %q expands to %q, not an image reference", raw, ref)
+	saved := func(ref string) bool {
+		return slices.ContainsFunc(images, func(i Image) bool { return slices.Contains(i.Refs, ref) })
+	}
+	for _, bi := range b.build.Images {
+		var source string
+		var refs []string
+		if bi.Ref != "" {
+			ref := b.expand(bi.Ref)
+			if !imageRefRe.MatchString(ref) {
+				return nil, fmt.Errorf("build.images: %q expands to %q, not an image reference", bi.Ref, ref)
+			}
+			source, refs = ref, []string{ref}
+		} else {
+			tags, err := b.dockerTags(bi)
+			if err != nil {
+				return nil, fmt.Errorf("build.images %s: %w", bi.Name, err)
+			}
+			source = bi.Name + ":" + b.ctx.Version
+			for _, t := range tags {
+				refs = append(refs, bi.Name+":"+t)
+			}
 		}
-		if slices.ContainsFunc(images, func(i Image) bool { return i.Ref == ref }) {
+		refs = slices.DeleteFunc(refs, saved)
+		if len(refs) == 0 {
 			continue
 		}
-		img := Image{Ref: ref, Tar: tarName(ref)}
+		for _, ref := range refs {
+			if !imageRefRe.MatchString(ref) {
+				return nil, fmt.Errorf("build.images: %q is not an image reference", ref)
+			}
+			if ref != source {
+				b.add("package", Step{Name: prefix + "tag " + ref, Exec: []string{"docker", "tag", source, ref}})
+			}
+		}
+		img := Image{Ref: refs[0], Refs: refs, Tar: tarName(refs[0])}
 		images = append(images, img)
-		b.add("package", Step{Name: "compose:save " + ref, Exec: []string{"docker", "save", "-o", filepath.Join(outputs, img.Tar), ref}})
+		b.add("package", Step{Name: prefix + "save " + img.Ref, Exec: append([]string{"docker", "save", "-o", filepath.Join(outputs, img.Tar)}, refs...)})
 	}
 	return images, nil
+}
+
+// dockerTagRe is a valid docker image tag.
+var dockerTagRe = regexp.MustCompile(`^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$`)
+
+// dockerTags resolves the tag kinds of a {name, tags} entry for this
+// release, as 4.2.0's docker preset did: version is always applied;
+// channel only when the channel is not the default one; latest only on
+// the default channel. Duplicates are dropped and every tag must be valid.
+func (b *builder) dockerTags(img shipconfig.BuildImage) ([]string, error) {
+	kinds := img.Tags
+	if len(kinds) == 0 {
+		kinds = shipconfig.DefaultDockerTags()
+	}
+	var tags []string
+	for _, kind := range kinds {
+		var t string
+		switch kind {
+		case "version":
+			t = b.ctx.Version
+		case "channel":
+			if !b.ctx.defaultChannel() {
+				t = b.ctx.Channel
+			}
+		case "latest":
+			if b.ctx.defaultChannel() {
+				t = "latest"
+			}
+		default:
+			return nil, fmt.Errorf("unknown tag kind %q", kind)
+		}
+		if t == "" || slices.Contains(tags, t) {
+			continue
+		}
+		if !dockerTagRe.MatchString(t) {
+			return nil, fmt.Errorf("%s tag %q is not a valid docker tag ([A-Za-z0-9_][A-Za-z0-9_.-]*, at most 128 characters)", kind, t)
+		}
+		tags = append(tags, t)
+	}
+	return tags, nil
 }
 
 // tarName is the archive name of an image reference: its / : and @ as _.

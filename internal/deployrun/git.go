@@ -198,8 +198,11 @@ func (w workspace) checkReleasePath(p string) error {
 	for _, part := range strings.Split(p, "/") {
 		dir = filepath.Join(dir, part)
 		info, err := os.Lstat(dir)
-		if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
 			break
+		}
+		if err != nil {
+			return &refusal.Error{Err: fmt.Errorf("release file %q: cannot check %s for a symlink: %v", p, part, err)}
 		}
 		if info.Mode()&os.ModeSymlink != 0 {
 			return &refusal.Error{Err: fmt.Errorf("release file %q is written through the symlink %s in the repository", p, part)}

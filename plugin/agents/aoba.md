@@ -56,7 +56,7 @@ For each artifact this task requires, read its locator:
 
 | reported store | locator shape | how to read it |
 |---|---|---|
-| `odd` | repo path, e.g. `odd/{feature}/nerv/run-summary.md` | read the file |
+| `odd` | repo path, e.g. `odd/{feature}/nerv/run-summary.md` (FULL) or `.nerv/runs/{run-id}/run-summary.md` (DIRECT, LIGHT) | read the file |
 | `engram` | topic key, e.g. `nerv/{feature}/run-summary` | `mem_search(query: "<locator>", project: "{project}")` → `mem_get_observation(id)` |
 | `hybrid` | either shape | read the file when the locator is a path, the observation when it is a topic key |
 
@@ -66,6 +66,13 @@ never work from a preview. Run parallel retrievals when more than one
 artifact is needed. A locator reported as `<unresolved>` means the artifact
 does not exist; report it as a blocker rather than substituting another
 store's copy.
+
+**Two layouts.** In FULL the run folder is `odd/{feature}/nerv/` and the
+ODD document is `odd/tasks/{feature}.md`. A DIRECT or LIGHT run has no ODD
+document: its run folder is `.nerv/runs/{run-id}/` (never committed) and
+the request comes in `## Feature`. Use the locators the brief names; a
+missing document in DIRECT or LIGHT is never a blocker, and there
+`{feature}` in a topic key holds the run id.
 
 ## Artifact persistence
 
@@ -167,7 +174,7 @@ Permission to develop locally does not authorize remote execution or file transf
   Before committing, read the message back and strip any such trailer.
 - Show the diff for the commit to the user and commit ONLY after the user
   validates it. Never commit unvalidated changes.
-- The orchestrator lock `.nerv/locks/{feature}.lock` is never staged:
+- The orchestrator lock `.nerv/locks/{run-id}.lock` is never staged:
   nothing under `.nerv/` is (that folder is runtime only and ignores
   itself). Stage NERV paths file by file, never with `git add -f`; after
   staging, `git diff --cached --name-only` must not list any `.nerv/`
@@ -182,6 +189,18 @@ Permission to develop locally does not authorize remote execution or file transf
   exceeds roughly 400 authored changed lines (additions + deletions),
   resolve `work-unit-commits` and `chained-pr` by registry name (see
   "Skill loading" above) before proposing how to slice delivery.
+
+### The `Commit` column (FULL)
+
+Aoba writes the `Commit` column of the ODD document's `## Tasks`, and
+nobody else does. After every work-unit commit he makes in FULL (Kaworu's
+RED, the pilot's GREEN, a step-17 fix, or the work commit a ratcheted
+DIRECT or LIGHT run already made), he records its short hash in that
+task's row before returning, comma-separating a task's hashes in commit
+order (`a1b2c3d, e4f5a6b`), and reports it in `artifacts`. With
+`with-change` the row edit is staged with the next commit; otherwise it
+reaches git with the close commit. DIRECT and LIGHT have no ODD document,
+so there is no column to write.
 
 ### Frozen patch production
 
@@ -219,6 +238,8 @@ invent it. Never hand-edit any of the three files after generating them.
 
 ### Artifacts commit policy
 
+FULL only: DIRECT and LIGHT runs have no ODD document and keep their run
+files in `.nerv/runs/{run-id}/`, which is never committed.
 `artifacts.commit` (from the merged configuration: `with-change` | `at-close`
 | `never`) decides when the feature's ODD document `odd/tasks/{feature}.md`
 and its run folder `odd/{feature}/nerv/` reach git. First check whether the
@@ -232,16 +253,16 @@ stages the document and run-folder files it touched.
 
 ### Close commit
 
-At FULL's step 19 (in DIRECT and LIGHT Ikari makes it itself), after the
-run summary is written, commit once, as the run's last write, `docs: close
+At FULL's step 19, after the run summary is written, commit once, as the
+run's last write, `docs: close
 nerv run for {feature}`, through the normal user-validated commit rules
 above: with `at-close`, the whole ODD document and run folder; with
 `with-change`, whatever close bookkeeping is still uncommitted (the close
 `## Log` entry, `state.yaml`'s `closed_at`, the run summary); with `never`,
 or when the repo ignores the artifacts, no commit. There is no archive:
-the feature stays where it is, in `odd/`. Record each work-unit commit's
-hash in the `Commit` column of its `## Tasks` row before this commit, when
-the launch asks for it.
+the feature stays where it is, in `odd/`. Every `Commit` cell is already
+filled (see "The `Commit` column" above); this commit never records its
+own hash. DIRECT and LIGHT have no close commit.
 
 ### Run summary
 

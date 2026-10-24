@@ -20,7 +20,9 @@ staleness), safe resume, close-time bookkeeping, the `artifacts.commit`
 policy, and RDD's untracked-path recovery path. Later, NERV stopped using
 its own plan files and archive step and moved onto gentle-ai's ODD
 feature document (`odd/tasks/{feature}.md`), with its governance files in
-`odd/{feature}/nerv/` and the lock in `.nerv/locks/`.
+`odd/{feature}/nerv/` and the lock in `.nerv/locks/`. Later still, only
+FULL runs kept the document and the close commit; DIRECT and LIGHT keep
+their run files in `.nerv/runs/{run-id}/`.
 Routing tiers (after Phase 5) mirror gentle-ai's Work Routing Ladder:
 DIRECT (Ikari inline, one mechanical file), LIGHT (an explorer only when
 the mapping trigger fires, one pilot in `MODE: solo`, Maya only when the

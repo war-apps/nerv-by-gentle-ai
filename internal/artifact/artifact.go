@@ -303,11 +303,33 @@ func SafeReleasePath(p string) bool {
 		return false
 	}
 	for _, part := range strings.Split(p, "/") {
-		if strings.EqualFold(part, ".git") {
+		if isGitDirAlias(part) {
 			return false
 		}
 	}
 	return true
+}
+
+// gitShortNameRe matches the NTFS 8.3 short names of .git (GIT~1, git~2).
+var gitShortNameRe = regexp.MustCompile(`(?i)^git~[0-9]+$`)
+
+// isGitDirAlias reports whether a path component names the git directory
+// on some filesystem, as git's own verify_path does under core.protectNTFS
+// and core.protectHFS: any case, trailing dots and spaces, an alternate
+// data stream suffix, an 8.3 short name, or HFS+ ignorable code points.
+func isGitDirAlias(part string) bool {
+	name := strings.Map(func(r rune) rune {
+		switch {
+		case r >= 0x200b && r <= 0x200f, r >= 0x202a && r <= 0x202e, r >= 0x206a && r <= 0x206f, r == 0xfeff:
+			return -1
+		}
+		return r
+	}, part)
+	if i := strings.IndexByte(name, ':'); i >= 0 {
+		name = name[:i]
+	}
+	name = strings.TrimRight(name, ". ")
+	return strings.EqualFold(name, ".git") || gitShortNameRe.MatchString(name)
 }
 
 func localPath(p string) bool {

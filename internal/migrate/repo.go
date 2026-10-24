@@ -110,7 +110,7 @@ func planRepo(p *Plan, o Options, user *userState) error {
 	if err != nil {
 		return err
 	}
-	tdd, err := planODD(p, root, o.Now)
+	tdd, err := planODD(p, o)
 	if err != nil {
 		return err
 	}
@@ -223,7 +223,7 @@ func translateConfig(p *Plan, o Options, data []byte, user *userState) (*config.
 		case err != nil:
 			p.warn("the semantic-release configuration cannot be imported: %v", err)
 		default:
-			text, notes, err := shipconfig.ImportSection([]byte(doc.String()), imported.Config)
+			text, notes, err := shipconfig.ImportSection([]byte(doc.String()), imported.Config, false)
 			if err != nil {
 				return nil, refuse("importing %s into the ship: section: %v", imported.Source, err)
 			}

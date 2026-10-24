@@ -10,7 +10,11 @@ into the audit stage (steps 13-19 below): a frozen patch, four blind audit
 passes, Kaji's compilation and the refuter batch, Hyuga's ranking behind a
 user HARD issue gate, fix routing with a bounded re-audit loop, then
 documentation, the run summary and the close on the ODD document
-(`references/odd-document.md`). Never silently skip a step in
+(`references/odd-document.md`). FULL is the only tier that creates the
+feature document `odd/tasks/{feature}.md`, its Engram copy
+`odd/{feature}/tasks`, the run folder `odd/{feature}/nerv/` and the close
+commit; Ikari creates the first three when Classification resolves FULL
+(or a run ratchets to FULL), before step 1. Never silently skip a step in
 the table below or downgrade FULL to LIGHT or DIRECT mid-run.
 
 | Step | Actor | Launch prompt carries | Expected envelope | Gate |
@@ -20,13 +24,13 @@ the table below or downgrade FULL to LIGHT or DIRECT mid-run.
 | 2. Test plan | `nerv:ritsuko` (MODE: test-plan) | `nerv/exploration.md`, the seeded `## Specs`, skills | the test-plan `## Log` entry (cases per `S#`, `### Corner-case questions`), appended verbatim by Ikari | **user HARD** — Ikari relays the questions as one grouped blocking prompt; the answers are written into `### Answers` and gate the plan |
 | 3. Plan | `nerv:misato` | the ODD document (with the answers), `nerv/exploration.md`, skills | `## Specs` completed, the design `## Log` entry (must contain `### New skills, scripts and commands`), `## Tasks` (ids `T1`, `T2`, ... with `Pilot` and `Depends on`) | gatekeeper — verifies the `### New skills, scripts and commands` heading exists in the design entry |
 | 4. Criticality | `nerv:hyuga` (dispatch a) | `## Tasks`, `critical_paths` | `nerv/criticality.md`; Ikari copies it into the `Criticality` column | none |
-| 5. MAGI vote round | `nerv:balthasar`, `nerv:melchior`, `nerv:casper` (MODE: vote), one parallel batch, blind | Balthasar: design entry + `## Tasks`; Melchior: design entry + `## Specs`; Casper: `## Specs` + test plan + `## Tasks` | one JSON object each per the contract in `nerv-artifacts.md`, merged by Ikari into `nerv/votes.md` and the `MAGI` column | critical task = unanimous approve; standard = 2-of-3; rejected tasks → step 6 |
+| 5. MAGI vote round | `nerv:balthasar`, `nerv:melchior`, `nerv:casper` (MODE: vote), one parallel batch, blind | each member's reading list (MAGI vote mechanics below) and the tasks in scope | one JSON object each per the contract in `nerv-artifacts.md`, merged by Ikari into `nerv/votes.md` and the `MAGI` column | critical task = unanimous approve; standard = 2-of-3; rejected tasks → step 6 |
 | 6. Revise loop | `nerv:misato` (`misato-revise`) | rejected tasks + their findings | revised tasks only, re-voted at step 5 (revised tasks only; approved tasks stay `frozen`) | cap 2 re-votes per task; at cap, user: override-approve / kill task / Misato ruling |
 | 7. Governance veto | `nerv:fuyutsuki` | the design entry's `### New skills, scripts and commands` | `nerv/veto-ruling.md` | a veto reopens only the owning task (frozen siblings stay frozen); cap 2 revision rounds; at cap, user: drop the item or abandon the task |
 | 8. Plan approval | Ikari relays | tasks with criticality, vote results, veto rulings, test-plan summary | user decision logged, and recorded as a `## Log` entry | **user HARD** — no implementation before this gate |
 | 9. Waves | `nerv:hyuga` (dispatch b) | frozen `## Tasks`, `votes.md` | `nerv/waves.md` (the ODD document is never edited by Hyuga) | gatekeeper |
 | 10. Baseline | `nerv:maya` (MODE: full, phase 0) | feature scope | `nerv/maya-report.md` baseline | gatekeeper |
-| 11. Implementation wave N | `nerv:kaworu` (RED) → `nerv:aoba` (commit, user validates) → assigned pilot (GREEN/TRIANGULATE/REFACTOR) → `nerv:aoba` (commit, user validates) → RDD hook | wave task, skills, TDD mode+runner, `commit_ref` | code + TDD evidence rows; Ikari records each task's `Status` and `Commit` | repeat for every wave in `waves.md` in dependency order; a wave starts only when every wave it depends on is closed with a `wave_report`; the loop terminates when the last wave is closed; pilots in a wave may run in one parallel batch when their tasks are independent; deviations → `nerv:hyuga` deviation → `nerv:misato` ruling |
+| 11. Implementation wave N | `nerv:kaworu` (RED) → `nerv:aoba` (commit, user validates) → assigned pilot (GREEN/TRIANGULATE/REFACTOR) → `nerv:aoba` (commit, user validates) → RDD hook | wave task, skills, TDD mode+runner, `commit_ref` | code + TDD evidence rows; Aoba records each commit in the task's `Commit` column, Ikari the task's `Status` | repeat for every wave in `waves.md` in dependency order; a wave starts only when every wave it depends on is closed with a `wave_report`; the loop terminates when the last wave is closed; pilots in a wave may run in one parallel batch when their tasks are independent; deviations → `nerv:hyuga` deviation → `nerv:misato` ruling |
 | 12. Maya full gate a→b→c→d | `nerv:maya` (MODE: full) | full feature diff (base..HEAD), gathered once after the last wave closes — never per wave | `nerv/maya-report.md` phases a-d, each green before the next starts | `impl-wrong` → owning pilot; `spec-wrong` → Misato as a binding ruling (`MODE: ruling`, source `maya`); `ambiguous` → one Misato ruling → user only if a product decision is needed |
 | 13. Freeze patch | `nerv:aoba` | base (branch point for round 1, previous round's HEAD for re-audits), round number, run folder locator | `nerv/audit/diff-round-N.patch`, `nerv/audit/round-N.yaml` (`{round, base, head, created_at}`), `nerv/audit/commits-round-N.txt` | gatekeeper |
 | 14. Audit passes, 4 in parallel, blind | `nerv:melchior`, `nerv:balthasar`, `nerv:casper` (MODE: audit), `nerv:gendo` | `diff-round-N.patch`, `nerv/audit/commits-round-N.txt` + the ODD document locator, skills; `RDD scope` for melchior/balthasar (`cross-commit` only with native assess evidence, else `full`; see RDD narrowing) | one JSON pass object each per the contract in `nerv-artifacts.md`; Ikari writes each to `nerv/audit/pass-<name>-round-N.json` | gatekeeper — JSON validation, one retry |
@@ -34,7 +38,7 @@ the table below or downgrade FULL to LIGHT or DIRECT mid-run.
 | 16. Ranking + issue gate | `nerv:hyuga` (dispatch c) | `audit-report.md` (post-refuter) | `nerv/issue-ranking.md` | **user HARD** — Ikari relays the ranked NOW/DEFER list as one blocking prompt: approve the NOW set / edit it / accept residual and close |
 | 17. Fix routing + re-audit loop | owning pilot per approved issue (FULL work-unit cycle: Kaworu RED when behavioral, Aoba commit, pilot fix, Aoba commit, RDD hook), `nerv:aoba` (fix-delta patch), audit passes, `nerv:kaji` | fixes committed; `nerv/audit/diff-round-N+1.patch` scoped to the fix delta only; updated `audit-report.md` carrying forward unresolved items | cap 2 re-audits (loop back to step 14 over the fix-delta patch); at the cap the user accepts the residual (`residual_accepted` in `issue-ranking.md`) or declines the remainder; deviations → Misato ruling |
 | 18. Docs + curate | `nerv:ritsuko` (MODE: docs), `nerv:fuyutsuki` (MODE: curate) | `issue-ranking.md`, fix commits, `## Tasks`, docs updates | `nerv/issue-resolutions.md`, `nerv/agent-config.md`, repo doc updates (Ikari writes them at Ritsuko-named locators), `## Summary` appended to `nerv/deliberation-log.md` | gatekeeper |
-| 19. Run summary + close | `nerv:aoba`; `task:dispatcher` `run.closed` (only when the task plugin is installed) | usage table, task envelopes and any KB mirrors still unflushed after Ikari's Engram flush at close (`usage-and-log.md`) | `nerv/run-summary.md`, the close `## Log` entry, then Aoba's close commit (`docs: close nerv run for {feature}`, per `artifacts.commit`); no archive (see `### Task events` below) | **user validates** the close commit |
+| 19. Run summary + close | `nerv:aoba`; `task:dispatcher` `run.closed` (only when the task plugin is installed) | usage table, task envelopes and any KB mirrors still unflushed after Ikari's Engram flush at close (`usage-and-log.md`) | `nerv/run-summary.md`, the close `## Log` entry, then Aoba's close commit (`docs: close nerv run for {feature}`, committing `odd/tasks/{feature}.md` and `odd/{feature}/nerv/` per `artifacts.commit`); no archive (see `### Task events` below) | **user validates** the close commit |
 
 ### Task events
 
@@ -54,10 +58,10 @@ Preflight, the work unit's verification start, and Close). Without
   deferred findings become follow-up work.
 - **Close (step 19).** `run.closed`, before Aoba writes the run summary,
   so its envelope appears in it. It never completes the task: completing
-  it stays an explicit `/task:close`. Ikari also sets `Status` `done` and
-  the `Commit` on every completed `## Tasks` row, appends the close
-  `## Log` entry, records `closed_at` in `state.yaml`, and deletes
-  `.nerv/locks/{feature}.lock`.
+  it stays an explicit `/task:close`. Ikari also sets `Status` `done` on
+  every completed `## Tasks` row (each already carries its commits, from
+  Aoba), appends the close `## Log` entry, records `closed_at` in
+  `state.yaml`, and deletes `.nerv/locks/{run-id}.lock`.
 
 A halted run emits `run.halted` instead — Ikari asks the user for the
 mandatory cause first and passes it in `data`. A `blocked` or `failed`
@@ -105,8 +109,13 @@ the fix delta, never the cumulative diff.
 `nerv:balthasar` (software principles and readability) and `nerv:casper`
 (process), plus `nerv:gendo` (coverage, reliability, correctness,
 resilience and performance) — in one parallel batch, blind
-to each other, each reading only the frozen patch plus the ODD document
-(`## Specs`, `## Tasks`, and the design and test-plan `## Log` entries).
+to each other, each reading only the frozen patch,
+`nerv/audit/round-N.yaml`, `nerv/audit/commits-round-N.txt` and the ODD
+document's `## Specs`, `## Tasks` (without its `MAGI` column), and the
+design and test-plan `## Log` entries — never the `MAGI` column,
+`nerv/votes.md`, an earlier round's audit report or pass files, or the
+gate and ruling `## Log` entries (plan gate, issue gate, plan approval,
+Misato rulings).
 Each pass returns exactly one JSON object as its final text — the same
 gatekeeping MAGI JSON gets: parseable, `pass` and `round` present, every
 BLOCKER/CRITICAL finding carrying `location`, `severity`, `claim`,
@@ -198,23 +207,36 @@ rationale.
 
 ### Ratchet handling
 
-The diff already produced while a feature was still DIRECT or LIGHT becomes the
+The diff already produced while a run was still DIRECT or LIGHT becomes the
 wave-1 candidate once Ikari reclassifies to FULL. Misato's `## Tasks` MUST
 include that diff as its own task row, with `Status`
 `implemented-pre-plan` in addition to its `ID`/`Pilot`/`Depends on`, and MAGI votes on it
 exactly like any other task — there is no free pass for pre-plan work.
+Its `Commit` holds the work commit the DIRECT or LIGHT run already made
+(Aoba copies it in), and the run files that run kept in
+`.nerv/runs/{run-id}/` move into `odd/{feature}/nerv/` when the document
+is created (`odd-document.md`, Ratchet to FULL).
 
 ### MAGI vote mechanics
 
 `nerv:balthasar`, `nerv:melchior`, `nerv:casper` (MODE: vote) launch
 together in exactly one parallel batch, never sequentially and never with
 visibility into each other's output — a blind vote loses its meaning the
-moment one member sees another's findings first. Each receives only the
-sections its own lens needs (Balthasar: the design entry + `## Tasks`;
-Melchior: the design entry + `## Specs`; Casper: `## Specs` + the test
-plan + `## Tasks`) and
-returns exactly the JSON contract from `nerv-artifacts.md` as its final
-text — one object per launch, never a tool call as the last action.
+moment one member sees another's findings first. Each reads exactly the
+sections its own lens needs, and the launch brief names them:
+
+- Balthasar: the design `## Log` entry, `## Tasks` and `nerv/criticality.md`;
+- Melchior: the design `## Log` entry, `## Tasks`, `## Specs` and `nerv/criticality.md`;
+- Casper: `## Specs`, the test-plan `## Log` entry, `## Tasks` and `nerv/criticality.md`.
+
+`## Tasks` is read without its `MAGI` column. Every round is blind to the
+earlier ones too: a member reads only its list, never the `MAGI` column,
+`nerv/votes.md`, an earlier round's audit report or pass files, or the
+gate and ruling `## Log` entries (plan gate, issue gate, plan approval,
+Misato rulings) before casting its vote. A revised task's own text
+carries what the revision changed. Each member returns exactly the JSON
+contract from `nerv-artifacts.md` as its final text — one object per
+launch, never a tool call as the last action.
 
 Ikari merges the three objects into `nerv/votes.md` and computes `result`
 per task from `nerv/criticality.md`: a task marked `critical` needs all
@@ -287,4 +309,9 @@ The RDD per-commit relay (see
 `## RDD relay` above) and the delivery-budget tracking (see `## Delivery`
 above) apply identically inside FULL waves as they do in DIRECT and LIGHT — there is
 no separate FULL-only commit or budget mechanism.
+
+Aoba writes the `Commit` column: each Aoba launch that commits records the
+new hash in its task's `## Tasks` row before returning (RED and GREEN
+hashes of one task, comma-separated; a fix commit from step 17 appended to
+its task's row). Ikari sets `Status`, and nobody but Aoba edits `Commit`.
 

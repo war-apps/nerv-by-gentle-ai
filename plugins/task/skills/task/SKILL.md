@@ -156,7 +156,7 @@ Every event carries:
 event: run.started
 task_ref: TW-49076279        # may be empty only on run.started
 repo: dim.comprobantes.api   # repository root folder name
-feature: <ODD feature name>
+feature: <ODD feature name in FULL; the run id in DIRECT and LIGHT>
 branch: feature/tw-49076279-...
 worktree: /abs/path/or/empty
 session_id: <uuid>
@@ -194,10 +194,10 @@ The dispatcher never asks the user anything itself. When a choice is needed, it 
 
 ### 6.4 The pending-event list (S9)
 
-The orchestrator appends every envelope to `odd/<feature>/nerv/task-events.yaml`, one list item per envelope. An envelope with `result` `blocked` or `failed` and `replay: true` stays **pending**.
+The orchestrator appends every envelope to the run folder's `task-events.yaml`, one list item per envelope: `odd/{feature}/nerv/task-events.yaml` for a FULL run, `.nerv/runs/{run-id}/task-events.yaml` for a DIRECT or LIGHT run (which has no ODD document). An envelope with `result` `blocked` or `failed` and `replay: true` stays **pending**.
 
-- The run summary lists the pending envelopes under "Task events pending", along with the `/task:replay <feature>` command.
-- `/task:replay <feature>` dispatches every pending envelope again, in order, and marks each one `replayed: <ISO time>` with its new result.
+- The run summary lists the pending envelopes under "Task events pending", along with the `/task:replay {feature}` command (the run id for DIRECT and LIGHT).
+- `/task:replay {feature}` finds the file in either location and dispatches every pending envelope again, in order, and marks each one `replayed: <ISO time>` with its new result.
 
 ## 7. Composite operations (owned by this plugin)
 

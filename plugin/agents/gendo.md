@@ -80,7 +80,12 @@ round-N.yaml` (`{round, base, head, created_at}`), the ODD document
 test-plan `## Log` entries), plus `nerv/audit/commits-round-N.txt` — `git log --format='%h %s'
 <base>..<head> --stat`, written by Aoba. He has no `Bash` tool and cannot
 run `git log` or `git show` himself; the commit-history text file is his
-only window into commit-level history.
+only window into commit-level history. He reads exactly these inputs
+before returning the pass, and nothing else: never the `MAGI` column,
+`nerv/votes.md`, an earlier round's audit report or pass files, or the
+gate and ruling `## Log` entries (plan gate, issue gate, plan approval,
+Misato rulings). Each round is judged on its own, blind to earlier
+verdicts.
 
 ## Artifact persistence
 

@@ -142,6 +142,33 @@ func (w *fakeWorkspace) Compute(_ context.Context, projects []string) ([]version
 	return w.results, w.computeErr
 }
 
+// Explicit stands in for the engine's explicit release: the last release
+// is the highest tag of the project's format that the clone's scripted
+// "git tag --list" answers (the engine's reachability and channel rules
+// are tested in internal/versioning and the integration tests), and the
+// notes name the version.
+func (w *fakeWorkspace) Explicit(ctx context.Context, project, version string) (versioning.Result, error) {
+	w.f.log("explicit")
+	p, _ := w.Config().Project(project)
+	out, _, _, err := w.f.runner.Run(ctx, "git", "-C", w.dir, "tag", "--list")
+	if err != nil {
+		return versioning.Result{}, err
+	}
+	r := versioning.Result{Project: project, NewReleasePublished: true, NewReleaseVersion: version, NewReleaseGitTag: shipplan.TagFor(p.TagFormat, version),
+		NewReleaseNotes:  "## " + version + "\n\n* " + project + " change\n",
+		ChangelogSection: "## " + version + " (2026-10-24)\n\n* " + project + " change\n"}
+	for _, tag := range strings.Fields(out) {
+		tv, ok := shipplan.VersionFromTag(p.TagFormat, tag)
+		if !ok {
+			continue
+		}
+		if c, _ := shipplan.CompareVersions(tv, r.LastReleaseVersion); r.LastReleaseVersion == "" || c > 0 {
+			r.LastReleaseVersion, r.LastReleaseGitTag = tv, tag
+		}
+	}
+	return r, nil
+}
+
 func (w *fakeWorkspace) Branch(context.Context) (versioning.ReleaseBranch, error) {
 	w.f.log("branch")
 	return w.branch, w.branchErr
@@ -885,6 +912,37 @@ func TestShip_ComposeModeBuildsTestsAndSavesTheImages(t *testing.T) {
 	code, doc, _ = f.runJSON(t, "--yes")
 	if code != 2 || doc.Status != "failed" || doc.Projects[0].Status != "failed" || !slices.Contains(f.events, "api: echo fail api") || len(f.packaged(t)) != 0 {
 		t.Errorf("exit %d, %+v, events %v", code, doc, f.events)
+	}
+}
+
+// A build.images mapping gets 4.2.0's tags: ship tags the version
+// reference with the others, saves them all into one archive and records
+// every reference in the manifest, so deploy pushes them all.
+func TestShip_ImageMappingSavesAndRecordsEveryTag(t *testing.T) {
+	f := newShipFixture(t, strings.Replace(shipComposeYAML, `images: ["ghcr.io/acme/api:${version}"]`, `images: [{ name: ghcr.io/acme/api }]`, 1))
+	f.ws.results = []versioning.Result{shipResult("api", "1.4.0", "v1.4.0")}
+	if err := os.WriteFile(filepath.Join(f.ws.dir, "api", "docker-compose.yml"), []byte("services: {}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	code, doc, stderr := f.runJSON(t, "--yes")
+	if code != 0 {
+		t.Fatalf("exit %d: %s", code, stderr)
+	}
+	tar := filepath.Join(f.ws.ArtifactsDir(), "api", "outputs", "ghcr.io_acme_api_1.4.0.tar")
+	for _, want := range []string{
+		"api: docker tag ghcr.io/acme/api:1.4.0 ghcr.io/acme/api:latest",
+		"api: docker save -o " + tar + " ghcr.io/acme/api:1.4.0 ghcr.io/acme/api:latest",
+	} {
+		if !slices.Contains(f.events, want) {
+			t.Errorf("events %v lack %q", f.events, want)
+		}
+	}
+	m, err := artifact.Verify(doc.Projects[0].Artifact)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(m.Images, []string{"ghcr.io/acme/api:1.4.0", "ghcr.io/acme/api:latest"}) || len(m.Outputs) != 1 {
+		t.Errorf("manifest images %q, outputs %+v", m.Images, m.Outputs)
 	}
 }
 

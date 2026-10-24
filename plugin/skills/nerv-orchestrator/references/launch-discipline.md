@@ -25,7 +25,8 @@ error a real run made.
 - **Absolute, feature-scoped paths.** Every artifact path in a launch brief
   is absolute and scoped to the feature: `<worktree>/odd/{feature}/nerv/...`
   for the run folder and `<worktree>/odd/tasks/{feature}.md` for the ODD
-  document, never a bare filename or a path relative to an unstated
+  document in FULL, `<worktree>/.nerv/runs/{run-id}/...` in DIRECT and
+  LIGHT, never a bare filename or a path relative to an unstated
   directory.
 - **Audit inputs.** Audit launches always include `nerv/audit/commits-round-N.txt`
   next to `diff-round-N.patch` and `round-N.yaml`; a round whose freeze did

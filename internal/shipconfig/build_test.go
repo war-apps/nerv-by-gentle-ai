@@ -58,7 +58,7 @@ func TestLoad_ComposeMode(t *testing.T) {
 `))
 	b := rel.Projects[0].Build
 	if b.Mode != shipconfig.ModeCompose || b.File != "deploy/docker-compose.yml" || b.TestService != "tests" ||
-		!reflect.DeepEqual(b.Images, []string{"ghcr.io/acme/api:${version}", "ghcr.io/acme/worker:${version}"}) {
+		!reflect.DeepEqual(b.Images, []shipconfig.BuildImage{{Ref: "ghcr.io/acme/api:${version}"}, {Ref: "ghcr.io/acme/worker:${version}"}}) {
 		t.Errorf("build = %+v", b)
 	}
 }
@@ -154,7 +154,8 @@ func TestLoad_BuildErrors(t *testing.T) {
 		{"compose shared host", "      build: { mode: compose, file: c.yml, shared_host: true }\n", "ship.projects[0].build.shared_host: only for script mode"},
 		{"script with compose keys", "      build: { mode: script, file: c.yml, test_service: t, images: [x] }\n", "ship.projects[0].build.file: only for compose mode"},
 		{"script test service", "      build: { mode: script, test_service: t }\n", "ship.projects[0].build.test_service: only for compose mode"},
-		{"script images", "      build: { mode: script, images: [x] }\n", "ship.projects[0].build.images: only for compose mode"},
+		{"script image placeholder", "      build: { mode: script, images: [\"x:${build}\"] }\n", "ship.projects[0].build.images[0]: unknown placeholder ${build} (want ${version}, ${channel} or ${tag})"},
+		{"script image with a space", "      build: { mode: script, images: [\"x y\"] }\n", `ship.projects[0].build.images[0]: "x y" is not an image reference`},
 		{"version file kind", "      build: { mode: script, version_files: [package.json] }\n", `ship.projects[0].build.version_files[0]: "package.json" is not an MSBuild project file (.csproj, .fsproj, .vbproj, .props or .targets)`},
 		{"escaping version file", "      build: { mode: script, version_files: [../x.csproj] }\n", `ship.projects[0].build.version_files[0]: "../x.csproj" escapes the repository root`},
 		{"coverage without floors", "      build: { mode: script, coverage: { dir: cov } }\n", "ship.projects[0].build.coverage: set at least one floor (line, branch or method)"},
@@ -166,6 +167,60 @@ func TestLoad_BuildErrors(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			_, err := shipconfig.Load(writeConfig(t, project(tt.yaml)))
+			if err == nil || !strings.Contains(err.Error(), tt.want) {
+				t.Fatalf("Load error = %v, want it to contain %q", err, tt.want)
+			}
+		})
+	}
+}
+
+// L22: build.images is accepted in script mode too.
+func TestLoad_ScriptModeAcceptsImages(t *testing.T) {
+	rel, err := shipconfig.Load(writeConfig(t, project("      build: { mode: script, images: [\"ghcr.io/acme/api:${version}\", \"ghcr.io/acme/api:${channel}\"] }\n")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := rel.Projects[0].Build.Images; len(got) != 2 || !reflect.DeepEqual(got[0], shipconfig.BuildImage{Ref: "ghcr.io/acme/api:${version}"}) {
+		t.Errorf("images = %+v", got)
+	}
+}
+
+// A build.images entry is a plain reference or a mapping {name, tags}; a
+// mapping without tags gets 4.2.0's default tag kinds.
+func TestLoad_ImageMappingFormAndPlainString(t *testing.T) {
+	rel := mustLoad(t, project(`      build:
+        mode: script
+        images:
+          - "ghcr.io/acme/api:${version}"
+          - { name: "ghcr.io/acme/worker" }
+          - { name: "registry.local:5000/acme/web", tags: [version, latest] }
+`))
+	want := []shipconfig.BuildImage{
+		{Ref: "ghcr.io/acme/api:${version}"},
+		{Name: "ghcr.io/acme/worker", Tags: []string{"version", "channel", "latest"}},
+		{Name: "registry.local:5000/acme/web", Tags: []string{"version", "latest"}},
+	}
+	if got := rel.Projects[0].Build.Images; !reflect.DeepEqual(got, want) {
+		t.Errorf("images = %+v, want %+v", got, want)
+	}
+	if !reflect.DeepEqual(shipconfig.DefaultDockerTags(), []string{"version", "channel", "latest"}) {
+		t.Errorf("DefaultDockerTags = %v", shipconfig.DefaultDockerTags())
+	}
+}
+
+// The mapping form is checked: known tag kinds only, a repository without
+// a tag, and no unknown key.
+func TestLoad_ImageMappingIsValidated(t *testing.T) {
+	tests := []struct{ name, images, want string }{
+		{"unknown tag kind", `[{ name: ghcr.io/acme/api, tags: [version, nightly] }]`, `ship.projects[0].build.images[0].tags[1]: unknown tag kind "nightly" (want version, channel or latest)`},
+		{"no name", `[{ tags: [version] }]`, "ship.projects[0].build.images[0].name: required"},
+		{"name with a tag", `[{ name: "ghcr.io/acme/api:1.0" }]`, `ship.projects[0].build.images[0].name: "ghcr.io/acme/api:1.0" is not a repository`},
+		{"unknown key", `[{ name: ghcr.io/acme/api, push: false }]`, "ship.projects[0].build.images[0].push: unknown field"},
+		{"a sequence", `[[ghcr.io/acme/api]]`, "a build.images entry is an image reference or a mapping {name, tags}"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := shipconfig.Load(writeConfig(t, project("      build: { mode: script, images: "+tt.images+" }\n")))
 			if err == nil || !strings.Contains(err.Error(), tt.want) {
 				t.Fatalf("Load error = %v, want it to contain %q", err, tt.want)
 			}

@@ -19,6 +19,8 @@ import (
 const (
 	oddTasksDir = "odd/tasks"
 	locksDir    = "locks"
+	// runsDir holds a DIRECT or LIGHT run under the runtime folder.
+	runsDir = "runs"
 )
 
 // tddDefault is the TDD mode the old openspec/config.yaml set.
@@ -37,7 +39,8 @@ var folded = []string{"proposal.md", "design.md", "tasks.md"}
 // its lock to .nerv/locks/<change>.lock. Archived changes and
 // openspec/specs stay. It returns the TDD default of openspec/config.yaml
 // (nil without one).
-func planODD(p *Plan, root string, now time.Time) (*tddDefault, error) {
+func planODD(p *Plan, o Options) (*tddDefault, error) {
+	root := o.RepoRoot
 	base := filepath.Join(root, "openspec")
 	info, err := os.Stat(base)
 	if errors.Is(err, fs.ErrNotExist) || (err == nil && !info.IsDir()) {
@@ -64,7 +67,7 @@ func planODD(p *Plan, root string, now time.Time) (*tddDefault, error) {
 			p.note("openspec/changes/archive: %d archived change(s) stay where they are, read-only", len(archived))
 			continue
 		}
-		if err := planChange(p, root, e.Name(), tdd, now); err != nil {
+		if err := planChange(p, o, e.Name(), tdd); err != nil {
 			return nil, err
 		}
 	}
@@ -119,24 +122,91 @@ type changeState struct {
 	} `yaml:"nerv"`
 }
 
-// planChange converts one in-flight change.
-func planChange(p *Plan, root, name string, tdd *tddDefault, now time.Time) error {
+// docMarker is the line nerv migrate writes under the title of the ODD
+// document it generates, so a rerun after an interrupted run recognises
+// its own output.
+func docMarker(name string) string {
+	return "<!-- nerv migrate: openspec/changes/" + name + " -->"
+}
+
+// staleAfter is the orchestrator lock's stale threshold
+// (plugin/skills/nerv-orchestrator/SKILL.md, "Staleness").
+const staleAfter = 15 * time.Minute
+
+// orchestratorLock is what nerv migrate reads of a change's lock.
+type orchestratorLock struct {
+	SessionID   string `yaml:"session_id"`
+	Host        string `yaml:"host"`
+	HeartbeatAt string `yaml:"heartbeat_at"`
+	WaitingOn   string `yaml:"waiting_on"`
+}
+
+// heldLock reports the lock in data when it is held on host at now: a
+// heartbeat younger than staleAfter, or a run waiting on the user at any
+// age (the orchestrator's rule). A lock of another host, or one that does
+// not parse, is not held here.
+func heldLock(data []byte, host string, now time.Time) (*orchestratorLock, bool) {
+	var l orchestratorLock
+	if yaml.Unmarshal(data, &l) != nil || l.Host == "" || !strings.EqualFold(l.Host, host) {
+		return nil, false
+	}
+	if strings.EqualFold(l.WaitingOn, "user") {
+		return &l, true
+	}
+	hb, err := time.Parse(time.RFC3339, l.HeartbeatAt)
+	if err != nil || now.Sub(hb) >= staleAfter {
+		return nil, false
+	}
+	return &l, true
+}
+
+// planChange converts one in-flight change: a FULL one into an ODD
+// document plus odd/<change>/nerv/, a DIRECT or LIGHT one (L20, "Solo
+// FULL") into .nerv/runs/<change>/ with no document.
+func planChange(p *Plan, o Options, name string, tdd *tddDefault) error {
+	root, now := o.RepoRoot, o.Now
 	rel := "openspec/changes/" + name
-	if name == "tasks" {
-		p.warn("%s: a feature named tasks would collide with odd/tasks/; rename the folder and run nerv migrate again (left where it is)", rel)
-		return nil
-	}
 	dir := filepath.Join(root, filepath.FromSlash(rel))
-	doc := filepath.Join(root, filepath.FromSlash(oddTasksDir), name+".md")
-	if _, err := os.Lstat(doc); err == nil {
-		return refuse("%s cannot be converted: %s already exists (merge them by hand, then remove %s)", rel, filepath.ToSlash(filepath.Join(oddTasksDir, name+".md")), rel)
-	}
 	read := func(f string) string {
 		data, err := os.ReadFile(filepath.Join(dir, f))
 		if err != nil {
 			return ""
 		}
 		return string(data)
+	}
+	var state changeState
+	if s := read("state.yaml"); s != "" {
+		if err := yaml.Unmarshal([]byte(s), &state); err != nil {
+			p.warn("%s/state.yaml is not valid YAML (%v): the document's header leaves the branch unknown", rel, err)
+		}
+	}
+	tier := strings.ToLower(strings.TrimSpace(state.Nerv.Path))
+	full := tier != "direct" && tier != "light"
+	if full && name == "tasks" {
+		p.warn("%s: a feature named tasks would collide with odd/tasks/; rename the folder and run nerv migrate again (left where it is)", rel)
+		return nil
+	}
+	doc := filepath.Join(root, filepath.FromSlash(oddTasksDir), name+".md")
+	writeDoc := full
+	if full {
+		if existing, err := os.ReadFile(doc); err == nil && strings.Contains(string(existing), docMarker(name)) {
+			writeDoc = false
+			p.note("%s/%s.md was written by an interrupted nerv migrate: it is kept, and the run files are moved now", oddTasksDir, name)
+		} else if _, err := os.Lstat(doc); err == nil {
+			return refuse("%s cannot be converted: %s already exists (merge them by hand, then remove %s)", rel, filepath.ToSlash(filepath.Join(oddTasksDir, name+".md")), rel)
+		}
+	}
+	if data, err := os.ReadFile(filepath.Join(dir, "nerv", ".orchestrator.lock")); err == nil {
+		host := o.Host
+		if host == "" {
+			host, _ = os.Hostname()
+		}
+		if l, held := heldLock(data, host, now); held {
+			if !o.Force {
+				return refuse("%s is still running: session %s holds its lock on %s (heartbeat %s, waiting on %s); let that run end or stop it, or pass --force to move it anyway", rel, l.SessionID, l.Host, orDefault(l.HeartbeatAt, "none"), orDefault(l.WaitingOn, "none"))
+			}
+			p.warn("%s: --force moves the lock session %s still holds (heartbeat %s); that session loses it", rel, l.SessionID, orDefault(l.HeartbeatAt, "none"))
+		}
 	}
 	var files []string
 	err := filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
@@ -157,14 +227,14 @@ func planChange(p *Plan, root, name string, tdd *tddDefault, now time.Time) erro
 	}
 	slices.Sort(files)
 
-	var state changeState
-	if s := read("state.yaml"); s != "" {
-		if err := yaml.Unmarshal([]byte(s), &state); err != nil {
-			p.warn("%s/state.yaml is not valid YAML (%v): the document's header leaves the branch unknown", rel, err)
-		}
-	}
 	runDir := filepath.Join(root, "odd", name, "nerv")
+	runRel := "odd/" + name + "/nerv/"
+	if !full {
+		runDir = filepath.Join(paths.RuntimeDir(root), runsDir, name)
+		runRel = ".nerv/" + runsDir + "/" + name + "/"
+	}
 	var specs []string
+	sources := map[string]string{}
 	for _, f := range files {
 		src := filepath.Join(dir, filepath.FromSlash(f))
 		data, err := os.ReadFile(src)
@@ -173,12 +243,12 @@ func planChange(p *Plan, root, name string, tdd *tddDefault, now time.Time) erro
 		}
 		var dst string
 		switch {
-		case slices.Contains(folded, f):
-		case strings.HasPrefix(f, "specs/"):
-			specs = append(specs, f)
 		case f == "nerv/.orchestrator.lock":
 			dst = filepath.Join(paths.RuntimeDir(root), locksDir, name+".lock")
 			p.warn("%s: its orchestrator lock moves to .nerv/locks/%s.lock: make sure no session is still running this change (a running session would lose its lock)", rel, name)
+		case full && slices.Contains(folded, f):
+		case full && strings.HasPrefix(f, "specs/"):
+			specs = append(specs, f)
 		case strings.HasPrefix(f, "nerv/"):
 			dst = filepath.Join(runDir, filepath.FromSlash(strings.TrimPrefix(f, "nerv/")))
 		default:
@@ -186,6 +256,10 @@ func planChange(p *Plan, root, name string, tdd *tddDefault, now time.Time) erro
 		}
 		stop := filepath.Dir(dir)
 		if dst != "" {
+			if other, dup := sources[dst]; dup {
+				return refuse("%s: %s and %s would both move to %s; rename one by hand", rel, other, f, dst)
+			}
+			sources[dst] = f
 			existing, err := os.ReadFile(dst)
 			switch {
 			case err == nil && string(existing) != string(data):
@@ -197,9 +271,15 @@ func planChange(p *Plan, root, name string, tdd *tddDefault, now time.Time) erro
 		}
 		p.Changes = append(p.Changes, Change{Kind: Remove, Path: src, Old: data, StopAt: stop})
 	}
-	text := oddDocument(name, state, tdd, read, specs, now)
-	p.Changes = append(p.Changes, Change{Kind: Write, Path: doc, New: []byte(text)})
-	p.note("%s became %s/%s.md, its run files odd/%s/nerv/", rel, oddTasksDir, name, name)
+	if !full {
+		p.note("%s is a %s run: it moved to %s and its lock to .nerv/locks/%s.lock, with no ODD document (only FULL runs get one); .nerv/ is git-ignored, so its files leave version control", rel, strings.ToUpper(tier), runRel, name)
+		return nil
+	}
+	if writeDoc {
+		text := oddDocument(name, state, tdd, read, specs, now)
+		p.Changes = append(p.Changes, Change{Kind: Write, Path: doc, New: []byte(text)})
+	}
+	p.note("%s became %s/%s.md, its run files %s", rel, oddTasksDir, name, runRel)
 	return nil
 }
 
@@ -289,7 +369,7 @@ func dash(s string) string {
 func oddDocument(name string, state changeState, tdd *tddDefault, read func(string) string, specs []string, now time.Time) string {
 	var b strings.Builder
 	date := now.Format("2006-01-02")
-	fmt.Fprintf(&b, "# %s\n\n", name)
+	fmt.Fprintf(&b, "# %s\n\n%s\n\n", name, docMarker(name))
 	branch := orDefault(state.Nerv.Branch, "unknown")
 	fmt.Fprintf(&b, "Migrated from `openspec/changes/%s/` by `nerv migrate` on %s; run folder `odd/%s/nerv/`. Branch: `%s`", name, date, name, branch)
 	if state.Nerv.TaskRef != "" {

@@ -10,7 +10,7 @@ Core never talks to a task tracker. When the task plugin is installed
 ```yaml
 task_ref: <from the run.started envelope; may be empty only on run.started>
 repo: <repository root folder name>
-feature: <feature name>
+feature: <feature name in FULL; the run id in DIRECT and LIGHT>
 branch: <current branch>
 worktree: <absolute worktree path, or empty>
 session_id: <this session's UUID>
@@ -31,8 +31,9 @@ disabled_events: []  # per-run switches the user chose
 - **Fail-soft.** An envelope with `result` `blocked` or `failed` never
   halts the run and is never retried by Ikari. A `needs_input` envelope is
   relayed verbatim and dispatched again with the answer in `data`.
-- **Recording.** Ikari appends every envelope to
-  `odd/<feature>/nerv/task-events.yaml` and logs one
+- **Recording.** Ikari appends every envelope to the run folder's
+  `task-events.yaml` — `odd/{feature}/nerv/task-events.yaml` in FULL,
+  `.nerv/runs/{run-id}/task-events.yaml` in DIRECT and LIGHT — and logs one
   `task_event` entry `{event, provider, result, task_ref}` per envelope in
   `nerv/deliberation-log.md`. There is one exception (S18). An envelope
   with `result` `skipped` whose provider is `provider: none` (no provider
@@ -44,6 +45,7 @@ disabled_events: []  # per-run switches the user chose
   like an absent one.
 - **Run summary.** When any envelope is pending (`blocked` or `failed`
   with `replay: true`), the run summary lists it under "Task events
-  pending", with the hint `/task:replay <feature>`.
+  pending", with the hint `/task:replay {feature}` (the run id in DIRECT
+  and LIGHT).
 - **Absent plugin.** Without `task:dispatcher`, none of the above happens:
   no event, no question, no log entry, no `task-events.yaml`.

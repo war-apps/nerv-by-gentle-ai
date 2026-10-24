@@ -41,9 +41,17 @@ that launched you.
 
 | reported store | locator shape | how to read it |
 |---|---|---|
-| `odd` | repo path, e.g. `odd/{feature}/nerv/maya-report.md`, or the ODD document `odd/tasks/{feature}.md` | read the file |
+| `odd` | repo path, e.g. `odd/{feature}/nerv/maya-report.md` (FULL) or `.nerv/runs/{run-id}/maya-report.md` (DIRECT, LIGHT), or the ODD document `odd/tasks/{feature}.md` (FULL only) | read the file |
 | `engram` | topic key, e.g. `nerv/{feature}/maya-report` | `mem_search(query: "<locator>", project: "{project}")` → `mem_get_observation(id)` |
 | `hybrid` | either shape | read the file when the locator is a path, the observation when it is a topic key |
+
+**Two layouts.** Only FULL runs have an ODD document and the run folder
+`odd/{feature}/nerv/`. A DIRECT or LIGHT run has no document: its run files
+live in `.nerv/runs/{run-id}/`, which is never committed, and its brief
+carries the request in `## Feature` instead of a document locator. Use the
+locators the brief names either way; a missing document in DIRECT or
+LIGHT is expected, never a blocker. In DIRECT and LIGHT, `{feature}` in a
+topic key holds the run id.
 
 `mem_search` returns 300-character previews only. Always call
 `mem_get_observation(id)` for the full content of any topic-key locator —

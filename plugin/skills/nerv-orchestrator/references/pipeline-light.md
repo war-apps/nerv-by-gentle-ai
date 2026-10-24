@@ -7,6 +7,15 @@ verification gate asks for an independent verifier, and `task:dispatcher`
 only when the task plugin is installed. Ikari runs the git state, the commit and the run summary
 itself; Aoba is launched only for PR preparation or slicing.
 
+LIGHT creates no ODD feature document, no Engram copy of one and no
+commit at close: like gentle-ai's ODD for small work, it works from the
+request and the diff. Its run files (`state.yaml`, `deliberation-log.md`,
+`task-events.yaml`, `run-summary.md`, `exploration-light.md`,
+`maya-report.md`) stay in the runtime folder `.nerv/runs/{run-id}/`, never
+committed, and the lock in `.nerv/locks/{run-id}.lock`; every `nerv/...`
+locator below resolves there. The run asks the user to approve only its
+work commit.
+
 | Step | Actor | Launch prompt carries | Expected envelope | Gate |
 |---|---|---|---|---|
 | 1. Preflight | Ikari; `task:dispatcher` only when the task plugin is installed | — | answers collected; `run.started` and the worktree/branch run after step 2 | user HARD if asked |
@@ -17,7 +26,7 @@ itself; Aoba is launched only for PR preparation or slicing.
 | 6. Work-unit commit | Ikari | diff, `commit_ref` | commit shown, hash | **user validates before commit** |
 | 7. RDD hook | native engine (via Ikari) | see `rdd-relay.md` | receipt or `review_due: false` | per RDD relay |
 | 8. Run summary | Ikari; `task:dispatcher` when the task plugin is installed | usage table | Engram flush at close (`usage-and-log.md`) and `run.closed` first, so both are in the summary; then `nerv/run-summary.md` per its schema in `nerv-artifacts.md` | none |
-| 9. Close | Ikari | the ODD document, `artifacts.commit`, whether the repo ignores the artifacts | the close `## Log` entry and the close commit (see below); a run that halts instead emits `run.halted` with the cause and records it in the `## Log` | **user validates** the close commit |
+| 9. Close | Ikari | `.nerv/runs/{run-id}/state.yaml` | `closed_at`, the `stop` event, lock deleted (see below); a run that halts instead emits `run.halted` with the cause and logs it in the deliberation log | none |
 
 LIGHT is one coherent work unit (more than one is a FULL criterion); a fix
 after a failing gate re-enters step 4 with the failure quoted. When the
@@ -58,12 +67,11 @@ Maya's reduced mode runs only the tests and lint/build touching the
 changed files — never the full suite — per the `b`/`c` phases of her
 report schema.
 
-At step 9, Ikari sets `Status` `done` and the `Commit` on the work unit's
-`## Tasks` row (a mechanical write), appends the close `## Log` entry
-(outcome, failed, skipped or pending checks, next step), records
-`closed_at` in `state.yaml`, appends the `stop` event, deletes
-`.nerv/locks/{feature}.lock`, then makes the close commit as the run's
-last write, `docs: close nerv run for {feature}`, per `artifacts.commit` —
-no commit at all when the repo ignores the artifacts (see `delivery.md`).
-There is no archive: the feature stays in `odd/`. A LIGHT run is never
-left delivered but unclosed.
+At step 9, Ikari records the outcome, any failed, skipped or pending
+check and the next step in the run summary, records `closed_at` in
+`.nerv/runs/{run-id}/state.yaml`, appends the `stop` event and deletes
+`.nerv/locks/{run-id}.lock`. Nothing is committed at close: the step-6
+work commit is the run's only commit, and the runtime folder is never
+staged. There is no archive. A LIGHT run is never left delivered but
+unclosed. A FULL criterion found mid-run ratchets to FULL, which creates
+the feature document from the run (`odd-document.md`, Ratchet to FULL).

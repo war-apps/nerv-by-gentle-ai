@@ -25,10 +25,10 @@ rules that select direct/delegated execution — are **superseded** by this
 protocol, which mirrors them: the DIRECT and LIGHT tiers (below) are
 gentle-ai's direct-inline and delegated-direct routes with the same
 thresholds, FULL is NERV's governed pipeline, and the three pipelines
-replace ODD's task-by-task execution loop. ODD's feature document is
-**kept**: every run tracks its work in `odd/tasks/{feature}.md` (header,
-`## Specs`, `## Tasks`, `## Log`, Engram mirror `odd/{feature}/tasks`),
-written by the NERV roles per `references/odd-document.md`.
+replace ODD's task-by-task loop. Only FULL runs create ODD's feature
+document `odd/tasks/{feature}.md` (mirror `odd/{feature}/tasks`, written
+per `references/odd-document.md`); DIRECT and LIGHT keep their run files
+in `.nerv/runs/{run-id}/`.
 
 Everything else installed by gentle-ai stays exactly as configured and is
 **not** superseded:
@@ -63,12 +63,13 @@ carries "Do NOT delegate" in its own file and has no Agent tool access.
   and the run summary itself; Aoba only prepares PRs or slices.
 - Ikari's own writes are limited to mechanical bookkeeping: `.ai-workflow.yml`
   (only when the user asks to persist preflight answers), the ODD
-  document's bookkeeping (`references/odd-document.md`: its creation, `L1`,
-  the `Criticality`, `MAGI`, `Status` and `Commit` columns, gate and close
-  `## Log` entries, and its Engram mirror), the run folder
-  `odd/{feature}/nerv/` (`state.yaml` including `closed_at`, written once
-  at close; appending to `deliberation-log.md`; `run-summary.md` in DIRECT
-  and LIGHT), the lock `.nerv/locks/{feature}.lock` (create, heartbeat
+  document's bookkeeping in FULL (`references/odd-document.md`: its
+  creation, `L1`, the `Criticality`, `MAGI` and `Status` columns, gate and
+  close `## Log` entries, and its Engram mirror), the run folder
+  (`odd/{feature}/nerv/` in FULL, `.nerv/runs/{run-id}/` in DIRECT and
+  LIGHT: `state.yaml` including `closed_at`, written once at close;
+  appending to `deliberation-log.md`; `run-summary.md` in DIRECT and
+  LIGHT), the lock `.nerv/locks/{run-id}.lock` (create, heartbeat
   refresh, delete — see `## Orchestrator lock`), and any artifact returned
   in the envelope of a read-only agent (Ritsuko), written verbatim to its
   resolved locator.
@@ -94,7 +95,7 @@ carries "Do NOT delegate" in its own file and has no Agent tool access.
 ## Orchestrator lock
 
 Ikari alone holds this lock — no agent reads or writes it. File:
-`.nerv/locks/{feature}.lock` (runtime, never committed: Ikari first creates `.nerv/.gitignore` with `*` when it is missing, as a fresh clone has none), YAML: `{session_id,
+`.nerv/locks/{run-id}.lock` (runtime, never committed: Ikari first creates `.nerv/.gitignore` with `*` when it is missing, as a fresh clone has none), YAML: `{session_id,
 host, started_at, heartbeat_at, phase, step, waiting_on, pid: null}`
 (`session_id` = the UUID segment of this session's scratchpad path, `host`
 = machine name, `waiting_on` = `agent` while a launch runs, `user` while a
@@ -229,23 +230,22 @@ emits `run.started`, `verification.started`, `audit.ranked`,
 `issue.deferred`, `wave.started`, `run.closed` and `run.halted` through
 `task:dispatcher`, records every envelope in `nerv/task-events.yaml` plus
 one `task_event` log entry, and lists pending ones in the run summary with
-the `/task:replay <feature>` hint. A `blocked` or `failed` envelope never
+the `/task:replay {feature}` hint. A `blocked` or `failed` envelope never
 halts or retries the run. Payload, emission points and recording rules:
 `references/task-events.md`, loaded before the first dispatch.
 
-Once per feature (not per request), also resolve and cache: **pace**
+Once per run (not per request), also resolve and cache: **pace**
 (interactive | fast-forward), **artifact store** for the run folder
-(default `odd`, files under `odd/{feature}/nerv/`; `engram` / `hybrid` /
-`none` allowed per the persistence contract; the ODD document is always a
+(default `odd`, files in the run folder; `engram` / `hybrid` / `none`
+allowed per the persistence contract; the FULL ODD document is always a
 file plus its mirror), and **PR strategy** (`ask-on-risk` default).
 
-**Feature name.** Ikari names the feature once, as a kebab-case slug: from
-the task ref when there is one (`tw-49132010-short-slug`), otherwise from
-the request (`short-slug`), unique under `odd/tasks/`. Before the first
-launch, Ikari loads `references/odd-document.md` and creates the ODD
-document `odd/tasks/{feature}.md` (header with the TDD mode and runner,
-`S#` seeded from the request verbatim, `L1`) and the run folder
-`odd/{feature}/nerv/` with `state.yaml` (`nerv-artifacts.md`).
+**Run id.** Ikari names the run once (a kebab-case slug; rule and layouts
+in `references/odd-document.md`, loaded now) and creates
+`.nerv/runs/{run-id}/` with `state.yaml` (`nerv-artifacts.md`). Only FULL
+runs create the ODD document `odd/tasks/{feature}.md` (TDD mode and runner
+in the header, `S#` seeded verbatim, `L1`) and `odd/{feature}/nerv/`, with
+`{feature}` = the run id, moving the run files there.
 
 ## Classification: DIRECT, LIGHT or FULL
 
@@ -367,7 +367,7 @@ nerv:<role> — <one-line task for this launch>
 Model: {resolved model} (effort {resolved effort}, source {source})
 
 ## Feature
-{feature} — document odd/tasks/{feature}.md, run folder odd/{feature}/nerv/
+{feature} — FULL: document odd/tasks/{feature}.md, run folder odd/{feature}/nerv/; DIRECT/LIGHT: run folder .nerv/runs/{run-id}/, no document
 
 ## Artifact store and locators
 Store: {odd|engram|hybrid|none}
@@ -467,10 +467,10 @@ If the user says `nerv ping`, launch `nerv:aoba` with the exact prompt
 Load each reference file at the phase that needs it — never preload all of
 them.
 
-- `references/odd-document.md` — the ODD document, run folder and lock
-  layout, who writes which section, TDD resolution, close and resume
-  order. Load when the feature is created and whenever the document is
-  written.
+- `references/odd-document.md` — the run id, the ODD document (FULL
+  only), run folder and lock layouts, who writes which section, TDD
+  resolution, close and resume order. Load when the run id is named and
+  whenever the document is written.
 - `references/pipeline-direct.md` — the DIRECT (direct inline) step table.
   Load when Classification resolves DIRECT.
 - `references/pipeline-light.md` — the LIGHT (delegated direct) step table

@@ -379,3 +379,56 @@ func TestIntegration_ShipWithTheBuiltInConfiguration(t *testing.T) {
 		t.Error("origin changed")
 	}
 }
+
+// L21: --version accepts the version the engine computes on the branch: a
+// stable tag on main that develop never merged is not develop's last
+// release. The notes and CHANGELOG section are written for the given
+// version from the commits since develop's last release.
+func TestIntegration_ShipExplicitVersionUsesTheBranchsLastRelease(t *testing.T) {
+	requireShipToolchain(t)
+	shipEnv(t)
+	marker := filepath.Join(t.TempDir(), "marker.log")
+	_, work := newShipRepos(t)
+	work.write(".ai-workflow.yml", "ship:\n  projects:\n"+markerProject("widgets", ".", "", marker))
+	work.commit("chore: init", "a.txt")
+	work.git("checkout", "-q", "-b", "develop")
+	work.commit("feat: first alpha", "b.txt")
+	work.git("tag", "v1.0.0-alpha.1")
+	work.git("notes", "--ref", "semantic-release-v1.0.0-alpha.1", "add", "-m", `{"channels":["alpha"]}`, "v1.0.0-alpha.1")
+	work.git("checkout", "-q", "main")
+	work.commit("fix: only on main", "c.txt")
+	work.git("tag", "v1.0.0")
+	work.git("checkout", "-q", "develop")
+	work.commit("feat: add gadgets", "d.txt")
+	work.git("push", "-q", "origin", "main", "develop", "--tags")
+	work.git("push", "-q", "origin", "refs/notes/*")
+
+	code, stdout, stderr := runShipCommand(t, "--cwd", work.dir, "--dry-run", "--json")
+	if code != 0 || !strings.Contains(stdout, `"version":"1.0.0-alpha.2"`) {
+		t.Fatalf("computed: exit %d\nstdout %s\nstderr %s", code, stdout, stderr)
+	}
+	os.Remove(marker)
+	code, stdout, stderr = runShipCommand(t, "--cwd", work.dir, "--yes", "--version", "1.0.0-alpha.2")
+	if code != 0 {
+		t.Fatalf("--version 1.0.0-alpha.2: exit %d\nstdout %s\nstderr %s", code, stdout, stderr)
+	}
+	if !strings.Contains(stderr, "last release 1.0.0-alpha.1 (tag v1.0.0-alpha.1)") {
+		t.Errorf("last release not develop's:\n%s", stderr)
+	}
+	m, dir := readArtifact(t, work, "widgets", "1.0.0-alpha.2")
+	if m.Tag != "v1.0.0-alpha.2" || m.Channel != "alpha" {
+		t.Errorf("manifest %+v", m)
+	}
+	notes, _ := os.ReadFile(filepath.Join(dir, artifact.NotesFile))
+	section, _ := os.ReadFile(filepath.Join(dir, artifact.ChangelogFile))
+	if !strings.Contains(string(notes), "add gadgets") || strings.Contains(string(notes), "only on main") {
+		t.Errorf("notes.md:\n%s", notes)
+	}
+	if !strings.Contains(string(section), "1.0.0-alpha.2") || !strings.Contains(string(section), "add gadgets") {
+		t.Errorf("CHANGELOG section:\n%s", section)
+	}
+	// An older version than develop's last release is still refused.
+	if code, _, stderr := runShipCommand(t, "--cwd", work.dir, "--dry-run", "--version", "0.9.0-alpha.1"); code != 1 || !strings.Contains(stderr, "already has 1.0.0-alpha.1") {
+		t.Errorf("older version: exit %d\n%s", code, stderr)
+	}
+}

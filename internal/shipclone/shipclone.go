@@ -258,6 +258,25 @@ func (w *Workspace) Compute(ctx context.Context, projects []string) ([]versionin
 	return versioning.Compute(ctx, w.request(projects))
 }
 
+// Explicit is the release of project at the explicit version (nerv ship
+// --version) in the clone, offline: the engine's last release of the
+// project on the branch, and the notes and CHANGELOG section of the
+// version from the commits since then.
+func (w *Workspace) Explicit(ctx context.Context, project, version string) (versioning.Result, error) {
+	req := w.request([]string{project})
+	req.Version = version
+	results, err := versioning.Compute(ctx, req)
+	if err != nil {
+		return versioning.Result{}, err
+	}
+	for _, r := range results {
+		if r.Project == project {
+			return r, nil
+		}
+	}
+	return versioning.Result{}, fmt.Errorf("the version engine computed no result for project %s", project)
+}
+
 // Branch resolves the branch against the configured release branches (its
 // prerelease identifier and channel) in the clone.
 func (w *Workspace) Branch(ctx context.Context) (versioning.ReleaseBranch, error) {

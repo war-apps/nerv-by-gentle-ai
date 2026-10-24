@@ -202,8 +202,8 @@ func evalDocker(t *testing.T, script string, env map[string]string) [][]string {
 
 // nerv ship --dry-run of the migrated dim.comprobantes.api runs the commands
 // 4.2.0 ran: its own stage commands verbatim, and the docker preset's
-// builds, now with a docker save into the artifact. The push moved to
-// deploy.
+// builds; ship then saves build.images into the artifact. The push moved
+// to deploy.
 func TestMigrate_ShipDryRunPlansThe420Commands(t *testing.T) {
 	top, opts := migrateRepo(t, "dim.comprobantes.api")
 	old, err := os.ReadFile(filepath.Join(top, ".nerv", "nerv.yaml"))
@@ -234,13 +234,32 @@ func TestMigrate_ShipDryRunPlansThe420Commands(t *testing.T) {
 		t.Fatalf("nerv ship --dry-run: exit %d\n%s\n%s", code, stdout, stderr)
 	}
 	stages := map[string]shiprun.Step{}
-	var order []string
+	var order, saves []string
 	for _, s := range f.steps {
-		stages[s.Stage] = s
-		order = append(order, s.Stage)
+		if _, seen := stages[s.Stage]; !seen {
+			stages[s.Stage] = s
+			order = append(order, s.Stage)
+			continue
+		}
+		if s.Stage == "package" {
+			saves = append(saves, strings.Join(s.Exec, " "))
+		}
 	}
 	if want := []string{"restore", "lint", "build", "test", "coverage", "package"}; !slices.Equal(order, want) {
 		t.Fatalf("stages run %q, want %q", order, want)
+	}
+	// L22/L23: after the package commands, ship tags each build.images
+	// entry with its 4.2.0 tag kinds (a stable release adds latest) and
+	// saves every reference into the artifact (recorded for deploy to push).
+	outputs := filepath.Join(f.ws.ArtifactsDir(), "api", "outputs")
+	api, broker := "ghcr.io/dirm-s-a/dim.comprobantes.api", "ghcr.io/dirm-s-a/dim.comprobantes.api-login-broker"
+	if want := []string{
+		"docker tag " + api + ":1.2.0 " + api + ":latest",
+		"docker save -o " + filepath.Join(outputs, "ghcr.io_dirm-s-a_dim.comprobantes.api_1.2.0.tar") + " " + api + ":1.2.0 " + api + ":latest",
+		"docker tag " + broker + ":1.2.0 " + broker + ":latest",
+		"docker save -o " + filepath.Join(outputs, "ghcr.io_dirm-s-a_dim.comprobantes.api-login-broker_1.2.0.tar") + " " + broker + ":1.2.0 " + broker + ":latest",
+	}; !slices.Equal(saves, want) {
+		t.Errorf("image saves %q, want %q", saves, want)
 	}
 	for _, stage := range []string{"restore", "lint", "build", "test", "coverage"} {
 		if !strings.Contains(string(old), "run: "+stages[stage].Command.Run+"\n") {
@@ -267,7 +286,7 @@ func TestMigrate_ShipDryRunPlansThe420Commands(t *testing.T) {
 			}
 		}
 	}
-	if !strings.Contains(stages["package"].Command.Run, `docker save -o "$NERV_RELEASE_OUTPUTS_DIR/dim.comprobantes.api.tar"`) {
-		t.Errorf("the package stage does not save the image into the artifact:\n%s", stages["package"].Command.Run)
+	if strings.Contains(stages["package"].Command.Run, "docker save") {
+		t.Errorf("the package stage saves the pushed images itself (ship does):\n%s", stages["package"].Command.Run)
 	}
 }

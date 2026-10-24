@@ -40,9 +40,10 @@ governs: Claude Code loads gentle-ai first (`CLAUDE.md`, its hooks, the
 `gentle-ai` binary, and the agents/skills it writes under `~/.claude`),
 Nerv by Gentle-AI's plugin cache layers its own hook, agents, skills, and
 commands on top, and the repo carries only the configuration
-(`.ai-workflow.yml`), each feature's ODD document (`odd/tasks/<feature>.md`)
-and its NERV run folder (`odd/<feature>/nerv/`), plus the git-ignored
-runtime folder `.nerv/`. `gentle-ai
+(`.ai-workflow.yml`), each FULL feature's ODD document
+(`odd/tasks/{feature}.md`) and its NERV run folder (`odd/{feature}/nerv/`),
+plus the git-ignored runtime folder `.nerv/` (DIRECT and LIGHT run folders
+in `.nerv/runs/`, the locks in `.nerv/locks/`). `gentle-ai
 sync` never sees Nerv by Gentle-AI's files because Nerv by Gentle-AI never
 writes into the gentle-ai box, and Nerv by Gentle-AI never writes into it
 either — it only reads from it.
@@ -127,17 +128,28 @@ gentle-ai's ODD feature document as the tracking surface, and its own roles
 ### NERV on ODD
 
 Nerv by Gentle-AI runs on gentle-ai's ODD (Organic Driven Development) mode
-with its agents on top. ODD gives every piece of work one feature document,
-`odd/tasks/<feature>.md`, with a fixed shape: a short header (objective,
+with its agents on top. ODD gives tracked work one feature document,
+`odd/tasks/{feature}.md`, with a fixed shape: a short header (objective,
 branch, delivery strategy, test runner), `## Specs` (`S1`..`Sn`, quoting
 the user verbatim), `## Tasks` (one row per task with its route, status and
 commit) and `## Log` (`L1` is the original request verbatim; corrections,
 decisions and evidence are appended). Its Engram mirror is the topic
-`odd/<feature>/tasks`. NERV keeps that document and that shape, and
+`odd/{feature}/tasks`. NERV keeps that document and that shape, and
 replaces only ODD's routing and execution loop with its DIRECT, LIGHT and
 FULL pipelines.
 
-The roles write the document instead of separate plan files:
+**Only FULL runs create the document.** A FULL run creates
+`odd/tasks/{feature}.md`, its Engram copy `odd/{feature}/tasks`, the run
+folder `odd/{feature}/nerv/` and the close commit. DIRECT and LIGHT runs
+create none of them, as gentle-ai's ODD does for small work: they work from
+the request and the diff, keep their run files (`state.yaml`, the
+deliberation log, `task-events.yaml`, the run summary) in the runtime
+folder `.nerv/runs/{run-id}/`, which is never committed, and ask the user
+to approve only their work commit. A DIRECT or LIGHT run that ratchets to
+FULL gets its document then, and its run files move into
+`odd/{feature}/nerv/`.
+
+The roles write a FULL run's document instead of separate plan files:
 
 | Role output | Where it lives on ODD |
 |---|---|
@@ -148,23 +160,32 @@ The roles write the document instead of separate plan files:
 | Hyuga's criticality, the MAGI vote | the `Criticality` and `MAGI` columns of each task row (detail in `nerv/criticality.md` and `nerv/votes.md`) |
 | Ritsuko's test plan and the corner-case answers | a test-plan entry in `## Log`, cases per `S#` |
 | gate decisions, rulings, Maya's verdict, the close | `## Log` entries |
-| each work-unit commit | the `Commit` column of its task row |
+| each work-unit commit | the `Commit` column of its task row, written by Aoba, who makes the commits |
 
-NERV's own governance files sit next to the document in the run folder
-`odd/<feature>/nerv/`: `state.yaml` (with `feature`, the tier and the task
-ref), the deliberation log, `task-events.yaml`, the audit rounds
+In FULL, NERV's own governance files sit next to the document in the run
+folder `odd/{feature}/nerv/`: `state.yaml` (with `feature`, the tier and
+the task ref), the deliberation log, `task-events.yaml`, the audit rounds
 (`audit/diff-round-N.patch`, `round-N.yaml`, `commits-round-N.txt`), the
 votes, rulings, reports and the run summary. They are committed with the
 feature, per `artifacts.commit`. The orchestrator lock is runtime state and
-lives in `.nerv/locks/<feature>.lock`, never committed.
+lives in `.nerv/locks/{run-id}.lock` in every tier, never committed; in
+FULL the run id is the feature name.
 
-There is no archive step and no spec composition: a feature closes in
+MAGI members and auditors judge each round blind: they read only the
+sections their lens needs, never the `MAGI` column, `nerv/votes.md`, an
+earlier round's audit report or pass files, or the gate and ruling
+`## Log` entries.
+
+There is no archive step and no spec composition: a FULL feature closes in
 place, when every task row has its commit, the `## Log` records the close,
-and the close commit (`docs: close nerv run for <feature>`) lands. Resume
-follows ODD's order — `mem_context`, `mem_search` for the feature,
-`mem_get_observation`, then the document itself — before NERV's lock check
-and reconciliation. The TDD mode and the test runner are resolved per
-feature and recorded in the document's header. `nerv migrate` converts an
+and the close commit (`docs: close nerv run for {feature}`) lands. A DIRECT
+or LIGHT run closes in `.nerv/runs/{run-id}/` with no commit beyond its
+work commit. Resume follows ODD's order for FULL — `mem_context`,
+`mem_search` for the feature, `mem_get_observation`, then the document
+itself — before NERV's lock check and reconciliation; a DIRECT or LIGHT run
+resumes from its `state.yaml`, its request and the diff. The TDD mode and
+the test runner are resolved per run and recorded in the FULL document's
+header, or in `state.yaml` for DIRECT and LIGHT. `nerv migrate` converts an
 older repository's `openspec/changes/` still in progress into ODD
 documents.
 
@@ -347,7 +368,7 @@ authority to anyone it launches.
 | Agent | Role | Runs when | Produces | Default model / effort | Tools (summary) |
 |---|---|---|---|---|---|
 | `fuyutsuki` | Governance veto over new skills/scripts/commands; curates the deliberation log; in a read-only refute mode (no writes, no `mem_save`, no new findings), attacks the round's inferential BLOCKER/CRITICAL audit findings with concrete counter-evidence | FULL plan step, after the MAGI vote; end of every run; Phase 3, only when Kaji's refuter batch is non-empty | `nerv/veto-ruling.md`; curated `## Summary` in `nerv/deliberation-log.md`; corroborated/refuted/inconclusive verdicts, folded by Kaji into `nerv/audit-report.md`'s `### Refuted` | sonnet / medium | Read, Write, Glob, Grep, Engram search/save |
-| `misato` | Operations director — authors the ODD document's `## Specs`, design entry and `## Tasks`, revises exactly what the MAGI vote rejects, rules on deviations and test-vs-implementation disputes | FULL plan step; after a rejected MAGI vote or a veto; on demand for a ruling | `## Specs`, the design `## Log` entry and `## Tasks` of `odd/tasks/<feature>.md`; ruling entries | fable / high | Read, Write, Glob, Grep, Engram search/save |
+| `misato` | Operations director — authors the ODD document's `## Specs`, design entry and `## Tasks`, revises exactly what the MAGI vote rejects, rules on deviations and test-vs-implementation disputes | FULL plan step; after a rejected MAGI vote or a veto; on demand for a ruling | `## Specs`, the design `## Log` entry and `## Tasks` of `odd/tasks/{feature}.md`; ruling entries | fable / high | Read, Write, Glob, Grep, Engram search/save |
 | `ritsuko` | Chief scientist — codebase/history intel, test planning with a corner-case interview, end-of-run docs | LIGHT micro-intel when the mapping trigger fires; FULL intel and test-plan steps; end-of-run documentation | `exploration-light.md`/`exploration.md`, the test-plan `## Log` entry (cases per `S#`), doc updates | opus / high | Read, Glob, Grep, WebFetch, WebSearch, Engram search/save |
 | `balthasar` | MAGI vote (VOTE mode): software-principles lens — SOLID, KISS, YAGNI, DRY, patterns; also an AUDIT-mode pass in Phase 3 that applies the same lens to the delivered change, plus a readability lens (misleading names, unexplained constants, complexity, intention, review size and context) | FULL blind MAGI vote round, per task; Phase 3 audit round | VOTE/AUDIT JSON, merged by Ikari into `nerv/votes.md`/`nerv/audit-report.md` | sonnet / medium | Read, Glob, Grep, Engram search |
 | `melchior` | MAGI vote (VOTE mode): structure/security lens — architecture, dead code, duplication, security; the deliberately strongest MAGI model; also an AUDIT-mode pass in Phase 3 that adds security across every layer (injection, authz, secrets, data exposure, unsafe defaults, dependencies, crypto, infra hardening) | same | same | fable / high | Read, Glob, Grep, Engram search |
@@ -361,7 +382,7 @@ authority to anyone it launches.
 | `kaji` | Audit compiler — merges and dedupes the four audit passes, prepares the refuter batch, carries unresolved items across re-audit rounds | Phase 3, once per audit round, after the four passes return | `nerv/audit-report.md` | opus / high | Read, Glob, Grep, Write, Engram search/save |
 | `gendo` | Audit pass — implemented tests versus Ritsuko's test plan (missing cases, weakened or tautological assertions, untested acceptance criteria), reliability beyond the plan (invalid inputs, failure paths, contracts, boundaries, regressions, determinism), implementation correctness and edge cases, and resilience and performance: fallbacks and graceful degradation, retry/backoff safety, timeouts and cancellation, rollback or fix-forward safety, latency/load/resource use and SLO risk, performance regressions (N+1, unbounded loops or allocations, blocking I/O on hot paths, missing pagination, accidental quadratic work), observability of failures; keeps full scope regardless of the RDD switch | Phase 3, one of four parallel blind passes | JSON findings, merged by Kaji into `nerv/audit-report.md` | sonnet / medium | Read, Glob, Grep, Engram search |
 | `hyuga` | Plan and issue operations — four dispatches: `criticality`, `waves`, `wave-report`, `ranking` | criticality before the MAGI vote; waves after plan approval; wave-report during implementation; ranking after the refuter | `nerv/criticality.md`, `nerv/waves.md`, `nerv/issue-ranking.md` | sonnet / medium | Read, Write, Glob, Grep, Bash, Engram search/save |
-| `aoba` | Git operations and run telemetry — organizes user-validated commits, freezes audit patches, writes the run summary and the close commit | in FULL: after every user-validated work unit, patch freeze before each audit round, run summary and close commit at close; in DIRECT/LIGHT only for PR preparation or slicing | conventional commits, `nerv/audit/diff-round-N.patch`, `nerv/run-summary.md`, the close commit | sonnet / low | Bash, Read, Glob, Grep, Write, Engram search/save |
+| `aoba` | Git operations and run telemetry — organizes user-validated commits, freezes audit patches, writes the run summary and the close commit | in FULL: after every user-validated work unit, patch freeze before each audit round, run summary and close commit at close; in DIRECT/LIGHT only for PR preparation or slicing | conventional commits, the `Commit` column of each FULL task row, `nerv/audit/diff-round-N.patch`, `nerv/run-summary.md`, the close commit | sonnet / low | Bash, Read, Glob, Grep, Write, Engram search/save |
 
 **How a run flows.** Every request is classified once, before the first
 agent launch: DIRECT for one mechanical, already-understood file, LIGHT
@@ -410,19 +431,21 @@ open the orchestrator lock carries `waiting_on: user`, so the 15-minute
 staleness rule does not apply to it: a resume from another session must
 ask before taking over, however long the gate stays open.
 
-**Artifacts.** Nerv by Gentle-AI writes each feature's ODD document
-(`odd/tasks/<feature>.md`) and its run folder `odd/<feature>/nerv/`
+**Artifacts.** Nerv by Gentle-AI writes each FULL feature's ODD document
+(`odd/tasks/{feature}.md`) and its run folder `odd/{feature}/nerv/`
 (`state.yaml`, deliberation log, exploration, votes, veto ruling, waves,
 Maya reports, audit rounds, run summary, and `task-events.yaml` when the
-task plugin is installed), plus the lock under `.nerv/locks/`; see "NERV
-on ODD" above. `.ai-workflow.yml` (project scope) and
+task plugin is installed), the run folder `.nerv/runs/{run-id}/` of each
+DIRECT or LIGHT run, plus the lock under `.nerv/locks/`; see "NERV on ODD"
+above. `.ai-workflow.yml` (project scope) and
 `~/.config/ai-workflow/config.yml` (user scope) hold configuration; nothing is
 ever written under `~/.claude/agents` or `~/.claude/skills`.
 
-**Artifacts commit policy.** `artifacts.commit` controls when the ODD
-document and the run folder are committed: `with-change` (each work-unit
+**Artifacts commit policy.** `artifacts.commit` controls when a FULL run's
+ODD document and run folder are committed (DIRECT and LIGHT commit nothing
+but their work commit): `with-change` (each work-unit
 commit includes the document and run-folder files it touched), `at-close`
-(default — they land in the `docs: close nerv run for <feature>` commit
+(default — they land in the `docs: close nerv run for {feature}` commit
 when the run closes), or `never` (they stay untracked; the user commits
 them manually, if ever). When the repository git-ignores them (checked
 with `git check-ignore`; `.nerv/` is runtime only and always ignores
@@ -431,7 +454,7 @@ and the run summary says so. The lock file is never staged.
 
 **`/nerv:status`.** Reports gentle-ai major-version compatibility, the
 active config (merged user + project), and — while a run is in progress —
-the orchestrator lock state (`.nerv/locks/<feature>.lock`: holder, step,
+the orchestrator lock state (`.nerv/locks/{run-id}.lock`: holder, step,
 `waiting_on`, heartbeat age); the lock line disappears once the run closes.
 It also prints whether the task plugin is installed (`task:dispatcher`
 available); timers are shown by `/task:timers`.
@@ -476,7 +499,7 @@ log entry and creates no `task-events.yaml`.
 Every event carries `task_ref`, `repo`, `change`, `branch`, `worktree`,
 `session_id`, `data` and `disabled_events`. The `task_ref` returned by
 `run.started` feeds `git.branch_pattern` (`{prefix}`, `{id}`),
-`git.commit_ref_pattern` and the change's `state.yaml`.
+`git.commit_ref_pattern` and the run's `state.yaml`.
 
 **Envelope.** The dispatcher answers one envelope per provider:
 
@@ -500,11 +523,14 @@ scope turns one event off, and a run can switch events off for itself
 [configuration.md](configuration.md#tasks-task-plugin).
 
 **`task-events.yaml` and `/task:replay`.** Ikari appends every envelope to
-`odd/<feature>/nerv/task-events.yaml` and logs one `task_event`
+the run folder's `task-events.yaml` (`odd/{feature}/nerv/task-events.yaml`
+in FULL, `.nerv/runs/{run-id}/task-events.yaml` in DIRECT and LIGHT) and
+logs one `task_event`
 entry `{event, provider, result, task_ref}` in the deliberation log. An
 envelope that is `blocked` or `failed` with `replay: true` stays pending:
 the run summary lists it under "Task events pending" with the hint
-`/task:replay <feature>`, which dispatches the pending envelopes again, in
+`/task:replay {feature}` (the run id for DIRECT and LIGHT), which finds the
+file in either location and dispatches the pending envelopes again, in
 order, once the cause is fixed.
 
 **Adding a provider.** A new tracker is a new plugin, with no change to core

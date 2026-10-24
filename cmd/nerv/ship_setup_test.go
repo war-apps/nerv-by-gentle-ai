@@ -134,3 +134,100 @@ func TestShipSetup_UsageErrors(t *testing.T) {
 		t.Errorf("no --import: exit %d, stderr %s", code, stderr)
 	}
 }
+
+// B1 (L21): an existing engine key with a different value is never
+// replaced silently.
+func TestShipSetup_ExistingEngineKeysAreNotClobberedSilently(t *testing.T) {
+	const before = "ship:\n  # hand-tuned\n  tag_format: custom-${version}\n  branches:\n    - main\n    - {name: next, prerelease: beta, channel: next}\n  projects:\n    - name: api\n      path: .\n      build: { mode: script }\n"
+	repo := setupRepo(t, map[string]string{
+		".releaserc.json":  `{"branches":["main",{"name":"develop","prerelease":"alpha","channel":"alpha"}],"tagFormat":"v${version}","plugins":[["@semantic-release/commit-analyzer",{"preset":"conventionalcommits"}],["@semantic-release/release-notes-generator",{"preset":"conventionalcommits"}]]}`,
+		".ai-workflow.yml": before,
+	})
+	code, stdout, stderr := runSetup(t, repo, "--import")
+	data, _ := os.ReadFile(filepath.Join(repo, ".ai-workflow.yml"))
+	if code == 0 && string(data) != before && !strings.Contains(stdout+stderr, "tag_format") {
+		t.Fatalf("existing tag_format/branches replaced with exit 0 and no notice\nstdout %s\nstderr %s\nfile:\n%s", stdout, stderr, data)
+	}
+	if code == 0 && !strings.Contains(string(data), "custom-${version}") && !strings.Contains(stdout+stderr, "custom-${version}") {
+		t.Errorf("the replaced value is not reported:\n%s%s", stdout, stderr)
+	}
+}
+
+const conflictingReleaserc = `{"branches":["main",{"name":"develop","prerelease":"alpha","channel":"alpha"}],"tagFormat":"v${version}","plugins":[["@semantic-release/commit-analyzer",{"preset":"conventionalcommits"}],["@semantic-release/release-notes-generator",{"preset":"conventionalcommits"}]]}`
+
+const handTunedShip = "ship:\n  # hand-tuned\n  tag_format: custom-${version}\n  branches:\n    - main\n    - {name: next, prerelease: beta, channel: next}\n  projects:\n    - name: api\n      path: .\n      build: { mode: script }\n"
+
+// B1: without --force the import refuses (exit 1), writes nothing and lists
+// every conflicting key with its current and imported values.
+func TestShipSetup_ConflictingEngineKeysRefuseAndListBothValues(t *testing.T) {
+	repo := setupRepo(t, map[string]string{".releaserc.json": conflictingReleaserc, ".ai-workflow.yml": handTunedShip})
+	code, stdout, stderr := runSetup(t, repo, "--import")
+	if code != 1 {
+		t.Fatalf("exit %d, want 1\nstdout %s\nstderr %s", code, stdout, stderr)
+	}
+	data, _ := os.ReadFile(filepath.Join(repo, ".ai-workflow.yml"))
+	if string(data) != handTunedShip {
+		t.Errorf("a refused import wrote the file:\n%s", data)
+	}
+	for _, want := range []string{"tag_format", "custom-${version}", "v${version}", "branches", "name: next", "name: develop", "--force"} {
+		if !strings.Contains(stderr, want) {
+			t.Errorf("stderr lacks %q:\n%s", want, stderr)
+		}
+	}
+}
+
+// B1: --force replaces them, prints each replaced value, and keeps the
+// comments; an equal value is no conflict.
+func TestShipSetup_ForceReplacesAndPrintsTheReplacedValues(t *testing.T) {
+	repo := setupRepo(t, map[string]string{".releaserc.json": conflictingReleaserc, ".ai-workflow.yml": handTunedShip})
+	code, stdout, stderr := runSetup(t, repo, "--import", "--force")
+	if code != 0 {
+		t.Fatalf("exit %d\nstdout %s\nstderr %s", code, stdout, stderr)
+	}
+	data, _ := os.ReadFile(filepath.Join(repo, ".ai-workflow.yml"))
+	text := string(data)
+	if !strings.Contains(text, "# hand-tuned") || !strings.Contains(text, "tag_format: v${version}") || strings.Contains(text, "name: next") {
+		t.Errorf("forced import result:\n%s", text)
+	}
+	for _, want := range []string{"replaced", "tag_format", "custom-${version}", "name: next"} {
+		if !strings.Contains(stdout+stderr, want) {
+			t.Errorf("output lacks %q:\nstdout %s\nstderr %s", want, stdout, stderr)
+		}
+	}
+	// A second import finds the same values: no conflict, no --force.
+	if code, stdout, stderr := runSetup(t, repo, "--import"); code != 0 {
+		t.Errorf("re-import of equal values: exit %d\nstdout %s\nstderr %s", code, stdout, stderr)
+	}
+}
+
+// L21 advisory: a release: section without a semantic-release config is
+// renamed to ship:, saying there was nothing to import; no false
+// "semantic_release: dropped" line.
+func TestShipSetup_ReleaseSectionWithoutSemanticReleaseConfigIsRenamed(t *testing.T) {
+	repo := setupRepo(t, map[string]string{
+		".ai-workflow.yml": "enabled: true\nrelease:\n  projects:\n    - name: api\n      path: .\n      build: { mode: script }\n",
+	})
+	code, stdout, stderr := runSetup(t, repo, "--import")
+	if code != 0 || !strings.Contains(stdout+stderr, "renamed to ship:") || !strings.Contains(stdout+stderr, "nothing to import") {
+		t.Fatalf("exit %d\nstdout %s\nstderr %s", code, stdout, stderr)
+	}
+	if strings.Contains(stdout+stderr, "semantic_release: dropped") {
+		t.Errorf("false dropped line:\n%s%s", stdout, stderr)
+	}
+	rel, err := shipconfig.Load(repo)
+	if err != nil || rel.Projects[0].Name != "api" {
+		t.Fatalf("Load = %+v, %v", rel, err)
+	}
+}
+
+// L21 advisory: errors name the section that is really in the file.
+func TestShipSetup_ErrorsNameTheReleaseSection(t *testing.T) {
+	repo := setupRepo(t, map[string]string{
+		"package.json":     dimPackageJSON,
+		".ai-workflow.yml": "release: [not, a, mapping]\n",
+	})
+	code, stdout, stderr := runSetup(t, repo, "--import")
+	if code != 1 || !strings.Contains(stderr, "release: must be a mapping") {
+		t.Errorf("exit %d\nstdout %s\nstderr %s", code, stdout, stderr)
+	}
+}

@@ -41,9 +41,12 @@ type Build struct {
 	// result (compose mode). Default: empty, meaning no test stage.
 	TestService string `yaml:"test_service"`
 	// Images are the image references docker save packages into the
-	// artifact (compose mode); they may use ${version}, ${channel} and
-	// ${tag}.
-	Images []string `yaml:"images"`
+	// artifact after the package stage, recorded in its manifest so
+	// deploy can push them; they may use ${version}, ${channel} and
+	// ${tag}. Compose mode builds them with docker compose build; in
+	// script mode the project's own commands (the package stage, usually)
+	// must build them.
+	Images []BuildImage `yaml:"images"`
 	// SharedHost gives the restore, lint, build, test and package stage
 	// commands the build-server-safe dotnet environment under their own env
 	// (script mode). Default: false.
@@ -54,6 +57,53 @@ type Build struct {
 	// Coverage checks coverage floors over Cobertura reports after the
 	// coverage stage.
 	Coverage *Coverage `yaml:"coverage"`
+}
+
+// DockerTagKinds are the tag kinds a build.images mapping may list, as
+// 4.2.0's docker preset tagged its images: version always; channel only
+// off the default channel; latest only on the default channel.
+var DockerTagKinds = []string{"version", "channel", "latest"}
+
+// DefaultDockerTags returns the tag kinds of a build.images mapping
+// without tags: every kind (DockerTagKinds), as in 4.2.0. Each call
+// returns a fresh slice, so a caller cannot change later defaults.
+func DefaultDockerTags() []string { return slices.Clone(DockerTagKinds) }
+
+// BuildImage is one build.images entry: either a plain image reference
+// (Ref, the string form) or a repository with tag kinds (Name and Tags,
+// the mapping form {name, tags}).
+type BuildImage struct {
+	// Ref is the plain-string form: an image reference that may use
+	// ${version}, ${channel} and ${tag}.
+	Ref string `yaml:"-"`
+	// Name is the mapping form's repository, without a tag or digest.
+	Name string `yaml:"name"`
+	// Tags are the mapping form's tag kinds (DockerTagKinds). Default:
+	// DefaultDockerTags.
+	Tags []string `yaml:"tags"`
+}
+
+// UnmarshalYAML decodes a plain reference or a {name, tags} mapping.
+func (i *BuildImage) UnmarshalYAML(n *yaml.Node) error {
+	if n.Kind == yaml.AliasNode && n.Alias != nil {
+		n = n.Alias
+	}
+	switch n.Kind {
+	case yaml.ScalarNode:
+		*i = BuildImage{}
+		return n.Decode(&i.Ref)
+	case yaml.MappingNode:
+		var m struct {
+			Name string   `yaml:"name"`
+			Tags []string `yaml:"tags"`
+		}
+		if err := n.Decode(&m); err != nil {
+			return err
+		}
+		*i = BuildImage{Name: m.Name, Tags: m.Tags}
+		return nil
+	}
+	return fmt.Errorf("line %d: a build.images entry is an image reference or a mapping {name, tags}", n.Line)
 }
 
 // Coverage is build.coverage.
@@ -120,20 +170,6 @@ func (v *validator) checkBuild(at string, p Project) {
 		if b.TestService != "" && !serviceRe.MatchString(b.TestService) {
 			v.addf("%s.test_service: %q is not a compose service name", bat, b.TestService)
 		}
-		for j, img := range b.Images {
-			iat := fmt.Sprintf("%s.images[%d]", bat, j)
-			switch {
-			case strings.TrimSpace(img) == "":
-				v.addf("%s: required", iat)
-			case !imageRe.MatchString(img):
-				v.addf("%s: %q is not an image reference", iat, img)
-			}
-			for _, m := range placeholderRe.FindAllStringSubmatch(img, -1) {
-				if !slices.Contains(BuildArgPlaceholders, m[1]) {
-					v.addf("%s: unknown placeholder ${%s} (want %s)", iat, m[1], list(placeholders(BuildArgPlaceholders)))
-				}
-			}
-		}
 		for _, stage := range sortedKeys(p.Stages) {
 			if slices.Contains(Stages, stage) && !slices.Contains(ComposeStages, stage) {
 				v.addf("%s.stages.%s: compose mode runs %s itself (docker compose build, run and save); remove it, or use build.mode: script", at, stage, stage)
@@ -149,9 +185,9 @@ func (v *validator) checkBuild(at string, p Project) {
 		if b.TestService != "" {
 			v.addf("%s.test_service: only for compose mode", bat)
 		}
-		if len(b.Images) > 0 {
-			v.addf("%s.images: only for compose mode", bat)
-		}
+	}
+	for j, img := range b.Images {
+		v.checkImage(fmt.Sprintf("%s.images[%d]", bat, j), img)
 	}
 	for j, f := range b.VersionFiles {
 		fat := fmt.Sprintf("%s.version_files[%d]", bat, j)
@@ -172,6 +208,44 @@ func (v *validator) checkBuild(at string, p Project) {
 		v.checkPercent(cat+".method", c.Method)
 		if !c.Floors().Enabled() {
 			v.addf("%s: set at least one floor (line, branch or method)", cat)
+		}
+	}
+}
+
+// checkImage validates one build.images entry.
+func (v *validator) checkImage(at string, img BuildImage) {
+	if img.Ref == "" && (img.Name != "" || img.Tags != nil) {
+		v.checkImageMapping(at, img)
+		return
+	}
+	switch {
+	case strings.TrimSpace(img.Ref) == "":
+		v.addf("%s: required", at)
+	case !imageRe.MatchString(img.Ref):
+		v.addf("%s: %q is not an image reference", at, img.Ref)
+	}
+	for _, m := range placeholderRe.FindAllStringSubmatch(img.Ref, -1) {
+		if !slices.Contains(BuildArgPlaceholders, m[1]) {
+			v.addf("%s: unknown placeholder ${%s} (want %s)", at, m[1], list(placeholders(BuildArgPlaceholders)))
+		}
+	}
+}
+
+// repositoryRe is a repository without a tag or digest: an optional
+// registry host (which may carry a :port) and lower-case path components.
+var repositoryRe = regexp.MustCompile(`^([A-Za-z0-9.-]+(:[0-9]+)?/)?[a-z0-9]+([._-]+[a-z0-9]+)*(/[a-z0-9]+([._-]+[a-z0-9]+)*)*$`)
+
+// checkImageMapping validates the {name, tags} form.
+func (v *validator) checkImageMapping(at string, img BuildImage) {
+	switch {
+	case img.Name == "":
+		v.addf("%s.name: required", at)
+	case !repositoryRe.MatchString(img.Name):
+		v.addf("%s.name: %q is not a repository (no tag, digest or placeholder: tags gives the tags)", at, img.Name)
+	}
+	for k, kind := range img.Tags {
+		if !slices.Contains(DockerTagKinds, kind) {
+			v.addf("%s.tags[%d]: unknown tag kind %q (want %s)", at, k, kind, list(DockerTagKinds))
 		}
 	}
 }

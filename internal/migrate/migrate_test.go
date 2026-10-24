@@ -6,6 +6,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"sort"
 	"strings"
@@ -21,6 +22,7 @@ import (
 	"github.com/war-apps/nerv-by-gentle-ai/internal/paths"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/refusal"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/shipconfig"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/shipplan"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/versioning"
 )
 
@@ -350,11 +352,20 @@ func TestShip_ReleaseBecomesScriptModeShip(t *testing.T) {
 	pkg := api.Stages["package"].Run
 	contains(t, "stages.package", pkg,
 		"docker build -f docker/Dockerfile -t ghcr.io/dirm-s-a/dim.comprobantes.api:\"$NERV_RELEASE_VERSION\"",
-		`docker save -o "$NERV_RELEASE_OUTPUTS_DIR/dim.comprobantes.api.tar"`,
-		`docker save -o "$NERV_RELEASE_OUTPUTS_DIR/dim.comprobantes.api-login-broker.tar"`)
+		"docker build -f docker/LoginBroker.Dockerfile -t ghcr.io/dirm-s-a/dim.comprobantes.api-login-broker:\"$NERV_RELEASE_VERSION\"")
+	// L22: the pushed images are build.images, which ship saves and records
+	// for deploy to push: the script saves nothing itself.
+	lacks(t, "stages.package", pkg, "docker save")
+	// The images keep 4.2.0's tag kinds in the mapping form.
+	all := []string{"version", "channel", "latest"}
+	if want := []shipconfig.BuildImage{
+		{Name: "ghcr.io/dirm-s-a/dim.comprobantes.api", Tags: all},
+		{Name: "ghcr.io/dirm-s-a/dim.comprobantes.api-login-broker", Tags: all},
+	}; !reflect.DeepEqual(api.Build.Images, want) {
+		t.Errorf("build.images = %+v, want %+v", api.Build.Images, want)
+	}
 	text := w.read(".ai-workflow.yml")
-	contains(t, ".ai-workflow.yml", text, "# "+migrate.TODOPrefix+" 4.2.0 pushed ghcr.io/dirm-s-a/dim.comprobantes.api, ghcr.io/dirm-s-a/dim.comprobantes.api-login-broker")
-	lacks(t, ".ai-workflow.yml", text, "\nrelease:", "presets:", "semantic_release:")
+	lacks(t, ".ai-workflow.yml", text, "\nrelease:", "presets:", "semantic_release:", "4.2.0 pushed", "records no image references")
 }
 
 // Rule 3: the presets without an equivalent (nuget, npm push) get a TODO
@@ -726,5 +737,68 @@ func TestConflict_BothFilesAreRefused(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "both exist") {
 		t.Errorf("error = %v", err)
+	}
+}
+
+// L22: the dim fixtures migrate to script mode with build.images, and the
+// ship plan of the migrated project saves every image after its package
+// commands and records its reference for deploy-ssh-compose to push.
+func TestShip_MigratedDockerPresetPlansTheImageSaves(t *testing.T) {
+	for fixture, want := range map[string][]string{
+		comprobantes: {"ghcr.io/dirm-s-a/dim.comprobantes.api", "ghcr.io/dirm-s-a/dim.comprobantes.api-login-broker"},
+		factura:      {"ghcr.io/dirm-s-a/dim-factura-electronica-service"},
+	} {
+		t.Run(fixture, func(t *testing.T) {
+			w := newWorld(t, fixture)
+			p, _ := w.migrate(w.options(false, githubOrigin))
+			if anyContains(p.Warnings, "will not push them") || anyContains(p.Warnings, "records no image references") || anyContains(p.Warnings, "built locally only") {
+				t.Errorf("the old push warning is left: %q", p.Warnings)
+			}
+			rel, err := shipconfig.Load(w.root)
+			if err != nil {
+				t.Fatal(err)
+			}
+			proj := rel.Projects[0]
+			artifacts := t.TempDir()
+			plan, err := shipplan.Build(w.root, proj, shipplan.Context{Version: "1.4.0-alpha.2", Channel: "alpha", Tag: "v1.4.0-alpha.2", ArtifactsDir: artifacts})
+			if err != nil {
+				t.Fatal(err)
+			}
+			// On alpha each image is saved as its version and alpha, as
+			// 4.2.0 pushed it, and every reference is recorded.
+			var saves []string
+			for _, img := range plan.Images {
+				saves = append(saves, strings.Join(img.Refs, " "))
+			}
+			var wantSaves []string
+			for _, name := range want {
+				wantSaves = append(wantSaves, name+":1.4.0-alpha.2 "+name+":alpha")
+			}
+			if !slices.Equal(saves, wantSaves) {
+				t.Errorf("plan image references = %q, want %q", saves, wantSaves)
+			}
+			var pkg []shipplan.Step
+			for _, st := range plan.Stages {
+				if st.Name == "package" {
+					pkg = st.Steps
+				}
+			}
+			if len(pkg) == 0 || pkg[0].Command.Run == "" || !strings.Contains(pkg[0].Command.Run, "docker build") {
+				t.Fatalf("the package stage does not start with the docker builds: %+v", pkg)
+			}
+			var steps []string
+			for _, s := range pkg[1:] {
+				steps = append(steps, strings.Join(s.Exec, " "))
+			}
+			var wantSteps []string
+			for i, name := range want {
+				wantSteps = append(wantSteps,
+					"docker tag "+name+":1.4.0-alpha.2 "+name+":alpha",
+					"docker save -o "+filepath.Join(plan.OutputsDir, plan.Images[i].Tar)+" "+wantSaves[i])
+			}
+			if !slices.Equal(steps, wantSteps) {
+				t.Errorf("package steps = %q, want %q", steps, wantSteps)
+			}
+		})
 	}
 }
