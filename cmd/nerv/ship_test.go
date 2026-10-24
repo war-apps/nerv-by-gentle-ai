@@ -142,6 +142,33 @@ func (w *fakeWorkspace) Compute(_ context.Context, projects []string) ([]version
 	return w.results, w.computeErr
 }
 
+// Explicit stands in for the engine's explicit release: the last release
+// is the highest tag of the project's format that the clone's scripted
+// "git tag --list" answers (the engine's reachability and channel rules
+// are tested in internal/versioning and the integration tests), and the
+// notes name the version.
+func (w *fakeWorkspace) Explicit(ctx context.Context, project, version string) (versioning.Result, error) {
+	w.f.log("explicit")
+	p, _ := w.Config().Project(project)
+	out, _, _, err := w.f.runner.Run(ctx, "git", "-C", w.dir, "tag", "--list")
+	if err != nil {
+		return versioning.Result{}, err
+	}
+	r := versioning.Result{Project: project, NewReleasePublished: true, NewReleaseVersion: version, NewReleaseGitTag: shipplan.TagFor(p.TagFormat, version),
+		NewReleaseNotes:  "## " + version + "\n\n* " + project + " change\n",
+		ChangelogSection: "## " + version + " (2026-10-24)\n\n* " + project + " change\n"}
+	for _, tag := range strings.Fields(out) {
+		tv, ok := shipplan.VersionFromTag(p.TagFormat, tag)
+		if !ok {
+			continue
+		}
+		if c, _ := shipplan.CompareVersions(tv, r.LastReleaseVersion); r.LastReleaseVersion == "" || c > 0 {
+			r.LastReleaseVersion, r.LastReleaseGitTag = tv, tag
+		}
+	}
+	return r, nil
+}
+
 func (w *fakeWorkspace) Branch(context.Context) (versioning.ReleaseBranch, error) {
 	w.f.log("branch")
 	return w.branch, w.branchErr

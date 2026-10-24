@@ -154,7 +154,8 @@ func TestLoad_BuildErrors(t *testing.T) {
 		{"compose shared host", "      build: { mode: compose, file: c.yml, shared_host: true }\n", "ship.projects[0].build.shared_host: only for script mode"},
 		{"script with compose keys", "      build: { mode: script, file: c.yml, test_service: t, images: [x] }\n", "ship.projects[0].build.file: only for compose mode"},
 		{"script test service", "      build: { mode: script, test_service: t }\n", "ship.projects[0].build.test_service: only for compose mode"},
-		{"script images", "      build: { mode: script, images: [x] }\n", "ship.projects[0].build.images: only for compose mode"},
+		{"script image placeholder", "      build: { mode: script, images: [\"x:${build}\"] }\n", "ship.projects[0].build.images[0]: unknown placeholder ${build} (want ${version}, ${channel} or ${tag})"},
+		{"script image with a space", "      build: { mode: script, images: [\"x y\"] }\n", `ship.projects[0].build.images[0]: "x y" is not an image reference`},
 		{"version file kind", "      build: { mode: script, version_files: [package.json] }\n", `ship.projects[0].build.version_files[0]: "package.json" is not an MSBuild project file (.csproj, .fsproj, .vbproj, .props or .targets)`},
 		{"escaping version file", "      build: { mode: script, version_files: [../x.csproj] }\n", `ship.projects[0].build.version_files[0]: "../x.csproj" escapes the repository root`},
 		{"coverage without floors", "      build: { mode: script, coverage: { dir: cov } }\n", "ship.projects[0].build.coverage: set at least one floor (line, branch or method)"},
@@ -170,5 +171,16 @@ func TestLoad_BuildErrors(t *testing.T) {
 				t.Fatalf("Load error = %v, want it to contain %q", err, tt.want)
 			}
 		})
+	}
+}
+
+// L22: build.images is accepted in script mode too.
+func TestLoad_ScriptModeAcceptsImages(t *testing.T) {
+	rel, err := shipconfig.Load(writeConfig(t, project("      build: { mode: script, images: [\"ghcr.io/acme/api:${version}\", \"ghcr.io/acme/api:${channel}\"] }\n")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := rel.Projects[0].Build.Images; len(got) != 2 || got[0] != "ghcr.io/acme/api:${version}" {
+		t.Errorf("images = %q", got)
 	}
 }

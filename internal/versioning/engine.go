@@ -35,6 +35,11 @@ func Compute(ctx context.Context, req Request) ([]Result, error) {
 	if err := cfg.Validate(); err != nil {
 		return nil, err
 	}
+	if req.Version != "" {
+		if _, ok := parseVersion(req.Version); !ok {
+			return nil, fmt.Errorf("version %q is not a semantic version", req.Version)
+		}
+	}
 
 	g := gitReader{runner: runner, dir: req.RepoDir}
 	top, err := g.trimmed(ctx, "rev-parse", "--show-toplevel")
@@ -122,7 +127,11 @@ func Compute(ctx context.Context, req Request) ([]Result, error) {
 	results := map[string]Result{}
 	var out []Result
 	for _, p := range projects {
-		r, err := computeProject(ctx, g, cfg, p, current, head, tags, notes, results, repoURL, date)
+		explicit := ""
+		if wanted[p.Name] {
+			explicit = req.Version
+		}
+		r, err := computeProject(ctx, g, cfg, p, current, head, tags, notes, results, repoURL, date, explicit)
 		if err != nil {
 			return nil, fmt.Errorf("project %s: %w", p.Name, err)
 		}
@@ -335,7 +344,7 @@ func projectFilter(p Project) func(logCommit) bool {
 }
 
 func computeProject(ctx context.Context, g gitReader, cfg Config, p Project, b resolvedBranch, head string,
-	tags []string, notes map[string][]string, done map[string]Result, repoURL, date string) (Result, error) {
+	tags []string, notes map[string][]string, done map[string]Result, repoURL, date, explicit string) (Result, error) {
 	r := Result{Project: p.Name, Branch: b.name, Changelog: p.Changelog}
 	ptags := projectTags(p.TagFormat, tags, notes)
 	last, hasLast := lastRelease(b, ptags)
@@ -369,7 +378,7 @@ func computeProject(ctx context.Context, g gitReader, cfg Config, p Project, b r
 		commits = append(commits, c)
 	}
 	releaseType := raiseReleaseType(analyzeCommits(cfg.ReleaseRules, commits), minReleaseType(p.DependsOn, done))
-	if releaseType == "" {
+	if releaseType == "" && explicit == "" {
 		if len(commits) == 0 {
 			r.Reason = fmt.Sprintf("no commit of the project since %s", since)
 		} else {
@@ -377,8 +386,22 @@ func computeProject(ctx context.Context, g gitReader, cfg Config, p Project, b r
 		}
 		return r, nil
 	}
-	v := nextVersion(b, releaseType, last, hasLast, ptags)
+	var v string
+	if explicit != "" {
+		v = explicit
+	} else {
+		v = nextVersion(b, releaseType, last, hasLast, ptags)
+	}
 	tag := strings.Replace(p.TagFormat, versionPlaceholder, v, 1)
+	if explicit != "" {
+		existing, err := g.run(ctx, "tag", "--list", tag)
+		if err != nil {
+			return r, err
+		}
+		if strings.TrimSpace(existing) != "" {
+			return r, fmt.Errorf("version %s: the tag %s already exists", v, tag)
+		}
+	}
 	parsed, _ := parseVersion(v)
 	r.NewReleasePublished = true
 	r.NewReleaseVersion = v

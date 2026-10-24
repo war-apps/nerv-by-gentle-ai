@@ -181,7 +181,7 @@ func translateProject(p *Plan, node *yaml.Node, index int, repoRoot string) erro
 		case "node":
 			nodePreset(p, plan, old, repoRoot, at)
 		case "docker":
-			dockerPreset(p, plan, old, at)
+			dockerPreset(p, plan, build, old, at)
 		case "nuget":
 			nugetPreset(p, plan, old, at)
 		case "npm":
@@ -505,30 +505,47 @@ latest_tag=""
 if [ -z "$NERV_RELEASE_CHANNEL" ] || [ "$NERV_RELEASE_CHANNEL" = default ]; then latest_tag=latest; else channel_tag="$NERV_RELEASE_CHANNEL"; fi`
 
 // dockerPreset is 4.2.0's docker preset, package side: one docker build per
-// image with its tags, build arguments and labels, then a docker save of
-// its tags into the artifact. The push (publish) is nerv deploy's.
-func dockerPreset(p *Plan, plan *stagePlan, old oldProject, at string) {
+// image with its tags, build arguments and labels. Each image 4.2.0 pushed
+// becomes a build.images entry with its version tag: nerv ship saves it
+// into the artifact after the package commands and records its reference,
+// and deploy-ssh-compose's publish pushes it. An image 4.2.0 did not push
+// (push: false) is saved by the package commands themselves, so the
+// artifact holds it without a reference to push.
+func dockerPreset(p *Plan, plan *stagePlan, build *yaml.Node, old oldProject, at string) {
 	if old.Docker == nil || len(old.Docker.Images) == 0 {
 		p.warn("%s: the docker preset had no docker.images (4.2.0 refused it): no docker commands written", at)
 		return
 	}
 	lines := []string{dockerTagsPreamble}
-	var pushed []string
+	images := &yaml.Node{Kind: yaml.SequenceNode, Tag: "!!seq"}
+	var unpushedTags []string
 	tars := map[string]bool{}
 	for _, img := range old.Docker.Images {
+		pushed := img.Push == nil || *img.Push
 		kinds := img.Tags
 		if len(kinds) == 0 {
 			kinds = oldDockerTags
 		}
+		kinds = slices.Compact(slices.Clone(kinds))
+		if pushed && !slices.Contains(kinds, "version") {
+			// build.images names the version tag, so it must be built.
+			kinds = append([]string{"version"}, kinds...)
+		}
 		var tags []string // shell words, without -t
-		for _, kind := range slices.Compact(slices.Clone(kinds)) {
+		for _, kind := range kinds {
 			switch kind {
 			case "version":
 				tags = append(tags, img.Name+":"+versionVar)
 			case "channel":
 				tags = append(tags, "${channel_tag:+"+img.Name+":$channel_tag}")
+				if pushed {
+					unpushedTags = append(unpushedTags, img.Name+":<channel>")
+				}
 			case "latest":
 				tags = append(tags, "${latest_tag:+"+img.Name+":latest}")
+				if pushed {
+					unpushedTags = append(unpushedTags, img.Name+":latest")
+				}
 			default:
 				p.warn("%s: docker image %s: unknown tag kind %q dropped", at, img.Name, kind)
 			}
@@ -540,35 +557,39 @@ func dockerPreset(p *Plan, plan *stagePlan, old oldProject, at string) {
 		if context == "" {
 			context = oldDockerContext
 		}
-		build := []string{"docker build -f " + shq(dockerfile)}
+		cmd := []string{"docker build -f " + shq(dockerfile)}
 		for _, t := range tags {
 			if strings.HasPrefix(t, "${") {
 				// ${x:+name:$x} expands to one word or none.
-				build = append(build, strings.Replace(t, ":+", ":+-t ", 1))
+				cmd = append(cmd, strings.Replace(t, ":+", ":+-t ", 1))
 				continue
 			}
-			build = append(build, "-t "+t)
+			cmd = append(cmd, "-t "+t)
 		}
 		for _, k := range slices.Sorted(maps.Keys(img.BuildArgs)) {
-			build = append(build, "--build-arg "+expandWord(k+"="+img.BuildArgs[k]))
+			cmd = append(cmd, "--build-arg "+expandWord(k+"="+img.BuildArgs[k]))
 		}
-		build = append(build, "--label org.opencontainers.image.version="+versionVar,
+		cmd = append(cmd, "--label org.opencontainers.image.version="+versionVar,
 			"${NERV_RELEASE_GIT_HEAD:+--label org.opencontainers.image.revision=$NERV_RELEASE_GIT_HEAD}", shq(context))
-		lines = append(lines, strings.Join(build, " "))
+		lines = append(lines, strings.Join(cmd, " "))
+		if pushed {
+			images.Content = append(images.Content, scalar(img.Name+":${version}"))
+			continue
+		}
 		tar := path.Base(img.Name)
 		for i := 2; tars[tar]; i++ {
 			tar = path.Base(img.Name) + "-" + strconv.Itoa(i)
 		}
 		tars[tar] = true
 		lines = append(lines, `docker save -o "$NERV_RELEASE_OUTPUTS_DIR/`+tar+`.tar" `+strings.Join(tags, " "))
-		if img.Push == nil || *img.Push {
-			pushed = append(pushed, img.Name)
-		}
 	}
 	plan.add("package", step{run: strings.Join(lines, "\n") + "\n"})
-	if len(pushed) > 0 {
-		plan.todo("package", "4.2.0 pushed %s after the release. Pushing is nerv deploy's now, and a script-mode artifact records no image references, so deploy-ssh-compose loads the tars but pushes nothing: use build.mode: compose with build.images to push, or push from a deploy target", strings.Join(pushed, ", "))
-		p.warn("%s: docker images %s: 4.2.0 pushed them; a script-mode artifact records no image references, so nerv deploy will not push them (see the TODO in stages.package)", at, strings.Join(pushed, ", "))
+	if len(images.Content) > 0 {
+		addKV(build, "images", images)
+		p.note("%s: the docker images 4.2.0 pushed became build.images: nerv ship saves them into the artifact and deploy-ssh-compose pushes them", at)
+	}
+	if len(unpushedTags) > 0 {
+		p.warn("%s: 4.2.0 also pushed %s; build.images names only the version tag, so nerv deploy pushes that one: the other tags are built locally only", at, strings.Join(unpushedTags, ", "))
 	}
 }
 

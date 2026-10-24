@@ -12,7 +12,7 @@ exactly what CI would.
 |---|---|---|---|
 | `nerv version next` | `/ship:version` | The next semantic version of the repository, or of each project of a monorepo, with the outputs of `cycjimmy/semantic-release-action`. | No. |
 | `nerv ship` | `/ship:build` | Builds, tests and packages what is on origin, in a throwaway clone, in each project's build mode (`compose` or `script`), per project in dependency order, and leaves a local artifact (`.nerv/artifacts/<project>/<version>/`) for [`nerv deploy`](deploy.md). | Only `.nerv/artifacts/` in your repository; never git (no commit, tag or push) and never a registry. |
-| `nerv ship setup --import [--dry-run]` | `/ship:setup` | Imports an existing semantic-release config into the `ship:` section, once. | Only `.ai-workflow.yml` (nothing with `--dry-run`). |
+| `nerv ship setup --import [--force] [--dry-run]` | `/ship:setup` | Imports an existing semantic-release config into the `ship:` section, once. | Only `.ai-workflow.yml` (nothing with `--dry-run`). |
 
 Both commands read the `ship:` section of the project-scope
 `<repo>/.ai-workflow.yml`. Without it a repository is one project with the
@@ -277,6 +277,17 @@ translate is reported, with what to do:
   maintenance branches;
 - a `prerelease: true` branch whose name is not a valid identifier.
 
+The import writes only the engine keys the config sets
+(`branches`, `release_rules`, `note_keywords`, `tag_format`,
+`repository_url`, `changelog`) and keeps every other key of the section
+with its comments. A key the section already sets to another value is never
+replaced silently: the import refuses (exit 1), writes nothing and lists
+each such key with its current and imported values; run it again with
+`--force` to replace them, and it prints each replaced value. An old
+`release:` section is renamed to `ship:` (dropping `semantic_release:`),
+even when there is no semantic-release config: it then says there was
+nothing to import.
+
 A JavaScript config (`.releaserc.js`, `.cjs`, `.mjs`, `release.config.*`)
 is never imported: it is reported, and you migrate it by hand. After the
 import, the semantic-release config is no longer read; delete it once
@@ -330,7 +341,7 @@ on it:
 | `mode` | both | required | `compose` or `script` ([Build modes](#build-modes)). |
 | `file` | compose | required | The compose file, repository-relative: `docker compose -f <file>`. |
 | `test_service` | compose | none (no test stage) | The compose service `docker compose -f <file> run --rm <test_service>` runs; its exit code is the test result. |
-| `images` | compose | `[]` | Image references `docker save` packages into the artifact, one archive each; they may use `${version}`, `${channel}` (empty on the default channel) and `${tag}`. They must be the images the compose file builds. |
+| `images` | both | `[]` | Image references `docker save` packages into the artifact after the `package` stage, one archive each, recorded in the manifest's `images` so the `deploy-ssh-compose` publish pushes them; they may use `${version}`, `${channel}` (empty on the default channel) and `${tag}`. In compose mode they must be the images the compose file builds; in script mode the project's own commands (usually `stages.package`) must build them. |
 | `shared_host` | script | `false` | `true` gives the `restore`, `lint`, `build`, `test` and `package` commands the build-server-safe dotnet environment (`MSBUILDDISABLENODEREUSE=1`, `UseSharedCompilation=false`, `DOTNET_CLI_USE_MSBUILD_SERVER=0`) under their own `env`, for shared hosts where reused build servers crash dotnet. A command's own `env` wins key by key; its `run:` is never rewritten. |
 | `version_files` | both | `[]` | MSBuild project files (`.csproj`, `.fsproj`, `.vbproj`, `.props`, `.targets`) that receive `<Version>` and `<PackageReleaseNotes>` in the clone before the pipeline ([Version files](#version-files)). |
 | `coverage` | both | none | Coverage floors checked after the `coverage` stage over every Cobertura report (`*.cobertura.xml`) under `coverage.dir` ([Coverage](#coverage)). |
@@ -591,7 +602,7 @@ yes, so the versions you approved are the only ones that can be packaged.
 | `--cwd <dir>` | `.` | Any directory inside the repository. |
 | `--branch <name>` | current branch | Branch to build; your local branch must equal origin's. |
 | `--project <name>` | all projects | Only this project of the `ship:` section. |
-| `--version <semver>` | computed | Use this version instead of computing it. With several projects `--project` is required. It must be a semantic version newer than every tag of the project on origin (its `tag_format`); the tag follows `tag_format`, the channel is the one the `branches` entry of the branch gives (`beta` for `2.0.0-rc.1` on `release/*` with the defaults; empty for a stable version), and the CHANGELOG section is a `## <version> (<date>)` heading. A malformed version is a usage error (exit 2). |
+| `--version <semver>` | computed | Use this version instead of computing it. With several projects `--project` is required. It must be a semantic version that fits the branch (the branch's prerelease identifier on a prerelease branch, a stable version on a release branch) and is newer than the project's last release on the branch, picked as the version engine picks it: only the tags reachable from the branch, of its channel (a stable tag on `main` that `develop` never merged does not count). Its tag must not exist yet. The tag follows `tag_format`, the channel is the one the `branches` entry of the branch gives (`beta` for `2.0.0-rc.1` on `release/*` with the defaults; empty for a stable version), and the engine writes the release notes and the CHANGELOG section for the version from the commits since that last release. A malformed version is a usage error (exit 2). |
 | `--dry-run` | off | Run the pipeline and the prepare hooks in the clone; write no artifact. |
 | `--force` | off | Replace an existing artifact of the same version (otherwise refused). |
 | `--yes` | off | Package without asking (required without a terminal). |
@@ -682,7 +693,7 @@ prints exactly one JSON document, early refusals and failures included:
 | Code | When |
 |---|---|
 | `0` | Packaged, nothing to release, or a dry run that passed. |
-| `1` | Refused: no or an invalid `ship:` section, an old `release:` section, a project without `build.mode`, unknown `--project`, `--version` not newer than the last tag or without `--project` in a monorepo, not a git repository or not on a branch, no origin remote, local branch not equal to origin's, an existing artifact without `--force`, no confirmation (or not a terminal without `--yes`), a plan that cannot be built. |
+| `1` | Refused: no or an invalid `ship:` section, an old `release:` section, a project without `build.mode`, unknown `--project`, `--version` not newer than the branch's last release, with an existing tag, or without `--project` in a monorepo, not a git repository or not on a branch, no origin remote, local branch not equal to origin's, an existing artifact without `--force`, no confirmation (or not a terminal without `--yes`), a plan that cannot be built. |
 | `2` | Usage error, an environment error (origin unreachable, git or docker missing), or a failed step. |
 | `128 + signal` | Interrupted (`130` Ctrl-C, `143` SIGTERM, `129` SIGHUP); a second Ctrl-C ends `nerv` at once. |
 
@@ -699,7 +710,7 @@ channel, tag):
 | `build` | `stages.build` | `docker compose -f <file> build` |
 | `test` | `stages.test` | `docker compose -f <file> run --rm <test_service>` (none without `test_service`) |
 | `coverage` | `stages.coverage`, then the floor check | `stages.coverage`, then the floor check |
-| `package` | `stages.package` | one `docker save -o $NERV_RELEASE_OUTPUTS_DIR/<image>.tar <image>` per `build.images` entry |
+| `package` | `stages.package`, then one `docker save -o $NERV_RELEASE_OUTPUTS_DIR/<image>.tar <image>` per `build.images` entry | one `docker save -o $NERV_RELEASE_OUTPUTS_DIR/<image>.tar <image>` per `build.images` entry |
 
 1. A stage with no command is skipped together with its `before_<stage>`
    and `after_<stage>` hooks; otherwise its `before_<stage>` hooks run
@@ -987,7 +998,7 @@ Nothing has been built or written in any of these cases.
 | an old `release:` section | The section was renamed and no longer reads semantic-release. | `/ship:setup`, or `nerv migrate` ([Migrating](#migrating-from-release-and-semantic-release)). |
 | `ship.projects[N].presets: the presets were removed ...` (or `.dotnet`, `.docker`, ...) | The section still uses a removed preset. | Write what the message says ([Migrating from the presets](#migrating-from-the-presets)). |
 | `the artifact <dir> already exists: pass --force to replace it` | That version was already packaged. | `--force` to rebuild it, or deploy the existing one. |
-| `--version X: project <p> already has Y (tag ...)` | An explicit version must be newer than the project's last tag. | Pass a newer version. |
+| `--version X: project <p> already has Y (tag ...)` | An explicit version must be newer than the project's last release on the branch. | Pass a newer version. |
 | `the ship: section names paths that are not on origin's <b>: "<path>" (project <p>, <field>)` | The section is your local one; the path exists only locally (or not at all). | Push the code that adds it, or fix the section. |
 | `branch <b> is not on origin` / `has no origin remote` | Nothing on origin to build. | Push the branch (or add the remote). |
 | `the computed release is not the expected one (<project>: expected X, computed Y; ...)` | `--expect` no longer matches: origin moved since the dry run. | Run the dry run again, review the new plan, then package with its versions. |

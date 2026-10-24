@@ -52,9 +52,10 @@ Flags:
   --project <name>         Only this project of the ship: section
   --version <semver>       Use this version instead of computing it (with
                             several projects, --project is required); it
-                            must be newer than the project's last tag, and
-                            its channel is the branch's (the ship: section's
-                            branches)
+                            must fit the branch and be newer than the
+                            project's last release on it (as the engine
+                            picks it), its channel is the branch's, and its
+                            notes cover the commits since that release
   --dry-run                Run the pipeline and the prepare hooks in the
                             clone, but write no artifact
   --force                  Replace an existing artifact of the same version
@@ -92,6 +93,10 @@ type shipWorkspace interface {
 	PublicURL() string
 	// Compute computes the projects' next releases in the clone, offline.
 	Compute(ctx context.Context, projects []string) ([]versioning.Result, error)
+	// Explicit is the project's release at the explicit version, from
+	// the engine in the clone: its last release on the branch and the
+	// version's notes and CHANGELOG section.
+	Explicit(ctx context.Context, project, version string) (versioning.Result, error)
 	// Branch resolves the branch against the ship: section's branches.
 	Branch(ctx context.Context) (versioning.ReleaseBranch, error)
 	BranchOnOrigin(ctx context.Context) (string, error)
@@ -626,9 +631,12 @@ func (v *computedVersions) Next(ctx context.Context, project string) (shipplan.V
 // explicitVersion is --version: the version is not computed. The tag
 // follows the project's tag_format, the channel is the branch's (from the
 // ship: section's branches, as the engine gives it), and the version must
-// be newer than every tag of the project in the release clone (origin's
-// tags) and fit the branch: a prerelease with the branch's prerelease
-// identifier on a prerelease branch, a stable version on a release branch.
+// fit the branch (a prerelease with the branch's prerelease identifier on a
+// prerelease branch, a stable version on a release branch) and be newer
+// than the project's last release on the branch, as the engine picks it
+// (the tags reachable from the branch, of its channel: a stable tag on
+// another branch does not count). The engine writes its notes and
+// CHANGELOG section from the commits since that release.
 type explicitVersion struct {
 	s      *shipRun
 	branch *versioning.ReleaseBranch
@@ -636,8 +644,7 @@ type explicitVersion struct {
 
 func (v *explicitVersion) Next(ctx context.Context, project string) (shipplan.Version, error) {
 	s := v.s
-	p, ok := s.ws.Config().Project(project)
-	if !ok {
+	if _, ok := s.ws.Config().Project(project); !ok {
 		return shipplan.Version{}, fmt.Errorf("project %q is not in the ship: section", project)
 	}
 	if v.branch == nil {
@@ -656,29 +663,22 @@ func (v *explicitVersion) Next(ctx context.Context, project string) (shipplan.Ve
 		return shipplan.Version{}, refuse("--version %s: %s is a prerelease branch whose prerelease identifier is %s; pass a version such as %s-%s.1",
 			s.version, b.Name, b.Prerelease, strings.SplitN(s.version, "-", 2)[0], b.Prerelease)
 	}
-	out, _, code, err := s.opts.Runner.Run(ctx, "git", "-C", s.ws.Dir(), "tag", "--list")
-	if err != nil || code != 0 {
-		return shipplan.Version{}, fmt.Errorf("listing the tags of the release clone: git tag exited %d: %v", code, err)
+	r, err := s.ws.Explicit(ctx, project, s.version)
+	if err != nil {
+		return shipplan.Version{}, refuse("--version %s: %v", s.version, err)
 	}
-	last, lastTag := "", ""
-	for _, tag := range strings.Fields(out) {
-		tv, ok := shipplan.VersionFromTag(p.TagFormat, tag)
-		if !ok {
-			continue
-		}
-		if c, _ := shipplan.CompareVersions(tv, last); last == "" || c > 0 {
-			last, lastTag = tv, tag
-		}
-	}
-	if last != "" {
+	if last := r.LastReleaseVersion; last != "" {
 		if c, _ := shipplan.CompareVersions(s.version, last); c <= 0 {
-			return shipplan.Version{}, refuse("--version %s: project %s already has %s (tag %s); the version must be newer than the last one", s.version, project, last, lastTag)
+			return shipplan.Version{}, refuse("--version %s: project %s already has %s (tag %s); the version must be newer than the last one", s.version, project, last, r.LastReleaseGitTag)
 		}
+	}
+	if !r.NewReleasePublished {
+		return shipplan.Version{}, refuse("--version %s: %s", s.version, r.Reason)
 	}
 	return shipplan.Version{
-		Version: s.version, Channel: v.branch.Channel, Tag: shipplan.TagFor(p.TagFormat, s.version),
-		ChangelogSection: fmt.Sprintf("## %s (%s)\n", s.version, time.Now().UTC().Format("2006-01-02")),
-		LastTag:          lastTag, LastVersion: last, BaseCommit: s.ws.OriginHead(),
+		Version: s.version, Channel: v.branch.Channel, Tag: r.NewReleaseGitTag,
+		Notes: r.NewReleaseNotes, ChangelogSection: r.ChangelogSection,
+		LastTag: r.LastReleaseGitTag, LastVersion: r.LastReleaseVersion, BaseCommit: s.ws.OriginHead(),
 	}, nil
 }
 

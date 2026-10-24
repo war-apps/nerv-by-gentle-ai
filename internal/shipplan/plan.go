@@ -75,12 +75,12 @@ type Plan struct {
 	// OutputsDir is the package stage's output directory (OutputsEnv):
 	// what it holds after the run becomes the artifact's outputs/.
 	OutputsDir string
-	// Images are the images compose mode saves, each to its tar under
-	// OutputsDir.
+	// Images are the images of build.images, saved after the package
+	// stage's commands, each to its tar under OutputsDir.
 	Images []Image
 }
 
-// Image is one image compose mode saves.
+// Image is one image of build.images, saved into the artifact.
 type Image struct {
 	// Ref is the image reference, placeholders expanded.
 	Ref string
@@ -122,7 +122,8 @@ var sharedHostStages = []string{"restore", "lint", "build", "test", "package"}
 // The project is expected as shipconfig.Load returns it (defaults applied,
 // paths normalised); its build.mode is required.
 //
-// Rules: in script mode each stage runs the project's command; in compose
+// Rules: in script mode each stage runs the project's command, and the
+// package stage ends with one docker save per image of build.images; in compose
 // mode build is docker compose -f <file> build, test is docker compose -f
 // <file> run --rm <test_service> (no test_service: no test stage), package
 // is one docker save per image of build.images, and only the restore, lint
@@ -149,11 +150,7 @@ func Build(repoRoot string, project shipconfig.Project, c Context) (*Plan, error
 	plan := &Plan{Project: project.Name, Mode: bc.Mode, Context: c, Hooks: map[string][]Step{}, OutputsDir: filepath.Join(dir, "outputs")}
 	b.resetDirs = []string{plan.OutputsDir}
 	if bc.Mode == shipconfig.ModeCompose {
-		images, err := b.compose(plan.OutputsDir)
-		if err != nil {
-			return nil, fmt.Errorf("project %q: %w", project.Name, err)
-		}
-		plan.Images = images
+		b.compose()
 	}
 	for _, stage := range shipconfig.Stages {
 		if cmd, ok := project.Stages[stage]; ok {
@@ -165,6 +162,13 @@ func Build(repoRoot string, project shipconfig.Project, c Context) (*Plan, error
 			b.add(stage, Step{Name: stage, Command: cmd})
 		}
 	}
+	// The images are saved once the package stage's commands (script mode)
+	// or compose build have built them.
+	images, err := b.saveImages(plan.OutputsDir)
+	if err != nil {
+		return nil, fmt.Errorf("project %q: %w", project.Name, err)
+	}
+	plan.Images = images
 	b.coverage()
 
 	for _, stage := range shipconfig.Stages {
@@ -253,13 +257,21 @@ var imageRefRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._/:@-]*$`)
 // placeholderRe matches a ${name} placeholder of an image reference.
 var placeholderRe = regexp.MustCompile(`\$\{([a-z_]+)\}`)
 
-// compose plans compose mode's build, test and package commands and
-// returns the images package saves.
-func (b *builder) compose(outputs string) ([]Image, error) {
+// compose plans compose mode's build and test commands.
+func (b *builder) compose() {
 	file := b.build.File
 	b.add("build", Step{Name: "compose:build", Exec: []string{"docker", "compose", "-f", file, "build"}})
 	if svc := b.build.TestService; svc != "" {
 		b.add("test", Step{Name: "compose:test", Exec: []string{"docker", "compose", "-f", file, "run", "--rm", svc}})
+	}
+}
+
+// saveImages plans one docker save per image of build.images at the end of
+// the package stage, and returns the images saved.
+func (b *builder) saveImages(outputs string) ([]Image, error) {
+	name := "docker:save "
+	if b.build.Mode == shipconfig.ModeCompose {
+		name = "compose:save "
 	}
 	var images []Image
 	for _, raw := range b.build.Images {
@@ -272,7 +284,7 @@ func (b *builder) compose(outputs string) ([]Image, error) {
 		}
 		img := Image{Ref: ref, Tar: tarName(ref)}
 		images = append(images, img)
-		b.add("package", Step{Name: "compose:save " + ref, Exec: []string{"docker", "save", "-o", filepath.Join(outputs, img.Tar), ref}})
+		b.add("package", Step{Name: name + ref, Exec: []string{"docker", "save", "-o", filepath.Join(outputs, img.Tar), ref}})
 	}
 	return images, nil
 }

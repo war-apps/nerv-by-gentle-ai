@@ -69,16 +69,22 @@ func locate(data []byte, key string) (*yaml.Node, bool) {
 	return node, true
 }
 
-// pipelineParts are the pipeline: section's steps, in its run order, with
-// where each one went.
+// pipelineParts are the pipeline: section's 4.2.0 keys, in its run order,
+// with where each one went. The validate, test and docker entries cover
+// hand-written sections that named the steps instead of the keys.
 var pipelineParts = []struct {
 	keys []string
 	text string
 }{
+	{[]string{"dotnet"}, "pipeline.dotnet: the script stages (restore, lint, build, test) of the project's build: { mode: script } in the ship: section"},
 	{[]string{"validate", "test"}, "validate and test: nerv ship (stages of each project in the ship: section)"},
-	{[]string{"docker", "release"}, "docker and release: nerv ship, then nerv deploy (the image is built and saved into the artifact by ship and pushed by deploy)"},
-	{[]string{"deploy"}, "deploy: the deploy-ssh-compose target of the deploy: section"},
-	{[]string{"sync"}, "sync: not ported yet (no back-merge after a release)"},
+	{[]string{"branches"}, "pipeline.branches: ship.branches (the version engine's branches)"},
+	{[]string{"registry", "images"}, "pipeline.registry and pipeline.images: the project's build.images (built and saved into the artifact by nerv ship), " +
+		"pushed by the deploy-ssh-compose target's publish (the registry login is its config)"},
+	{[]string{"docker"}, "docker and release: nerv ship, then nerv deploy (the image is built and saved into the artifact by ship and pushed by deploy)"},
+	{[]string{"release"}, "pipeline.release.version_files: the project's build.version_files; the release itself is nerv ship, then nerv deploy (tag, release commit and host release)"},
+	{[]string{"deploy"}, "pipeline.deploy: the deploy-ssh-compose targets of the deploy: section (one per environment)"},
+	{[]string{"sync"}, "pipeline.sync: not ported yet (no back-merge after a release)"},
 }
 
 // pipelineMessage names where every part of the pipeline: section went: the
@@ -108,7 +114,7 @@ func pipelineMessage(node *yaml.Node) string {
 				"DOCKER_IMAGE_VERSION points at the release; list one target per environment and choose them with nerv deploy --target."
 		}
 	}
-	return msg + " Remove the section; " + MigrateHint + "."
+	return msg + " To translate it, run nerv migrate (" + MigrateHint + "); then remove the section."
 }
 
 // removedSectionKeys are the keys removed from the section itself.

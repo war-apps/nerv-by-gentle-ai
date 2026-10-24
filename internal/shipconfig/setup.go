@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"reflect"
 	"strings"
 
 	"github.com/war-apps/nerv-by-gentle-ai/internal/config"
@@ -16,26 +17,55 @@ import (
 // ImportSection writes them, before the projects.
 var engineKeys = []string{"branches", "release_rules", "note_keywords", "tag_format", "repository_url", "changelog"}
 
+// EngineConflict is one engine key ImportSection would change: the
+// section already sets it to Current, and the import gives Imported (both
+// rendered as one-line YAML).
+type EngineConflict struct {
+	Key, Current, Imported string
+}
+
+// EngineConflictError is ImportSection's refusal to replace engine keys the
+// section already sets to other values, without force.
+type EngineConflictError struct {
+	Section   string
+	Conflicts []EngineConflict
+}
+
+func (e *EngineConflictError) Error() string {
+	parts := make([]string, len(e.Conflicts))
+	for i, c := range e.Conflicts {
+		parts[i] = fmt.Sprintf("%s.%s is %s, the import gives %s", e.Section, c.Key, c.Current, c.Imported)
+	}
+	return fmt.Sprintf("the %s: section already sets %d engine key(s) to other values: %s", e.Section, len(parts), strings.Join(parts, "; "))
+}
+
 // ImportSection returns the .ai-workflow.yml text data with the version
 // engine settings of cfg (an imported semantic-release configuration)
-// written into its ship: section: each engine key is set to cfg's value,
-// and every other key of the section (the projects, their builds) is kept.
-// A file with the old release: section and no ship: section gets it renamed
-// to ship: (without semantic_release:), and notes says so. The rest of the
-// file is kept verbatim (internal/config's line editor). The result must
-// load: an invalid one is an error, and nothing should be written.
-func ImportSection(data []byte, cfg versioning.Config) (string, []string, error) {
+// written into its ship: section: each engine key cfg sets is written, and
+// every other key of the section (the projects, their builds, the engine
+// keys cfg leaves unset) is kept, with its comments. An engine key the
+// section already sets to another value is never replaced silently:
+// without force the result is an *EngineConflictError listing each one;
+// with force it is replaced in place and notes names the replaced value.
+// A file with the old release: section and no ship: section gets it
+// renamed to ship: (semantic_release: dropped when it was there), and notes
+// says so. The rest of the file is kept verbatim (internal/config's line
+// editor). The result must load: an invalid one is an error, and nothing
+// should be written.
+func ImportSection(data []byte, cfg versioning.Config, force bool) (string, []string, error) {
 	var notes []string
 	doc := config.Parse(string(data))
+	name := SectionKey
 	section, err := yamlsection.Locate(data, SectionKey)
 	switch {
 	case err == nil:
 	case errors.Is(err, yamlsection.ErrAbsent):
-		if old, oerr := yamlsection.Locate(data, "release"); oerr == nil {
-			section = old
-			takeRemovedSectionKeys(section)
-			doc.SetBlock("release", "")
-			notes = append(notes, "the release: section was renamed to ship: (semantic_release: dropped: the version engine is native)")
+		old, oerr := yamlsection.Locate(data, "release")
+		switch {
+		case oerr == nil:
+			name, section = "release", old
+		case !errors.Is(oerr, yamlsection.ErrAbsent):
+			return "", nil, fmt.Errorf("release: %w", oerr)
 		}
 	default:
 		return "", nil, err
@@ -44,25 +74,51 @@ func ImportSection(data []byte, cfg versioning.Config) (string, []string, error)
 		section = &yaml.Node{Kind: yaml.MappingNode, Tag: "!!map"}
 	}
 	if section.Kind != yaml.MappingNode {
-		return "", nil, &ValidationError{Problems: []string{"ship: must be a mapping"}}
+		return "", nil, &ValidationError{Problems: []string{name + ": must be a mapping"}}
+	}
+	if name == "release" {
+		note := "the release: section was renamed to ship:"
+		if len(takeRemovedSectionKeys(section)) > 0 {
+			note += " (semantic_release: dropped: the version engine is native)"
+		}
+		notes = append(notes, note)
 	}
 	values, err := engineValues(cfg)
 	if err != nil {
 		return "", nil, err
 	}
-	var kept []*yaml.Node
+	var conflicts []EngineConflict
+	existing := map[string]bool{}
 	for i := 0; i+1 < len(section.Content); i += 2 {
-		if _, engine := values[section.Content[i].Value]; !engine {
-			kept = append(kept, section.Content[i], section.Content[i+1])
+		key := section.Content[i].Value
+		v, engine := values[key]
+		if !engine {
+			continue
+		}
+		existing[key] = true
+		cur := section.Content[i+1]
+		if sameValue(cur, v) {
+			continue
+		}
+		conflicts = append(conflicts, EngineConflict{Key: key, Current: oneLine(cur), Imported: oneLine(v)})
+		if force {
+			v.HeadComment, v.LineComment, v.FootComment = cur.HeadComment, cur.LineComment, cur.FootComment
+			section.Content[i+1] = v
 		}
 	}
-	var content []*yaml.Node
+	if len(conflicts) > 0 && !force {
+		return "", nil, &EngineConflictError{Section: name, Conflicts: conflicts}
+	}
+	for _, c := range conflicts {
+		notes = append(notes, fmt.Sprintf("replaced %s.%s: %s (now %s)", name, c.Key, c.Current, c.Imported))
+	}
+	var added []*yaml.Node
 	for _, key := range engineKeys {
-		if v, ok := values[key]; ok {
-			content = append(content, &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: key}, v)
+		if v, ok := values[key]; ok && !existing[key] {
+			added = append(added, &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: key}, v)
 		}
 	}
-	section.Content = append(content, kept...)
+	section.Content = append(added, section.Content...)
 
 	var b bytes.Buffer
 	enc := yaml.NewEncoder(&b)
@@ -74,12 +130,52 @@ func ImportSection(data []byte, cfg versioning.Config) (string, []string, error)
 	if err := enc.Close(); err != nil {
 		return "", nil, err
 	}
+	if name == "release" {
+		doc.SetBlock("release", "")
+	}
 	doc.SetBlock(SectionKey, strings.TrimRight(b.String(), "\n"))
 	out := doc.String()
 	if _, err := parse([]byte(out)); err != nil && !errors.Is(err, ErrNotConfigured) {
 		return "", nil, err
 	}
 	return out, notes, nil
+}
+
+// sameValue reports whether two YAML nodes hold the same data, whatever
+// their style.
+func sameValue(a, b *yaml.Node) bool {
+	var av, bv any
+	if a.Decode(&av) != nil || b.Decode(&bv) != nil {
+		return false
+	}
+	return reflect.DeepEqual(av, bv)
+}
+
+// oneLine renders a node as one line of flow-style YAML, keys in their
+// written order, without comments, for messages.
+func oneLine(n *yaml.Node) string {
+	if n.Kind == yaml.ScalarNode {
+		return n.Value
+	}
+	out, err := yaml.Marshal(flowCopy(n))
+	if err != nil {
+		return "(unreadable)"
+	}
+	return strings.TrimSpace(string(out))
+}
+
+// flowCopy is a deep copy of n in flow style, without comments.
+func flowCopy(n *yaml.Node) *yaml.Node {
+	c := *n
+	c.HeadComment, c.LineComment, c.FootComment = "", "", ""
+	if c.Kind == yaml.MappingNode || c.Kind == yaml.SequenceNode {
+		c.Style = yaml.FlowStyle
+	}
+	c.Content = make([]*yaml.Node, len(n.Content))
+	for i, child := range n.Content {
+		c.Content[i] = flowCopy(child)
+	}
+	return &c
 }
 
 // engineValues are cfg's engine settings as YAML nodes, keyed by their

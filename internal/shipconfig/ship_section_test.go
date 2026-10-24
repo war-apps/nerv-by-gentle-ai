@@ -187,3 +187,20 @@ func TestLoad_SectionWithoutProjects(t *testing.T) {
 		}
 	}
 }
+
+// B2 (L21): the pipeline: refusal names every real 4.2.0 key, with where it
+// went, and points to nerv migrate.
+func TestRemovedSections_PipelineNamesEveryRealKey(t *testing.T) {
+	data := []byte("pipeline:\n  dotnet: { solution: App.slnx }\n  branches:\n    - { name: main }\n  registry: { host: ghcr.io }\n  images:\n    - { name: ghcr.io/acme/app }\n  release: { version_files: [App.csproj] }\n  deploy: { source: env, environments: [staging] }\n  sync: { enabled: true }\n")
+	msg := strings.Join(shipconfig.RemovedSections(data), "\n")
+	for _, key := range []string{"dotnet", "branches", "registry", "images", "release", "deploy", "sync"} {
+		if !strings.Contains(msg, "pipeline."+key) {
+			t.Errorf("message does not say where pipeline.%s went:\n%s", key, msg)
+		}
+	}
+	for _, want := range []string{"script stages", "ship.branches", "build.images", "deploy-ssh-compose", "build.version_files", "not ported", "run nerv migrate"} {
+		if !strings.Contains(msg, want) {
+			t.Errorf("message lacks %q:\n%s", want, msg)
+		}
+	}
+}

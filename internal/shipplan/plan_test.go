@@ -546,3 +546,30 @@ func TestPlan_OutputsListsWhatThePackageStageLeft(t *testing.T) {
 		t.Errorf("missing image tar: %v", err)
 	}
 }
+
+// L22: in script mode the package stage's commands build build.images, and
+// ship then saves each one into the artifact and records its reference,
+// as compose mode does.
+func TestBuild_ScriptModeSavesItsImagesAfterThePackageStage(t *testing.T) {
+	p := scriptProject()
+	p.Stages = map[string]shipconfig.Command{"package": bash("docker build -t ghcr.io/acme/api:$NERV_RELEASE_VERSION .")}
+	p.Hooks = map[string][]shipconfig.Command{"after_package": {bash("echo packaged")}}
+	p.Build.Images = []string{"ghcr.io/acme/api:${version}", "ghcr.io/acme/api:${channel}", "ghcr.io/acme/api:${version}"}
+	plan, err := Build(t.TempDir(), p, ctxFor("1.4.0-alpha.2", "alpha"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	out := filepath.Join(artifacts, "api", "outputs")
+	assertLines(t, lines(plan), []string{
+		"package|package|bash: docker build -t ghcr.io/acme/api:$NERV_RELEASE_VERSION .",
+		"package|docker:save ghcr.io/acme/api:1.4.0-alpha.2|docker save -o " + filepath.Join(out, "ghcr.io_acme_api_1.4.0-alpha.2.tar") + " ghcr.io/acme/api:1.4.0-alpha.2",
+		"package|docker:save ghcr.io/acme/api:alpha|docker save -o " + filepath.Join(out, "ghcr.io_acme_api_alpha.tar") + " ghcr.io/acme/api:alpha",
+		"after_package|after_package|bash: echo packaged",
+	})
+	if want := []Image{
+		{Ref: "ghcr.io/acme/api:1.4.0-alpha.2", Tar: "ghcr.io_acme_api_1.4.0-alpha.2.tar"},
+		{Ref: "ghcr.io/acme/api:alpha", Tar: "ghcr.io_acme_api_alpha.tar"},
+	}; !slices.Equal(plan.Images, want) {
+		t.Errorf("images %+v, want %+v", plan.Images, want)
+	}
+}

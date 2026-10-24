@@ -21,6 +21,7 @@ import (
 	"github.com/war-apps/nerv-by-gentle-ai/internal/paths"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/refusal"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/shipconfig"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/shipplan"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/versioning"
 )
 
@@ -350,11 +351,15 @@ func TestShip_ReleaseBecomesScriptModeShip(t *testing.T) {
 	pkg := api.Stages["package"].Run
 	contains(t, "stages.package", pkg,
 		"docker build -f docker/Dockerfile -t ghcr.io/dirm-s-a/dim.comprobantes.api:\"$NERV_RELEASE_VERSION\"",
-		`docker save -o "$NERV_RELEASE_OUTPUTS_DIR/dim.comprobantes.api.tar"`,
-		`docker save -o "$NERV_RELEASE_OUTPUTS_DIR/dim.comprobantes.api-login-broker.tar"`)
+		"docker build -f docker/LoginBroker.Dockerfile -t ghcr.io/dirm-s-a/dim.comprobantes.api-login-broker:\"$NERV_RELEASE_VERSION\"")
+	// L22: the pushed images are build.images, which ship saves and records
+	// for deploy to push: the script saves nothing itself.
+	lacks(t, "stages.package", pkg, "docker save")
+	if want := []string{"ghcr.io/dirm-s-a/dim.comprobantes.api:${version}", "ghcr.io/dirm-s-a/dim.comprobantes.api-login-broker:${version}"}; !slices.Equal(api.Build.Images, want) {
+		t.Errorf("build.images = %q, want %q", api.Build.Images, want)
+	}
 	text := w.read(".ai-workflow.yml")
-	contains(t, ".ai-workflow.yml", text, "# "+migrate.TODOPrefix+" 4.2.0 pushed ghcr.io/dirm-s-a/dim.comprobantes.api, ghcr.io/dirm-s-a/dim.comprobantes.api-login-broker")
-	lacks(t, ".ai-workflow.yml", text, "\nrelease:", "presets:", "semantic_release:")
+	lacks(t, ".ai-workflow.yml", text, "\nrelease:", "presets:", "semantic_release:", "4.2.0 pushed", "records no image references")
 }
 
 // Rule 3: the presets without an equivalent (nuget, npm push) get a TODO
@@ -726,5 +731,57 @@ func TestConflict_BothFilesAreRefused(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "both exist") {
 		t.Errorf("error = %v", err)
+	}
+}
+
+// L22: the dim fixtures migrate to script mode with build.images, and the
+// ship plan of the migrated project saves every image after its package
+// commands and records its reference for deploy-ssh-compose to push.
+func TestShip_MigratedDockerPresetPlansTheImageSaves(t *testing.T) {
+	for fixture, want := range map[string][]string{
+		comprobantes: {"ghcr.io/dirm-s-a/dim.comprobantes.api:1.4.0-alpha.2", "ghcr.io/dirm-s-a/dim.comprobantes.api-login-broker:1.4.0-alpha.2"},
+		factura:      {"ghcr.io/dirm-s-a/dim-factura-electronica-service:1.4.0-alpha.2"},
+	} {
+		t.Run(fixture, func(t *testing.T) {
+			w := newWorld(t, fixture)
+			p, _ := w.migrate(w.options(false, githubOrigin))
+			if anyContains(p.Warnings, "will not push them") || anyContains(p.Warnings, "records no image references") {
+				t.Errorf("the old push warning is left: %q", p.Warnings)
+			}
+			rel, err := shipconfig.Load(w.root)
+			if err != nil {
+				t.Fatal(err)
+			}
+			proj := rel.Projects[0]
+			artifacts := t.TempDir()
+			plan, err := shipplan.Build(w.root, proj, shipplan.Context{Version: "1.4.0-alpha.2", Channel: "alpha", Tag: "v1.4.0-alpha.2", ArtifactsDir: artifacts})
+			if err != nil {
+				t.Fatal(err)
+			}
+			var refs, saves []string
+			for _, img := range plan.Images {
+				refs = append(refs, img.Ref)
+			}
+			if !slices.Equal(refs, want) {
+				t.Errorf("plan images = %q, want %q", refs, want)
+			}
+			var pkg []shipplan.Step
+			for _, st := range plan.Stages {
+				if st.Name == "package" {
+					pkg = st.Steps
+				}
+			}
+			if len(pkg) == 0 || pkg[0].Command.Run == "" || !strings.Contains(pkg[0].Command.Run, "docker build") {
+				t.Fatalf("the package stage does not start with the docker builds: %+v", pkg)
+			}
+			for _, s := range pkg[1:] {
+				saves = append(saves, strings.Join(s.Exec, " "))
+			}
+			for i, ref := range want {
+				if i >= len(saves) || saves[i] != "docker save -o "+filepath.Join(plan.OutputsDir, plan.Images[i].Tar)+" "+ref {
+					t.Errorf("save steps = %q, want one docker save of %s", saves, ref)
+				}
+			}
+		})
 	}
 }

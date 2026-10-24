@@ -34,6 +34,15 @@ type Request struct {
 	// origin's tags and semantic-release notes are fetched first, as
 	// semantic-release does.
 	Offline bool
+	// Version is an explicit version (nerv ship --version): when set, each
+	// requested project releases it instead of the computed one, even
+	// without a commit that triggers a release, with its tag and its notes
+	// and CHANGELOG section written from the commits since the project's
+	// last release on the branch (picked as for a computed release: the
+	// tags reachable from the branch, of its channel). Its tag must not
+	// exist yet. Checking that it fits the branch and is newer than the
+	// last release is the caller's.
+	Version string
 	// Runner runs git; nil means env.ExecRunner.
 	Runner env.Runner
 	// Now is the clock of the release date in the notes; nil means

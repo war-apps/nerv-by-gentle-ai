@@ -53,14 +53,20 @@ Its presets turn into the stage commands they ran in 4.2.0:
 - **npm**: `npm pack` into the artifact.
 
 A stage command the project wrote itself still replaces the presets', as it
-did in 4.2.0. `semantic_release:` is dropped. The `publish` stage and the
+did in 4.2.0. The docker preset's builds go into `stages.package`, and every
+image 4.2.0 pushed becomes a `build.images` entry with its version tag
+(`<name>:${version}`): `nerv ship` saves it into the artifact after the
+package commands and records its reference, and the `deploy-ssh-compose`
+publish pushes it. Its channel and `latest` tags are still built, but only
+the version tag is pushed, and the run warns about it. An image with
+`push: false` is saved by the package commands themselves, with no
+reference to push. `semantic_release:` is dropped. The `publish` stage and the
 `publish`, `success`, `before_publish` and `after_publish` hooks are dropped
 and reported: publishing belongs to `nerv deploy` now.
 
 Where 4.2.0's behaviour has no exact equivalent, the stage gets a
 `# TODO(nerv migrate):` comment and the run prints a warning:
 
-- **Docker pushes.** A script-mode artifact records no image references, so `deploy-ssh-compose` loads the tars but pushes nothing. To push, use `build.mode: compose` with `build.images`, or push from a deploy target.
 - **NuGet and npm publishing.** No deploy provider publishes them yet.
 - **`--disable-build-servers`.** 4.2.0 dropped the flag for a .NET SDK older than 7.0.100. Script mode keeps it.
 
@@ -86,7 +92,7 @@ Reported, with no equivalent:
 - `pipeline.sync`: there is no back-merge after a release;
 - `pipeline.deploy.selection: branches`: a target deploys its environment when the environment's `DOCKER_IMAGE_VERSION` points at the release; choose targets with `nerv deploy --target`;
 - `pipeline.registry`'s credential variables: run `docker login` before `nerv deploy`;
-- `pipeline.images`: nerv ship builds the images now;
+- `pipeline.images`: the project's `build.images`, saved into the artifact by nerv ship and pushed by the `deploy-ssh-compose` publish;
 - `pipeline.dotnet`: the ship stages already cover validate and test.
 
 ### ODD

@@ -41,8 +41,11 @@ type Build struct {
 	// result (compose mode). Default: empty, meaning no test stage.
 	TestService string `yaml:"test_service"`
 	// Images are the image references docker save packages into the
-	// artifact (compose mode); they may use ${version}, ${channel} and
-	// ${tag}.
+	// artifact after the package stage, recorded in its manifest so
+	// deploy can push them; they may use ${version}, ${channel} and
+	// ${tag}. Compose mode builds them with docker compose build; in
+	// script mode the project's own commands (the package stage, usually)
+	// must build them.
 	Images []string `yaml:"images"`
 	// SharedHost gives the restore, lint, build, test and package stage
 	// commands the build-server-safe dotnet environment under their own env
@@ -120,20 +123,6 @@ func (v *validator) checkBuild(at string, p Project) {
 		if b.TestService != "" && !serviceRe.MatchString(b.TestService) {
 			v.addf("%s.test_service: %q is not a compose service name", bat, b.TestService)
 		}
-		for j, img := range b.Images {
-			iat := fmt.Sprintf("%s.images[%d]", bat, j)
-			switch {
-			case strings.TrimSpace(img) == "":
-				v.addf("%s: required", iat)
-			case !imageRe.MatchString(img):
-				v.addf("%s: %q is not an image reference", iat, img)
-			}
-			for _, m := range placeholderRe.FindAllStringSubmatch(img, -1) {
-				if !slices.Contains(BuildArgPlaceholders, m[1]) {
-					v.addf("%s: unknown placeholder ${%s} (want %s)", iat, m[1], list(placeholders(BuildArgPlaceholders)))
-				}
-			}
-		}
 		for _, stage := range sortedKeys(p.Stages) {
 			if slices.Contains(Stages, stage) && !slices.Contains(ComposeStages, stage) {
 				v.addf("%s.stages.%s: compose mode runs %s itself (docker compose build, run and save); remove it, or use build.mode: script", at, stage, stage)
@@ -149,8 +138,19 @@ func (v *validator) checkBuild(at string, p Project) {
 		if b.TestService != "" {
 			v.addf("%s.test_service: only for compose mode", bat)
 		}
-		if len(b.Images) > 0 {
-			v.addf("%s.images: only for compose mode", bat)
+	}
+	for j, img := range b.Images {
+		iat := fmt.Sprintf("%s.images[%d]", bat, j)
+		switch {
+		case strings.TrimSpace(img) == "":
+			v.addf("%s: required", iat)
+		case !imageRe.MatchString(img):
+			v.addf("%s: %q is not an image reference", iat, img)
+		}
+		for _, m := range placeholderRe.FindAllStringSubmatch(img, -1) {
+			if !slices.Contains(BuildArgPlaceholders, m[1]) {
+				v.addf("%s: unknown placeholder ${%s} (want %s)", iat, m[1], list(placeholders(BuildArgPlaceholders)))
+			}
 		}
 	}
 	for j, f := range b.VersionFiles {
