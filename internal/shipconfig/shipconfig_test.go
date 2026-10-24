@@ -117,8 +117,7 @@ func TestLoad_MergeKeys(t *testing.T) {
     - &base
       name: api
       path: api
-      presets: [dotnet]
-      dotnet: { project_file: api/Api.csproj }
+      build: { mode: script, version_files: [api/Api.csproj] }
       hooks:
         prepare:
           - &bump { run: scripts/bump.sh, shell: pwsh }
@@ -134,13 +133,13 @@ func TestLoad_MergeKeys(t *testing.T) {
       path: cli
 `)
 	worker, cli := rel.Projects[1], rel.Projects[2]
-	if worker.Dotnet == nil || worker.Dotnet.ProjectFile != "api/Api.csproj" || worker.Path != "worker" {
+	if worker.Build == nil || len(worker.Build.VersionFiles) != 1 || worker.Build.VersionFiles[0] != "api/Api.csproj" || worker.Path != "worker" {
 		t.Errorf("worker = %+v", worker)
 	}
 	if got := worker.Stages["test"]; got.Run != "scripts/test.sh" || got.Shell != "pwsh" {
 		t.Errorf("worker.stages.test = %+v", got)
 	}
-	if cli.Dotnet == nil || cli.TagFormat != "cli-v${version}" {
+	if cli.Build == nil || cli.TagFormat != "cli-v${version}" {
 		t.Errorf("cli = %+v", cli)
 	}
 
@@ -148,7 +147,7 @@ func TestLoad_MergeKeys(t *testing.T) {
   projects:
     - name: api
       path: api
-      x-shared: &shared { presets: [], dockr: {} }
+      x-shared: &shared { submodules: true, dockr: {} }
     - <<: *shared
       name: worker
       path: worker
@@ -314,14 +313,15 @@ func TestLoad_AliasExpansionBudget(t *testing.T) {
 
 // An unknown key does not hide the other problems of the section.
 func TestLoad_UnknownFieldsReportedWithOtherProblems(t *testing.T) {
-	_, err := shipconfig.Load(writeConfig(t, "release:\n  projects:\n    - name: api\n      pth: src\n      presets: [maven]\n"))
+	_, err := shipconfig.Load(writeConfig(t, "release:\n  projects:\n    - name: api\n      pth: src\n      presets: [maven]\n      build: { mode: make }\n"))
 	if err == nil {
 		t.Fatal("want error")
 	}
 	for _, want := range []string{
 		"release.projects[0].pth: unknown field",
 		"release.projects[0].path: required",
-		`release.projects[0].presets[0]: unknown preset "maven"`,
+		"release.projects[0].presets: the presets were removed",
+		`release.projects[0].build.mode: unknown mode "make"`,
 	} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("error %q lacks %q", err, want)
@@ -408,25 +408,13 @@ func TestLoad_MonorepoDefaults(t *testing.T) {
 	}
 }
 
-// The dotnet + docker shape documented in docs/release-commands.md.
-func TestLoad_PresetDefaults(t *testing.T) {
+// Stage commands and hooks get the default shell, and keep their env.
+func TestLoad_CommandDefaults(t *testing.T) {
 	rel := mustLoad(t, `release:
   projects:
     - name: api
       path: .
-      presets: [dotnet, docker, nuget, node, npm]
-      dotnet:
-        project_file: src/Api/Api.csproj
-        coverage_threshold: 80
-      docker:
-        images:
-          - name: ghcr.io/org/api
-            build_args: { APP_VERSION: "${version}" }
-          - name: ghcr.io/org/api-worker
-            dockerfile: worker/Dockerfile
-            context: worker
-            tags: [version]
-            push: false
+      build: { mode: script }
       stages:
         test: { run: "dotnet test --no-build" }
       hooks:
@@ -437,29 +425,6 @@ func TestLoad_PresetDefaults(t *testing.T) {
             shell: pwsh
 `)
 	p := rel.Projects[0]
-	if p.Dotnet.Configuration != shipconfig.DefaultDotnetConfiguration || p.Dotnet.ProjectFile != "src/Api/Api.csproj" || p.Dotnet.CoverageThreshold != (shipconfig.CoverageThreshold{Line: 80}) {
-		t.Errorf("dotnet = %+v", *p.Dotnet)
-	}
-	if p.Node.PackageManager != shipconfig.DefaultPackageManager {
-		t.Errorf("node.package_manager = %q, want %s", p.Node.PackageManager, shipconfig.DefaultPackageManager)
-	}
-	if p.NuGet.Source != shipconfig.DefaultNuGetSource || p.NuGet.APIKeyEnv != shipconfig.DefaultNuGetAPIKeyEnv {
-		t.Errorf("nuget = %+v", *p.NuGet)
-	}
-	if p.Npm.Access != shipconfig.DefaultNpmAccess {
-		t.Errorf("npm.access = %q, want %s", p.Npm.Access, shipconfig.DefaultNpmAccess)
-	}
-	img := p.Docker.Images[0]
-	if img.Dockerfile != shipconfig.DefaultDockerfile || img.Context != shipconfig.DefaultDockerContext || !img.ShouldPush() ||
-		!reflect.DeepEqual(img.Tags, []string{"version", "channel", "latest"}) ||
-		img.BuildArgs["APP_VERSION"] != "${version}" {
-		t.Errorf("image[0] = %+v", img)
-	}
-	worker := p.Docker.Images[1]
-	if worker.Dockerfile != "worker/Dockerfile" || worker.Context != "worker" || worker.ShouldPush() ||
-		!reflect.DeepEqual(worker.Tags, []string{"version"}) {
-		t.Errorf("image[1] = %+v", worker)
-	}
 	if got := p.Stages["test"]; got.Run != "dotnet test --no-build" || got.Shell != shipconfig.DefaultShell {
 		t.Errorf("stages.test = %+v", got)
 	}
@@ -512,7 +477,7 @@ func TestLoad_DocumentedExample(t *testing.T) {
 	}
 	rel := mustLoad(t, example)
 	p := rel.Projects[0]
-	if p.Name != "api" || p.TagFormat != "v${version}" || p.Dotnet == nil || p.Docker == nil {
+	if p.Name != "api" || p.TagFormat != "v${version}" || p.Build == nil || p.Build.Mode == "" {
 		t.Errorf("documented example loaded as %+v", p)
 	}
 }
@@ -525,13 +490,6 @@ func TestDefaults_MatchDocs(t *testing.T) {
 		shipconfig.DefaultTagFormat:              "v${version}",
 		shipconfig.DefaultChangelog:              "CHANGELOG.md",
 		shipconfig.DefaultBump:                   "patch",
-		shipconfig.DefaultDotnetConfiguration:    "Release",
-		shipconfig.DefaultPackageManager:         "npm",
-		shipconfig.DefaultDockerfile:             "Dockerfile",
-		shipconfig.DefaultDockerContext:          ".",
-		shipconfig.DefaultNuGetSource:            "https://api.nuget.org/v3/index.json",
-		shipconfig.DefaultNuGetAPIKeyEnv:         "NUGET_API_KEY",
-		shipconfig.DefaultNpmAccess:              "public",
 		shipconfig.DefaultShell:                  "bash",
 	}
 	doc, err := os.ReadFile(filepath.Join("..", "..", "docs", "release-commands.md"))
@@ -546,27 +504,16 @@ func TestDefaults_MatchDocs(t *testing.T) {
 			t.Errorf("docs/release-commands.md does not mention the default `%s`", documented)
 		}
 	}
-	if got := shipconfig.DefaultDockerTags(); !reflect.DeepEqual(got, []string{"version", "channel", "latest"}) {
-		t.Errorf("DefaultDockerTags() = %v", got)
-	}
-	for _, tag := range shipconfig.DefaultDockerTags() {
-		if !strings.Contains(string(doc), tag) {
-			t.Errorf("docs/release-commands.md does not mention the default tag %s", tag)
-		}
-	}
 }
 
-// The default docker tags cannot be changed from outside the package: a
-// caller mutating the returned slice does not affect later loads.
+// The default docker tags (nerv pipeline's) cannot be changed from outside
+// the package: a caller mutating the returned slice does not affect later
+// calls.
 func TestDefaultDockerTags_ReturnsACopy(t *testing.T) {
 	tags := shipconfig.DefaultDockerTags()
 	tags[0] = "mutated"
 	if again := shipconfig.DefaultDockerTags(); again[0] != "version" {
 		t.Fatalf("DefaultDockerTags() = %v after mutating a previous result", again)
-	}
-	rel := mustLoad(t, "release:\n  projects:\n    - name: app\n      path: .\n      presets: [docker]\n      docker:\n        images:\n          - name: ghcr.io/org/app\n")
-	if got := rel.Projects[0].Docker.Images[0].Tags; !reflect.DeepEqual(got, []string{"version", "channel", "latest"}) {
-		t.Fatalf("image tags = %v, want the documented defaults", got)
 	}
 }
 
@@ -583,8 +530,8 @@ func TestLoad_ValidationErrors(t *testing.T) {
 		{"no projects", "release:\n  semantic_release: { version: 24.2.3 }\n", "release.projects: at least one project is required"},
 		{"unknown top-level release key", "release:\n  projets: []\n", `release.projets: unknown field`},
 		{"unknown project key", one + "      dockr: {}\n", `release.projects[0].dockr: unknown field`},
-		{"unknown nested key", one + "      docker:\n        images:\n          - name: x\n            tag: [version]\n", `release.projects[0].docker.images[0].tag: unknown field`},
-		{"wrong type", one + "      presets: docker\n", "release: line 5"},
+		{"unknown nested key", one + "      build:\n        mod: script\n", `release.projects[0].build.mod: unknown field`},
+		{"wrong type", one + "      scopes: api\n", "release: line 5"},
 		{"missing name", "release:\n  projects:\n    - path: .\n", `release.projects[0].name: required`},
 		{"bad name chars", "release:\n  projects:\n    - name: My_Api\n      path: .\n", `release.projects[0].name: "My_Api" must match [a-z0-9][a-z0-9-]*`},
 		{"duplicate name", one + "    - name: lib\n      path: other\n", `release.projects[1].name: duplicate project "lib"`},
@@ -605,32 +552,16 @@ func TestLoad_ValidationErrors(t *testing.T) {
 		{"duplicate dependency", one + "    - name: api\n      path: api\n      depends_on:\n        - project: lib\n        - project: lib\n", `release.projects[1].depends_on[1].project: duplicate dependency on "lib"`},
 		{"unknown bump", one + "    - name: api\n      path: api\n      depends_on:\n        - project: lib\n          bump: major\n", `release.projects[1].depends_on[0].bump: unknown bump "major" (want patch, minor or none)`},
 		{"dependency cycle", "release:\n  projects:\n    - name: a\n      path: a\n      depends_on: [{ project: b }]\n    - name: b\n      path: b\n      depends_on: [{ project: c }]\n    - name: c\n      path: c\n      depends_on: [{ project: a }]\n", `release.projects: dependency cycle a -> b -> c -> a`},
-		{"unknown preset", one + "      presets: [maven]\n", `release.projects[0].presets[0]: unknown preset "maven" (want dotnet, node, docker, nuget or npm)`},
-		{"duplicate preset", one + "      presets: [npm, npm]\n", `release.projects[0].presets[1]: duplicate preset "npm"`},
-		{"dotnet without project file", one + "      presets: [dotnet]\n", `release.projects[0].dotnet.project_file: required by the dotnet preset`},
-		{"dotnet escaping project file", one + "      presets: [dotnet]\n      dotnet: { project_file: ../x.csproj }\n", `release.projects[0].dotnet.project_file: "../x.csproj" escapes the repository root`},
-		{"coverage not a number", one + "      presets: [dotnet]\n      dotnet: { project_file: a.csproj, coverage_threshold: .nan }\n", `release.projects[0].dotnet.coverage_threshold: NaN must be between 0 and 100`},
-		{"coverage infinite", one + "      presets: [dotnet]\n      dotnet: { project_file: a.csproj, coverage_threshold: -.inf }\n", `release.projects[0].dotnet.coverage_threshold: -Inf must be between 0 and 100`},
-		{"coverage out of range", one + "      presets: [dotnet]\n      dotnet: { project_file: a.csproj, coverage_threshold: 120 }\n", `release.projects[0].dotnet.coverage_threshold: 120 must be between 0 and 100`},
-		{"settings without preset", one + "      dotnet: { project_file: a.csproj }\n", `release.projects[0].dotnet: settings given but the dotnet preset is not enabled`},
-		{"unknown package manager", one + "      presets: [node]\n      node: { package_manager: bun }\n", `release.projects[0].node.package_manager: unknown package manager "bun" (want npm, pnpm or yarn)`},
-		{"docker preset without images", one + "      presets: [docker]\n", `release.projects[0].docker.images: at least one image is required by the docker preset`},
-		{"docker image without name", one + "      presets: [docker]\n      docker:\n        images:\n          - dockerfile: Dockerfile\n", `release.projects[0].docker.images[0].name: required`},
-		{"docker unknown tag", one + "      presets: [docker]\n      docker:\n        images:\n          - name: x\n            tags: [edge]\n", `release.projects[0].docker.images[0].tags[0]: unknown tag "edge" (want version, channel or latest)`},
-		{"docker unknown placeholder", one + "      presets: [docker]\n      docker:\n        images:\n          - name: x\n            build_args: { V: \"${build}\" }\n", `release.projects[0].docker.images[0].build_args.V: unknown placeholder ${build}`},
-		{"docker escaping context", one + "      presets: [docker]\n      docker:\n        images:\n          - name: x\n            context: ..\n", `release.projects[0].docker.images[0].context: ".." escapes the repository root`},
-		{"npm unknown access", one + "      presets: [npm]\n      npm: { access: private }\n", `release.projects[0].npm.access: unknown access "private" (want public or restricted)`},
-		{"nuget bad env name", one + "      presets: [nuget]\n      nuget: { api_key_env: \"MY KEY\" }\n", `release.projects[0].nuget.api_key_env: "MY KEY" is not a valid environment variable name`},
-		{"unknown stage", one + "      stages:\n        deploy: { run: x }\n", `release.projects[0].stages.deploy: unknown stage (want restore, lint, build, test, coverage, package or publish)`},
+		{"unknown stage", one + "      stages:\n        deploy: { run: x }\n", `release.projects[0].stages.deploy: unknown stage (want restore, lint, build, test, coverage or package)`},
 		{"stage without run", one + "      stages:\n        test: { shell: bash }\n", `release.projects[0].stages.test.run: required`},
 		{"unknown hook", one + "      hooks:\n        before_deploy: [{ run: x }]\n", `release.projects[0].hooks.before_deploy: unknown hook`},
 		{"unknown shell", one + "      hooks:\n        prepare: [{ run: x, shell: cmd }]\n", `release.projects[0].hooks.prepare[0].shell: unknown shell "cmd" (want node, pwsh or bash)`},
 		{"hook without run", one + "      hooks:\n        after_test: [{ shell: bash }]\n", `release.projects[0].hooks.after_test[0].run: required`},
-		{"reserved hook env", one + "      hooks:\n        success: [{ run: x, env: { NERV_RELEASE_VERSION: \"1\" } }]\n", `release.projects[0].hooks.success[0].env.NERV_RELEASE_VERSION: the NERV_RELEASE_ prefix is reserved`},
+		{"reserved hook env", one + "      hooks:\n        fail: [{ run: x, env: { NERV_RELEASE_VERSION: \"1\" } }]\n", `release.projects[0].hooks.fail[0].env.NERV_RELEASE_VERSION: the NERV_RELEASE_ prefix is reserved`},
 		{"escaping stage workdir", one + "      stages:\n        test: { run: x, workdir: ../up }\n", `release.projects[0].stages.test.workdir: "../up" escapes the repository root`},
 		{"absolute hook workdir", one + "      hooks:\n        prepare: [{ run: x, workdir: /tmp }]\n", `release.projects[0].hooks.prepare[0].workdir: "/tmp" must be relative to the repository root`},
 		{"timeout not a duration", one + "      stages:\n        test: { run: x, timeout: soon }\n", `release.projects[0].stages.test.timeout: "soon" is not a duration such as 90s or 10m`},
-		{"timeout without unit", one + "      hooks:\n        success: [{ run: x, timeout: 90 }]\n", `release.projects[0].hooks.success[0].timeout: "90" is not a duration such as 90s or 10m`},
+		{"timeout without unit", one + "      hooks:\n        fail: [{ run: x, timeout: 90 }]\n", `release.projects[0].hooks.fail[0].timeout: "90" is not a duration such as 90s or 10m`},
 		{"zero timeout", one + "      stages:\n        build: { run: x, timeout: 0s }\n", `release.projects[0].stages.build.timeout: "0s" must be positive`},
 		{"negative timeout", one + "      stages:\n        build: { run: x, timeout: -5m }\n", `release.projects[0].stages.build.timeout: "-5m" must be positive`},
 		{"unpinned semantic-release", "release:\n  semantic_release: { version: ^24 }\n  projects:\n    - name: a\n      path: .\n", `release.semantic_release.version: "^24" must be an exact version such as 24.2.3`},

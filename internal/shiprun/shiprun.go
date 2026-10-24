@@ -1,5 +1,5 @@
-// Package shiprun runs the scripts of `nerv ship`: one stage override or
-// hook command (run, shell, env, workdir, timeout) of the release: section,
+// Package shiprun runs the scripts of `nerv ship`: one stage or hook
+// command (run, shell, env, workdir, timeout) of the release: section,
 // for one project.
 //
 // A command runs under bash, pwsh or node (the shell rules above
@@ -55,11 +55,11 @@ var (
 	ErrOutsideRepository = errors.New("outside the repository")
 )
 
-// Step is one command to run: a stage override, one hook command, or a
-// built-in preset command.
+// Step is one command to run: a stage command, one hook command, or a
+// built-in command (compose mode's docker commands).
 type Step struct {
-	// Name is the stage (test), hook key (before_test, prepare) or preset
-	// step (dotnet:build) the command belongs to; it is the output prefix.
+	// Name is the stage (test), hook key (before_test, prepare) or built-in
+	// step (compose:build) the command belongs to; it is the output prefix.
 	Name string
 	// Stage is NERV_RELEASE_STAGE; empty means Name.
 	Stage   string
@@ -71,8 +71,8 @@ type Step struct {
 	// name the program only, never its arguments. On Windows a program
 	// found as a .cmd or .bat shim (npm, pnpm and yarn are) runs through
 	// cmd.exe, which interprets & | < > ^ % in its arguments: callers must
-	// keep such characters out of any configured value they pass (the
-	// shipplan presets refuse them).
+	// keep such characters out of any configured value they pass (shipplan
+	// refuses them in compose image references).
 	Exec []string
 }
 

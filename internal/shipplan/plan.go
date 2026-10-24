@@ -5,22 +5,32 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
+	"strconv"
+	"strings"
 
+	"github.com/war-apps/nerv-by-gentle-ai/internal/artifact"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/shipconfig"
 )
 
-// ArtifactsEnv is the environment variable every step of a plan receives:
-// the project's directory for build outputs, <Context.ArtifactsDir>/<name>.
-// The dotnet preset writes its coverage reports to its coverage/ and its
-// packages to its nuget/ subdirectory; a stage override that replaces
-// those commands writes there too.
-const ArtifactsEnv = "NERV_RELEASE_ARTIFACTS_DIR"
-
-// PublishStage is the stage nerv ship runs after semantic-release has tagged
-// the release; Pipeline leaves it out and Publish returns it.
-const PublishStage = "publish"
+// The environment variables every step of a plan receives, besides
+// shiprun's NERV_RELEASE_* release variables.
+const (
+	// ArtifactsEnv is the project's directory for build outputs, outside
+	// the release clone: <Context.ArtifactsDir>/<name>.
+	ArtifactsEnv = "NERV_RELEASE_ARTIFACTS_DIR"
+	// OutputsEnv is where the package stage writes what goes into the
+	// artifact's outputs/: <ArtifactsEnv>/outputs, emptied before the run.
+	OutputsEnv = "NERV_RELEASE_OUTPUTS_DIR"
+	// CoverageEnv is the directory the coverage check searches for
+	// Cobertura reports: build.coverage.dir in the clone, or
+	// <ArtifactsEnv>/coverage (emptied before the run). Set only when
+	// build.coverage is configured.
+	CoverageEnv = "NERV_RELEASE_COVERAGE_DIR"
+)
 
 // Context is the release a plan is made for.
 type Context struct {
@@ -31,41 +41,55 @@ type Context struct {
 	Channel string
 	// Tag is the next git tag, e.g. api-v1.4.0.
 	Tag string
-	// GitHead is the commit released; it labels docker images when set.
+	// GitHead is the commit built.
 	GitHead string
-	// DryRun marks a plan whose publish stage is listed but never run.
+	// DryRun marks a rehearsal: the pipeline and hooks run, nothing is
+	// packaged into an artifact.
 	DryRun bool
 	// ArtifactsDir is an absolute directory, outside the repository, for
 	// build outputs (coverage reports, packages). Required.
 	ArtifactsDir string
 }
 
-// defaultChannel reports whether the release is on the default channel,
-// as dim.comprobantes.api's workflow reads semantic-release's channel
-// output: empty, or the literal "default".
+// defaultChannel reports whether the release is on the default channel:
+// empty, or the literal "default".
 func (c Context) defaultChannel() bool { return c.Channel == "" || c.Channel == "default" }
 
 // Plan is the pipeline of one project for one release: data that can be
 // rendered (Render) and run (Executor).
 type Plan struct {
 	Project string
+	// Mode is the build mode, shipconfig.ModeCompose or ModeScript.
+	Mode    string
 	Context Context
-	// Stages are the stages with commands, in shipconfig.Stages order; the
-	// publish stage, when present, is last.
+	// Stages are the stages with commands, in shipconfig.Stages order.
 	Stages []Stage
-	// Hooks are the commands of the semantic-release lifecycle hook keys
-	// (prepare, publish, success, fail), for T6; Executor never runs them.
+	// Hooks are the commands of the lifecycle hook keys (prepare, fail);
+	// Executor.Run never runs them, RunHooks does.
 	Hooks map[string][]Step
-	// ResetDirs are the project's artifact directories Executor.Run empties
-	// before the first stage, so outputs of an earlier run (coverage
-	// reports, packages) are never counted or pushed. Each must be inside
+	// ResetDirs are the project's directories Executor.Run empties before
+	// the first stage, so outputs of an earlier run (coverage reports,
+	// packages) are never counted or packaged. Each must be inside
 	// Context.ArtifactsDir.
 	ResetDirs []string
+	// OutputsDir is the package stage's output directory (OutputsEnv):
+	// what it holds after the run becomes the artifact's outputs/.
+	OutputsDir string
+	// Images are the images compose mode saves, each to its tar under
+	// OutputsDir.
+	Images []Image
 }
 
-// Stage is one pipeline stage: its before_<stage> hooks, its commands
-// (a stage override, or every enabled preset's commands in preset order),
-// and its after_<stage> hooks.
+// Image is one image compose mode saves.
+type Image struct {
+	// Ref is the image reference, placeholders expanded.
+	Ref string
+	// Tar is the archive's name under Plan.OutputsDir.
+	Tar string
+}
+
+// Stage is one pipeline stage: its before_<stage> hooks, its commands and
+// its after_<stage> hooks.
 type Stage struct {
 	Name  string
 	Steps []Step
@@ -74,60 +98,41 @@ type Stage struct {
 // Step is one thing to run. Exactly one of Func, Exec or Command.Run is
 // what runs; Command also carries Env, Workdir and Timeout for Exec.
 type Step struct {
-	// Name is the output prefix: a preset step (dotnet:build, docker:push
-	// <image>:<tag>), the stage of an override (build) or a hook key.
+	// Name is the output prefix: the stage of a script command (build), a
+	// built-in step (compose:build, git:submodules, coverage:check) or a
+	// hook key.
 	Name string
 	// Stage is NERV_RELEASE_STAGE: the stage, or the hook key of a hook.
 	Stage   string
 	Command shipconfig.Command
-	// Exec is a preset command run without a shell.
+	// Exec is a built-in command run without a shell.
 	Exec []string
-	// Func is an in-process step (the coverage check, the NuGet push). It
-	// gets the environment lookup, for Secrets, and returns a one-line
-	// summary.
-	Func func(ctx context.Context, lookupEnv func(string) (string, bool)) (string, error)
+	// Func is an in-process step (the coverage check); it returns a
+	// one-line summary.
+	Func func(ctx context.Context) (string, error)
 	// Describe says what Func does, for Render.
 	Describe string
-	// Secrets are the environment variables holding secrets the step needs
-	// (read by Func, never put on a command line). They must be set and
-	// non-empty before the run starts.
-	Secrets []string
 }
 
-// Pipeline returns every stage but publish, in order.
-func (p *Plan) Pipeline() []Stage {
-	var out []Stage
-	for _, s := range p.Stages {
-		if s.Name != PublishStage {
-			out = append(out, s)
-		}
-	}
-	return out
-}
+// sharedHostStages are the script stages that get the build-server
+// environment with build.shared_host: the stages dotnet commands run in.
+var sharedHostStages = []string{"restore", "lint", "build", "test", "package"}
 
-// Publish returns the publish stage, or nil when there is nothing to
-// publish.
-func (p *Plan) Publish() *Stage {
-	for i := range p.Stages {
-		if p.Stages[i].Name == PublishStage {
-			return &p.Stages[i]
-		}
-	}
-	return nil
-}
-
-// Build plans project for the release c, in the repository at repoRoot
-// (read only for the node preset's package.json). The project is expected
-// as shipconfig.Load returns it (defaults applied, paths normalised).
+// Build plans project for the release c, in the release clone at repoRoot.
+// The project is expected as shipconfig.Load returns it (defaults applied,
+// paths normalised); its build.mode is required.
 //
-// Rules: a stage's commands are its override in stages:, which replaces
-// every preset's commands for that stage, or else the commands of each
-// enabled preset in the order of presets:. A stage with no command is
-// skipped together with its before_/after_ hooks. The restore stage starts
-// with the setup steps (submodules: true, dotnet.sdk), which count as its
-// commands. With dotnet.shared_host the overrides of the dotnet stages get
-// the build-server environment under their own. Hooks of the lifecycle
-// keys are returned in Plan.Hooks.
+// Rules: in script mode each stage runs the project's command; in compose
+// mode build is docker compose -f <file> build, test is docker compose -f
+// <file> run --rm <test_service> (no test_service: no test stage), package
+// is one docker save per image of build.images, and only the restore, lint
+// and coverage stages may have the project's commands. A stage with no
+// command is skipped together with its before_/after_ hooks. The restore
+// stage starts with git submodule update when submodules is set, and the
+// coverage stage ends with the floor check when build.coverage is set;
+// both count as commands. With build.shared_host the restore, lint, build,
+// test and package commands get the build-server environment under their
+// own. Hooks of the lifecycle keys are returned in Plan.Hooks.
 func Build(repoRoot string, project shipconfig.Project, c Context) (*Plan, error) {
 	if c.Version == "" {
 		return nil, errors.New("plan: the release version is required")
@@ -135,63 +140,66 @@ func Build(repoRoot string, project shipconfig.Project, c Context) (*Plan, error
 	if c.ArtifactsDir == "" || !filepath.IsAbs(c.ArtifactsDir) {
 		return nil, fmt.Errorf("plan: the artifacts directory must be an absolute path, got %q", c.ArtifactsDir)
 	}
-	b := &builder{root: repoRoot, project: project, ctx: c, artifacts: filepath.Join(c.ArtifactsDir, project.Name), steps: map[string][]Step{}}
-	for _, name := range project.Presets {
-		var err error
-		switch name {
-		case "dotnet":
-			err = b.dotnet()
-		case "node":
-			err = b.node()
-		case "docker":
-			err = b.docker()
-		case "nuget":
-			err = b.nuget()
-		case "npm":
-			err = b.npm()
-		default:
-			err = fmt.Errorf("unknown preset %q", name)
-		}
+	bc := project.Build
+	if bc == nil || !slices.Contains(shipconfig.Modes, bc.Mode) {
+		return nil, fmt.Errorf("project %q: build.mode is required (compose or script)", project.Name)
+	}
+	dir := filepath.Join(c.ArtifactsDir, project.Name)
+	b := &builder{root: repoRoot, project: project, build: bc, ctx: c, dir: dir, steps: map[string][]Step{}}
+	plan := &Plan{Project: project.Name, Mode: bc.Mode, Context: c, Hooks: map[string][]Step{}, OutputsDir: filepath.Join(dir, "outputs")}
+	b.resetDirs = []string{plan.OutputsDir}
+	if bc.Mode == shipconfig.ModeCompose {
+		images, err := b.compose(plan.OutputsDir)
 		if err != nil {
 			return nil, fmt.Errorf("project %q: %w", project.Name, err)
 		}
+		plan.Images = images
 	}
+	for _, stage := range shipconfig.Stages {
+		if cmd, ok := project.Stages[stage]; ok {
+			if bc.SharedHost && slices.Contains(sharedHostStages, stage) {
+				env := DotnetBuildServerEnv()
+				maps.Copy(env, cmd.Env)
+				cmd.Env = env
+			}
+			b.add(stage, Step{Name: stage, Command: cmd})
+		}
+	}
+	b.coverage()
 
-	plan := &Plan{Project: project.Name, Context: c, Hooks: map[string][]Step{}, ResetDirs: b.resetDirs}
 	for _, stage := range shipconfig.Stages {
 		cmds := b.steps[stage]
-		if override, ok := project.Stages[stage]; ok {
-			override.Env = b.sharedHostEnv(stage, override)
-			cmds = []Step{{Name: stage, Stage: stage, Command: override}}
-		}
-		var steps []Step
 		if stage == "restore" {
-			steps = b.setupSteps()
+			cmds = append(b.setupSteps(), cmds...)
 		}
-		if len(cmds) == 0 && len(steps) == 0 {
+		if len(cmds) == 0 {
 			continue
 		}
+		var steps []Step
 		steps = append(steps, b.hooks("before_"+stage)...)
 		steps = append(steps, cmds...)
 		steps = append(steps, b.hooks("after_"+stage)...)
-		plan.Stages = append(plan.Stages, Stage{Name: stage, Steps: b.withArtifacts(steps)})
+		plan.Stages = append(plan.Stages, Stage{Name: stage, Steps: b.withDirs(steps)})
 	}
 	for _, key := range shipconfig.LifecycleHooks {
 		if hooks := b.hooks(key); len(hooks) > 0 {
-			plan.Hooks[key] = b.withArtifacts(hooks)
+			plan.Hooks[key] = b.withDirs(hooks)
 		}
 	}
+	plan.ResetDirs = b.resetDirs
 	return plan, nil
 }
 
-// builder collects the preset steps of one project, per stage.
+// builder collects the steps of one project, per stage.
 type builder struct {
-	root      string
-	project   shipconfig.Project
-	ctx       Context
-	artifacts string
-	steps     map[string][]Step
-	resetDirs []string
+	root        string
+	project     shipconfig.Project
+	build       *shipconfig.Build
+	ctx         Context
+	dir         string
+	coverageDir string
+	steps       map[string][]Step
+	resetDirs   []string
 }
 
 func (b *builder) add(stage string, s Step) {
@@ -208,9 +216,9 @@ func (b *builder) hooks(key string) []Step {
 	return out
 }
 
-// withArtifacts gives every step the ArtifactsEnv variable, on a copy of
-// its env map.
-func (b *builder) withArtifacts(steps []Step) []Step {
+// withDirs gives every process step ArtifactsEnv, OutputsEnv and, with a
+// coverage check, CoverageEnv, on a copy of its env map.
+func (b *builder) withDirs(steps []Step) []Step {
 	for i := range steps {
 		if steps[i].Func != nil {
 			continue
@@ -219,11 +227,153 @@ func (b *builder) withArtifacts(steps []Step) []Step {
 		if env == nil {
 			env = map[string]string{}
 		}
-		env[ArtifactsEnv] = b.artifacts
+		env[ArtifactsEnv] = b.dir
+		env[OutputsEnv] = filepath.Join(b.dir, "outputs")
+		if b.coverageDir != "" {
+			env[CoverageEnv] = b.coverageDir
+		}
 		steps[i].Command.Env = env
 	}
 	return steps
 }
 
-// enabled reports whether the project enables preset.
-func (b *builder) enabled(preset string) bool { return slices.Contains(b.project.Presets, preset) }
+// setupSteps prepare the release clone before the restore stage's hooks
+// and commands: the submodules.
+func (b *builder) setupSteps() []Step {
+	if !b.project.Submodules {
+		return nil
+	}
+	return []Step{{Name: "git:submodules", Stage: "restore", Exec: []string{"git", "submodule", "update", "--init", "--recursive"}}}
+}
+
+// imageRefRe is an image reference once its placeholders are expanded:
+// no whitespace, no shell or cmd.exe metacharacter.
+var imageRefRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._/:@-]*$`)
+
+// placeholderRe matches a ${name} placeholder of an image reference.
+var placeholderRe = regexp.MustCompile(`\$\{([a-z_]+)\}`)
+
+// compose plans compose mode's build, test and package commands and
+// returns the images package saves.
+func (b *builder) compose(outputs string) ([]Image, error) {
+	file := b.build.File
+	b.add("build", Step{Name: "compose:build", Exec: []string{"docker", "compose", "-f", file, "build"}})
+	if svc := b.build.TestService; svc != "" {
+		b.add("test", Step{Name: "compose:test", Exec: []string{"docker", "compose", "-f", file, "run", "--rm", svc}})
+	}
+	var images []Image
+	for _, raw := range b.build.Images {
+		ref := b.expand(raw)
+		if !imageRefRe.MatchString(ref) {
+			return nil, fmt.Errorf("build.images: %q expands to %q, not an image reference", raw, ref)
+		}
+		if slices.ContainsFunc(images, func(i Image) bool { return i.Ref == ref }) {
+			continue
+		}
+		img := Image{Ref: ref, Tar: tarName(ref)}
+		images = append(images, img)
+		b.add("package", Step{Name: "compose:save " + ref, Exec: []string{"docker", "save", "-o", filepath.Join(outputs, img.Tar), ref}})
+	}
+	return images, nil
+}
+
+// tarName is the archive name of an image reference: its / : and @ as _.
+func tarName(ref string) string {
+	return strings.NewReplacer("/", "_", ":", "_", "@", "_").Replace(ref) + ".tar"
+}
+
+// expand replaces the placeholders ${version}, ${channel} and ${tag} (the
+// channel is empty on the default channel).
+func (b *builder) expand(s string) string {
+	return placeholderRe.ReplaceAllStringFunc(s, func(m string) string {
+		switch placeholderRe.FindStringSubmatch(m)[1] {
+		case "version":
+			return b.ctx.Version
+		case "channel":
+			if b.ctx.defaultChannel() {
+				return ""
+			}
+			return b.ctx.Channel
+		case "tag":
+			return b.ctx.Tag
+		}
+		return m
+	})
+}
+
+// coverage plans the floor check of build.coverage at the end of the
+// coverage stage.
+func (b *builder) coverage() {
+	c := b.build.Coverage
+	if c == nil || !c.Floors().Enabled() {
+		return
+	}
+	dir := filepath.Join(b.dir, "coverage")
+	if c.Dir != "" {
+		dir = filepath.Join(b.root, filepath.FromSlash(c.Dir))
+	} else {
+		b.resetDirs = append(b.resetDirs, dir)
+	}
+	b.coverageDir = dir
+	floors := c.Floors()
+	b.add("coverage", Step{
+		Name:     "coverage:check",
+		Describe: fmt.Sprintf("check %s in %s", describeFloors(floors), dir),
+		Func: func(context.Context) (string, error) {
+			cov, err := CheckCoverageFloors(dir, floors)
+			if err != nil {
+				return "", err
+			}
+			return cov.String(), nil
+		},
+	})
+}
+
+// describeFloors is the floors checked, e.g. "line coverage >= 80%,
+// method coverage >= 85%".
+func describeFloors(f shipconfig.CoverageThreshold) string {
+	var parts []string
+	for _, m := range []struct {
+		name string
+		v    float64
+	}{{"line", f.Line}, {"branch", f.Branch}, {"method", f.Method}} {
+		if m.v > 0 {
+			parts = append(parts, fmt.Sprintf("%s coverage >= %s%%", m.name, strconv.FormatFloat(m.v, 'f', -1, 64)))
+		}
+	}
+	return strings.Join(parts, ", ")
+}
+
+// Outputs lists what the package stage left in OutputsDir, sorted by name,
+// as the artifact's outputs: each saved image's tar (an image-tar, which
+// must be there), and every other entry as a file or a directory. A
+// missing OutputsDir is no outputs.
+func (p *Plan) Outputs() ([]artifact.OutputSource, error) {
+	entries, err := os.ReadDir(p.OutputsDir)
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return nil, err
+	}
+	tars := map[string]bool{}
+	for _, img := range p.Images {
+		tars[img.Tar] = true
+		if !slices.ContainsFunc(entries, func(e os.DirEntry) bool { return e.Name() == img.Tar }) {
+			return nil, fmt.Errorf("the image %s was not saved to %s", img.Ref, filepath.Join(p.OutputsDir, img.Tar))
+		}
+	}
+	out := []artifact.OutputSource{}
+	for _, e := range entries {
+		o := artifact.OutputSource{Path: e.Name(), From: filepath.Join(p.OutputsDir, e.Name())}
+		switch {
+		case tars[e.Name()]:
+			o.Kind = artifact.KindImageTar
+		case e.IsDir():
+			o.Kind = artifact.KindDir
+		case e.Type().IsRegular():
+			o.Kind = artifact.KindFile
+		default:
+			return nil, fmt.Errorf("output %s is not a regular file or directory", o.From)
+		}
+		out = append(out, o)
+	}
+	return out, nil
+}

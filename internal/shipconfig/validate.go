@@ -11,15 +11,13 @@ import (
 	"github.com/war-apps/nerv-by-gentle-ai/internal/shipconfig/yamlsection"
 )
 
-// Presets are the built-in technology presets.
-var Presets = []string{"dotnet", "node", "docker", "nuget", "npm"}
-
 // Stages are the pipeline stages, in run order.
-var Stages = []string{"restore", "lint", "build", "test", "coverage", "package", "publish"}
+var Stages = []string{"restore", "lint", "build", "test", "coverage", "package"}
 
-// LifecycleHooks are the semantic-release steps a hook can attach to,
-// besides before_<stage> and after_<stage>.
-var LifecycleHooks = []string{"prepare", "publish", "success", "fail"}
+// LifecycleHooks are the ship steps a hook can attach to, besides
+// before_<stage> and after_<stage>: prepare runs after the pipeline, before
+// the artifact is written; fail runs when a stage or hook fails.
+var LifecycleHooks = []string{"prepare", "fail"}
 
 // Shells are the interpreters a Command can run under.
 var Shells = []string{"node", "pwsh", "bash"}
@@ -27,17 +25,14 @@ var Shells = []string{"node", "pwsh", "bash"}
 // Bumps are the dependency bump levels.
 var Bumps = []string{"patch", "minor", "none"}
 
-// DockerTags are the tag kinds an image can receive.
+// DockerTags are the tag kinds a nerv pipeline image can receive (kept for
+// internal/pipelineconfig until nerv pipeline is folded into ship and
+// deploy).
 var DockerTags = []string{"version", "channel", "latest"}
 
-// PackageManagers are the node package managers.
-var PackageManagers = []string{"npm", "pnpm", "yarn"}
-
-// NpmAccess are the npm publish access levels.
-var NpmAccess = []string{"public", "restricted"}
-
-// BuildArgPlaceholders are the placeholders a docker build_args value may
-// use: ${version}, ${channel} and ${tag}.
+// BuildArgPlaceholders are the placeholders a compose-mode build.images
+// reference (and a nerv pipeline build_args value) may use: ${version},
+// ${channel} and ${tag}.
 var BuildArgPlaceholders = []string{"version", "channel", "tag"}
 
 // reservedEnvPrefix is the prefix of the variables NERV passes to hooks.
@@ -66,9 +61,14 @@ func (r *Release) finalizePaths() {
 		} else {
 			p.Changelog, p.ChangelogExplicit = normalize(p.Changelog), true
 		}
-		if p.Dotnet != nil {
-			p.Dotnet.ProjectFile = normalize(p.Dotnet.ProjectFile)
-			p.Dotnet.Solution = normalize(p.Dotnet.Solution)
+		if b := p.Build; b != nil {
+			b.File = normalize(b.File)
+			for j := range b.VersionFiles {
+				b.VersionFiles[j] = normalize(b.VersionFiles[j])
+			}
+			if b.Coverage != nil {
+				b.Coverage.Dir = normalize(b.Coverage.Dir)
+			}
 		}
 		for stage, c := range p.Stages {
 			c.Workdir = normalize(c.Workdir)
@@ -77,13 +77,6 @@ func (r *Release) finalizePaths() {
 		for _, cmds := range p.Hooks {
 			for j := range cmds {
 				cmds[j].Workdir = normalize(cmds[j].Workdir)
-			}
-		}
-		if p.Docker != nil {
-			for j := range p.Docker.Images {
-				img := &p.Docker.Images[j]
-				img.Dockerfile = normalize(img.Dockerfile)
-				img.Context = normalize(img.Context)
 			}
 		}
 	}
@@ -177,7 +170,7 @@ func (r *Release) validate() []string {
 				v.addf("%s.bump: unknown bump %q (want %s)", dat, d.Bump, list(Bumps))
 			}
 		}
-		v.checkPresets(at, p)
+		v.checkBuild(at, p)
 		v.checkCommands(at, p)
 	}
 
@@ -219,88 +212,13 @@ func (v *validator) checkTagFormat(at string, p Project, owner map[string]string
 	}
 }
 
-func (v *validator) checkPresets(at string, p Project) {
-	seen := map[string]bool{}
-	for j, name := range p.Presets {
-		switch {
-		case !slices.Contains(Presets, name):
-			v.addf("%s.presets[%d]: unknown preset %q (want %s)", at, j, name, list(Presets))
-		case seen[name]:
-			v.addf("%s.presets[%d]: duplicate preset %q", at, j, name)
-		}
-		seen[name] = true
-	}
-	given := map[string]bool{
-		"dotnet": p.Dotnet != nil, "node": p.Node != nil, "docker": p.Docker != nil,
-		"nuget": p.NuGet != nil, "npm": p.Npm != nil,
-	}
-	for _, name := range Presets {
-		if given[name] && !seen[name] {
-			v.addf("%s.%s: settings given but the %s preset is not enabled", at, name, name)
-		}
-	}
-
-	if d := p.Dotnet; d != nil && seen["dotnet"] {
-		if d.ProjectFile == "" {
-			v.addf("%s.dotnet.project_file: required by the dotnet preset", at)
-		} else {
-			v.checkPath(at+".dotnet.project_file", d.ProjectFile)
-		}
-		if d.Solution != "" {
-			v.checkPath(at+".dotnet.solution", d.Solution)
-		}
-		// A line floor alone (the number form) is reported under the key
-		// itself, as it always was.
-		if c := d.CoverageThreshold; c.Branch == 0 && c.Method == 0 {
-			v.checkPercent(at+".dotnet.coverage_threshold", c.Line)
-		} else {
-			v.checkPercent(at+".dotnet.coverage_threshold.line", c.Line)
-			v.checkPercent(at+".dotnet.coverage_threshold.branch", c.Branch)
-			v.checkPercent(at+".dotnet.coverage_threshold.method", c.Method)
-		}
-		if d.SDK != "" && !sdkVersionRe.MatchString(d.SDK) {
-			v.addf("%s.dotnet.sdk: %q is not a .NET SDK version (e.g. 8.0.100)", at, d.SDK)
-		}
-	}
-	if n := p.Node; n != nil && seen["node"] && !slices.Contains(PackageManagers, n.PackageManager) {
-		v.addf("%s.node.package_manager: unknown package manager %q (want %s)", at, n.PackageManager, list(PackageManagers))
-	}
-	if d := p.Docker; d != nil && seen["docker"] {
-		if len(d.Images) == 0 {
-			v.addf("%s.docker.images: at least one image is required by the docker preset", at)
-		}
-		for j, img := range d.Images {
-			iat := fmt.Sprintf("%s.docker.images[%d]", at, j)
-			if strings.TrimSpace(img.Name) == "" {
-				v.addf("%s.name: required", iat)
-			}
-			v.checkPath(iat+".dockerfile", img.Dockerfile)
-			v.checkPath(iat+".context", img.Context)
-			for k, tag := range img.Tags {
-				if !slices.Contains(DockerTags, tag) {
-					v.addf("%s.tags[%d]: unknown tag %q (want %s)", iat, k, tag, list(DockerTags))
-				}
-			}
-			for _, key := range sortedKeys(img.BuildArgs) {
-				for _, m := range placeholderRe.FindAllStringSubmatch(img.BuildArgs[key], -1) {
-					if !slices.Contains(BuildArgPlaceholders, m[1]) {
-						v.addf("%s.build_args.%s: unknown placeholder ${%s} (want %s)", iat, key, m[1], list(placeholders(BuildArgPlaceholders)))
-					}
-				}
-			}
-		}
-	}
-	if n := p.NuGet; n != nil && seen["nuget"] && !envNameRe.MatchString(n.APIKeyEnv) {
-		v.addf("%s.nuget.api_key_env: %q is not a valid environment variable name", at, n.APIKeyEnv)
-	}
-	if n := p.Npm; n != nil && seen["npm"] && !slices.Contains(NpmAccess, n.Access) {
-		v.addf("%s.npm.access: unknown access %q (want %s)", at, n.Access, list(NpmAccess))
-	}
-}
-
 func (v *validator) checkCommands(at string, p Project) {
 	for _, stage := range sortedKeys(p.Stages) {
 		sat := at + ".stages." + stage
+		if msg, removed := removedStages[stage]; removed {
+			v.addf("%s: %s", sat, msg)
+			continue
+		}
 		if !slices.Contains(Stages, stage) {
 			v.addf("%s: unknown stage (want %s)", sat, list(Stages))
 			continue
@@ -309,6 +227,10 @@ func (v *validator) checkCommands(at string, p Project) {
 	}
 	for _, key := range sortedKeys(p.Hooks) {
 		hat := at + ".hooks." + key
+		if msg, removed := removedHooks[key]; removed {
+			v.addf("%s: %s", hat, msg)
+			continue
+		}
 		if !validHook(key) {
 			v.addf("%s: unknown hook (want before_<stage>, after_<stage>, %s)", hat, list(LifecycleHooks))
 			continue
@@ -384,10 +306,6 @@ func sortedKeys[V any](m map[string]V) []string {
 	slices.Sort(keys)
 	return keys
 }
-
-// sdkVersionRe is a .NET SDK version as global.json takes it:
-// major.minor.patch with an optional prerelease.
-var sdkVersionRe = regexp.MustCompile(`^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$`)
 
 // checkPercent reports a coverage floor that is not a percentage (NaN fails
 // every comparison and ±Inf is no percentage either).

@@ -26,8 +26,8 @@ Commands:
   version [--json]     Print the binary and plugin versions
   version next [flags] Compute the next release version with semantic-release
                        (see "nerv version next --help")
-  ship [flags]         Release the repository from origin: pipeline,
-                       semantic-release, publish (see "nerv ship --help")
+  ship [flags]         Build, test and package origin's code into a local
+                       artifact, no git writes (see "nerv ship --help")
   pipeline <step>      Run a step of the Docker pipeline: validate, test
                        (see "nerv pipeline --help")
   configure [flags]    Configure NERV (non-interactive; see "nerv configure --help")
@@ -92,16 +92,17 @@ type options struct {
 	// and the signal received (nil if none). Tests inject a controllable one.
 	// Nil means signalContext.
 	SignalContext func(context.Context) (context.Context, context.CancelFunc, func() os.Signal)
-	// OpenShipWorkspace creates nerv ship's release clone; tests inject a
-	// fake. Nil means semrel.NewWorkspace.
+	// OpenShipWorkspace creates the release clone of nerv ship and nerv
+	// pipeline release; tests inject a fake. Nil means semrel.NewWorkspace.
 	OpenShipWorkspace func(context.Context, semrel.WorkspaceOptions) (shipWorkspace, error)
 	// ShipSteps returns the runner of nerv ship's process steps for the
 	// release clone at repoRoot, streaming to output; tests inject a
 	// recorder. Nil means a shiprun.Runner.
 	ShipSteps func(repoRoot string, output io.Writer) shipplan.StepRunner
-	// GitHubToken returns a token for semantic-release when the environment
-	// has no GH_TOKEN or GITHUB_TOKEN; tests inject a fixed one so no real
-	// credential is read. Nil means `gh auth token` through Runner.
+	// GitHubToken returns a token for nerv pipeline release's
+	// semantic-release run when the environment has no GH_TOKEN or
+	// GITHUB_TOKEN (nerv ship never reads one); tests inject a fixed one so
+	// no real credential is read. Nil means `gh auth token` through Runner.
 	GitHubToken func(context.Context) string
 	// PipelineSteps returns the runner of nerv pipeline's commands for the
 	// repository at repoRoot, streaming to output; tests inject a recorder.

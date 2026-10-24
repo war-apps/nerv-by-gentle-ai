@@ -77,29 +77,23 @@ type Project struct {
 	ChangelogExplicit bool `yaml:"-"`
 	// DependsOn lists the projects whose new release bumps this one.
 	DependsOn []Dependency `yaml:"depends_on"`
-	// Presets enables built-in stages and publishers: a subset of
-	// dotnet, node, docker, nuget, npm.
-	Presets []string `yaml:"presets"`
-	// Dotnet configures the dotnet preset.
-	Dotnet *Dotnet `yaml:"dotnet"`
-	// Node configures the node preset.
-	Node *Node `yaml:"node"`
-	// Docker configures the docker preset.
-	Docker *Docker `yaml:"docker"`
-	// NuGet configures the nuget preset.
-	NuGet *NuGet `yaml:"nuget"`
-	// Npm configures the npm preset.
-	Npm *Npm `yaml:"npm"`
-	// Stages overrides or adds the command of a pipeline stage, keyed by one
-	// of Stages (restore, lint, build, test, coverage, package, publish).
+	// Build is how nerv ship builds, tests and packages the project: its
+	// mode (compose or script) and settings. nerv ship requires it
+	// (CheckBuild); other commands ignore it.
+	Build *Build `yaml:"build"`
+	// Stages are the commands of the pipeline stages, keyed by one of
+	// Stages (restore, lint, build, test, coverage, package): every stage
+	// in script mode; in compose mode only restore, lint and coverage
+	// (compose runs build, test and package itself).
 	Stages map[string]Command `yaml:"stages"`
 	// Submodules runs git submodule update --init --recursive in the
 	// release clone before the restore stage (the clone has no submodules
 	// otherwise). Default: false.
 	Submodules bool `yaml:"submodules"`
-	// Hooks run scripts around stages and at semantic-release lifecycle
-	// steps, keyed by before_<stage>, after_<stage>, prepare, publish,
-	// success or fail. Each key runs its commands in order.
+	// Hooks run scripts around stages and at the ship lifecycle steps,
+	// keyed by before_<stage>, after_<stage>, prepare (after the pipeline,
+	// before the artifact is written) or fail. Each key runs its commands
+	// in order.
 	Hooks map[string][]Command `yaml:"hooks"`
 }
 
@@ -112,123 +106,19 @@ type Dependency struct {
 	Bump string `yaml:"bump"`
 }
 
-// Dotnet configures the dotnet preset (restore, format check, build, test,
-// coverage, pack, and the <Version>/<PackageReleaseNotes> csproj write).
-type Dotnet struct {
-	// ProjectFile is the .csproj that receives the version. Required by the
-	// dotnet preset.
-	ProjectFile string `yaml:"project_file"`
-	// Solution is the .sln/.slnx the stages run against. Default: empty,
-	// meaning ProjectFile.
-	Solution string `yaml:"solution"`
-	// CoverageThreshold are the minimum coverage percentages (0-100). A
-	// number is the line floor alone; a mapping sets line, branch and
-	// method floors. A 0 floor is not checked; all 0 disables the check.
-	CoverageThreshold CoverageThreshold `yaml:"coverage_threshold"`
-	// Configuration is the build configuration.
-	// Default: DefaultDotnetConfiguration.
-	Configuration string `yaml:"configuration"`
-	// SharedHost also gives the stage overrides of restore, lint, build,
-	// test and package the build-server environment the preset commands
-	// always get (their own env wins key by key). Default: false.
-	SharedHost bool `yaml:"shared_host"`
-	// SDK pins the .NET SDK: before the restore stage, nerv writes a
-	// global.json with this version (rollForward latestFeature) at the
-	// release clone's root. Default: empty, meaning the repository's own
-	// global.json, if any.
-	SDK string `yaml:"sdk"`
-}
-
-// CoverageThreshold are the dotnet preset's coverage floors, as coverlet's
-// ThresholdType names them: line, branch and method percentages (0-100),
-// over every report together. 0 leaves a metric unchecked.
+// CoverageThreshold are coverage floors, as coverlet's ThresholdType names
+// them: line, branch and method percentages (0-100), over every report
+// together. 0 leaves a metric unchecked.
 type CoverageThreshold struct {
-	Line   float64 `yaml:"line"`
-	Branch float64 `yaml:"branch"`
-	Method float64 `yaml:"method"`
-}
-
-// UnmarshalYAML reads the number form (the line floor, as
-// coverage_threshold has always meant) or the mapping form.
-func (c *CoverageThreshold) UnmarshalYAML(node *yaml.Node) error {
-	if node.Kind == yaml.ScalarNode {
-		var line float64
-		if err := node.Decode(&line); err != nil {
-			return err
-		}
-		*c = CoverageThreshold{Line: line}
-		return nil
-	}
-	type plain CoverageThreshold
-	var p plain
-	if err := node.Decode(&p); err != nil {
-		return err
-	}
-	*c = CoverageThreshold(p)
-	return nil
+	Line   float64
+	Branch float64
+	Method float64
 }
 
 // Enabled reports whether any floor is checked.
 func (c CoverageThreshold) Enabled() bool { return c.Line > 0 || c.Branch > 0 || c.Method > 0 }
 
-// Node configures the node preset.
-type Node struct {
-	// PackageManager is npm, pnpm or yarn. Default: DefaultPackageManager.
-	PackageManager string `yaml:"package_manager"`
-}
-
-// Docker configures the docker preset.
-type Docker struct {
-	// Images are built, tagged and pushed in order. Required (at least one)
-	// by the docker preset.
-	Images []DockerImage `yaml:"images"`
-}
-
-// DockerImage is one image the docker preset builds.
-type DockerImage struct {
-	// Name is the image repository, e.g. ghcr.io/org/api. Required.
-	Name string `yaml:"name"`
-	// Dockerfile is the Dockerfile path. Default: DefaultDockerfile.
-	Dockerfile string `yaml:"dockerfile"`
-	// Context is the build context directory. Default: DefaultDockerContext.
-	Context string `yaml:"context"`
-	// BuildArgs are passed as --build-arg; values may use the
-	// BuildArgPlaceholders (${version}, ${channel} and ${tag}).
-	BuildArgs map[string]string `yaml:"build_args"`
-	// Tags selects the image tags: version (the release version), channel
-	// (the release channel, e.g. alpha or rc) and latest (only applied on a
-	// release of the default channel). Default: DefaultDockerTags().
-	Tags []string `yaml:"tags"`
-	// Push pushes the tags after the build. Default: true; Load always sets
-	// it, read it through ShouldPush.
-	Push *bool `yaml:"push"`
-}
-
-// ShouldPush reports whether the image's tags are pushed (true when unset).
-func (i DockerImage) ShouldPush() bool { return i.Push == nil || *i.Push }
-
-// NuGet configures the nuget preset (dotnet nuget push).
-type NuGet struct {
-	// Source is the push source. Default: DefaultNuGetSource.
-	Source string `yaml:"source"`
-	// APIKeyEnv is the environment variable holding the API key.
-	// Default: DefaultNuGetAPIKeyEnv.
-	APIKeyEnv string `yaml:"api_key_env"`
-}
-
-// Npm configures the npm preset (npm publish).
-type Npm struct {
-	// Registry is the publish registry. Default: empty, meaning npm's own
-	// configuration.
-	Registry string `yaml:"registry"`
-	// Access is public or restricted. Default: DefaultNpmAccess.
-	Access string `yaml:"access"`
-	// DistTag is the dist-tag. Default: empty, meaning the release channel
-	// (latest on the default channel).
-	DistTag string `yaml:"dist_tag"`
-}
-
-// Command is a script run by a stage override or a hook.
+// Command is a script run by a stage or a hook.
 type Command struct {
 	// Run is the command line or script. Required.
 	Run string `yaml:"run"`
@@ -319,11 +209,12 @@ func parse(data []byte) (*Release, error) {
 	case node.Kind != yaml.MappingNode:
 		return nil, &ValidationError{Problems: []string{"release: must be a mapping"}}
 	default:
+		problems = takeRemovedKeys(node)
 		unknown, err := unknownFields(node)
 		if err != nil {
 			return nil, &ValidationError{Problems: []string{err.Error()}}
 		}
-		problems = unknown
+		problems = append(problems, unknown...)
 		if err := node.Decode(&rel); err != nil {
 			problems = append(problems, yamlsection.DecodeProblems("release", err)...)
 			// A partially decoded section would produce misleading
