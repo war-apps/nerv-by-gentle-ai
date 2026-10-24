@@ -236,4 +236,18 @@ Forecast: well over 400 lines (about 11.5k lines of Go move or are rewritten), s
   - **Migration:** the four repos migrate with exit 0, and a second run is a no-op.
   - **Gap:** in script mode no image references are recorded, so deploy would not push dim's images. Fix: `build.images` in script mode, written by migrate from the old docker preset.
   - **Decision accepted:** a release-only repo also gets `deploy: {host: github}` plus the deploy and deploy-github plugins, because semantic-release used to tag and release.
-- **Next step:** a fix batch with two parallel writers (Go: B1, B2, images in script mode, the advisories; prose: L20 and the L18 prose advisories), then the chain review. The user's L5 decisions are "ODD + agentes NERV encima (Recommended)", "Se mantiene, renombrado (Recommended)" and "Subcomando nerv migrate (Recommended)". Then T6.
+- **L23** (2026-10-24): the fix batch is committed.
+  - **487ccd0 (prose):**
+    - L20: DIRECT and LIGHT runs keep their files in `.nerv/runs/{run-id}/`, with no ODD document or close commit;
+    - only Aoba writes the `Commit` column;
+    - the MAGI and Gendo read fixed inputs and are blind to earlier rounds;
+    - the deploy setup command names the real keys.
+  - **d25d8ff (Go):**
+    - B1: `--import` refuses on a conflict, `--force` replaces;
+    - B2: the message names every `pipeline.*` key;
+    - `build.images` in script mode, written by migrate;
+    - `ship --version` compares with the branch's own last release and writes notes;
+    - the `release:` rename;
+    - `install --help` describes the order.
+  - **Parity gap found:** the 4.2.0 channel and `latest` image tags are not pushed. The parent restores the 4.2.0 tag kinds (`version`, `channel`, `latest`) in `build.images` (writer running).
+- **Next step:** the image tags writer, then the slice chain for native review. The user's L5 decisions are "ODD + agentes NERV encima (Recommended)", "Se mantiene, renombrado (Recommended)" and "Subcomando nerv migrate (Recommended)". Then T6.
