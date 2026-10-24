@@ -8,7 +8,7 @@
   <a href="https://www.markdownguide.org/"><img alt="Markdown agents and skills" src="https://img.shields.io/badge/Markdown-agents_%26_skills-000000?style=for-the-badge&logo=markdown&logoColor=white"></a>
   <a href="https://mermaid.js.org/"><img alt="Mermaid diagrams" src="https://img.shields.io/badge/Mermaid-diagrams-FF3670?style=for-the-badge&logo=mermaid&logoColor=white"></a>
   <a href="https://yaml.org/"><img alt="YAML config" src="https://img.shields.io/badge/YAML-.ai--workflow.yml-CB171E?style=for-the-badge&logo=yaml&logoColor=white"></a>
-  <a href="https://github.com/Gentleman-Programming/gentle-ai"><img alt="OpenSpec RDD" src="https://img.shields.io/badge/OpenSpec-RDD-0aa?style=for-the-badge"></a>
+  <a href="https://github.com/Gentleman-Programming/gentle-ai"><img alt="ODD and RDD" src="https://img.shields.io/badge/ODD-RDD-0aa?style=for-the-badge"></a>
   <a href="https://github.com/Gentleman-Programming/engram"><img alt="Engram memory" src="https://img.shields.io/badge/Engram-memory-2d3748?style=for-the-badge"></a>
   <a href="https://www.teamwork.com/"><img alt="Teamwork task provider" src="https://img.shields.io/badge/Teamwork-task_provider-FF22B1?style=for-the-badge&logo=teamwork&logoColor=white"></a>
   <a href="https://skills.sh/"><img alt="skills.sh" src="https://img.shields.io/badge/skills.sh-manifest-333?style=for-the-badge"></a>
@@ -37,10 +37,17 @@ Codex and Pi are not supported yet.
 ## Relation to gentle-ai
 
 Nerv by Gentle-AI is an **overlay**, not a fork. It reuses gentle-ai's native
-engine and contracts unchanged — RDD
-(receipt-driven review), the skill registry and resolver, the `jd`
-judgment agents, delivery budgeting with chained PRs, and the lossless blocking-prompt
-contract — and expresses Nerv by Gentle-AI's own governance on top. Nerv by
+engine and contracts unchanged — ODD (Organic Driven Development) and its
+feature document, RDD (receipt-driven review), the skill registry and
+resolver, the `jd` judgment agents, delivery budgeting with chained PRs,
+and the lossless blocking-prompt contract — and expresses Nerv by
+Gentle-AI's own governance on top. Every run is tracked on an ODD feature
+document, `odd/tasks/<feature>.md`, which the NERV agents write: Misato
+authors its `## Specs` and `## Tasks`, the MAGI vote is recorded per task
+row, and Ritsuko's test plan goes into its `## Log`. NERV's governance
+files (state, deliberation log, audit rounds, run summary) sit next to it
+in `odd/<feature>/nerv/` and are committed with the feature; the
+orchestrator lock is runtime only, in `.nerv/locks/`. Nerv by
 Gentle-AI never modifies any gentle-ai file: nothing is ever written
 under `~/.claude/agents` or `~/.claude/skills`, so `gentle-ai sync` cannot
 see or touch it.
@@ -243,8 +250,9 @@ it. `--answers <path>` drives the whole wizard from a text file (one
 answer per line) instead of prompting, for scripted setup.
 
 After the wizard, open Claude Code in each configured repository and run
-`/nerv:init` once — this creates `openspec/config.yaml` and the skill
-registry when they are missing; the wizard itself only writes `.ai-workflow.yml`.
+`/nerv:init` once — this refreshes the skill registry; the wizard itself
+only writes `.ai-workflow.yml`. Runs are tracked on gentle-ai's ODD feature
+documents (`odd/tasks/<feature>.md`), which the orchestrator creates.
 
 Outside the wizard, the plugin stays self-contained apart from these
 requirements: **gentle-ai 4.x** installed and configured (`gentle-ai

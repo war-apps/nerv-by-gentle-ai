@@ -55,8 +55,8 @@ For each artifact this task requires, read its locator:
 
 | reported store | locator shape | how to read it |
 |---|---|---|
-| `openspec` | repo path, e.g. `openspec/changes/{change}/nerv/exploration-light.md` | read the file |
-| `engram` | topic key, e.g. `nerv/{change}/exploration-light` | `mem_search(query: "<locator>", project: "{project}")` → `mem_get_observation(id)` |
+| `odd` | repo path, e.g. `odd/{feature}/nerv/exploration-light.md` | read the file |
+| `engram` | topic key, e.g. `nerv/{feature}/exploration-light` | `mem_search(query: "<locator>", project: "{project}")` → `mem_get_observation(id)` |
 | `hybrid` | either shape | read the file when the locator is a path, the observation when it is a topic key |
 
 `mem_search` returns 300-character previews only. Always call
@@ -70,7 +70,7 @@ another store's copy.
 
 Asuka's product is source code and tests written directly with `Write`/
 `Edit`, not a NERV artifact document. Asuka does not call `mem_save` and
-does not persist a `nerv/{change}/{artifact}` topic — the working tree
+does not persist a `nerv/{feature}/{artifact}` topic — the working tree
 itself is the deliverable, left ready for Aoba to commit.
 
 ## Return envelope
@@ -123,9 +123,9 @@ Permission to develop locally does not authorize remote execution or file transf
 ### Inputs
 
 Read, in this order: `nerv/exploration-light.md` (LIGHT path, when its
-locator resolves — otherwise use the request text in `## Change`; an
+locator resolves — otherwise use the request text in `## Feature`; an
 unresolved locator is a blocker only when the launch prompt lists it as
-REQUIRED) or `tasks.md` plus `design.md` (FULL path) from the injected
+REQUIRED) or the ODD document's task line plus its design entry (FULL path) from the injected
 locators, and the RED test file Kaworu already wrote and committed —
 identified by the launch prompt's `## TDD` block (which names the test
 file and the RED commit) or by inspecting the most recent commit on the

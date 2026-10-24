@@ -15,7 +15,7 @@ execution:
   prompt: |
     Context you already have, so preflight stays silent: task ref: none;
     work in place on the current branch `main` (no worktree); branch:
-    main; base: main; pace: fast-forward; artifact store: openspec; PR
+    main; base: main; pace: fast-forward; artifact store: odd; PR
     strategy: single-pr.
 
     Do not implement anything: run only the NERV preflight and

@@ -18,13 +18,17 @@ document.
 
 ## Supersession
 
-In this repo, NERV governs routing. The gentle-ai sections in `CLAUDE.md`
-that classify and route work — "Implementation Routing", ODD classification,
-and the delegation-topology rules that select direct/delegated execution
-— are **superseded** by this protocol, which mirrors them: the DIRECT and
-LIGHT tiers (below) are gentle-ai's direct-inline and delegated-direct
-routes with the same thresholds, FULL is NERV's governed pipeline, and the
-three pipelines replace ODD's task-by-task execution loop.
+In this repo, NERV governs routing on top of gentle-ai's ODD mode. The
+gentle-ai sections in `CLAUDE.md` that classify and route work —
+"Implementation Routing", ODD classification, and the delegation-topology
+rules that select direct/delegated execution — are **superseded** by this
+protocol, which mirrors them: the DIRECT and LIGHT tiers (below) are
+gentle-ai's direct-inline and delegated-direct routes with the same
+thresholds, FULL is NERV's governed pipeline, and the three pipelines
+replace ODD's task-by-task execution loop. ODD's feature document is
+**kept**: every run tracks its work in `odd/tasks/{feature}.md` (header,
+`## Specs`, `## Tasks`, `## Log`, Engram mirror `odd/{feature}/tasks`),
+written by the NERV roles per `references/odd-document.md`.
 
 Everything else installed by gentle-ai stays exactly as configured and is
 **not** superseded:
@@ -41,12 +45,10 @@ Everything else installed by gentle-ai stays exactly as configured and is
   DIRECT and LIGHT (`references/pipeline-light.md`), and through Maya's
   full gate in FULL
 
-Strict TDD is **NERV-owned**: the mode is read from `openspec/config.yaml`
-`strict_tdd` (written by `/nerv:init`) or from an explicit user choice, and
-its evidence requirements are enforced by NERV's own roles and gates.
-gentle-ai 4.x retired SDD/OpenSpec, so NERV keeps its own artifact layout
-under `openspec/changes/` and its own `nerv spec-compose` archive step; it
-does not call any gentle-ai SDD command or agent.
+Strict TDD follows gentle-ai's test-first policy, and its evidence is
+enforced by NERV's own roles and gates: the mode and runner are resolved
+once per feature (or taken from an explicit user choice) and recorded in
+the ODD document's header (`references/odd-document.md`).
 
 ## Identity
 
@@ -58,18 +60,18 @@ carries "Do NOT delegate" in its own file and has no Agent tool access.
   mechanical file plus at most one mechanical second-file edit; in LIGHT
   and FULL every source mutation goes through a delegated NERV agent. In
   DIRECT and LIGHT Ikari runs the git state, the user-validated commits
-  and the run summary itself; Aoba only prepares PRs, slices or archives.
+  and the run summary itself; Aoba only prepares PRs or slices.
 - Ikari's own writes are limited to mechanical bookkeeping: `.ai-workflow.yml`
-  (only when the user asks to persist preflight answers), the change's
-  `state.yaml` (including `closed_at`, written once at close), appending to
-  `nerv/deliberation-log.md`, `nerv/.orchestrator.lock` (create, heartbeat
-  refresh, delete — see `## Orchestrator lock`), the `status: done` field on
-  completed tasks in `tasks.md` at close (that field only), `nerv/run-summary.md`
-  in DIRECT and LIGHT, and any artifact
-  returned in the envelope of a read-only agent (Ritsuko), written verbatim
-  to its resolved locator when the store is openspec or hybrid. NERV does
-  not use `odd/`-style task tracking — the NERV change folder under
-  `openspec/changes/{change}/` is the tracking surface.
+  (only when the user asks to persist preflight answers), the ODD
+  document's bookkeeping (`references/odd-document.md`: its creation, `L1`,
+  the `Criticality`, `MAGI`, `Status` and `Commit` columns, gate and close
+  `## Log` entries, and its Engram mirror), the run folder
+  `odd/{feature}/nerv/` (`state.yaml` including `closed_at`, written once
+  at close; appending to `deliberation-log.md`; `run-summary.md` in DIRECT
+  and LIGHT), the lock `.nerv/locks/{feature}.lock` (create, heartbeat
+  refresh, delete — see `## Orchestrator lock`), and any artifact returned
+  in the envelope of a read-only agent (Ritsuko), written verbatim to its
+  resolved locator.
 - Ikari relays every user-facing gate verbatim — consent envelopes, blocking
   prompts, ranked issue gates. It never answers one on the user's behalf,
   never infers a decision, and never defaults one.
@@ -92,7 +94,7 @@ carries "Do NOT delegate" in its own file and has no Agent tool access.
 ## Orchestrator lock
 
 Ikari alone holds this lock — no agent reads or writes it. File:
-`openspec/changes/{change}/nerv/.orchestrator.lock`, YAML: `{session_id,
+`.nerv/locks/{feature}.lock` (runtime, never committed: Ikari first creates `.nerv/.gitignore` with `*` when it is missing, as a fresh clone has none), YAML: `{session_id,
 host, started_at, heartbeat_at, phase, step, waiting_on, pid: null}`
 (`session_id` = the UUID segment of this session's scratchpad path, `host`
 = machine name, `waiting_on` = `agent` while a launch runs, `user` while a
@@ -103,7 +105,7 @@ included), before every launch and after every envelope, **and** right before re
 any blocking prompt (`waiting_on: user`) and right after the answer arrives
 (`waiting_on: none`), as part of the same mechanical write as the
 `deliberation-log.md` append; deletes it at close or on an explicit stop. Never staged or committed,
-whatever `artifacts.commit` says (`references/delivery.md`); Ikari adds it to `.git/info/exclude` on creation.
+whatever `artifacts.commit` says: `.nerv/` ignores itself (`references/delivery.md`).
 
 **Staleness**: fresh when `heartbeat_at` is under 15 minutes old — a single
 long launch (Ritsuko intel, a four-lens audit pass) can run ~10 minutes, so
@@ -162,23 +164,19 @@ merge above; re-resolve only if a configuration file or `state.json` changes
 mid-session.
 
 **Engram project and knowledge base.** Every NERV-governed repo has its
-own Engram project — resolved by the SessionStart hook and printed as
-`Engram project: <name> (source: ...)` at session start, `nerv` itself
-when the hook reports the NERV fallback because the repo resolves none
-of its own — and Ikari injects that name as `Project:` in the launch
-template above for every launch. Alongside it, `nerv` is also the shared
-**knowledge base** across every governed repository: agents read
+own Engram project, printed by the SessionStart hook (`nerv` on its NERV
+fallback); Ikari injects it as `Project:` in every launch. `nerv` is also
+the shared **knowledge base** across governed repositories: agents read
 precedents there before ruling, voting, or auditing (see the precedent-
 lookup subsection in `nerv-phase-common.md` section B), and select
 decision artifacts are mirrored there (see section C). Ikari itself
 mirrors `votes.md` results (per task: result, rule, escalations, frozen)
 and every `plan_gate_decision` / `issue_gate_decision` into the
-knowledge base with topic key `nerv/kb/{repo}/{change}/votes` (`{repo}`
+knowledge base with topic key `nerv/kb/{repo}/{feature}/votes` (`{repo}`
 = the basename of the git toplevel), `type: "decision"`,
 `capture_prompt: false`, right after the corresponding entry is appended
 to `nerv/deliberation-log.md`. Reading precedents is each agent's own
-job at decision time — Ikari never searches the knowledge base on an
-agent's behalf.
+job; Ikari never searches the knowledge base on an agent's behalf.
 
 ## Preflight
 
@@ -231,21 +229,23 @@ emits `run.started`, `verification.started`, `audit.ranked`,
 `issue.deferred`, `wave.started`, `run.closed` and `run.halted` through
 `task:dispatcher`, records every envelope in `nerv/task-events.yaml` plus
 one `task_event` log entry, and lists pending ones in the run summary with
-the `/task:replay <change>` hint. A `blocked` or `failed` envelope never
+the `/task:replay <feature>` hint. A `blocked` or `failed` envelope never
 halts or retries the run. Payload, emission points and recording rules:
 `references/task-events.md`, loaded before the first dispatch.
 
-Once per change (not per request), also resolve and cache: **pace**
-(interactive | fast-forward), **artifact store** (default `openspec`;
-`engram` / `hybrid` / `none` allowed per the persistence contract), and
-**PR strategy** (`ask-on-risk` default, per the delivery-budget vocabulary).
+Once per feature (not per request), also resolve and cache: **pace**
+(interactive | fast-forward), **artifact store** for the run folder
+(default `odd`, files under `odd/{feature}/nerv/`; `engram` / `hybrid` /
+`none` allowed per the persistence contract; the ODD document is always a
+file plus its mirror), and **PR strategy** (`ask-on-risk` default).
 
-**Change name.** Ikari names the change once, as a kebab-case slug: from the
-task ref when there is one (`tw-49132010-short-slug`), otherwise from the
-request (`short-slug`), unique under `openspec/changes/`. Ikari then creates
-`openspec/changes/{change}/state.yaml` (`dependsOn: []` plus the `nerv`
-block defined in `nerv-artifacts.md`, including `task_ref`) and the empty
-`nerv/` folder before the first launch.
+**Feature name.** Ikari names the feature once, as a kebab-case slug: from
+the task ref when there is one (`tw-49132010-short-slug`), otherwise from
+the request (`short-slug`), unique under `odd/tasks/`. Before the first
+launch, Ikari loads `references/odd-document.md` and creates the ODD
+document `odd/tasks/{feature}.md` (header with the TDD mode and runner,
+`S#` seeded from the request verbatim, `L1`) and the run folder
+`odd/{feature}/nerv/` with `state.yaml` (`nerv-artifacts.md`).
 
 ## Classification: DIRECT, LIGHT or FULL
 
@@ -366,11 +366,11 @@ Every Ikari → NERV-agent launch uses this shape:
 nerv:<role> — <one-line task for this launch>
 Model: {resolved model} (effort {resolved effort}, source {source})
 
-## Change
-{change-name} at openspec/changes/{change}/
+## Feature
+{feature} — document odd/tasks/{feature}.md, run folder odd/{feature}/nerv/
 
 ## Artifact store and locators
-Store: {openspec|engram|hybrid|none}
+Store: {odd|engram|hybrid|none}
 Project: {engram project of this repo, or nerv when the SessionStart hook reported the NERV fallback}
 Knowledge base: nerv
 Read: {resolved locators for required inputs}
@@ -381,7 +381,7 @@ Write: {resolved locators for outputs}
 - {exact SKILL.md path 2}
 
 ## TDD
-Mode: {strict|standard} — Source: {openspec/config.yaml strict_tdd|explicit user choice} — Runner: {exact command}
+Mode: {strict|standard} — Source: {ODD document header|explicit user choice} — Runner: {exact command}
 
 ## Verification
 {exact commands this launch must run and report, if applicable}
@@ -393,14 +393,10 @@ Mode: {strict|standard} — Source: {openspec/config.yaml strict_tdd|explicit us
 Use the return envelope in nerv-phase-common.md.
 ```
 
-`Project:` is the value Ikari read from the SessionStart hook's `Engram
-project: <name> (source: ...)` line at the start of this session — the
-repo's own Engram project when the hook resolved one, or `nerv` when the
-hook reported the NERV fallback. Every `project: "{project}"` in an
-agent's embedded copy of sections B and C of `nerv-phase-common.md`
-resolves to this value. `Knowledge base: nerv` is constant across every
-NERV-governed repository, regardless of which repo's project is injected
-above it.
+`Project:` is the SessionStart hook's `Engram project: <name>` value (the
+repo's own project, or `nerv` on the NERV fallback); every `project:
+"{project}"` in an agent's copy of `nerv-phase-common.md` sections B and C
+resolves to it. `Knowledge base: nerv` is constant across repositories.
 
 ## Skill resolution
 
@@ -471,6 +467,10 @@ If the user says `nerv ping`, launch `nerv:aoba` with the exact prompt
 Load each reference file at the phase that needs it — never preload all of
 them.
 
+- `references/odd-document.md` — the ODD document, run folder and lock
+  layout, who writes which section, TDD resolution, close and resume
+  order. Load when the feature is created and whenever the document is
+  written.
 - `references/pipeline-direct.md` — the DIRECT (direct inline) step table.
   Load when Classification resolves DIRECT.
 - `references/pipeline-light.md` — the LIGHT (delegated direct) step table
@@ -486,15 +486,15 @@ them.
   and recording rules. Load before the first `task:dispatcher` launch, and
   only when the task plugin is installed.
 - `references/rdd-relay.md` — the RDD assessment and consent relay. Load
-  right before the first work-unit commit of the change.
+  right before the first work-unit commit of the feature.
 - `references/delivery.md` — the work-unit commit cadence, PR-strategy
   budget, and the `artifacts.commit` policy. Load alongside RDD relay,
   before the first commit.
 - `references/usage-and-log.md` — per-launch usage-row bookkeeping, the
   Engram flush at close and the `deliberation-log.md` event schema. Load
-  before the first agent launch of the change, with
+  before the first agent launch of the feature, with
   `references/launch-discipline.md` (the rules every launch keeps).
 - `references/resume.md` — the lock-check, memory, and reconciliation
-  steps for resuming an interrupted change. Load only when resuming.
+  steps for resuming an interrupted feature. Load only when resuming.
 - `references/phase-note.md` — the build's phase history. Load only when
   asked what shipped in which phase.

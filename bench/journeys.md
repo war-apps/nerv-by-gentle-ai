@@ -15,9 +15,10 @@ outcomes that must hold. Run them after every phase and before any push.
   one passing test (`Calculator.Add`).
 - `.ai-workflow.yml` with `enabled: true`, `git.worktree: never`,
   `git.base_branch: main`, skills `testing: [tdd]`, `code: [dotnet-best-practices]`.
-- `openspec/config.yaml` with `strict_tdd: true` and
-  `rules.apply.test_command: dotnet test`; `.atl/skill-registry.md` refreshed
-  with `gentle-ai skill-registry refresh --cwd <repo>`.
+- `.atl/skill-registry.md` refreshed with `gentle-ai skill-registry refresh
+  --cwd <repo>`. The ODD document's header then records strict TDD with the
+  runner `dotnet test`, which the orchestrator resolves from the solution
+  (one workspace-level command covers every project).
 - Non-interactive runs: `gentle-ai review mode disable --scope clone --cwd <repo>`
   so RDD consent envelopes do not block a session without a terminal. The
   global switch stays as the user set it. Interactive runs keep RDD as is.
@@ -45,7 +46,7 @@ Setup: branch `feature/subtract` in the scratch repo, `Calculator` has only
 > NERV LIGHT journey (non-interactive harness run). Context the user gives
 > you up front so preflight stays silent: task ref: none; work in place on
 > the current branch feature/subtract (no worktree); pace: fast-forward;
-> artifact store: openspec; PR strategy: single-pr; the user pre-validates
+> artifact store: odd; PR strategy: single-pr; the user pre-validates
 > every commit shown in this run (commit without asking); change name:
 > subtract-method.
 > Request: add a `Subtract(int a, int b)` method to `Calculator` in
@@ -60,8 +61,11 @@ Expected, in order:
    carries the route declaration: LIGHT because the change is new
    behavior with its own test (two non-trivial files), with the
    evidence-budget and mapping triggers stated.
-2. `openspec/changes/subtract-method/state.yaml` with `dependsOn: []` and the
-   `nerv` block (`path: light`).
+2. The ODD document `odd/tasks/subtract-method.md` (header with strict TDD
+   and `dotnet test`, `S1` quoting the request, one `T1` row with route
+   `delegated (LIGHT)`, `L1` verbatim) and
+   `odd/subtract-method/nerv/state.yaml` with the `nerv` block
+   (`feature: subtract-method`, `path: light`).
 3. `nerv:ritsuko` (`MODE: intel-light`) is launched only when the mapping
    trigger fired; in this two-file scratch repo it normally is not, and the
    route declaration says so. When it runs, `nerv/exploration-light.md`
@@ -84,8 +88,11 @@ Expected, in order:
    usage collected (never estimated; Shinji, plus Ritsuko or Maya only if
    launched), the commit and no PR slices. No `nerv:kaworu` or `nerv:aoba`
    launch appears in the log.
-8. `openspec/changes/subtract-method/` holds the gentle-ai-owned files
-   with the `nerv/` folder present, and `/nerv:status` lists the change.
+8. `T1`'s row carries `Status` `done` and the work-unit commit, the
+   `## Log` records the close, the close commit `docs: close nerv run for
+   subtract-method` holds the document and `odd/subtract-method/nerv/`
+   (`artifacts.commit: at-close`), and no archive or `openspec/` folder
+   exists.
 
 DIRECT variant: the request "fix the typo `Retuns` in the XML doc comment
 of `Add`" classifies DIRECT (`path: direct`): Ikari edits the one file,
@@ -143,7 +150,7 @@ Prompt (piped to `claude -p --max-turns 200 --allowedTools 'Agent,Bash(git
 > NERV FULL journey (non-interactive harness run). Context the user gives
 > you up front so every gate stays silent: task ref: none; work in place on
 > the current branch feature/multiply-and-ci (no worktree); pace:
-> fast-forward; artifact store: openspec; PR strategy: single-pr; change
+> fast-forward; artifact store: odd; PR strategy: single-pr; change
 > name: multiply-and-ci; for any corner-case question, choose the most
 > conservative option and record it as the answer; plan approval is
 > pre-granted — proceed past the plan-approval gate once tasks, criticality,
@@ -157,36 +164,40 @@ Prompt (piped to `claude -p --max-turns 200 --allowedTools 'Agent,Bash(git
 Expected, in order:
 
 1. Classification `FULL` (per J2), recorded in `nerv/deliberation-log.md`.
-2. `openspec/changes/multiply-and-ci/state.yaml` with the `nerv` block
+2. `odd/tasks/multiply-and-ci.md` with `S1`/`S2` quoting the two asks and
+   `L1`, and `odd/multiply-and-ci/nerv/state.yaml` with the `nerv` block
    (`path: full`).
-3. `nerv:ritsuko` (MODE: intel) writes `exploration.md` covering both
-   `src/Calc/Calculator.cs` and the new `.github/workflows/` surface.
-4. `nerv:ritsuko` (MODE: test-plan) writes `specs/{domain}/spec.md` and
-   `nerv/test-plan.md` with cases for `Multiply` and for the workflow
-   file, plus a `## Corner-case questions` section (e.g. "should
+3. `nerv:ritsuko` (MODE: intel) returns `nerv/exploration.md` covering both
+   `src/Calc/Calculator.cs` and the new `.github/workflows/` surface;
+   Ikari writes it and a `## Log` pointer.
+4. `nerv:ritsuko` (MODE: test-plan) returns the test-plan `## Log` entry
+   with cases for `Multiply` (`S1`) and for the workflow file (`S2`),
+   plus a `### Corner-case questions` section (e.g. "should
    `Multiply` overflow-check?", "should CI run on pull_request too or
    push only?"). Ikari relays the questions as one grouped blocking
    prompt; per the pre-answered context, the most conservative option is
    chosen for each (no overflow-check scope creep beyond `int * int`; CI
    on `push` only, as literally asked) and recorded verbatim in
-   `## Answers`.
-5. `nerv:misato` writes `proposal.md`, `design.md` (with `## New skills,
-   scripts and commands` — either `none`, or naming `.github/workflows/
-   ci.yml` as a new script if the design treats it as one, in which case
-   `nerv:fuyutsuki` evaluates it at step 9), and `tasks.md` with `T1`
-   (`Multiply`, `pilot: shinji`, `depends_on: []`) and `T2` (`ci.yml`,
-   `pilot: toji`, `depends_on: []`).
+   `### Answers`.
+5. `nerv:misato` completes `## Specs`, writes the design `## Log` entry
+   (with `### New skills, scripts and commands` — either `none`, or naming
+   `.github/workflows/ci.yml` as a new script if the design treats it as
+   one, in which case `nerv:fuyutsuki` evaluates it at step 9), and
+   `## Tasks` with `T1` (`Multiply`, `S1`, pilot `shinji`, no
+   dependencies) and `T2` (`ci.yml`, `S2`, pilot `toji`, no
+   dependencies).
 6. `nerv:hyuga` (dispatch a) writes `nerv/criticality.md` for T1 and T2
    (both `standard` unless a `critical_paths` entry matches).
 7. MAGI vote round 1: `nerv:balthasar`, `nerv:melchior`, `nerv:casper`
    launched in one parallel batch, blind, each returning the JSON
    contract from `nerv-artifacts.md`; Ikari merges into `nerv/votes.md`
    with three member entries per task (T1, T2), `rule` applied per each
-   task's criticality, `result: approved`, `frozen: true` for both (a
+   task's criticality, `result: approved`, `frozen: true` for both, copied
+   into each row's `MAGI` column (a
    rejection here would exercise the revise loop instead — not expected
    on this simple change).
 8. `nerv:fuyutsuki` writes `nerv/veto-ruling.md` — one row per item from
-   `design.md`'s `## New skills, scripts and commands` (or a single
+   the design entry's `### New skills, scripts and commands` (or a single
    `none` line if that section was `none`).
 9. Plan approval gate: recorded as pre-granted per the harness context —
    `nerv/deliberation-log.md` carries `plan_gate_relayed` followed
@@ -239,7 +250,7 @@ where `feature/multiply-and-ci` (J3's FULL change, `multiply-and-ci`) is
 merged first — so J4 starts from a real `BASE..HEAD` with `Add`,
 `Subtract`, and `Multiply` already present and CI already wired. The
 request seeds a defect deliberately: it asks for a
-`Divide(int a, int b)` method whose task is specified in `tasks.md` as
+`Divide(int a, int b)` method whose task is specified in `## Tasks` as
 "returns `a / b`" with a test plan that omits the division-by-zero case,
 so the audit stage has a real, candidate-caused finding to catch rather
 than a synthetic one.
@@ -256,7 +267,7 @@ Prompt (piped to `claude -p --max-turns 250 --allowedTools 'Agent,Bash(git
 > NERV FULL journey — audit and closure (non-interactive harness run).
 > Context the user gives you up front so every gate stays silent: task
 > ref: none; work in place on the current branch feature/divide-audit (no
-> worktree); pace: fast-forward; artifact store: openspec; PR strategy:
+> worktree); pace: fast-forward; artifact store: odd; PR strategy:
 > single-pr; change name: divide-audit; for any corner-case question,
 > choose the most conservative option and record it as the answer; plan
 > approval is pre-granted — proceed past the plan-approval gate once
@@ -275,9 +286,10 @@ Expected, in order:
    critical-path signal (`src/Calc/` from `critical_paths`); a LIGHT
    classification here is a regression because the audit stage would never
    run.
-2. `openspec/changes/divide-audit/state.yaml`, `nerv/test-plan.md` with
-   the `Divide` case present and **no** division-by-zero case (the seeded
-   gap), `tasks.md` with the `Divide` task specified as "returns `a / b`".
+2. `odd/divide-audit/nerv/state.yaml`, the test-plan `## Log` entry of
+   `odd/tasks/divide-audit.md` with the `Divide` case present and **no**
+   division-by-zero case (the seeded gap), and `## Tasks` with the
+   `Divide` task specified as "returns `a / b`".
 3. Implementation lands `Divide` exactly as specified — no defensive
    divisor check, since nothing in the plan asked for one — via
    Kaworu RED → Aoba commit → pilot GREEN → Aoba commit.
@@ -332,21 +344,21 @@ Expected, in order:
     division-by-zero item marked `fixed` with the guard commit hash) and
     `nerv/agent-config.md` (every launch across the whole run, audit
     passes included).
-11. `nerv:aoba` (Archive duty) composes specs via
-    `nerv spec-compose` (one call per delta spec) and moves the
-    change with `git mv` to
-    `openspec/changes/archive/YYYY-MM-DD-divide-audit/`, `nerv/` folder
-    included; the commit `docs: archive change divide-audit` appears in
-    `git log`.
+11. Every `## Tasks` row carries `Status` `done` and its commit (the fix
+    commit recorded too); no archive step runs and no `openspec/` folder
+    exists.
 12. `nerv:fuyutsuki` (MODE: curate) appends a `## Summary` block to the
     top of `nerv/deliberation-log.md`.
 13. `nerv:aoba` writes `nerv/run-summary.md` (agents table including every
     audit-pass and refuter launch, commits including the RED/fix pair,
     no PR slices since the strategy is `single-pr`).
-14. Close.
+14. Close: the `## Log` close entry, then Aoba's close commit `docs: close
+    nerv run for divide-audit`.
 
-Expected artifacts, in creation order: `state.yaml`, `exploration*.md`,
-`specs/`, `nerv/test-plan.md`, `proposal.md`, `design.md`, `tasks.md`,
+Expected artifacts, in creation order: `odd/tasks/divide-audit.md` (header,
+seeded `## Specs`, `L1`), `nerv/state.yaml`, `nerv/exploration*.md`, the
+test-plan `## Log` entry, the completed `## Specs`, the design entry and
+`## Tasks`,
 (FULL-only: `nerv/criticality.md`, `nerv/votes.md`, `nerv/veto-ruling.md`,
 `nerv/waves.md`), `nerv/maya-report.md`, `nerv/audit/diff-round-1.patch`,
 `nerv/audit/round-1.yaml`, `nerv/audit/pass-<name>-round-1.json` ×4,
@@ -364,7 +376,7 @@ any), `ranking_issued`, `issue_gate_relayed`, `issue_gate_decision`,
 `fix_routed`, `commit_recorded` (RED and fix), `reaudit` (round 2),
 `patch_frozen` (round 2), `audit_pass` ×4 (round 2), `ranking_issued`
 (round 2, empty NOW set) or its equivalent closure signal, `docs_written`,
-`archived`, `log_curated`, `stop`/close. No `residual_accepted` entry is
+`log_curated`, `stop`/close. No `residual_accepted` entry is
 expected in this journey since round 2 resolves clean under the cap.
 
 Non-interactive prompt gates pre-answered, matching J3's list plus two
@@ -434,7 +446,7 @@ Expected, in order:
    from `git.branch_pattern` with `{prefix}` = `tw`) and Base branch
    (`main`); Worktree is skipped (`git.worktree: never`). Commits carry
    `(TW-{id})` (`commit_ref` from `git.commit_ref_pattern`).
-3. `openspec/changes/{change}/state.yaml`'s `nerv` block has
+3. `odd/{feature}/nerv/state.yaml`'s `nerv` block has
    `task_ref: "TW-{id}"`, taken from the `run.started` envelope.
 4. Maya's full gate start (FULL), or the work unit's verification start
    (DIRECT and LIGHT), emits `verification.started` — the task moves to
@@ -457,8 +469,8 @@ Expected, in order:
    claude.ai Teamwork connector available), `run.started` answers `blocked`
    naming the missing tools; the run goes on without halting or retrying,
    and the run summary lists the envelope under "Task events pending" with
-   `/task:replay <change>`. After restoring the server, `/task:replay
-   <change>` re-dispatches it and marks it `replayed`.
+   `/task:replay <feature>`. After restoring the server, `/task:replay
+   <feature>` re-dispatches it and marks it `replayed`.
 10. Halted-run variant: a pilot signals a block mid-run (e.g. an
     unresolvable dependency). Ikari asks the user for the mandatory cause
     first — the run never blocks silently or invents one — then emits
@@ -478,7 +490,7 @@ is shown.
 
 ## J6: Resume and concurrent orchestrator (Phase 5)
 
-Verifies the orchestrator lock (`openspec/changes/{change}/nerv/.orchestrator.lock`)
+Verifies the orchestrator lock (`.nerv/locks/{feature}.lock`)
 and its 15-minute heartbeat rule: a resume while the lock is fresh and
 foreign must refuse rather than run alongside a live orchestrator; a resume
 after the heartbeat goes stale must take over cleanly, without re-voting
@@ -487,11 +499,11 @@ frozen tasks or re-running closed waves.
 Setup: same scratch repo as J3, fresh branch `feature/power-resume` off
 `main` (`Calculator` has `Add`/`Subtract`/`Multiply`/`Divide` from
 J1/J3/J4), `.ai-workflow.yml` as in Common setup (no task plugin),
-`gentle-ai review mode disable --scope clone --cwd <repo>`. Change name:
+`gentle-ai review mode disable --scope clone --cwd <repo>`. Feature name:
 `power-resume`. Request: add a `Power(int base, int exponent)` method to
 `Calculator` in src/Calc/Calculator.cs, using the same J3-style FULL
 prompt (task ref: none; work in place on `feature/power-resume`; pace:
-fast-forward; artifact store: openspec; PR strategy: single-pr; corner
+fast-forward; artifact store: odd; PR strategy: single-pr; corner
 cases answered conservatively; plan approval pre-granted; every Aoba
 commit pre-validated).
 
@@ -500,35 +512,38 @@ commit pre-validated).
    `nerv/deliberation-log.md`. As soon as the `vote_result` events for
    both/all tasks appear in the log (MAGI vote round 1 concluded, tasks
    frozen), kill the session process directly (not a graceful stop).
-   Expected before the kill: `nerv/.orchestrator.lock` exists, holder
+   Expected before the kill: `.nerv/locks/power-resume.lock` exists, holder
    `session_id`, `host`, `phase`/`step` and `heartbeat_at` populated
    (`pid` is always `null`: the protocol keys liveness on the heartbeat,
    not on a process id), refreshed at least once since creation.
 2. **Refused resume (fresh lock).** Within 15 minutes of the kill, launch
    a resume session with the J3 resume prompt ("Resume the NERV run for
-   change `power-resume`. Follow the NERV orchestrator protocol injected
+   feature `power-resume`. Follow the NERV orchestrator protocol injected
    in this session, including its Resume section."). Expected: Ikari
    reads the lock, finds `heartbeat_at` fresh (under 15 minutes old) and
    the holder id foreign to this session, and refuses to take over —
    `nerv/deliberation-log.md` gets a `lock_refused` event naming the
    foreign holder and the lock's age; the session states plainly that a
    live orchestrator appears to hold this change and stops. Apart from
-   that single log append, no file under `openspec/changes/power-resume/`
-   is written, modified or deleted by this session, and the lock keeps
-   the foreign holder and its `heartbeat_at` untouched (verify by hashing
-   every file under the change except `deliberation-log.md` before and
-   after — identical; `git status --porcelain` is not enough while the
-   whole change folder is still untracked). In a non-interactive bench
+   that single log append, no file under `odd/power-resume/` or
+   `odd/tasks/power-resume.md` is written, modified or deleted by this
+   session, and the lock keeps the foreign holder and its `heartbeat_at`
+   untouched (verify by hashing every file there and the lock, except
+   `deliberation-log.md`, before and after — identical; `git status
+   --porcelain` is not enough while the feature's files are still
+   untracked). In a non-interactive bench
    run the harness prompt pre-answers the protocol's wait-or-take-over
    prompt with "wait"; a real interactive session relays that prompt and
    may take over only after the user confirms the holder is dead — not
    exercised here since 15 minutes have not elapsed.
 3. **Legitimate resume (stale lock).** Make the heartbeat stale: either
    wait past the 15-minute rule, or, for a faster bench run, edit
-   `nerv/.orchestrator.lock`'s `heartbeat_at` field directly to a
+   `.nerv/locks/power-resume.lock`'s `heartbeat_at` field directly to a
    timestamp older than 15 minutes (test-only shortcut — a real resume
    never edits the lock by hand). Launch the resume session again with
-   the same prompt. Expected: `nerv/deliberation-log.md` gets a `resume`
+   the same prompt. Expected: the resume first reads `mem_context`,
+   `mem_search` for the feature, `mem_get_observation` and
+   `odd/tasks/power-resume.md` (ODD's order); `nerv/deliberation-log.md` gets a `resume`
    event with `from_step` (the step after the last completed one — here,
    after the vote) and `took_over_from` (the dead holder's id from the
    stale lock); the lock is rewritten with this session's holder id and a
@@ -542,23 +557,21 @@ commit pre-validated).
    resumed run is still in progress: it reports the lock state (holder
    id, wave in progress, heartbeat age). Run it again after the run
    closes: the lock line is absent (the lock file is removed at close).
-5. **`tasks.md` status at close.** After close, `tasks.md` shows
-   `status: done` for every task the run completed (T1 and any others
-   from `waves.md`) — not `status: planned`, the defect the J4 close
-   process left behind before Phase 5 (see `odd/tasks/nerv-overlay.md`
-   T3.2).
+5. **`## Tasks` status at close.** After close, every `## Tasks` row the
+   run completed (T1 and any others from `waves.md`) shows `Status` `done`
+   and its commit — not `pending`, the defect the J4 close process left
+   behind before Phase 5 (see `odd/tasks/nerv-overlay.md` T3.2) — and the
+   `## Log` records the close.
 6. **Artifacts commit policy: `at-close`.** With `.ai-workflow.yml`'s
    `artifacts.commit: at-close` (the default, unchanged from Common
-   setup), inspect the closing commits: a commit
-   `docs: nerv artifacts for power-resume` exists in `git log`, and
-   `git show --stat` on it does **not** list `.orchestrator.lock` (the
-   lock file is never committed at any point — it is deleted before
-   close, and even mid-run it stays untracked/ignored). Confirm the
-   `nerv/` folder's content (deliberation log, votes, veto ruling, waves,
-   maya reports, run summary) is fully present in that commit, the
-   archive commit or the close commit (`docs: close nerv run for
-   power-resume`), never left uncommitted after close: `git status
-   --porcelain openspec/` prints nothing once the session exits. The
+   setup), inspect the closing commit: `docs: close nerv run for
+   power-resume` exists in `git log`, and `git show --stat` on it does
+   **not** list anything under `.nerv/` (the lock is never committed at
+   any point — it is deleted before close, and `.nerv/` ignores itself).
+   Confirm the ODD document and the run folder's content (deliberation
+   log, votes, veto ruling, waves, maya reports, run summary) are fully
+   present in that commit, never left uncommitted after close: `git
+   status --porcelain odd/` prints nothing once the session exits. The
    close commit is the run's last write, so the `stop` event precedes it
    in the committed log and no `commit_recorded` line for the close
    commit itself exists (its hash is in the session's final message).

@@ -15,7 +15,7 @@ the task events of the core's `## Task events` through `task:dispatcher`.
 | 6. Work-unit commit | Ikari | shows the diff and the conventional commit message with `commit_ref`, then commits | **user validates before commit** |
 | 7. RDD hook | native engine (via Ikari) | `references/rdd-relay.md` | per RDD relay |
 | 8. Run summary | Ikari; `task:dispatcher` when the task plugin is installed | `run.closed` emitted first, so its envelope is in the summary; then `nerv/run-summary.md` per its schema in `nerv-artifacts.md` (usage rows only for agents actually launched) | none |
-| 9. Close | Ikari | `closed_at` in `state.yaml`, lock deleted; a run that halts instead emits `run.halted` with the cause | none |
+| 9. Close | Ikari | the `## Tasks` row's `Status` and `Commit`, the close `## Log` entry, `closed_at` in `state.yaml`, lock deleted, then the close commit per `artifacts.commit` (`delivery.md`); a run that halts instead emits `run.halted` with the cause | **user validates** the close commit |
 
 **Test-first exception.** When there is no relevant runnable deterministic
 test (passive docs, a comment, no runner), step 3 is skipped and the

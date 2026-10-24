@@ -75,8 +75,8 @@ Branch: `feature/ship-deploy-plugins`, cut from `feature/tasks-plugin-split` at 
 | T1 | S2, S3 | delegated writer, in parallel with T2 (Writer trigger (a): independent units with disjoint surfaces, each over 100 lines; also the context backstop) | committed (RED: 14 Compute and Import tests plus the changelog test; GREEN: `go test ./internal/versioning` ok; parity 16/16 against semantic-release 24.2.9) | see `git log -- internal/versioning` |
 | T2 | S4, S5 | delegated writer, in parallel with T1 (same trigger) | committed and verified (no blockers) | f0254d2 |
 | T3 | S6, S7, S8 | delegated writer (context backstop) | committed and verified; fixes in ed99e5d | 322edc0, 367d066, ed99e5d |
-| T4 | S1, S9 | inline | pending | — |
-| T5 | S10 | delegated writer (context backstop; about 38 files of prose) | in progress | — |
+| T4 | S1, S9 | two parallel delegated writers: T4a Go, T4b prose (Writer trigger (a): disjoint surfaces, each well over 100 lines) | in progress | — |
+| T5 | S10 | delegated writer (context backstop; about 38 files of prose) | committed and verified; fixes in d752c90 | 7af0059, d752c90 |
 | T6 | S11 | delegated writer (context backstop; the edit surface spans the whole tree) | committed and verified; fixes in c5c0bf4 | 9c6032c, c5c0bf4 |
 | T7 | S12 | — | pending | — |
 
@@ -169,4 +169,36 @@ Forecast: well over 400 lines (about 11.5k lines of Go move or are rewritten), s
     - warn on `--rebase` that the tag points at code that was never built;
     - clean up the push error and gh's "release not found" noise.
   - **Advisories assigned to T7:** `selection: branches` has no equivalent and needs a migration message; `manifest.json` itself is not hashed (it is a local artifact; record as a known limit).
-- **Next step:** T5 (running). The user's L5 decisions are "ODD + agentes NERV encima (Recommended)", "Se mantiene, renombrado (Recommended)" and "Subcomando nerv migrate (Recommended)". Then T6.
+- **L16** (2026-10-23): T5 committed.
+  - **Prose tests:** 8 new ones, RED and then GREEN.
+  - **Decisions taken by the writer:**
+    - every tier (DIRECT and LIGHT too) gets an ODD document;
+    - Ikari seeds the `S#` quotes before the test plan;
+    - the TDD mode and runner are recorded in the document header;
+    - one close commit, `docs: close nerv run for {feature}`;
+    - the task payload's `change` becomes `feature`.
+  - **Parent fixes:** the wizard reminder and Misato's catalogue line.
+- **L17** (2026-10-23): T4 scope (parent).
+  - **Remove semantic-release entirely**: `internal/semrel` and its node runner. `nerv version next` and ship's `VersionSource` move to `internal/versioning`, with the fetch done inside the throwaway clone (L6).
+  - **Remove `nerv pipeline`**, because its release step is semantic-release.
+    - validate and test → ship;
+    - docker push and deploy → `deploy-ssh-compose`;
+    - release → ship plus deploy;
+    - sync back-merge → not ported (`deploy.sync` opt-in later), with a migration message.
+  - **New plugins:** `ship@nerv` (agents: versioner, builder; commands: `/ship:version`, `/ship:setup` (the semantic-release import plus build mode), `/ship:build`) and `deploy@nerv` (agent: deployer; commands: `/deploy:run`, `/deploy:setup`). `deploy` requires `ship`.
+  - **Core** drops `/nerv:ship`, `/nerv:version`, `/nerv:release-setup` and `/nerv:pipeline`.
+- **L18** (2026-10-23): the T5 verifier found two blockers, both fixed in d752c90 with RED-then-GREEN prose tests.
+  - **B1:** Misato's engram and none store modes overrode the "the ODD document is always a file" rule.
+  - **B2:** in a fresh clone the lock was not git-ignored, because `.nerv/.gitignore` ignores itself and is never committed. Ikari now creates it together with the lock.
+  - **Paths:** consistent everywhere. **Governance:** every other step is kept. **Task contract:** consistent, and no Go code depends on the field name.
+  - **Open user decision:** advisory 1. Should DIRECT and LIGHT runs get an ODD document and a close commit? gentle-ai's ODD gives small work neither.
+  - **Advisories assigned to T7:**
+    - two writers for the `Commit` column in FULL;
+    - no owner for the DIRECT/LIGHT task row;
+    - later MAGI rounds can see earlier results;
+    - the MAGI reading lists differ;
+    - missing ODD items: the one-line "document created" notice, and "read until `## Log`, report `S#`";
+    - the TDD mode is no longer persistent (`nerv migrate` should carry `strict_tdd` over);
+    - wording leftovers;
+    - a feature named `tasks` would collide.
+- **Next step:** T4a (running). T4b is written and not yet committed (it waits for T4a). The user's L5 decisions are "ODD + agentes NERV encima (Recommended)", "Se mantiene, renombrado (Recommended)" and "Subcomando nerv migrate (Recommended)". Then T6.

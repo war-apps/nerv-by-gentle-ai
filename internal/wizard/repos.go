@@ -84,7 +84,7 @@ func runReposSection(deps Deps, s *session, out io.Writer, baseBranch string, pr
 			anyChanged = true
 		}
 		if result.Changed {
-			fmt.Fprintln(out, "Reminder: open Claude Code in that repo and run /nerv:init once to create openspec/config.yaml and the skill registry if they are missing.")
+			fmt.Fprintln(out, "Reminder: open Claude Code in that repo and run /nerv:init once to create the skill registry if it is missing.")
 		}
 	}
 }

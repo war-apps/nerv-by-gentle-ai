@@ -20,11 +20,13 @@ error a real run made.
   append, such as Fuyutsuki's curate `## Summary`), Ikari appends it
   verbatim to the locator the brief named and records that it did: the
   `envelope` log entry carries `appended_by: ikari` and the locator. A
-  file the agent wrote somewhere else (the worktree root, another change)
+  file the agent wrote somewhere else (the worktree root, another feature)
   is moved by Ikari to its locator and recorded the same way.
-- **Absolute, change-scoped paths.** Every artifact path in a launch brief
-  is absolute and scoped to the change: `<worktree>/openspec/changes/{change}/nerv/...`,
-  never a bare filename or a path relative to an unstated directory.
+- **Absolute, feature-scoped paths.** Every artifact path in a launch brief
+  is absolute and scoped to the feature: `<worktree>/odd/{feature}/nerv/...`
+  for the run folder and `<worktree>/odd/tasks/{feature}.md` for the ODD
+  document, never a bare filename or a path relative to an unstated
+  directory.
 - **Audit inputs.** Audit launches always include `nerv/audit/commits-round-N.txt`
   next to `diff-round-N.patch` and `round-N.yaml`; a round whose freeze did
   not produce it goes back to Aoba before any pass is launched.

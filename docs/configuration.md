@@ -8,7 +8,9 @@ to the user file, then to the built-in default. `~/.config/ai-workflow` is
 `os.UserConfigDir()`: `$XDG_CONFIG_HOME` when set on Linux,
 `~/Library/Application Support` on macOS and `%AppData%` on Windows. The
 repository's `.nerv/` folder is runtime only (artifacts, the orchestrator
-lock, logs) and ignores itself with a `.nerv/.gitignore` of `*`.
+lock under `.nerv/locks/`, logs) and ignores itself with a `.nerv/.gitignore`
+of `*`. Each run's ODD feature document (`odd/tasks/<feature>.md`) and NERV
+run folder (`odd/<feature>/nerv/`) are committed per `artifacts.commit`.
 
 The files used before, `~/.claude/nerv/nerv.yaml` and
 `<repo>/.nerv/nerv.yaml`, are no longer read. When only an old file exists,
@@ -30,7 +32,7 @@ models:                             # per-role model and effort; project overrid
   aoba: { model: sonnet, effort: low }
 critical_paths: [auth/, payments/, migrations/, infra/]            # Hyuga auto-critical
 artifacts:
-  commit: at-close                  # with-change | at-close | never (default: at-close)
+  commit: at-close                  # when odd/tasks/<feature>.md and odd/<feature>/nerv/ are committed: with-change | at-close | never (default: at-close)
 git:
   base_branch: develop              # default base for the worktree offer
   worktree: ask                     # ask | always | never
@@ -175,7 +177,7 @@ pass) and `all`.
 
 | Role | Name | Group | Purpose | gentle-ai equivalent | Default model / effort |
 |---|---|---|---|---|---|
-| `misato` | Misato Katsuragi | | authors the plan (proposal, design, tasks) | none | fable / high |
+| `misato` | Misato Katsuragi | | authors the plan (specs, design and tasks in the ODD document) | none | fable / high |
 | `ritsuko` | Ritsuko Akagi | | intelligence, test planning, end-of-run docs | none | opus / high |
 | `hyuga` | Makoto Hyuga | | task criticality, dependency waves, tracking | none | sonnet / medium |
 | `melchior` | Melchior-Magi 1 | `magi` | MAGI vote: structure and security; security audit | `jd-judge-b`, `review-risk` | fable / high |
