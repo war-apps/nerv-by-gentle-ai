@@ -12,8 +12,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/war-apps/nerv-by-gentle-ai/internal/pipeline"
-	"github.com/war-apps/nerv-by-gentle-ai/internal/pipelineconfig"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/proc"
 )
 
@@ -101,14 +99,13 @@ func composeOp(ctx context.Context, op string, stdin io.Reader, deps ComposeDeps
 	if !t.Enabled {
 		return "skipped", fmt.Sprintf("%s: DOCKER_DEPLOY_ENABLED is off", cfg.environment)
 	}
-	rel := pipeline.ReleaseOutputs{Version: req.Artifact.Version, GitTag: req.Artifact.Tag, Branch: req.Artifact.Branch}
+	rel := Release{Version: req.Artifact.Version, GitTag: req.Artifact.Tag, Branch: req.Artifact.Branch}
 	if err != nil {
 		return fail("%v", err)
 	}
-	// The default target selection, as nerv pipeline deploy applies it: an
-	// environment that names no DOCKER_IMAGE_VERSION is refused, so a
+	// An environment that names no DOCKER_IMAGE_VERSION is refused, so a
 	// prerelease never reaches an environment by default.
-	d, serr := Select(t, pipelineconfig.Environment{Name: cfg.environment}, "target", rel)
+	d, serr := Select(t, rel)
 	if serr != nil {
 		return fail("%v", serr)
 	}
@@ -116,7 +113,7 @@ func composeOp(ctx context.Context, op string, stdin io.Reader, deps ComposeDeps
 		return "skipped", fmt.Sprintf("%s: %s", cfg.environment, d.Reason)
 	}
 	ssh := SSH{Proc: deps.Proc, Auth: cfg.ssh.Auth, KeyFile: cfg.ssh.KeyFile, KnownHosts: cfg.ssh.KnownHosts, Port: cfg.ssh.Port,
-		ConnectTimeout: cfg.ssh.ConnectTimeoutDuration(), Env: env}
+		ConnectTimeout: cfg.ssh.ConnectTimeout, Env: env}
 	r := Runner{SSH: ssh, Verify: cfg.verify, Release: rel, Output: deps.Output, Sleep: deps.Sleep, UpdateTimeout: cfg.updateTimeout}
 	if op == "deploy" {
 		if err := r.Update(ctx, t); err != nil {
@@ -125,7 +122,7 @@ func composeOp(ctx context.Context, op string, stdin io.Reader, deps ComposeDeps
 		return "ok", fmt.Sprintf("%s: %s updated on %s", cfg.environment, t.Container, t.Host)
 	}
 	res := r.Check(ctx, t)
-	if res.Status != pipeline.DeployDeployed {
+	if res.Status != StatusDeployed {
 		return fail("%s: %s", cfg.environment, res.Error)
 	}
 	return "ok", fmt.Sprintf("%s: %s %s, version %s", cfg.environment, t.Container, res.Health, res.Running)
@@ -133,10 +130,36 @@ func composeOp(ctx context.Context, op string, stdin io.Reader, deps ComposeDeps
 
 type composeSettings struct {
 	environment, source string
-	infisical           pipelineconfig.Infisical
-	ssh                 pipelineconfig.SSH
-	verify              pipelineconfig.Verify
+	infisical           Infisical
+	ssh                 SSHConfig
+	verify              Verify
 	updateTimeout       time.Duration
+}
+
+// tools are the programs the settings need besides the provider's
+// requires (docker, ssh): sshpass for password authentication, the
+// infisical CLI for source infisical.
+func (s composeSettings) tools() []string {
+	var tools []string
+	if s.ssh.Auth == "password" {
+		tools = append(tools, "sshpass")
+	}
+	if s.source == "infisical" {
+		tools = append(tools, "infisical")
+	}
+	return tools
+}
+
+// Preflight checks a deploy-ssh-compose target's config (its defaults
+// applied) before nerv deploy writes anything, and returns the tools it
+// needs on PATH besides the provider's requires: sshpass for password
+// authentication, infisical for source infisical.
+func Preflight(config map[string]string) ([]string, error) {
+	s, err := composeConfig(config, "")
+	if err != nil {
+		return nil, err
+	}
+	return s.tools(), nil
 }
 
 // composeConfig reads and checks the provider's config keys (their
@@ -148,16 +171,16 @@ func composeConfig(c map[string]string, home string) (composeSettings, error) {
 	if s.environment == "" {
 		add("config.environment is required")
 	}
-	if !slices.Contains(pipelineconfig.DeploySources, s.source) {
-		add("config.source %q must be one of %s", s.source, strings.Join(pipelineconfig.DeploySources, ", "))
+	if !slices.Contains(Sources, s.source) {
+		add("config.source %q must be one of %s", s.source, strings.Join(Sources, ", "))
 	}
-	s.infisical = pipelineconfig.Infisical{ProjectID: c["infisical_project_id"], AppPath: c["infisical_app_path"], Domain: c["infisical_domain"]}
+	s.infisical = Infisical{ProjectID: c["infisical_project_id"], AppPath: c["infisical_app_path"], Domain: c["infisical_domain"]}
 	if s.source == "infisical" && (s.infisical.ProjectID == "" || s.infisical.AppPath == "") {
 		add("config.infisical_project_id and config.infisical_app_path are required by source infisical")
 	}
-	s.ssh = pipelineconfig.SSH{Auth: c["ssh_auth"], KeyFile: expandHome(c["ssh_key_file"], home), KnownHosts: expandHome(c["ssh_known_hosts"], home), ConnectTimeout: c["ssh_connect_timeout"]}
-	if !slices.Contains(pipelineconfig.SSHAuths, s.ssh.Auth) {
-		add("config.ssh_auth %q must be one of %s", s.ssh.Auth, strings.Join(pipelineconfig.SSHAuths, ", "))
+	s.ssh = SSHConfig{Auth: c["ssh_auth"], KeyFile: expandHome(c["ssh_key_file"], home), KnownHosts: expandHome(c["ssh_known_hosts"], home)}
+	if !slices.Contains(SSHAuths, s.ssh.Auth) {
+		add("config.ssh_auth %q must be one of %s", s.ssh.Auth, strings.Join(SSHAuths, ", "))
 	}
 	if s.ssh.Auth == "key" && s.ssh.KeyFile == "" {
 		add("config.ssh_key_file is required by ssh_auth key")
@@ -174,15 +197,22 @@ func composeConfig(c map[string]string, home string) (composeSettings, error) {
 	if err != nil {
 		add("config.verify_healthy %q is not a bool", c["verify_healthy"])
 	}
-	s.verify = pipelineconfig.Verify{Healthy: &healthy, VersionLabel: c["version_label"], Timeout: c["verify_timeout"]}
+	s.verify = Verify{Healthy: healthy, VersionLabel: c["version_label"]}
 	if s.verify.VersionLabel == "" {
 		add("config.version_label is required")
 	}
 	for _, k := range []string{"ssh_connect_timeout", "update_timeout", "verify_timeout"} {
 		if d, err := time.ParseDuration(c[k]); err != nil || d <= 0 {
 			add("config.%s %q is not a positive Go duration", k, c[k])
-		} else if k == "update_timeout" {
-			s.updateTimeout = d
+		} else {
+			switch k {
+			case "ssh_connect_timeout":
+				s.ssh.ConnectTimeout = d
+			case "update_timeout":
+				s.updateTimeout = d
+			case "verify_timeout":
+				s.verify.Timeout = d
+			}
 		}
 	}
 	if len(problems) > 0 {

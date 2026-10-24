@@ -6,13 +6,15 @@
 
 # nerv_file_enabled FILE
 #
-# Reports, via exit status, whether FILE exists and carries an
-# "enabled: true" key (allowing surrounding whitespace, CRLF line endings,
-# and a trailing comment) on its own line.
+# Reports, via exit status, whether FILE exists and carries a top-level
+# "enabled: true" key on its own line, at column 0 (allowing whitespace
+# after the colon and the value, CRLF line endings, and a trailing comment).
+# An indented "enabled: true" belongs to a nested section (a plugin's own
+# flag) and does not count.
 nerv_file_enabled() {
   local config_file="$1"
   [ -f "$config_file" ] || return 1
-  tr -d '\r' <"$config_file" | grep -Eq '^[[:space:]]*enabled:[[:space:]]*true[[:space:]]*(#.*)?$'
+  tr -d '\r' <"$config_file" | grep -Eq '^enabled:[[:space:]]*true[[:space:]]*(#.*)?$'
 }
 
 # nerv_repo_enabled ROOT

@@ -17,13 +17,14 @@ import (
 	"time"
 
 	"github.com/war-apps/nerv-by-gentle-ai/internal/env/envtest"
-	"github.com/war-apps/nerv-by-gentle-ai/internal/semrel"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/shipclone"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/shipconfig"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/versioning"
 )
 
 // shipconfigValidationError is a release configuration problem as the engine
 // reports it.
-var shipconfigValidationError = shipconfig.ValidationError{Problems: []string{"release.projects[0].path: required"}}
+var shipconfigValidationError = shipconfig.ValidationError{Problems: []string{"ship.projects[0].path: required"}}
 
 // nextFixture is a fake repository for `nerv version next`: git's top-level
 // answer comes from a scripted runner, the release configuration (if any)
@@ -32,9 +33,9 @@ var shipconfigValidationError = shipconfig.ValidationError{Problems: []string{"r
 type nextFixture struct {
 	top     string
 	runner  *envtest.FakeRunner
-	calls   []semrel.Options
+	calls   []shipclone.ComputeOptions
 	ctxErrs []error
-	results []semrel.ProjectResult
+	results []versioning.Result
 	err     error
 	// stopped counts the cancel functions the signal seam handed out that
 	// were called.
@@ -49,7 +50,7 @@ type nextFixture struct {
 
 func newNextFixture(t *testing.T, nervYAML string) *nextFixture {
 	t.Helper()
-	// The repository directory is named "repo": without a release: section
+	// The repository directory is named "repo": without a ship: section
 	// the engine names the only project after it.
 	top := filepath.Join(t.TempDir(), "repo")
 	if err := os.Mkdir(top, 0o755); err != nil {
@@ -74,7 +75,7 @@ func newNextFixture(t *testing.T, nervYAML string) *nextFixture {
 func (f *nextFixture) options(t *testing.T) options {
 	opts := testOptions(t.TempDir())
 	opts.Runner = f.runner
-	opts.ComputeVersions = func(ctx context.Context, o semrel.Options) ([]semrel.ProjectResult, error) {
+	opts.ComputeVersions = func(ctx context.Context, o shipclone.ComputeOptions) ([]versioning.Result, error) {
 		f.calls = append(f.calls, o)
 		f.ctxErrs = append(f.ctxErrs, ctx.Err())
 		if ctx.Err() != nil {
@@ -105,7 +106,7 @@ func (f *nextFixture) run(t *testing.T, args ...string) (code int, stdout, stder
 }
 
 const twoProjectsYAML = `enabled: true
-release:
+ship:
   projects:
     - name: api
       path: api
@@ -113,9 +114,9 @@ release:
       path: web
 `
 
-func released(project, version, channel string) semrel.ProjectResult {
+func released(project, version, channel string) versioning.Result {
 	parts := strings.SplitN(strings.SplitN(version, "-", 2)[0], ".", 3)
-	return semrel.ProjectResult{
+	return versioning.Result{
 		Project: project, Branch: "develop",
 		NewReleasePublished:    true,
 		NewReleaseVersion:      version,
@@ -128,8 +129,8 @@ func released(project, version, channel string) semrel.ProjectResult {
 	}
 }
 
-func notReleased(project string) semrel.ProjectResult {
-	return semrel.ProjectResult{
+func notReleased(project string) versioning.Result {
+	return versioning.Result{
 		Project: project, Branch: "main",
 		LastReleaseVersion: "1.1.0", LastReleaseGitHead: "def456", LastReleaseGitTag: "v1.1.0",
 	}
@@ -202,31 +203,41 @@ func TestVersionNext_UsageErrors(t *testing.T) {
 func TestVersionNext_FlagsReachTheEngine(t *testing.T) {
 	f := newNextFixture(t, twoProjectsYAML)
 	f.runner.Responses["git -C /work/repo/sub rev-parse --show-toplevel"] = envtest.Response{Stdout: f.top + "\n"}
-	f.results = []semrel.ProjectResult{released("api", "1.2.0", "")}
+	f.results = []versioning.Result{released("api", "1.2.0", "")}
 
 	code, _, stderr := f.run(t, "--cwd", "/work/repo/sub", "--branch", "develop", "--project", "api", "--offline", "--fetch-timeout", "15s")
 
 	if code != 0 {
 		t.Fatalf("exit code = %d, stderr = %q", code, stderr)
 	}
-	want := semrel.Options{RepoRoot: f.top, Branch: "develop", Project: "api", Offline: true, FetchTimeout: 15 * time.Second}
-	if len(f.calls) != 1 || !reflect.DeepEqual(f.calls[0], want) {
-		t.Fatalf("engine options = %+v, want %+v", f.calls, want)
+	want := shipclone.ComputeOptions{RepoRoot: f.top, Branch: "develop", Projects: []string{"api"}, Offline: true, FetchTimeout: 15 * time.Second}
+	if len(f.calls) != 1 {
+		t.Fatalf("engine calls = %+v", f.calls)
+	}
+	got := f.calls[0]
+	cfg := got.Config
+	got.Config = versioning.Config{}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("engine options = %+v, want %+v", got, want)
+	}
+	// The ship: section's projects configure the engine.
+	if len(cfg.Projects) != 2 || cfg.Projects[0].Name != "api" || cfg.Projects[1].TagFormat != "web-app-v${version}" {
+		t.Errorf("engine config = %+v", cfg)
 	}
 }
 
 func TestVersionNext_DefaultsReadOriginOnTheCurrentBranch(t *testing.T) {
 	f := newNextFixture(t, "")
-	f.results = []semrel.ProjectResult{notReleased("repo")}
+	f.results = []versioning.Result{notReleased("repo")}
 
 	code, stdout, stderr := f.run(t)
 
 	if code != 0 {
 		t.Fatalf("exit code = %d, stderr = %q", code, stderr)
 	}
-	want := semrel.Options{RepoRoot: f.top, FetchTimeout: semrel.DefaultFetchTimeout}
+	want := shipclone.ComputeOptions{RepoRoot: f.top, FetchTimeout: shipclone.DefaultFetchTimeout, Config: versioning.Config{}.WithDefaults()}
 	if len(f.calls) != 1 || !reflect.DeepEqual(f.calls[0], want) {
-		t.Fatalf("engine options = %+v, want %+v (current branch, origin read, default timeout)", f.calls, want)
+		t.Fatalf("engine options = %+v, want %+v (current branch, origin read, default timeout, the default configuration)", f.calls, want)
 	}
 	if !strings.Contains(stderr, "origin") {
 		t.Errorf("stderr = %q, want a progress line saying origin is read", stderr)
@@ -243,7 +254,7 @@ func TestVersionNext_DefaultsReadOriginOnTheCurrentBranch(t *testing.T) {
 func TestVersionNext_JSONSingleProjectIsAnObject(t *testing.T) {
 	for _, args := range [][]string{{"--json"}, {"--format", "json"}, {"--json", "--format", "json"}} {
 		f := newNextFixture(t, "")
-		f.results = []semrel.ProjectResult{released("repo", "1.2.0-alpha.2", "alpha")}
+		f.results = []versioning.Result{released("repo", "1.2.0-alpha.2", "alpha")}
 
 		code, stdout, stderr := f.run(t, args...)
 
@@ -265,14 +276,14 @@ func TestVersionNext_JSONSingleProjectIsAnObject(t *testing.T) {
 
 func TestVersionNext_JSONSeveralProjectsIsAnArray(t *testing.T) {
 	f := newNextFixture(t, twoProjectsYAML)
-	f.results = []semrel.ProjectResult{released("api", "1.2.0", ""), notReleased("web-app")}
+	f.results = []versioning.Result{released("api", "1.2.0", ""), notReleased("web-app")}
 
 	code, stdout, _ := f.run(t, "--json")
 
 	if code != 0 {
 		t.Fatalf("exit code = %d", code)
 	}
-	var got []semrel.ProjectResult
+	var got []versioning.Result
 	if err := json.Unmarshal([]byte(stdout), &got); err != nil {
 		t.Fatalf("stdout is not a JSON array: %v (%q)", err, stdout)
 	}
@@ -313,7 +324,7 @@ func parseEnv(t *testing.T, out string) (map[string]string, map[string]string) {
 func TestVersionNext_EnvSingleProject(t *testing.T) {
 	f := newNextFixture(t, "")
 	r := released("repo", "1.2.0", "")
-	f.results = []semrel.ProjectResult{r}
+	f.results = []versioning.Result{r}
 
 	code, stdout, _ := f.run(t, "--format", "env")
 
@@ -345,7 +356,7 @@ func TestVersionNext_EnvNotesKeepTheirExactText(t *testing.T) {
 	f := newNextFixture(t, "")
 	r := released("repo", "1.2.0", "")
 	r.NewReleaseNotes = "line one\n\nline three\n"
-	f.results = []semrel.ProjectResult{r}
+	f.results = []versioning.Result{r}
 
 	_, stdout, _ := f.run(t, "--format", "env")
 
@@ -359,7 +370,7 @@ func TestVersionNext_EnvNotesKeepTheirExactText(t *testing.T) {
 
 func TestVersionNext_EnvDelimitersAreUnique(t *testing.T) {
 	f := newNextFixture(t, twoProjectsYAML)
-	f.results = []semrel.ProjectResult{released("api", "1.2.0", ""), released("web-app", "0.3.1", "")}
+	f.results = []versioning.Result{released("api", "1.2.0", ""), released("web-app", "0.3.1", "")}
 
 	_, stdout, _ := f.run(t, "--format", "env")
 
@@ -371,7 +382,7 @@ func TestVersionNext_EnvDelimitersAreUnique(t *testing.T) {
 
 func TestVersionNext_EnvSeveralProjectsArePrefixed(t *testing.T) {
 	f := newNextFixture(t, twoProjectsYAML)
-	f.results = []semrel.ProjectResult{released("api", "1.2.0", ""), notReleased("web-app")}
+	f.results = []versioning.Result{released("api", "1.2.0", ""), notReleased("web-app")}
 
 	code, stdout, _ := f.run(t, "--format", "env")
 
@@ -399,7 +410,7 @@ func TestVersionNext_EnvSeveralProjectsArePrefixed(t *testing.T) {
 
 func TestVersionNext_Text(t *testing.T) {
 	f := newNextFixture(t, twoProjectsYAML)
-	f.results = []semrel.ProjectResult{released("api", "1.2.0-alpha.2", "alpha"), notReleased("web-app")}
+	f.results = []versioning.Result{released("api", "1.2.0-alpha.2", "alpha"), notReleased("web-app")}
 
 	code, stdout, _ := f.run(t)
 
@@ -421,7 +432,7 @@ func TestVersionNext_TextFirstReleaseAndDefaultChannel(t *testing.T) {
 	f := newNextFixture(t, "")
 	r := released("repo", "1.0.0", "")
 	r.LastReleaseVersion, r.LastReleaseGitHead, r.LastReleaseGitTag = "", "", ""
-	f.results = []semrel.ProjectResult{r}
+	f.results = []versioning.Result{r}
 
 	_, stdout, _ := f.run(t, "--format", "text")
 
@@ -434,7 +445,7 @@ func TestVersionNext_TextFirstReleaseAndDefaultChannel(t *testing.T) {
 
 func TestVersionNext_NoNewReleaseIsNotAnError(t *testing.T) {
 	f := newNextFixture(t, "")
-	f.results = []semrel.ProjectResult{notReleased("repo")}
+	f.results = []versioning.Result{notReleased("repo")}
 
 	code, stdout, _ := f.run(t, "--format", "env")
 
@@ -466,25 +477,25 @@ func TestVersionNext_UnknownProjectListsTheProjects(t *testing.T) {
 	}
 }
 
-func TestVersionNext_ProjectWithoutAReleaseSection(t *testing.T) {
+func TestVersionNext_ProjectWithoutAShipSection(t *testing.T) {
 	f := newNextFixture(t, "")
 
 	code, _, stderr := f.run(t, "--project", "api")
 
-	if code != 1 || !strings.Contains(stderr, "release:") {
+	if code != 1 || !strings.Contains(stderr, "ship:") {
 		t.Fatalf("code=%d stderr=%q", code, stderr)
 	}
 }
 
 func TestVersionNext_InvalidConfigIsARefusal(t *testing.T) {
-	f := newNextFixture(t, "release:\n  projects:\n    - name: API\n      path: api\n      colour: red\n")
+	f := newNextFixture(t, "ship:\n  projects:\n    - name: API\n      path: api\n      colour: red\n")
 
 	code, stdout, stderr := f.run(t)
 
 	if code != 1 {
 		t.Fatalf("exit code = %d, want 1", code)
 	}
-	if stdout != "" || !strings.Contains(stderr, "release.projects[0].colour") || !strings.Contains(stderr, "release.projects[0].name") {
+	if stdout != "" || !strings.Contains(stderr, "ship.projects[0].colour") || !strings.Contains(stderr, "ship.projects[0].name") {
 		t.Errorf("stdout=%q stderr=%q, want the path-qualified problems", stdout, stderr)
 	}
 	if len(f.calls) != 0 {
@@ -523,9 +534,9 @@ func TestVersionNext_EngineErrors(t *testing.T) {
 		absent   []string
 	}{
 		{
-			name: "node missing", code: 2,
-			err:      errors.New("Node.js is required to compute versions with semantic-release (node was not found in PATH)"),
-			contains: []string{"Node.js is required"},
+			name: "git failure", code: 2,
+			err:      errors.New("git log: fatal: bad object"),
+			contains: []string{"git log: fatal: bad object"},
 			absent:   []string{"--offline"},
 		},
 		{
@@ -535,13 +546,18 @@ func TestVersionNext_EngineErrors(t *testing.T) {
 		},
 		{
 			name: "origin unreachable", code: 2,
-			err:      fmt.Errorf("reading release tags and notes from origin (https://***@github.com/x/y.git): %w: exit status 128", semrel.ErrOriginFetch),
+			err:      fmt.Errorf("reading release tags and notes from origin (https://***@github.com/x/y.git): %w: exit status 128", shipclone.ErrOriginFetch),
 			contains: []string{"origin", "--offline"},
 		},
 		{
 			name: "validation error from the engine", code: 1,
 			err:      fmt.Errorf("wrapped: %w", &shipconfigValidationError),
-			contains: []string{"release.projects[0].path"},
+			contains: []string{"ship.projects[0].path"},
+		},
+		{
+			name: "engine configuration error", code: 1,
+			err:      fmt.Errorf("wrapped: %w", &versioning.ConfigError{Problems: []string{"tag_format: bad"}}),
+			contains: []string{"tag_format: bad"},
 		},
 	}
 	for _, tt := range tests {
@@ -597,7 +613,7 @@ func TestVersionNext_RunsUnderTheSignalContext(t *testing.T) {
 
 func TestVersionNext_ReleasesTheSignalContextOnSuccess(t *testing.T) {
 	f := newNextFixture(t, "")
-	f.results = []semrel.ProjectResult{notReleased("repo")}
+	f.results = []versioning.Result{notReleased("repo")}
 
 	if code, _, _ := f.run(t); code != 0 {
 		t.Fatalf("exit code = %d", code)
@@ -652,7 +668,7 @@ func TestVersionNext_WriteErrorsAreReported(t *testing.T) {
 		}{{"write", failingWriter{}, "broken pipe"}, {"flush", &flushFailingWriter{}, "disk full"}} {
 			t.Run(format+"/"+w.name, func(t *testing.T) {
 				f := newNextFixture(t, "")
-				f.results = []semrel.ProjectResult{released("repo", "1.2.0", "")}
+				f.results = []versioning.Result{released("repo", "1.2.0", "")}
 				f.stdout = w.writer
 
 				code, _, stderr := f.run(t, "--format", format)
@@ -666,7 +682,7 @@ func TestVersionNext_WriteErrorsAreReported(t *testing.T) {
 }
 
 func TestVersionNext_UsageShowsTheDefaultFetchTimeout(t *testing.T) {
-	want := fmt.Sprintf("default %ds", int(semrel.DefaultFetchTimeout.Seconds()))
+	want := fmt.Sprintf("default %ds", int(shipclone.DefaultFetchTimeout.Seconds()))
 	if !strings.Contains(versionNextUsage, want) {
 		t.Errorf("usage lacks %q", want)
 	}
@@ -676,7 +692,7 @@ func TestVersionNext_UsageShowsTheDefaultFetchTimeout(t *testing.T) {
 // The output shape follows the request, not the number of results.
 // ---------------------------------------------------------------------------
 
-const threeProjectsYAML = `release:
+const threeProjectsYAML = `ship:
   projects:
     - name: core
       path: core
@@ -687,7 +703,7 @@ const threeProjectsYAML = `release:
       path: web
 `
 
-const oneProjectYAML = `release:
+const oneProjectYAML = `ship:
   projects:
     - name: api
       path: .
@@ -696,7 +712,7 @@ const oneProjectYAML = `release:
 func TestVersionNext_ProjectFlagPrintsOnlyThatProject(t *testing.T) {
 	f := newNextFixture(t, threeProjectsYAML)
 	// The engine also returns the dependency it computed for depends_on.
-	f.results = []semrel.ProjectResult{released("core", "1.0.1", ""), released("api", "1.0.1", "")}
+	f.results = []versioning.Result{released("core", "1.0.1", ""), released("api", "1.0.1", "")}
 
 	_, stdout, _ := f.run(t, "--project", "api", "--json")
 	var got map[string]any
@@ -718,10 +734,10 @@ func TestVersionNext_ProjectFlagPrintsOnlyThatProject(t *testing.T) {
 
 func TestVersionNext_MonorepoIsAnArrayEvenWithOneResult(t *testing.T) {
 	f := newNextFixture(t, twoProjectsYAML)
-	f.results = []semrel.ProjectResult{released("api", "1.2.0", "")}
+	f.results = []versioning.Result{released("api", "1.2.0", "")}
 
 	_, stdout, _ := f.run(t, "--json")
-	var got []semrel.ProjectResult
+	var got []versioning.Result
 	if err := json.Unmarshal([]byte(stdout), &got); err != nil || len(got) != 1 {
 		t.Fatalf("stdout = %q (%v), want an array", stdout, err)
 	}
@@ -735,7 +751,7 @@ func TestVersionNext_MonorepoIsAnArrayEvenWithOneResult(t *testing.T) {
 
 func TestVersionNext_SingleProjectSectionIsAnObject(t *testing.T) {
 	f := newNextFixture(t, oneProjectYAML)
-	f.results = []semrel.ProjectResult{released("api", "1.2.0", "")}
+	f.results = []versioning.Result{released("api", "1.2.0", "")}
 
 	_, stdout, _ := f.run(t, "--json")
 	var got map[string]any
@@ -744,13 +760,13 @@ func TestVersionNext_SingleProjectSectionIsAnObject(t *testing.T) {
 	}
 }
 
-// Without a release: section the engine computes the whole repository as one
+// Without a ship: section the engine computes the whole repository as one
 // project and names it itself; the CLI prints that single result whatever
 // its name, so a path that resolves differently (symlinks, Windows case)
 // cannot turn a computed version into "no result".
 func TestVersionNext_NoSectionPrintsTheSingleResultWhateverItsName(t *testing.T) {
 	f := newNextFixture(t, "")
-	f.results = []semrel.ProjectResult{released("Other-Name", "1.0.0", "")}
+	f.results = []versioning.Result{released("Other-Name", "1.0.0", "")}
 
 	code, stdout, stderr := f.run(t, "--json")
 	var got map[string]any
@@ -764,10 +780,10 @@ func TestVersionNext_MissingRequestedResultIsAnError(t *testing.T) {
 		name    string
 		yaml    string
 		args    []string
-		results []semrel.ProjectResult
+		results []versioning.Result
 	}{
 		{"no section, no result", "", nil, nil},
-		{"project flag, only its dependency", threeProjectsYAML, []string{"--project", "api"}, []semrel.ProjectResult{released("core", "1.0.1", "")}},
+		{"project flag, only its dependency", threeProjectsYAML, []string{"--project", "api"}, []versioning.Result{released("core", "1.0.1", "")}},
 		{"single project, no result", oneProjectYAML, nil, nil},
 		{"monorepo, no result", twoProjectsYAML, nil, nil},
 	}
@@ -787,21 +803,19 @@ func TestVersionNext_MissingRequestedResultIsAnError(t *testing.T) {
 	}
 }
 
-func TestVersionNext_SaysWhereTheSemanticReleaseConfigCameFrom(t *testing.T) {
+func TestVersionNext_SaysWhereTheVersionConfigCameFrom(t *testing.T) {
 	tests := []struct {
-		name         string
-		source, file string
-		want         string
+		name, yaml, project string
+		source, file        string
+		want                string
 	}{
-		{"repository", semrel.ConfigRepository, ".releaserc.json", "semantic-release config: repository (.releaserc.json)"},
-		{"built-in", semrel.ConfigBuiltIn, "", "semantic-release config: built-in default (dim)"},
+		{"ship section", oneProjectYAML, "api", "repository", ".ai-workflow.yml", "version config: ship: section (.ai-workflow.yml)"},
+		{"built-in", "", "repo", "default", "", "version config: built-in default (dim)"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			f := newNextFixture(t, "")
-			r := released("repo", "1.1.0", "")
-			r.SemanticReleaseConfig, r.SemanticReleaseConfigFile = tt.source, tt.file
-			f.results = []semrel.ProjectResult{r}
+			f := newNextFixture(t, tt.yaml)
+			f.results = []versioning.Result{released(tt.project, "1.1.0", "")}
 			code, stdout, _ := f.run(t)
 			if code != 0 || !strings.Contains(stdout, tt.want) {
 				t.Errorf("exit %d, stdout:\n%s", code, stdout)
@@ -811,6 +825,62 @@ func TestVersionNext_SaysWhereTheSemanticReleaseConfigCameFrom(t *testing.T) {
 			if err := json.Unmarshal([]byte(stdout), &got); err != nil || code != 0 || got["semantic_release_config"] != tt.source {
 				t.Errorf("json %v %v: %s", code, err, stdout)
 			}
+			if file, _ := got["semantic_release_config_file"].(string); file != tt.file {
+				t.Errorf("semantic_release_config_file = %q, want %q", file, tt.file)
+			}
 		})
+	}
+}
+
+// S9: the old release: and pipeline: sections are refused before the engine
+// runs, saying what replaced them.
+func TestVersionNext_RefusesTheOldSections(t *testing.T) {
+	for _, tt := range []struct{ yaml, want string }{
+		{"release:\n  projects:\n    - name: api\n      path: .\n", "nerv ship setup --import"},
+		{"pipeline:\n  test: { run: make test }\n", "validate and test: nerv ship"},
+	} {
+		f := newNextFixture(t, tt.yaml)
+		code, stdout, stderr := f.run(t)
+		if code != 1 || stdout != "" || !strings.Contains(stderr, tt.want) || len(f.calls) != 0 {
+			t.Errorf("%q: code=%d stdout=%q stderr=%q calls=%d", tt.yaml, code, stdout, stderr, len(f.calls))
+		}
+	}
+}
+
+// S3: without a ship: section, a semantic-release configuration the engine
+// does not read is pointed out (the defaults are used).
+func TestVersionNext_WarnsAboutAnUnimportedSemanticReleaseConfig(t *testing.T) {
+	f := newNextFixture(t, "")
+	if err := os.WriteFile(filepath.Join(f.top, ".releaserc.json"), []byte(`{"branches":["main"]}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	f.results = []versioning.Result{notReleased("repo")}
+	code, stdout, stderr := f.run(t)
+	if code != 0 || !strings.Contains(stderr, "nerv ship setup --import") || strings.Contains(stdout, "setup") {
+		t.Errorf("code=%d stdout=%q stderr=%q", code, stdout, stderr)
+	}
+	// With a ship: section there is nothing to warn about.
+	g := newNextFixture(t, oneProjectYAML)
+	if err := os.WriteFile(filepath.Join(g.top, ".releaserc.json"), []byte(`{"branches":["main"]}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	g.results = []versioning.Result{notReleased("api")}
+	if _, _, stderr := g.run(t); strings.Contains(stderr, "setup --import") {
+		t.Errorf("warned with a ship: section: %q", stderr)
+	}
+}
+
+// A ship: section without projects configures the engine for the whole
+// repository: one result, its settings reach the engine.
+func TestVersionNext_ShipSectionWithoutProjects(t *testing.T) {
+	f := newNextFixture(t, "ship:\n  tag_format: release-${version}\n")
+	f.results = []versioning.Result{released("repo", "1.2.0", "")}
+	code, stdout, stderr := f.run(t, "--json")
+	var got map[string]any
+	if code != 0 || json.Unmarshal([]byte(stdout), &got) != nil || got["semantic_release_config"] != "repository" {
+		t.Fatalf("code=%d stdout=%q stderr=%q", code, stdout, stderr)
+	}
+	if len(f.calls) != 1 || f.calls[0].Config.TagFormat != "release-${version}" {
+		t.Errorf("engine config = %+v", f.calls)
 	}
 }

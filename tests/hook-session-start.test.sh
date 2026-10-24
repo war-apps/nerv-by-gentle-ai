@@ -150,18 +150,23 @@ run_hook "$tmp6" "$out6" "$err6"; exit6=$?
 assert_empty "enabled-truex-rejected" "$out6" "$exit6"
 rm -rf "$tmp6"; rm -f "$out6" "$err6"
 
-# --- Case 7: indented "  enabled: true" (e.g. nested under another key) ---
-# Pinned behavior: the activation regex only strips CRLF and matches
-# whitespace-surrounded "enabled: true" on its own line; it does not parse
-# YAML nesting, so indentation alone does not disqualify the line and the
-# hook activates. This case documents and pins that exact behavior rather
-# than asserting empty stdout.
+# --- Case 7: indented "  enabled: true" (nested under another key) ---
+# Only the top-level enabled key activates NERV: a nested one (a plugin's
+# own enabled flag, say) does not, so the hook prints nothing.
 tmp7="$(mktemp -d)"
 printf 'other_key:\n  enabled: true\n' > "$tmp7/.ai-workflow.yml"
 out7="$(mktemp)"; err7="$(mktemp)"
 run_hook "$tmp7" "$out7" "$err7"; exit7=$?
-assert_active "enabled-true-indented-pinned" "$out7" "$exit7"
+assert_empty "enabled-true-nested-ignored" "$out7" "$exit7"
 rm -rf "$tmp7"; rm -f "$out7" "$err7"
+
+# --- Case 7b: a top-level enabled: true after a nested enabled: false ---
+tmp7b="$(mktemp -d)"
+printf 'ship:\n  enabled: false\nenabled: true\n' > "$tmp7b/.ai-workflow.yml"
+out7b="$(mktemp)"; err7b="$(mktemp)"
+run_hook "$tmp7b" "$out7b" "$err7b"; exit7b=$?
+assert_active "enabled-true-top-level-after-nested" "$out7b" "$exit7b"
+rm -rf "$tmp7b"; rm -f "$out7b" "$err7b"
 
 # --- Case 8: CLAUDE_PROJECT_DIR unset -> falls back to $PWD ---
 tmp8="$(mktemp -d)"

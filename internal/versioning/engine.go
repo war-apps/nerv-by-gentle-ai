@@ -15,8 +15,8 @@ import (
 // This file ports semantic-release 24.2's run (index.js) for a dry run:
 // lib/branches/get-tags.js, lib/get-last-release.js, lib/get-commits.js and
 // lib/get-next-version.js, with nerv's per-project commit filter and
-// depends_on raise (internal/semrel/runner/nerv-semrel-lib.mjs makeFilter
-// and raiseReleaseType).
+// depends_on raise (the former semantic-release node runner's makeFilter
+// and raiseReleaseType, nerv-semrel-lib.mjs).
 
 // Compute returns the next release of each project on the branch, in
 // dependency order (only the requested projects when req.Projects is set).

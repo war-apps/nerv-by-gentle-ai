@@ -20,32 +20,34 @@ import (
 
 	"github.com/war-apps/nerv-by-gentle-ai/internal/env"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/refusal"
-	"github.com/war-apps/nerv-by-gentle-ai/internal/semrel"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/shipclone"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/shipconfig"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/versioning"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/workflowconfig"
 )
 
 const versionNextUsage = `Usage: nerv version next [flags]
 
 Computes the next semantic version of the repository (or of each project of
-the release: section of .ai-workflow.yml) with the repository's own
-semantic-release configuration, in dry-run mode. Nothing in the repository
-changes. Needs Node.js and npm (semantic-release is installed in a NERV
-cache) and git.
+the ship: section of .ai-workflow.yml) with nerv's native version engine,
+which behaves as semantic-release with the conventionalcommits preset, as
+the ship: section configures it (branches, release_rules, tag_format,
+changelog; the defaults without a section). Nothing in the repository
+changes. Needs git only.
 
 Flags:
   --cwd <dir>              A directory inside the repository (default ".")
   --branch <name>          Local branch to compute (default: the current one)
-  --project <name>         Only this project of the release: section
+  --project <name>         Only this project of the ship: section
   --offline                Use the local tags and notes only; by default
-                            origin's release tags and notes are read first
-                            (with your git credentials, into a throwaway
-                            copy)
+                            origin's branches, release tags and notes are
+                            read first (with your git credentials, into a
+                            throwaway copy)
   --fetch-timeout <dur>    Bound for reading origin, positive (default 60s)
   --format text|json|env   Output format (default text)
   --json                   Same as --format json
 
-The output shape follows the request: when the release: section declares
+The output shape follows the request: when the ship: section declares
 several projects and --project is not given, json is an array and env keys
 are prefixed with the project name, "-" written as "_"
 (api_new_release_version); otherwise (no section, one project, or
@@ -53,7 +55,8 @@ are prefixed with the project name, "-" written as "_"
 project only. env: GitHub Actions output lines (key=value; key<<DELIMITER
 for multi-line values). Progress goes to stderr; stdout carries only the
 result. Exit codes: 0 ok (also when there is no new release), 1 refused
-(invalid configuration, unknown project, not a git repository), 2 usage or
+(invalid configuration, an old release: or pipeline: section, unknown
+project, not a git repository), 2 usage or
 environment error, 128 + the signal when interrupted (130 Ctrl-C, 143
 SIGTERM, 129 SIGHUP).
 `
@@ -128,7 +131,7 @@ func runVersionNext(args []string, stdout, stderr io.Writer, opts options) int {
 	branch := fs.String("branch", "", "")
 	project := fs.String("project", "", "")
 	offline := fs.Bool("offline", false, "")
-	fetchTimeout := fs.Duration("fetch-timeout", semrel.DefaultFetchTimeout, "")
+	fetchTimeout := fs.Duration("fetch-timeout", shipclone.DefaultFetchTimeout, "")
 	format := fs.String("format", "text", "")
 	jsonOut := fs.Bool("json", false, "")
 
@@ -176,6 +179,9 @@ func runVersionNext(args []string, stdout, stderr io.Writer, opts options) int {
 	if shape.Whole {
 		workflowconfig.PrintHints(stderr, "", top)
 	}
+	if shape.BuiltIn {
+		warnUnimportedSemanticRelease(stderr, top)
+	}
 
 	source := "reading origin's release tags and notes"
 	if *offline {
@@ -189,12 +195,17 @@ func runVersionNext(args []string, stdout, stderr io.Writer, opts options) int {
 
 	compute := opts.ComputeVersions
 	if compute == nil {
-		compute = semrel.Compute
+		compute = shipclone.Compute
 	}
-	results, err := compute(ctx, semrel.Options{
+	var projects []string
+	if *project != "" {
+		projects = []string{*project}
+	}
+	computed, err := compute(ctx, shipclone.ComputeOptions{
 		RepoRoot:     top,
 		Branch:       *branch,
-		Project:      *project,
+		Projects:     projects,
+		Config:       shape.Config,
 		Offline:      *offline,
 		FetchTimeout: *fetchTimeout,
 	})
@@ -202,9 +213,13 @@ func runVersionNext(args []string, stdout, stderr io.Writer, opts options) int {
 		return report(err)
 	}
 
-	results, err = shape.selectResults(results)
+	computed, err = shape.selectResults(computed)
 	if err != nil {
 		return report(err)
+	}
+	results := make([]versionResult, len(computed))
+	for i, r := range computed {
+		results[i] = newVersionResult(r, shape.BuiltIn)
 	}
 	if err := writeVersionResult(stdout, *format, shape.Several, results); err != nil {
 		return report(fmt.Errorf("writing the result: %w", err))
@@ -214,20 +229,80 @@ func runVersionNext(args []string, stdout, stderr io.Writer, opts options) int {
 
 // outputShape is decided by the request, never by how many results the
 // engine returned: Several (a JSON array, project-prefixed env keys) when
-// the release: section declares more than one project and no --project is
+// the ship: section declares more than one project and no --project is
 // given; otherwise exactly one result: the project named Only, or, for a
-// repository without a release: section (Whole), the single project the
-// engine computed, whatever name it gave it.
+// repository without a ship: section (Whole), the single project the
+// engine computed, whatever name it gave it. Config is the engine's
+// configuration: the section's, or the defaults.
 type outputShape struct {
 	Several bool
 	Whole   bool
 	Only    string
+	Config  versioning.Config
+	// BuiltIn: there is no ship: section, Config is the defaults.
+	BuiltIn bool
+}
+
+// Where a result's version configuration came from (the
+// semantic_release_config output, named as before the native engine).
+const (
+	// configRepository: the ship: section of the repository's
+	// .ai-workflow.yml.
+	configRepository = "repository"
+	// configBuiltIn: the engine's defaults (dim.comprobantes.api's
+	// branches), for a repository without a ship: section.
+	configBuiltIn = "default"
+)
+
+// versionResult is one project's result as nerv version next prints it: the
+// 12 outputs of cycjimmy/semantic-release-action plus the project, the
+// branch and where the version configuration came from, with the same
+// keys semantic-release gave them.
+type versionResult struct {
+	Project string `json:"project"`
+	Branch  string `json:"branch"`
+
+	NewReleasePublished    bool   `json:"new_release_published"`
+	NewReleaseVersion      string `json:"new_release_version"`
+	NewReleaseMajorVersion string `json:"new_release_major_version"`
+	NewReleaseMinorVersion string `json:"new_release_minor_version"`
+	NewReleasePatchVersion string `json:"new_release_patch_version"`
+	NewReleaseChannel      string `json:"new_release_channel"`
+	NewReleaseNotes        string `json:"new_release_notes"`
+	NewReleaseGitHead      string `json:"new_release_git_head"`
+	NewReleaseGitTag       string `json:"new_release_git_tag"`
+	LastReleaseVersion     string `json:"last_release_version"`
+	LastReleaseGitHead     string `json:"last_release_git_head"`
+	LastReleaseGitTag      string `json:"last_release_git_tag"`
+
+	// SemanticReleaseConfig is configRepository or configBuiltIn, and
+	// SemanticReleaseConfigFile the file of the ship: section.
+	SemanticReleaseConfig     string `json:"semantic_release_config"`
+	SemanticReleaseConfigFile string `json:"semantic_release_config_file,omitempty"`
+
+	outputs []versioning.Output
+}
+
+func newVersionResult(r versioning.Result, builtIn bool) versionResult {
+	v := versionResult{
+		Project: r.Project, Branch: r.Branch,
+		NewReleasePublished: r.NewReleasePublished, NewReleaseVersion: r.NewReleaseVersion,
+		NewReleaseMajorVersion: r.NewReleaseMajorVersion, NewReleaseMinorVersion: r.NewReleaseMinorVersion, NewReleasePatchVersion: r.NewReleasePatchVersion,
+		NewReleaseChannel: r.NewReleaseChannel, NewReleaseNotes: r.NewReleaseNotes, NewReleaseGitHead: r.NewReleaseGitHead, NewReleaseGitTag: r.NewReleaseGitTag,
+		LastReleaseVersion: r.LastReleaseVersion, LastReleaseGitHead: r.LastReleaseGitHead, LastReleaseGitTag: r.LastReleaseGitTag,
+		SemanticReleaseConfig: configRepository, SemanticReleaseConfigFile: ".ai-workflow.yml",
+		outputs: r.Outputs(),
+	}
+	if builtIn {
+		v.SemanticReleaseConfig, v.SemanticReleaseConfigFile = configBuiltIn, ""
+	}
+	return v
 }
 
 // selectResults keeps what the request asked for: every result for Several,
 // otherwise only Only's (the engine also returns the dependencies it
 // computed for depends_on). No result to print is an error.
-func (s outputShape) selectResults(results []semrel.ProjectResult) ([]semrel.ProjectResult, error) {
+func (s outputShape) selectResults(results []versioning.Result) ([]versioning.Result, error) {
 	if s.Several {
 		if len(results) == 0 {
 			return nil, errors.New("the engine returned no result")
@@ -242,7 +317,7 @@ func (s outputShape) selectResults(results []semrel.ProjectResult) ([]semrel.Pro
 	}
 	for _, r := range results {
 		if r.Project == s.Only {
-			return []semrel.ProjectResult{r}, nil
+			return []versioning.Result{r}, nil
 		}
 	}
 	return nil, fmt.Errorf("the engine returned no result for project %q", s.Only)
@@ -251,7 +326,7 @@ func (s outputShape) selectResults(results []semrel.ProjectResult) ([]semrel.Pro
 // writeVersionResult renders the results in format into memory, writes them
 // in one call and flushes w when it buffers, so a failed or partial write is
 // reported instead of lost.
-func writeVersionResult(w io.Writer, format string, several bool, results []semrel.ProjectResult) error {
+func writeVersionResult(w io.Writer, format string, several bool, results []versionResult) error {
 	var b bytes.Buffer
 	switch format {
 	case "json":
@@ -299,11 +374,12 @@ func reportVersionError(ctx context.Context, sig os.Signal, stderr io.Writer, er
 		return interruptedExitCode(sig)
 	}
 	fmt.Fprintf(stderr, "nerv version next: %v\n", err)
-	if errors.Is(err, semrel.ErrOriginFetch) {
+	if errors.Is(err, shipclone.ErrOriginFetch) {
 		fmt.Fprintln(stderr, "Run again with --offline to compute from the local tags and notes only (a release channel recorded only on origin may then be missed).")
 	}
 	var invalid *shipconfig.ValidationError
-	if errors.As(err, &invalid) {
+	var engine *versioning.ConfigError
+	if errors.As(err, &invalid) || errors.As(err, &engine) {
 		return 1
 	}
 	return exitCodeFor(err)
@@ -330,36 +406,57 @@ func gitTopLevel(ctx context.Context, runner env.Runner, dir string) (string, er
 	return strings.TrimSpace(out), nil
 }
 
-// requestShape loads the release: section once before the (slow) engine
+// requestShape loads the ship: section once before the (slow) engine
 // runs, so an invalid configuration or an unknown --project is refused at
 // once, naming the projects that exist, and decides the output shape.
-// Without a release: section the whole repository is the only project; the
+// Without a ship: section the whole repository is the only project; the
 // engine names it, so the CLI does not predict the name.
 func requestShape(top, name string) (outputShape, error) {
 	rel, err := shipconfig.Load(top)
 	if errors.Is(err, shipconfig.ErrNotConfigured) {
 		if name != "" {
-			return outputShape{}, &refusal.Error{Err: errors.New(withLegacyHint(fmt.Sprintf("--project %q: the repository has no release: section in .ai-workflow.yml, so it is a single project; drop --project", name), top))}
+			return outputShape{}, &refusal.Error{Err: errors.New(withLegacyHint(fmt.Sprintf("--project %q: the repository has no ship: section in .ai-workflow.yml, so it is a single project; drop --project", name), top))}
 		}
-		return outputShape{Whole: true}, nil
+		return outputShape{Whole: true, BuiltIn: true, Config: versioning.Config{}.WithDefaults()}, nil
 	}
 	if err != nil {
 		return outputShape{}, err
 	}
+	cfg := rel.Versioning()
+	if len(rel.Projects) == 0 {
+		if name != "" {
+			return outputShape{}, &refusal.Error{Err: fmt.Errorf("--project %q: the ship: section declares no project, so the repository is a single project; drop --project", name)}
+		}
+		return outputShape{Whole: true, Config: cfg}, nil
+	}
 	if name == "" {
 		if len(rel.Projects) == 1 {
-			return outputShape{Only: rel.Projects[0].Name}, nil
+			return outputShape{Only: rel.Projects[0].Name, Config: cfg}, nil
 		}
-		return outputShape{Several: true}, nil
+		return outputShape{Several: true, Config: cfg}, nil
 	}
 	if _, ok := rel.Project(name); ok {
-		return outputShape{Only: name}, nil
+		return outputShape{Only: name, Config: cfg}, nil
 	}
 	names := make([]string, 0, len(rel.Projects))
 	for _, p := range rel.Projects {
 		names = append(names, p.Name)
 	}
-	return outputShape{}, &refusal.Error{Err: fmt.Errorf("unknown project %q; the release: section declares: %s", name, strings.Join(names, ", "))}
+	return outputShape{}, &refusal.Error{Err: fmt.Errorf("unknown project %q; the ship: section declares: %s", name, strings.Join(names, ", "))}
+}
+
+// warnUnimportedSemanticRelease warns, for a repository without a ship:
+// section, that its semantic-release configuration is not read: the
+// engine's defaults are used until it is imported.
+func warnUnimportedSemanticRelease(stderr io.Writer, top string) {
+	_, err := versioning.Import(top)
+	var manual *versioning.ManualMigrationError
+	switch {
+	case errors.As(err, &manual):
+		fmt.Fprintf(stderr, "nerv version next: warning: %s is not read (a JavaScript semantic-release configuration): the built-in defaults are used; write the ship: section by hand\n", manual.File)
+	case err == nil:
+		fmt.Fprintln(stderr, "nerv version next: warning: the repository's semantic-release configuration is not read: the built-in defaults are used; import it into the ship: section with nerv ship setup --import")
+	}
 }
 
 // envKey is the env-format key of an output: the output name, prefixed with
@@ -376,10 +473,10 @@ func envKey(project, output string, prefixed bool) string {
 // Multi-line values use the heredoc form with a random delimiter that does
 // not occur in the value, written as @actions/core does: the value, a
 // newline, then the delimiter.
-func writeVersionEnv(w io.Writer, prefixed bool, results []semrel.ProjectResult) error {
+func writeVersionEnv(w io.Writer, prefixed bool, results []versionResult) error {
 	var b strings.Builder
 	for _, r := range results {
-		for _, o := range r.Outputs() {
+		for _, o := range r.outputs {
 			key := envKey(r.Project, o.Name, prefixed)
 			if !strings.ContainsAny(o.Value, "\r\n") {
 				fmt.Fprintf(&b, "%s=%s\n", key, o.Value)
@@ -409,20 +506,20 @@ func heredocDelimiter(value string) (string, error) {
 	}
 }
 
-// configSourceText says where a result's semantic-release configuration
-// came from: "repository (<file>)" or "built-in default (dim)".
-func configSourceText(r semrel.ProjectResult) string {
-	switch r.SemanticReleaseConfig {
-	case semrel.ConfigRepository:
-		return "repository (" + r.SemanticReleaseConfigFile + ")"
-	case semrel.ConfigBuiltIn:
+// configSourceText says where a result's version configuration came from:
+// "ship: section (<file>)" or "built-in default (dim)".
+func configSourceText(source, file string) string {
+	switch source {
+	case configRepository:
+		return "ship: section (" + file + ")"
+	case configBuiltIn:
 		return "built-in default (dim)"
 	}
 	return ""
 }
 
 // writeVersionText writes a short human summary per project.
-func writeVersionText(w io.Writer, results []semrel.ProjectResult) {
+func writeVersionText(w io.Writer, results []versionResult) {
 	for i, r := range results {
 		if i > 0 {
 			fmt.Fprintln(w)
@@ -442,8 +539,8 @@ func writeVersionText(w io.Writer, results []semrel.ProjectResult) {
 		} else {
 			fmt.Fprintln(w, "  last release: none")
 		}
-		if s := configSourceText(r); s != "" {
-			fmt.Fprintf(w, "  semantic-release config: %s\n", s)
+		if s := configSourceText(r.SemanticReleaseConfig, r.SemanticReleaseConfigFile); s != "" {
+			fmt.Fprintf(w, "  version config: %s\n", s)
 		}
 	}
 }

@@ -1,9 +1,12 @@
-// Package shipconfig reads the release: section of a repository's
+// Package shipconfig reads the ship: section of a repository's
 // project-scope .ai-workflow.yml: the typed, validated configuration behind
-// `nerv version next` and `nerv ship`.
+// `nerv version next` and `nerv ship`. The section embeds the native version
+// engine's settings (internal/versioning: branches, release rules, tag
+// format, changelog) and holds the one project list both the engine and the
+// build use.
 //
 // The rest of .ai-workflow.yml is owned by internal/config, a line-based editor
-// that cannot hold lists of maps. This package cuts the top-level release:
+// that cannot hold lists of maps. This package cuts the top-level ship:
 // block out of the file and parses only that block with gopkg.in/yaml.v3,
 // so a YAML error elsewhere in the file does not matter (and anchors defined
 // outside the block cannot be used inside it). It never writes the file.
@@ -23,32 +26,42 @@ import (
 
 	"github.com/war-apps/nerv-by-gentle-ai/internal/paths"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/shipconfig/yamlsection"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/versioning"
 	"gopkg.in/yaml.v3"
 )
 
+// SectionKey is the top-level key of the section in .ai-workflow.yml.
+const SectionKey = "ship"
+
 // ErrNotConfigured is returned by Load when the repository has no
-// .ai-workflow.yml or the file has no release: key.
-var ErrNotConfigured = errors.New("release: not configured in .ai-workflow.yml")
+// .ai-workflow.yml or the file has no ship: key.
+var ErrNotConfigured = errors.New("ship: not configured in .ai-workflow.yml")
 
-// Release is the release: section.
+// Release is the ship: section: the version engine's settings and the
+// projects.
 type Release struct {
-	// SemanticRelease pins the semantic-release engine.
-	SemanticRelease SemanticRelease `yaml:"semantic_release"`
+	// Branches are the release branches (versioning.Config.Branches).
+	// Default: versioning.DefaultBranches.
+	Branches []versioning.Branch `yaml:"branches"`
+	// ReleaseRules are extra commit-analyzer rules
+	// (versioning.Config.ReleaseRules). Default: none.
+	ReleaseRules []versioning.ReleaseRule `yaml:"release_rules"`
+	// NoteKeywords start a breaking-change note. Default:
+	// versioning.DefaultNoteKeywords.
+	NoteKeywords []string `yaml:"note_keywords"`
+	// TagFormat is the tag of a release, with ${version}; each project's
+	// default derives from it. Default: DefaultTagFormat.
+	TagFormat string `yaml:"tag_format"`
+	// RepositoryURL is what the release notes link to. Default: origin's
+	// URL without credentials.
+	RepositoryURL string `yaml:"repository_url"`
+	// Changelog is the CHANGELOG file name under each project's path, and
+	// its title. Default: DefaultChangelog, no title.
+	Changelog versioning.Changelog `yaml:"changelog"`
 	// Projects are the releasable units. A single-repo setup is one project
-	// with path ".". Required, at least one.
+	// with path ".". nerv ship needs at least one (CheckBuild); without any,
+	// nerv version next versions the whole repository.
 	Projects []Project `yaml:"projects"`
-}
-
-// SemanticRelease pins the semantic-release version and the extra npm
-// packages installed next to it in the NERV cache (never in the repo).
-type SemanticRelease struct {
-	// Version is an exact semantic-release version.
-	// Default: DefaultSemanticReleaseVersion.
-	Version string `yaml:"version"`
-	// ExtraPlugins are pinned npm specs ("name@version") the repository's
-	// own semantic-release configuration needs beyond the plugins bundled
-	// with semantic-release, e.g. "@semantic-release/exec@6.0.3".
-	ExtraPlugins []string `yaml:"extra_plugins"`
 }
 
 // Project is one independently versioned unit of the repository.
@@ -64,17 +77,12 @@ type Project struct {
 	// Scopes are the conventional-commit scopes whose commits count for the
 	// project wherever they touch. Default: [Name].
 	Scopes []string `yaml:"scopes"`
-	// TagFormat is the semantic-release tagFormat; it must contain
-	// ${version} and no other placeholder, and be unique across projects.
-	// Default: DefaultTagFormat with one project, "<name>-"+DefaultTagFormat
-	// otherwise.
+	// TagFormat is the project's tag; it must contain ${version} and no
+	// other placeholder, and be unique across projects. Default: the
+	// section's tag_format with one project, "<name>-" + it otherwise.
 	TagFormat string `yaml:"tag_format"`
-	// Changelog is the CHANGELOG file. Default: <path>/DefaultChangelog.
-	// Whether it is applied is Release.ChangelogFor's rule.
+	// Changelog is the CHANGELOG file. Default: <path>/<changelog.file>.
 	Changelog string `yaml:"changelog"`
-	// ChangelogExplicit reports that changelog was written in the section
-	// (not defaulted).
-	ChangelogExplicit bool `yaml:"-"`
 	// DependsOn lists the projects whose new release bumps this one.
 	DependsOn []Dependency `yaml:"depends_on"`
 	// Build is how nerv ship builds, tests and packages the project: its
@@ -102,7 +110,7 @@ type Dependency struct {
 	// Project names another project of the section. Required.
 	Project string `yaml:"project"`
 	// Bump is applied to the dependent when the dependency releases:
-	// patch, minor or none. Default: DefaultBump.
+	// patch, minor, major or none. Default: DefaultBump.
 	Bump string `yaml:"bump"`
 }
 
@@ -146,19 +154,33 @@ func (c Command) TimeoutDuration() time.Duration {
 	return d
 }
 
-// Project returns the project called name.
-// ChangelogFor is the changelog file NERV makes p's release write, or ""
-// when the repository's own semantic-release configuration decides: a
-// project's changelog applies when the section has more than one project
-// (each project its own CHANGELOG) or when it was written explicitly; a
-// single project without one keeps the repository's configuration.
-func (r *Release) ChangelogFor(p Project) string {
-	if len(r.Projects) > 1 || p.ChangelogExplicit {
-		return p.Changelog
+// Versioning is the version engine's configuration of the section: its
+// settings and its projects, with the section's defaults applied.
+func (r *Release) Versioning() versioning.Config {
+	cfg := r.engineSettings()
+	for _, p := range r.Projects {
+		deps := make([]versioning.Dependency, len(p.DependsOn))
+		for i, d := range p.DependsOn {
+			deps[i] = versioning.Dependency{Project: d.Project, Bump: d.Bump}
+		}
+		cfg.Projects = append(cfg.Projects, versioning.Project{
+			Name: p.Name, Path: p.Path, SharedPaths: append([]string(nil), p.SharedPaths...), Scopes: append([]string(nil), p.Scopes...),
+			TagFormat: p.TagFormat, Changelog: p.Changelog, DependsOn: deps,
+		})
 	}
-	return ""
+	return cfg.WithDefaults()
 }
 
+// engineSettings is the section's version engine settings, without the
+// projects.
+func (r *Release) engineSettings() versioning.Config {
+	return versioning.Config{
+		Branches: append([]versioning.Branch(nil), r.Branches...), ReleaseRules: append([]versioning.ReleaseRule(nil), r.ReleaseRules...),
+		NoteKeywords: append([]string(nil), r.NoteKeywords...), TagFormat: r.TagFormat, RepositoryURL: r.RepositoryURL, Changelog: r.Changelog,
+	}
+}
+
+// Project returns the project called name.
 func (r *Release) Project(name string) (Project, bool) {
 	for _, p := range r.Projects {
 		if p.Name == name {
@@ -168,11 +190,12 @@ func (r *Release) Project(name string) (Project, bool) {
 	return Project{}, false
 }
 
-// Load reads the release: section of <repoRoot>/.ai-workflow.yml, applies
+// Load reads the ship: section of <repoRoot>/.ai-workflow.yml, applies
 // defaults and validates it. It returns ErrNotConfigured when the file or
 // the key is absent, and an error listing every problem, each prefixed by
-// its path in the section (e.g. release.projects[1].depends_on[0].project),
-// when the section is invalid.
+// its path in the section (e.g. ship.projects[1].depends_on[0].project),
+// when the section is invalid. A file that still has the removed release:
+// or pipeline: section is refused (RemovedSections), with what to do.
 func Load(repoRoot string) (*Release, error) {
 	path := paths.ProjectConfig(repoRoot)
 	data, err := os.ReadFile(path)
@@ -180,7 +203,7 @@ func Load(repoRoot string) (*Release, error) {
 		return nil, ErrNotConfigured
 	}
 	if err != nil {
-		return nil, fmt.Errorf("release: %w", err)
+		return nil, fmt.Errorf("ship: %w", err)
 	}
 	rel, err := parse(data)
 	if err != nil {
@@ -192,10 +215,13 @@ func Load(repoRoot string) (*Release, error) {
 	return rel, nil
 }
 
-// parse decodes the release: key of a .ai-workflow.yml text. Unknown keys and
+// parse decodes the ship: key of a .ai-workflow.yml text. Unknown keys and
 // semantic problems are reported together; only a section that cannot be
 // decoded at all (or that expands past the alias budget) stops early.
 func parse(data []byte) (*Release, error) {
+	if removed := RemovedSections(data); len(removed) > 0 {
+		return nil, &ValidationError{Problems: removed}
+	}
 	node, err := locateRelease(data)
 	if err != nil {
 		return nil, err
@@ -204,10 +230,10 @@ func parse(data []byte) (*Release, error) {
 	var problems []string
 	switch {
 	case node.ShortTag() == "!!null":
-		// "release:" with no value: present but empty; validation says
+		// "ship:" with no value: present but empty; validation says
 		// what is missing.
 	case node.Kind != yaml.MappingNode:
-		return nil, &ValidationError{Problems: []string{"release: must be a mapping"}}
+		return nil, &ValidationError{Problems: []string{"ship: must be a mapping"}}
 	default:
 		problems = takeRemovedKeys(node)
 		unknown, err := unknownFields(node)
@@ -216,7 +242,7 @@ func parse(data []byte) (*Release, error) {
 		}
 		problems = append(problems, unknown...)
 		if err := node.Decode(&rel); err != nil {
-			problems = append(problems, yamlsection.DecodeProblems("release", err)...)
+			problems = append(problems, yamlsection.DecodeProblems(SectionKey, err)...)
 			// A partially decoded section would produce misleading
 			// semantic errors; stop at the decoding problems.
 			return nil, &ValidationError{Problems: problems}
@@ -231,12 +257,12 @@ func parse(data []byte) (*Release, error) {
 	return &rel, nil
 }
 
-// ValidationError lists every problem found in the release: section, one
+// ValidationError lists every problem found in the ship: section, one
 // path-qualified message per entry.
 type ValidationError struct {
 	Problems []string
 }
 
 func (e *ValidationError) Error() string {
-	return "invalid release configuration:\n  " + strings.Join(e.Problems, "\n  ")
+	return "invalid ship configuration:\n  " + strings.Join(e.Problems, "\n  ")
 }

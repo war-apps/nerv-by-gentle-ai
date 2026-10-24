@@ -103,7 +103,7 @@ func newEnv(t *testing.T) *world {
 	e.base = git(t, e.repo, "rev-parse", "HEAD")
 
 	bin := filepath.Join(e.fake, "bin")
-	for _, tool := range []string{"gh", "docker", "ssh", "nerv"} {
+	for _, tool := range []string{"gh", "docker", "ssh", "sshpass", "nerv"} {
 		writeFile(t, filepath.Join(bin, tool), fakeTool, 0o755)
 	}
 	t.Setenv("FAKE_DIR", e.fake)

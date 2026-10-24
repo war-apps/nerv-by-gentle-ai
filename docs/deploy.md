@@ -1,4 +1,22 @@
-# nerv deploy
+# Deploy plugin: `nerv deploy`
+
+The deploy plugin (`deploy@nerv`) releases what the [ship plugin](release-commands.md)
+packaged. It requires `ship`, and its git hosts and targets are provider
+plugins (`deploy-github`, `deploy-ssh-compose`). Install them with:
+
+```sh
+nerv install --with ship,deploy,deploy-github
+nerv install --with deploy-ssh-compose   # the SSH and compose target
+```
+
+| Slash command | What it does |
+|---|---|
+| `/deploy:run` | Picks the latest local artifact, or the one you name (`api`, `api@1.4.0`, a directory), runs `nerv deploy --dry-run`, and deploys only after your explicit yes. It reports every step and the pending ones. |
+| `/deploy:setup` | Writes the `deploy:` section (host, targets with their provider config, git), asks only what it cannot detect, and suggests the provider plugins to install. |
+
+The plugin's agent, `deploy:deployer`, runs the same dry run and, with your
+approved project, version and tag, the real deploy. Its skill, `deploy`, is
+the contract below.
 
 `nerv deploy` takes an artifact that `nerv ship` left in
 `.nerv/artifacts/<project>/<version>/` and turns it into a release. It writes
@@ -15,6 +33,16 @@ nerv deploy --artifact .nerv/artifacts/api/1.4.0
 Run a dry run first. Without `--yes`, a real run shows the prepared release
 and asks before it pushes anything.
 
+### Preflight
+
+Before any push, `nerv deploy` checks every selected target and the host:
+the tools their manifests `require` (`gh`, `docker`, `ssh`), the tools
+their configuration implies (`sshpass` with `ssh_auth: password`, the
+`infisical` CLI with `source: infisical`), and the data they need (each
+environment's deploy data). A missing tool or value is a refusal (exit 1)
+with nothing written, so a deploy never stops half-way for a missing
+binary after the tag is on origin.
+
 ## What it does
 
 | Step | What happens |
@@ -22,7 +50,7 @@ and asks before it pushes anything.
 | `verify-artifact` | Checks the sha256 of the notes, the CHANGELOG section, every output and every release file. A file the manifest does not list is refused. |
 | `clone` | Clones the remote (`deploy.git.remote`) in a temporary directory, with its tags and `refs/notes/semantic-release*`. |
 | `commit` | Writes the artifact's release files (CHANGELOG, version files) on the artifact's base commit and commits them with `deploy.git.commit_message`. |
-| `tag` | Creates the annotated tag (the artifact's tag, from the project's `tag_format`). |
+| `tag` | Creates the lightweight tag, as semantic-release does (the artifact's tag, from the project's `tag_format`), so the channel note on the release commit is also the tag's note for semantic-release. |
 | `notes` | Writes semantic-release's channel note on the release commit: ref `refs/notes/semantic-release-<tag>`, content `{"channels":["<channel>"]}` (`[null]` for the default channel). Without it, the next prerelease number of the channel would start over. |
 | `push` | Pushes the branch, the tag and the note in one atomic push. It never force-pushes. |
 | `publish:<target>` | Each target's `publish`, in `deploy.targets` order. |
@@ -38,6 +66,10 @@ When origin's branch has commits after the artifact's base commit, the deploy
 is refused. With `--rebase`, the release commit is cherry-picked onto the new
 head. A conflict, for example someone else editing the CHANGELOG, is refused.
 If origin no longer contains the base commit, ship again.
+
+`--rebase` warns that the tag then points at a commit whose code was never
+built: the artifact was built from the base commit. Shipping again is the
+safe path; `/deploy:run` never adds `--rebase` on its own.
 
 ### Re-runs
 
@@ -152,19 +184,20 @@ Kind `target`, requires `docker` and `ssh`.
 
 - `publish` runs `docker load -i` for each image tar of the artifact, then
   `docker push` for each image. Log in to the registry first.
-- `deploy` and `verify` run `nerv deploy-ssh-compose deploy|verify`. This is
-  the update-deploy flow `nerv pipeline deploy` used.
+- `deploy` and `verify` run `nerv deploy-ssh-compose deploy|verify`, the
+  update-deploy flow of the removed `nerv pipeline deploy`.
   - It reads the environment's deploy data, either from the
     `NERV_DEPLOY_<ENVIRONMENT>_<KEY>` variables (`source: env`) or from
-    Infisical (`source: infisical`, which needs the `infisical` CLI).
+    Infisical (`source: infisical`, which needs the `infisical` CLI); see
+    [Deploy data](#deploy-data).
   - `deploy` runs the host's compose script over SSH: `pull`, then `up`.
     `ssh_auth: password` needs `sshpass`.
   - `verify` waits until the container is healthy and checks that its
     version label is the released version.
   - An environment whose `DOCKER_DEPLOY_ENABLED` is off, or whose
     `DOCKER_IMAGE_VERSION` points at other releases, is skipped. One that
-    sets no `DOCKER_IMAGE_VERSION` is refused, as `nerv pipeline deploy`
-    refused it, so a prerelease never reaches an environment by default.
+    sets no `DOCKER_IMAGE_VERSION` is refused, so a prerelease never
+    reaches an environment by default.
 
 | Key | Scope | Default |
 |---|---|---|
@@ -182,11 +215,78 @@ Kind `target`, requires `docker` and `ssh`.
 | `version_label` | repo | `org.opencontainers.image.version` |
 | `verify_timeout` | repo | `120s` |
 
+## Deploy data
+
+The `deploy-ssh-compose` target reads one environment's deploy data
+(`config.environment`). Both sources provide the same keys per environment. Each environment has
+one Docker host:
+
+| Key | Meaning |
+|---|---|
+| `DOCKER_SSH_HOST` | The Docker host. |
+| `DOCKER_SSH_USER` | The SSH user. |
+| `DOCKER_SSH_PASS` | The SSH password (auth `password`). |
+| `DOCKER_COMPOSE_PATH` | The directory of the compose script. |
+| `DOCKER_COMPOSE_SCRIPT` | The script run as `<script> pull --container <c>` and `<script> up --container <c>`, e.g. `./manage.sh`. |
+
+and the application's own keys:
+
+| Key | Meaning |
+|---|---|
+| `DOCKER_CONTAINER_NAME` | Base container name; the container is `<name>-<variant>`. |
+| `DOCKER_CONTAINER_VARIANT` | The variant (`alpha`, `beta`, `blue`, `green`, ...). |
+| `DOCKER_DEPLOY_ENABLED` | `false`, `0`, `no` or `off` skips the environment; default enabled. |
+| `DOCKER_DEPLOY_STRATEGY` | `rolling` or `blue-green` (a blue-green live container is warned about). |
+| `DOCKER_IMAGE` | The image the environment runs. |
+| `DOCKER_IMAGE_VERSION` | The target version: a version, or a moving tag such as `alpha`. |
+
+**Source `env`.** Each key is read from the variable
+`NERV_DEPLOY_<ENVIRONMENT>_<KEY>`, where `<ENVIRONMENT>` is the environment
+name upper-cased with `-` turned into `_`; the prefix is `NERV_DEPLOY`. For
+`production-blue`:
+
+```bash
+NERV_DEPLOY_PRODUCTION_BLUE_DOCKER_SSH_HOST=10.0.0.10
+NERV_DEPLOY_PRODUCTION_BLUE_DOCKER_SSH_USER=deploy
+NERV_DEPLOY_PRODUCTION_BLUE_DOCKER_SSH_PASS=...          # never in .ai-workflow.yml
+NERV_DEPLOY_PRODUCTION_BLUE_DOCKER_COMPOSE_PATH=/srv/apps
+NERV_DEPLOY_PRODUCTION_BLUE_DOCKER_COMPOSE_SCRIPT=./manage.sh
+NERV_DEPLOY_PRODUCTION_BLUE_DOCKER_CONTAINER_NAME=comprobantes-api
+NERV_DEPLOY_PRODUCTION_BLUE_DOCKER_CONTAINER_VARIANT=blue
+NERV_DEPLOY_PRODUCTION_BLUE_DOCKER_IMAGE_VERSION=latest   # required
+```
+
+An environment without `DOCKER_IMAGE_VERSION` is refused: nerv cannot
+tell whether the release is its target.
+
+Two environments whose names map to the same prefix (`production-blue` and
+`production_blue`) are rejected.
+
+**Source `infisical`.** dim's single-folder layout, read with the
+`infisical` CLI (raw values: no imports, no expansion, no personal
+overrides):
+
+```
+[environment: development | staging | production-blue | production-green]
+  /                 DOCKER_SSH_HOST, DOCKER_SSH_USER, DOCKER_SSH_PASS,
+                    DOCKER_COMPOSE_PATH, DOCKER_COMPOSE_SCRIPT
+  /<app_path>/      DOCKER_CONTAINER_NAME, DOCKER_CONTAINER_VARIANT, DOCKER_IMAGE,
+                    DOCKER_IMAGE_VERSION, DOCKER_DEPLOY_STRATEGY, DOCKER_DEPLOY_ENABLED
+```
+
+## Migrating from `nerv pipeline`
+
+The `pipeline:` section's `docker` push and `deploy` steps are this
+plugin's `deploy-ssh-compose` target, and its `release` step is `nerv ship`
+then `nerv deploy` with `deploy-github`. The key-by-key translation is in
+[pipeline.md](pipeline.md); `nerv migrate --dry-run` shows it for your
+repository.
+
 ## Exit codes
 
 | Code | Meaning |
 |---|---|
 | 0 | Deployed, or a dry run finished. |
-| 1 | Refused, and nothing was written: an invalid configuration or artifact, origin moved without `--rebase`, a conflict, a missing tool, or no confirmation. |
+| 1 | Refused, and nothing was written: an invalid configuration or artifact, a preflight failure (a missing tool or deploy value), origin moved without `--rebase`, a conflict, or no confirmation. |
 | 2 | A step failed. The report says which steps were done. |
 | 128 + the signal | Interrupted. |

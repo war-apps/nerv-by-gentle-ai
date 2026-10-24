@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/war-apps/nerv-by-gentle-ai/internal/atomicfile"
@@ -71,7 +70,7 @@ func InitRepo(deps Deps, req InitRepoRequest) (Result, error) {
 		}
 		written = append(written, repoConfigPath)
 		changed = true
-		ignore, err := ensureRuntimeIgnored(toplevel)
+		ignore, err := paths.EnsureRuntimeIgnored(toplevel)
 		if err != nil {
 			return Result{}, err
 		}
@@ -90,22 +89,4 @@ func InitRepo(deps Deps, req InitRepoRequest) (Result, error) {
 		ConfigPath: repoConfigPath,
 		Backup:     nil,
 	}, nil
-}
-
-// ensureRuntimeIgnored writes <repoRoot>/.nerv/.gitignore of "*" when it is
-// missing, so the runtime folder is never committed without touching the
-// repository's own .gitignore. It returns the path written, or "" when the
-// file already existed.
-func ensureRuntimeIgnored(repoRoot string) (string, error) {
-	ignore := filepath.Join(paths.RuntimeDir(repoRoot), ".gitignore")
-	if _, err := os.Lstat(ignore); !errors.Is(err, fs.ErrNotExist) {
-		return "", err
-	}
-	if err := os.MkdirAll(paths.RuntimeDir(repoRoot), 0o755); err != nil {
-		return "", err
-	}
-	if err := os.WriteFile(ignore, []byte("*\n"), 0o644); err != nil {
-		return "", err
-	}
-	return ignore, nil
 }

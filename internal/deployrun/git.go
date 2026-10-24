@@ -36,11 +36,24 @@ func (w workspace) git(ctx context.Context, args ...string) (string, error) {
 			detail = strings.TrimSpace(string(res.Stdout))
 		}
 		if detail != "" {
-			return "", fmt.Errorf("git %s: %w: %s", args[0], err, detail)
+			return "", fmt.Errorf("git %s: %w: %s", subcommand(args), err, detail)
 		}
-		return "", fmt.Errorf("git %s: %w", args[0], err)
+		return "", fmt.Errorf("git %s: %w", subcommand(args), err)
 	}
 	return strings.TrimSpace(string(res.Stdout)), nil
+}
+
+// subcommand is the git subcommand of args, after its -c <key=value>
+// options ("push" for -c credential.interactive=never push ...).
+func subcommand(args []string) string {
+	for i := 0; i < len(args); i++ {
+		if args[i] == "-c" {
+			i++
+			continue
+		}
+		return args[i]
+	}
+	return "git"
 }
 
 // ok reports whether git succeeds (a yes/no query).

@@ -7,7 +7,7 @@
 //  3. commit: the release commit, the artifact's release files on its base
 //     commit with deploy.git.commit_message (when origin's branch moved
 //     past the base, only with Rebase, cherry-picked on the new head);
-//  4. tag: the annotated tag;
+//  4. tag: the lightweight tag, as semantic-release makes it;
 //  5. notes: semantic-release's channel note refs/notes/semantic-release-
 //     <tag>, {"channels":[<channel or null>]}, on the release commit (where
 //     git log --tags reads it, as the version engine does);
@@ -36,6 +36,7 @@ import (
 	"strings"
 
 	"github.com/war-apps/nerv-by-gentle-ai/internal/artifact"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/deploy"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/deployconfig"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/deployprovider"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/proc"
@@ -271,7 +272,7 @@ func (d *deployer) prepare(ctx context.Context, message string) ([]string, error
 		if commit != head {
 			refs = append(refs, commit+":refs/heads/"+m.Branch)
 		}
-		if _, err := w.git(ctx, "tag", "--annotate", "--message", m.Tag, "--", m.Tag, commit); err != nil {
+		if _, err := w.git(ctx, "tag", "--", m.Tag, commit); err != nil {
 			tr.set("tag", StatusFailed, "%v", err)
 			return nil, err
 		}
@@ -334,6 +335,11 @@ func (d *deployer) releaseCommit(ctx context.Context, head, message string) (str
 			return "", err
 		}
 	}
+	if head != base {
+		fmt.Fprintf(d.o.Output, "nerv deploy: warning: --rebase: the tag %s points at %s, origin's new %s head %s with the release files re-applied: "+
+			"that code was never built or tested by nerv ship (the artifact was built from %s); ship again from the new head to release built code\n",
+			m.Tag, short(commit), m.Branch, short(head), short(base))
+	}
 	switch {
 	case !made:
 		tr.set("commit", StatusSkipped, "the release changes no file: %s is tagged", short(commit))
@@ -346,10 +352,24 @@ func (d *deployer) releaseCommit(ctx context.Context, head, message string) (str
 }
 
 // loadProviders loads the host and the targets' providers, checks their
-// kind, resolves their config and checks that what they require is on PATH.
+// kind, resolves and checks their config, and checks that every tool they
+// need is on PATH: the providers' requires and, for deploy-ssh-compose, the
+// tools its config needs (sshpass for password authentication, infisical for
+// source infisical). It runs before anything is cloned or pushed.
 func (d *deployer) loadProviders(targets []deployconfig.Target) (*provider, []provider, error) {
 	var host *provider
 	var tools []string
+	needs := map[string][]string{}
+	need := func(who string, list ...string) {
+		for _, tool := range list {
+			if !slices.Contains(tools, tool) {
+				tools = append(tools, tool)
+			}
+			if !slices.Contains(needs[tool], who) {
+				needs[tool] = append(needs[tool], who)
+			}
+		}
+	}
 	if name := d.o.Config.Host; name != "" {
 		m, err := d.manifest(name, deployprovider.KindGitHost, "deploy.host")
 		if err != nil {
@@ -360,7 +380,7 @@ func (d *deployer) loadProviders(targets []deployconfig.Target) (*provider, []pr
 			return nil, nil, err
 		}
 		host = &provider{manifest: m, config: cfg}
-		tools = append(tools, m.Requires...)
+		need("deploy.host ("+name+")", m.Requires...)
 	}
 	var provs []provider
 	for i, t := range targets {
@@ -373,20 +393,31 @@ func (d *deployer) loadProviders(targets []deployconfig.Target) (*provider, []pr
 		if err != nil {
 			return nil, nil, err
 		}
+		need(at, m.Requires...)
+		if m.Name == composeProvider {
+			extra, err := deploy.Preflight(cfg)
+			if err != nil {
+				return nil, nil, refuse("%s: %v", at, err)
+			}
+			need(at, extra...)
+		}
 		provs = append(provs, provider{manifest: m, config: cfg, target: t.Name})
-		tools = append(tools, m.Requires...)
 	}
 	var missing []string
 	for _, tool := range tools {
-		if _, err := d.o.LookPath(tool); err != nil && !slices.Contains(missing, tool) {
-			missing = append(missing, tool)
+		if _, err := d.o.LookPath(tool); err != nil {
+			missing = append(missing, fmt.Sprintf("%s is not on PATH (%s needs it)", tool, strings.Join(needs[tool], ", ")))
 		}
 	}
 	if len(missing) > 0 {
-		return nil, nil, refuse("%s is not on PATH: the deploy providers need it", strings.Join(missing, ", "))
+		return nil, nil, refuse("%s: install it, or change the target's config, before deploying (nothing was written)", strings.Join(missing, "; "))
 	}
 	return host, provs, nil
 }
+
+// composeProvider is the deploy-ssh-compose provider, whose config decides
+// some of the tools it needs.
+const composeProvider = "ssh-compose"
 
 func (d *deployer) manifest(name, kind, at string) (*deployprovider.Manifest, error) {
 	if d.o.Providers == nil {

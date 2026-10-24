@@ -209,7 +209,7 @@ var (
 var publicSchemes = []string{"http", "https", "ssh", "git", "git+ssh", "ssh+git"}
 
 // publicURL is the address of a remote to name in release-notes links (as
-// internal/semrel publicURL): scheme URLs lose their user info, query and
+// internal/shipclone publicURL): scheme URLs lose their user info, query and
 // fragment, scp-like ssh addresses stay as they are, and a local
 // repository (a path, a file: URL) gives "".
 func publicURL(raw string) string {

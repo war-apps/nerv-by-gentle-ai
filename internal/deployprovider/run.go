@@ -148,7 +148,12 @@ func (m *Manifest) ReleaseExists(ctx context.Context, runner proc.Runner, env En
 		return false, fmt.Errorf("provider %s: %s: its step did not run", m.Name, OpReleaseExists)
 	}
 	c := cmds[0]
-	resp, res, err := m.exec(ctx, runner, OpReleaseExists, env, c)
+	// The check's stderr is not streamed: a missing release is an expected
+	// answer (gh's "release not found"), and any other failure carries its
+	// last line in the error.
+	quiet := env
+	quiet.Output = nil
+	resp, res, err := m.exec(ctx, runner, OpReleaseExists, quiet, c)
 	if err != nil {
 		if pattern := c.step.AbsentStderr; pattern != "" && exitCode(err) > 0 && regexp.MustCompile(pattern).Match(res.Stderr) {
 			return false, nil

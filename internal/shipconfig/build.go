@@ -72,14 +72,18 @@ func (c Coverage) Floors() CoverageThreshold {
 	return CoverageThreshold{Line: c.Line, Branch: c.Branch, Method: c.Method}
 }
 
-// CheckBuild is nerv ship's requirement on top of Load: every project has
-// a build mode. It returns a *ValidationError naming each project without
-// one.
+// CheckBuild is nerv ship's requirement on top of Load: at least one
+// project, and every project has a build mode. (nerv version next needs
+// neither: a section without projects versions the whole repository.) It
+// returns a *ValidationError naming each problem.
 func (r *Release) CheckBuild() error {
 	var problems []string
+	if len(r.Projects) == 0 {
+		problems = append(problems, "ship.projects: nerv ship needs at least one project, each with its build.mode (compose or script)")
+	}
 	for i, p := range r.Projects {
 		if p.Build == nil || p.Build.Mode == "" {
-			problems = append(problems, fmt.Sprintf("release.projects[%d].build.mode: required by nerv ship (compose or script): there is no default", i))
+			problems = append(problems, fmt.Sprintf("ship.projects[%d].build.mode: required by nerv ship (compose or script): there is no default", i))
 		}
 	}
 	if len(problems) > 0 {
@@ -216,18 +220,21 @@ var (
 	removedHooks = map[string]string{
 		"publish": "the publish hooks were removed from nerv ship: they belong to nerv deploy now",
 		"success": "the success hooks were removed from nerv ship: they belong to nerv deploy now",
+		// There is no publish stage to hook before or after.
+		"before_publish": "the publish stage moved to nerv deploy (the deploy: section's targets), so there is nothing to hook: run it from a deploy target, or use the prepare hook to act before the artifact is written",
+		"after_publish":  "the publish stage moved to nerv deploy (the deploy: section's targets), so there is nothing to hook: run it from a deploy target after the push",
 	}
 )
 
 // takeRemovedKeys reports every removed preset key of the projects of the
-// release: node and deletes it from the node, so it is neither decoded nor
+// ship: node and deletes it from the node, so it is neither decoded nor
 // reported as an unknown field.
 func takeRemovedKeys(release *yaml.Node) []string {
+	problems := takeRemovedSectionKeys(release)
 	projects := mappingValue(release, "projects")
 	if projects == nil || projects.Kind != yaml.SequenceNode {
-		return nil
+		return problems
 	}
-	var problems []string
 	for i, p := range projects.Content {
 		if p.Kind != yaml.MappingNode {
 			continue
@@ -240,7 +247,7 @@ func takeRemovedKeys(release *yaml.Node) []string {
 				kept = append(kept, p.Content[j], p.Content[j+1])
 				continue
 			}
-			problems = append(problems, fmt.Sprintf("release.projects[%d].%s: %s", i, key, removedProjectKeys[idx].message))
+			problems = append(problems, fmt.Sprintf("ship.projects[%d].%s: %s", i, key, removedProjectKeys[idx].message))
 		}
 		p.Content = kept
 	}

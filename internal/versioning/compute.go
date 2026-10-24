@@ -42,7 +42,7 @@ type Request struct {
 }
 
 // Result is the next release of one project on one branch: the 12 outputs
-// of cycjimmy/semantic-release-action (as semrel.ProjectResult), plus the
+// of cycjimmy/semantic-release-action (as nerv version next prints them), plus the
 // project, the branch, the release type, the CHANGELOG section and, when
 // there is no release, the reason. The last_release_* fields are filled
 // whether or not there is a new release.

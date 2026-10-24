@@ -29,6 +29,8 @@ import (
 	"slices"
 	"strings"
 	"time"
+
+	"github.com/war-apps/nerv-by-gentle-ai/internal/paths"
 )
 
 // Schema is the manifest's schema identifier.
@@ -547,39 +549,60 @@ func checkListed(dir string, m *Manifest) error {
 }
 
 // prepare creates dir under the repository's .nerv/artifacts, which gets a
-// .gitignore of "*" when it has none, after checking that, symlinks
-// resolved, nothing on the way leads outside the repository.
+// .gitignore of "*" when it has none (and .nerv/ its own, see
+// paths.EnsureRuntimeIgnored), after checking that, symlinks resolved,
+// nothing on the way leads outside the repository.
 func prepare(repoRoot, dir string) error {
-	realRepo, err := filepath.EvalSymlinks(repoRoot)
-	if err != nil {
-		return err
-	}
 	for _, p := range []string{Root(repoRoot), dir} {
-		existing := p
-		for {
-			if _, err := os.Lstat(existing); err == nil {
-				break
-			}
-			parent := filepath.Dir(existing)
-			if parent == existing {
-				break
-			}
-			existing = parent
-		}
-		real, err := filepath.EvalSymlinks(existing)
-		if err != nil {
+		if err := checkInside(repoRoot, p); err != nil {
 			return err
-		}
-		if rel, err := filepath.Rel(realRepo, real); err != nil || !(rel == "." || filepath.IsLocal(rel)) {
-			return fmt.Errorf("artifact: %s resolves to %s, outside the repository: refusing to write there", existing, real)
 		}
 		if err := os.MkdirAll(p, 0o755); err != nil {
 			return err
 		}
 	}
+	if _, err := paths.EnsureRuntimeIgnored(repoRoot); err != nil {
+		return err
+	}
 	ignore := filepath.Join(Root(repoRoot), ".gitignore")
 	if _, err := os.Lstat(ignore); errors.Is(err, os.ErrNotExist) {
 		return os.WriteFile(ignore, []byte("*\n"), 0o644)
+	}
+	return nil
+}
+
+// CheckRoot refuses, without writing anything, a .nerv or .nerv/artifacts
+// that resolves (through a symlink) outside the repository: nerv ship checks
+// it before any stage runs, so a run is not wasted on an artifact it cannot
+// write.
+func CheckRoot(repoRoot string) error {
+	return checkInside(repoRoot, Root(repoRoot))
+}
+
+// checkInside refuses p when its deepest existing part resolves outside the
+// repository.
+func checkInside(repoRoot, p string) error {
+	realRepo, err := filepath.EvalSymlinks(repoRoot)
+	if err != nil {
+		return err
+	}
+	existing := p
+	for {
+		if _, err := os.Lstat(existing); err == nil {
+			break
+		}
+		parent := filepath.Dir(existing)
+		if parent == existing {
+			break
+		}
+		existing = parent
+	}
+	real, err := filepath.EvalSymlinks(existing)
+	if err != nil {
+		return err
+	}
+	if rel, err := filepath.Rel(realRepo, real); err != nil || !(rel == "." || filepath.IsLocal(rel)) {
+		return fmt.Errorf("artifact: %s resolves to %s, outside the repository: refusing to write there", existing, real)
 	}
 	return nil
 }

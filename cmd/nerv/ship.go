@@ -18,17 +18,20 @@ import (
 
 	"github.com/war-apps/nerv-by-gentle-ai/internal/artifact"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/refusal"
-	"github.com/war-apps/nerv-by-gentle-ai/internal/semrel"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/shipclone"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/shipconfig"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/shipplan"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/shiprun"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/versioning"
 )
 
 const shipUsage = `Usage: nerv ship [flags]
 
-Builds, tests and packages each project of the release: section of
+Builds, tests and packages each project of the ship: section of
 .ai-workflow.yml from your machine, as the CI build would, and leaves a local
-artifact for nerv deploy. In a fresh temporary clone of origin's branch, for
+artifact for nerv deploy. The version is computed natively (see "nerv
+version next --help"), or given with --version. In a fresh temporary clone
+of origin's branch, for
 each project with a new release in dependency order, it writes the version
 into build.version_files and the CHANGELOG section into the project's
 CHANGELOG (in the clone only), runs the pipeline of the project's
@@ -40,16 +43,18 @@ notes, the CHANGELOG section, the outputs and the changed release files.
 nerv ship never writes to git: no commit, no tag, no push; nerv deploy does
 that from the artifact. Your repository is never modified (only its
 .nerv/artifacts/, which ignores itself), and only what origin has is built:
-a local branch ahead of or behind origin is refused. The release: section is
+a local branch ahead of or behind origin is refused. The ship: section is
 your local .ai-workflow.yml, committed or not; the code is origin's.
 
 Flags:
   --cwd <dir>              A directory inside the repository (default ".")
   --branch <name>          Branch to build (default: the current one)
-  --project <name>         Only this project of the release: section
+  --project <name>         Only this project of the ship: section
   --version <semver>       Use this version instead of computing it (with
                             several projects, --project is required); it
-                            must be newer than the project's last tag
+                            must be newer than the project's last tag, and
+                            its channel is the branch's (the ship: section's
+                            branches)
   --dry-run                Run the pipeline and the prepare hooks in the
                             clone, but write no artifact
   --force                  Replace an existing artifact of the same version
@@ -64,27 +69,31 @@ Flags:
 
 Progress goes to stderr, the final summary to stdout. Exit codes: 0
 packaged (also when there is nothing to release, and a dry run), 1 refused
-(invalid configuration, unknown project, local branch not equal to origin's,
-an existing artifact without --force, no confirmation), 2 a step or the
-environment failed, 128 + the signal when interrupted.
+(invalid configuration, an old release: or pipeline: section, unknown
+project, local branch not equal to origin's, an existing artifact without
+--force, no confirmation), 2 a step or the environment failed, 128 + the
+signal when interrupted.
+
+  nerv ship setup --import [--dry-run]   imports a semantic-release
+                                         configuration (see "nerv ship
+                                         setup --help")
 `
 
-// shipWorkspace is the release clone nerv ship works in; *semrel.Workspace
-// is the real one. CheckPush, Release and TagOnOrigin are used by nerv
-// pipeline release only.
+// shipWorkspace is the release clone nerv ship works in; *shipclone.Workspace
+// is the real one.
 type shipWorkspace interface {
 	Dir() string
-	// Config is the user's local release: section (nil when none), the one
-	// the release uses; the clone's copy is ignored.
+	// Config is the user's local ship: section (nil when none), the one the
+	// build uses; the clone's copy is ignored.
 	Config() *shipconfig.Release
 	ArtifactsDir() string
 	NotesDir() string
 	OriginHead() string
 	PublicURL() string
-	Compute(ctx context.Context, project string) ([]semrel.ProjectResult, error)
-	CheckPush(ctx context.Context) error
-	Release(ctx context.Context, req semrel.ReleaseRequest) (semrel.ProjectResult, error)
-	TagOnOrigin(ctx context.Context, tag string) (bool, error)
+	// Compute computes the projects' next releases in the clone, offline.
+	Compute(ctx context.Context, projects []string) ([]versioning.Result, error)
+	// Branch resolves the branch against the ship: section's branches.
+	Branch(ctx context.Context) (versioning.ReleaseBranch, error)
 	BranchOnOrigin(ctx context.Context) (string, error)
 	Close() error
 }
@@ -96,8 +105,6 @@ const (
 	shipNoRelease  = "no-release"
 	shipFailed     = "failed"
 	shipNotStarted = "not-started"
-	// shipReleased is nerv pipeline release's: semantic-release released it.
-	shipReleased = "released"
 )
 
 // shipOutcome is what happened to one project (the --json summary).
@@ -111,14 +118,12 @@ type shipOutcome struct {
 	LastVersion string `json:"last_version,omitempty"`
 	// Artifact is the artifact directory written (status packaged).
 	Artifact string `json:"artifact,omitempty"`
-	// Tagged reports that nerv pipeline release's tag is on origin.
-	Tagged bool   `json:"tagged,omitempty"`
-	Error  string `json:"error,omitempty"`
+	Error    string `json:"error,omitempty"`
 	// Action is what the user must do after a failure.
 	Action string `json:"action,omitempty"`
 }
 
-// shipRun is one nerv ship (or nerv pipeline release) invocation.
+// shipRun is one nerv ship invocation.
 type shipRun struct {
 	opts           options
 	stdout, stderr io.Writer
@@ -134,25 +139,15 @@ type shipRun struct {
 	top  string
 	ws   shipWorkspace
 	exec shipplan.Executor
-	// configSource is where the computed versions' semantic-release
-	// configuration came from (semrel.ConfigRepository or ConfigBuiltIn);
-	// empty with --version.
-	configSource, configFile string
-
-	// nerv pipeline release: the same release (origin's state, checks,
-	// confirmation, semantic-release, version guard) without ship's build,
-	// artifact or hooks; versionFiles are written before semantic-release.
-	// computed are every computed result, results the projects to release,
-	// released what semantic-release released.
-	releaseOnly  bool
-	versionFiles []string
-	computed     []semrel.ProjectResult
-	results      []semrel.ProjectResult
-	released     semrel.ProjectResult
-	tokenEnv     []string
+	// configSource is where the computed versions' configuration came from
+	// (configRepository: the ship: section); empty with --version.
+	configSource string
 }
 
 func runShip(args []string, stdout, stderr io.Writer, opts options) int {
+	if len(args) > 0 && args[0] == "setup" {
+		return runShipSetup(args[1:], stdout, stderr, opts)
+	}
 	fs := flag.NewFlagSet("ship", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	s := &shipRun{opts: opts, stdout: stdout, stderr: stderr}
@@ -163,7 +158,7 @@ func runShip(args []string, stdout, stderr io.Writer, opts options) int {
 	fs.BoolVar(&s.dryRun, "dry-run", false, "")
 	fs.BoolVar(&s.force, "force", false, "")
 	fs.BoolVar(&s.yes, "yes", false, "")
-	fs.DurationVar(&s.timeout, "fetch-timeout", semrel.DefaultFetchTimeout, "")
+	fs.DurationVar(&s.timeout, "fetch-timeout", shipclone.DefaultFetchTimeout, "")
 	s.expect = expectations{}
 	fs.Var(s.expect, "expect", "")
 	jsonOut := fs.Bool("json", false, "")
@@ -216,10 +211,10 @@ func runShip(args []string, stdout, stderr io.Writer, opts options) int {
 type shipDocument struct {
 	Status string `json:"status"`
 	Error  string `json:"error,omitempty"`
-	// SemanticReleaseConfig is where the semantic-release configuration
-	// that computed the versions came from: "repository" or "default" (the
-	// built-in one); empty with --version and before the versions are
-	// computed.
+	// SemanticReleaseConfig is where the version configuration that
+	// computed the versions came from: "repository" (the ship: section);
+	// empty with --version and before the versions are computed. The name
+	// is kept from the semantic-release engine.
 	SemanticReleaseConfig string        `json:"semantic_release_config,omitempty"`
 	Projects              []shipOutcome `json:"projects"`
 }
@@ -269,7 +264,7 @@ func classifyShipError(ctx context.Context, sig os.Signal, stderr io.Writer, err
 // user approved (from a dry run). An empty set checks nothing.
 type expectations map[string]string
 
-// expectProjectRe is a release: project name (shipconfig: [a-z0-9-]) or a
+// expectProjectRe is a ship: project name (shipconfig: [a-z0-9-]) or a
 // repository directory name for a sectionless repository.
 var expectProjectRe = regexp.MustCompile(`^[A-Za-z0-9._-]+$`)
 
@@ -293,8 +288,9 @@ func (e expectations) Set(v string) error {
 
 // check refuses unless the releasing projects and their versions (project
 // -> version) are exactly the expected ones: no other version, no missing
-// release, no release that was not expected.
-func (e expectations) check(computed map[string]string) error {
+// release, no release that was not expected. explicit says the versions come
+// from --version, not from a computation.
+func (e expectations) check(computed map[string]string, explicit bool) error {
 	if len(e) == 0 {
 		return nil
 	}
@@ -315,6 +311,10 @@ func (e expectations) check(computed map[string]string) error {
 	if len(problems) == 0 {
 		return nil
 	}
+	if explicit {
+		return refuse("--version does not match --expect (%s); nothing was run. Pass the same version to both, as the dry run printed it",
+			strings.Join(problems, "; "))
+	}
 	return refuse("the computed release is not the expected one (%s); nothing was run. Origin probably moved since the dry run: run the dry run again and review the new plan",
 		strings.Join(problems, "; "))
 }
@@ -328,8 +328,8 @@ func refuse(format string, args ...any) error {
 	return &refusal.Error{Err: fmt.Errorf(format, args...)}
 }
 
-// execute builds (or, for nerv pipeline release, releases) and returns the
-// projects' outcomes (nil when it stopped before knowing them).
+// execute builds and returns the projects' outcomes (nil when it stopped
+// before knowing them).
 func (s *shipRun) execute(ctx context.Context) ([]shipOutcome, error) {
 	top, err := gitTopLevel(ctx, s.opts.Runner, s.cwd)
 	if err != nil {
@@ -341,10 +341,8 @@ func (s *shipRun) execute(ctx context.Context) ([]shipOutcome, error) {
 	if _, err := requestShape(top, s.project); err != nil {
 		return nil, err
 	}
-	if !s.releaseOnly {
-		if err := s.checkShipConfig(top); err != nil {
-			return nil, err
-		}
+	if err := s.checkShipConfig(top); err != nil {
+		return nil, err
 	}
 	local, err := s.localBranch(ctx, top)
 	if err != nil {
@@ -354,13 +352,13 @@ func (s *shipRun) execute(ctx context.Context) ([]shipOutcome, error) {
 	fmt.Fprintf(s.stderr, "nerv ship: reading origin's %s into a release clone of %s\n", s.branch, top)
 	open := s.opts.OpenShipWorkspace
 	if open == nil {
-		open = func(ctx context.Context, o semrel.WorkspaceOptions) (shipWorkspace, error) {
-			return semrel.NewWorkspace(ctx, o)
+		open = func(ctx context.Context, o shipclone.Options) (shipWorkspace, error) {
+			return shipclone.New(ctx, o)
 		}
 	}
-	ws, err := open(ctx, semrel.WorkspaceOptions{RepoRoot: top, Branch: s.branch, FetchTimeout: s.timeout})
-	if errors.Is(err, semrel.ErrNoOrigin) {
-		return nil, refuse("the repository has no origin remote: nerv ship %s what is on origin", s.verb())
+	ws, err := open(ctx, shipclone.Options{RepoRoot: top, Branch: s.branch, FetchTimeout: s.timeout})
+	if errors.Is(err, shipclone.ErrNoOrigin) {
+		return nil, refuse("the repository has no origin remote: nerv ship builds what is on origin")
 	}
 	if err != nil {
 		return nil, err
@@ -375,10 +373,10 @@ func (s *shipRun) execute(ctx context.Context) ([]shipOutcome, error) {
 
 	switch head := ws.OriginHead(); {
 	case head == "":
-		return nil, refuse("branch %s is not on origin: push it first (nerv ship %s what is on origin)", s.branch, s.verb())
+		return nil, refuse("branch %s is not on origin: push it first (nerv ship builds what is on origin)", s.branch)
 	case head != local:
-		return nil, refuse("your local %s (%s) is not origin/%s (%s): nerv ship %s what is on origin and never pushes your commits; push or pull first",
-			s.branch, short(local), s.branch, short(head), s.verb())
+		return nil, refuse("your local %s (%s) is not origin/%s (%s): nerv ship builds what is on origin and never pushes your commits; push or pull first",
+			s.branch, short(local), s.branch, short(head))
 	}
 
 	// Refuse a local section naming paths origin's branch lacks before
@@ -386,28 +384,17 @@ func (s *shipRun) execute(ctx context.Context) ([]shipOutcome, error) {
 	if err := checkPathsOnOrigin(ws.Config(), ws.Dir(), s.branch); err != nil {
 		return nil, err
 	}
-	if s.releaseOnly {
-		return s.pipelineRelease(ctx)
-	}
 	return s.shipProjects(ctx)
 }
 
-// verb is what the run does with origin's branch, for messages: nerv ship
-// builds it, nerv pipeline release releases it.
-func (s *shipRun) verb() string {
-	if s.releaseOnly {
-		return "releases"
-	}
-	return "builds"
-}
-
 // checkShipConfig refuses, before origin is read, a repository nerv ship
-// cannot build: no release: section, a project without build.mode, or
-// --version with several projects and no --project.
+// cannot build: no ship: section, a project without build.mode, --version
+// with several projects and no --project, or a .nerv/artifacts that leads
+// outside the repository (before any stage runs).
 func (s *shipRun) checkShipConfig(top string) error {
 	rel, err := shipconfig.Load(top)
 	if errors.Is(err, shipconfig.ErrNotConfigured) {
-		return refuse("%s", withLegacyHint("the repository has no release: section in .ai-workflow.yml: nerv ship needs one, with build.mode (compose or script) for each project; see docs/release-commands.md", top))
+		return refuse("%s", withLegacyHint("the repository has no ship: section in .ai-workflow.yml: nerv ship needs one, with build.mode (compose or script) for each project; see /ship:setup", top))
 	}
 	if err != nil {
 		return err
@@ -416,7 +403,12 @@ func (s *shipRun) checkShipConfig(top string) error {
 		return err
 	}
 	if s.version != "" && s.project == "" && len(rel.Projects) > 1 {
-		return refuse("--version %s: the release: section declares %d projects, each with its own version: pass --project too", s.version, len(rel.Projects))
+		return refuse("--version %s: the ship: section declares %d projects, each with its own version: pass --project too", s.version, len(rel.Projects))
+	}
+	if !s.dryRun {
+		if err := artifact.CheckRoot(top); err != nil {
+			return refuse("%v (nothing was run)", err)
+		}
 	}
 	return nil
 }
@@ -451,7 +443,7 @@ func short(sha string) string {
 	return sha
 }
 
-// checkPathsOnOrigin refuses when a path the local release: section names
+// checkPathsOnOrigin refuses when a path the local ship: section names
 // (project path, shared path without glob characters, compose file,
 // version file, stage and hook workdirs) does not exist in the release
 // clone: the configuration is the user's local one, but the code is
@@ -496,7 +488,7 @@ func checkPathsOnOrigin(rel *shipconfig.Release, clone, branch string) error {
 	if len(missing) == 0 {
 		return nil
 	}
-	return refuse("the release: section names paths that are not on origin's %s: %s (the configuration is your local one, the code is origin's branch: push them, or fix the section)",
+	return refuse("the ship: section names paths that are not on origin's %s: %s (the configuration is your local one, the code is origin's branch: push them, or fix the section)",
 		branch, strings.Join(missing, "; "))
 }
 
@@ -515,7 +507,7 @@ type shipItem struct {
 func (s *shipRun) shipProjects(ctx context.Context) ([]shipOutcome, error) {
 	rel := s.ws.Config()
 	if rel == nil {
-		return nil, refuse("the repository has no release: section in .ai-workflow.yml")
+		return nil, refuse("the repository has no ship: section in .ai-workflow.yml")
 	}
 	ordered, err := rel.TopoOrder()
 	if err != nil {
@@ -533,7 +525,7 @@ func (s *shipRun) shipProjects(ctx context.Context) ([]shipOutcome, error) {
 			releasing[p.Name] = versions[i].Version
 		}
 	}
-	if err := s.expect.check(releasing); err != nil {
+	if err := s.expect.check(releasing, s.version != ""); err != nil {
 		return nil, err
 	}
 
@@ -585,47 +577,45 @@ func (s *shipRun) shipProjects(ctx context.Context) ([]shipOutcome, error) {
 	return outcomes, nil
 }
 
-// versionSource is --version's explicit source, or the semantic-release
-// computation in the release clone.
+// versionSource is --version's explicit source, or the native computation
+// in the release clone.
 func (s *shipRun) versionSource() shipplan.VersionSource {
 	if s.version != "" {
 		return &explicitVersion{s: s}
 	}
-	return &semrelVersions{s: s}
+	return &computedVersions{s: s}
 }
 
-// semrelVersions computes every project's next version once with
-// semantic-release in the release clone (every project, so depends_on
-// applies with --project too). T4 replaces it with internal/versioning.
-type semrelVersions struct {
+// computedVersions computes every project's next version once with the
+// native engine in the release clone (every project, so depends_on applies
+// with --project too).
+type computedVersions struct {
 	s       *shipRun
-	results map[string]semrel.ProjectResult
+	results map[string]versioning.Result
 }
 
-func (v *semrelVersions) Next(ctx context.Context, project string) (shipplan.Version, error) {
+func (v *computedVersions) Next(ctx context.Context, project string) (shipplan.Version, error) {
 	if v.results == nil {
-		results, err := v.s.ws.Compute(ctx, "")
+		results, err := v.s.ws.Compute(ctx, nil)
 		if err != nil {
 			return shipplan.Version{}, err
 		}
-		v.results = map[string]semrel.ProjectResult{}
+		v.results = map[string]versioning.Result{}
 		for _, r := range results {
 			v.results[r.Project] = r
 		}
-		if len(results) > 0 {
-			v.s.configSource, v.s.configFile = results[0].SemanticReleaseConfig, results[0].SemanticReleaseConfigFile
-		}
+		v.s.configSource = configRepository
 	}
 	r, ok := v.results[project]
 	if !ok {
-		return shipplan.Version{}, fmt.Errorf("semantic-release computed no result for project %s", project)
+		return shipplan.Version{}, fmt.Errorf("the version engine computed no result for project %s", project)
 	}
 	out := shipplan.Version{LastTag: r.LastReleaseGitTag, LastVersion: r.LastReleaseVersion}
 	if !r.NewReleasePublished {
 		return out, nil
 	}
 	out.Version, out.Channel, out.Tag = r.NewReleaseVersion, r.NewReleaseChannel, r.NewReleaseGitTag
-	out.Notes, out.ChangelogSection = r.NewReleaseNotes, r.NewReleaseNotes
+	out.Notes, out.ChangelogSection = r.NewReleaseNotes, r.ChangelogSection
 	out.BaseCommit = r.NewReleaseGitHead
 	if out.BaseCommit == "" {
 		out.BaseCommit = v.s.ws.OriginHead()
@@ -634,16 +624,37 @@ func (v *semrelVersions) Next(ctx context.Context, project string) (shipplan.Ver
 }
 
 // explicitVersion is --version: the version is not computed. The tag
-// follows the project's tag_format, the channel is the prerelease's first
-// identifier (empty for a stable version), and the version must be newer
-// than every tag of the project in the release clone (origin's tags).
-type explicitVersion struct{ s *shipRun }
+// follows the project's tag_format, the channel is the branch's (from the
+// ship: section's branches, as the engine gives it), and the version must
+// be newer than every tag of the project in the release clone (origin's
+// tags) and fit the branch: a prerelease with the branch's prerelease
+// identifier on a prerelease branch, a stable version on a release branch.
+type explicitVersion struct {
+	s      *shipRun
+	branch *versioning.ReleaseBranch
+}
 
 func (v *explicitVersion) Next(ctx context.Context, project string) (shipplan.Version, error) {
 	s := v.s
 	p, ok := s.ws.Config().Project(project)
 	if !ok {
-		return shipplan.Version{}, fmt.Errorf("project %q is not in the release: section", project)
+		return shipplan.Version{}, fmt.Errorf("project %q is not in the ship: section", project)
+	}
+	if v.branch == nil {
+		b, err := s.ws.Branch(ctx)
+		if err != nil {
+			return shipplan.Version{}, refuse("--version %s: %v", s.version, err)
+		}
+		v.branch = &b
+	}
+	id, _, _ := strings.Cut(shipplan.Prerelease(s.version), ".")
+	switch b := v.branch; {
+	case b.Prerelease == "" && id != "":
+		return shipplan.Version{}, refuse("--version %s: %s is a release branch, which releases stable versions; pass one without a prerelease, such as %s",
+			s.version, b.Name, strings.SplitN(s.version, "-", 2)[0])
+	case b.Prerelease != "" && id != b.Prerelease:
+		return shipplan.Version{}, refuse("--version %s: %s is a prerelease branch whose prerelease identifier is %s; pass a version such as %s-%s.1",
+			s.version, b.Name, b.Prerelease, strings.SplitN(s.version, "-", 2)[0], b.Prerelease)
 	}
 	out, _, code, err := s.opts.Runner.Run(ctx, "git", "-C", s.ws.Dir(), "tag", "--list")
 	if err != nil || code != 0 {
@@ -664,9 +675,8 @@ func (v *explicitVersion) Next(ctx context.Context, project string) (shipplan.Ve
 			return shipplan.Version{}, refuse("--version %s: project %s already has %s (tag %s); the version must be newer than the last one", s.version, project, last, lastTag)
 		}
 	}
-	channel, _, _ := strings.Cut(shipplan.Prerelease(s.version), ".")
 	return shipplan.Version{
-		Version: s.version, Channel: channel, Tag: shipplan.TagFor(p.TagFormat, s.version),
+		Version: s.version, Channel: v.branch.Channel, Tag: shipplan.TagFor(p.TagFormat, s.version),
 		ChangelogSection: fmt.Sprintf("## %s (%s)\n", s.version, time.Now().UTC().Format("2006-01-02")),
 		LastTag:          lastTag, LastVersion: last, BaseCommit: s.ws.OriginHead(),
 	}, nil
@@ -683,8 +693,7 @@ func (s *shipRun) listShip(ordered []shipconfig.Project, versions []shipplan.Ver
 	case s.version != "":
 		fmt.Fprintf(s.stderr, "nerv ship: version %s from --version (not computed)\n", s.version)
 	case s.configSource != "":
-		r := semrel.ProjectResult{SemanticReleaseConfig: s.configSource, SemanticReleaseConfigFile: s.configFile}
-		fmt.Fprintf(s.stderr, "nerv ship: semantic-release config: %s\n", configSourceText(r))
+		fmt.Fprintf(s.stderr, "nerv ship: version config: %s\n", configSourceText(s.configSource, ".ai-workflow.yml"))
 	}
 	for i, p := range ordered {
 		if !versions[i].Releasing() {
@@ -808,7 +817,7 @@ func (s *shipRun) writeReleaseFiles(it shipItem) ([]artifact.ReleaseFileSource, 
 	if p.Build != nil {
 		files = p.Build.VersionFiles
 	}
-	link := semrel.ReleaseURL(s.ws.PublicURL(), v.Tag)
+	link := shipclone.ReleaseURL(s.ws.PublicURL(), v.Tag)
 	for _, f := range files {
 		path := filepath.Join(s.ws.Dir(), filepath.FromSlash(f))
 		var err error
@@ -952,274 +961,5 @@ func writeShipText(b *bytes.Buffer, dryRun bool, outcomes []shipOutcome) {
 	}
 	if dryRun && releasing {
 		b.WriteString("dry run: no artifact was written\n")
-	}
-}
-
-// ---------------------------------------------------------------------------
-// nerv pipeline release (internal/pipeline's release step): the real
-// semantic-release run nerv ship used to make. It stays here, unchanged,
-// until nerv pipeline is folded into ship and deploy (T3/T4 of the ship
-// and deploy plugins); nerv ship itself never runs it.
-
-// releaseItem is one project nerv pipeline release releases.
-type releaseItem struct {
-	result  semrel.ProjectResult
-	plan    *shipplan.Plan
-	outcome *shipOutcome
-}
-
-// pipelineRelease computes every project, checks --expect and the version
-// files, then releases.
-func (s *shipRun) pipelineRelease(ctx context.Context) ([]shipOutcome, error) {
-	if err := checkVersionFilesOnOrigin(s.versionFiles, s.ws.Dir(), s.branch); err != nil {
-		return nil, err
-	}
-	// Every project is computed, even with --project: Compute returns only
-	// the requested project, and Release needs the dependencies' results to
-	// apply depends_on.
-	results, err := s.ws.Compute(ctx, "")
-	if err != nil {
-		return nil, err
-	}
-	s.computed = results
-	if s.project != "" {
-		results = slices.DeleteFunc(slices.Clone(results), func(r semrel.ProjectResult) bool { return r.Project != s.project })
-	}
-	published := map[string]string{}
-	for _, r := range results {
-		if r.NewReleasePublished {
-			published[r.Project] = r.NewReleaseVersion
-		}
-	}
-	if err := s.expect.check(published); err != nil {
-		return nil, err
-	}
-	if err := checkVersionFilesCommitted(results, s.versionFiles); err != nil {
-		return nil, err
-	}
-	s.results = results
-	return s.release(ctx)
-}
-
-// release shows what will be released, asks for confirmation and releases
-// each project in order, stopping at the first failure.
-func (s *shipRun) release(ctx context.Context) ([]shipOutcome, error) {
-	outcomes := make([]shipOutcome, len(s.results))
-	var items []releaseItem
-	for i, r := range s.results {
-		outcomes[i] = shipOutcome{Project: r.Project, Branch: r.Branch, Status: shipNoRelease, LastVersion: r.LastReleaseVersion}
-		if !r.NewReleasePublished {
-			continue
-		}
-		o := &outcomes[i]
-		o.Status, o.Version, o.Channel, o.Tag = shipNotStarted, r.NewReleaseVersion, r.NewReleaseChannel, r.NewReleaseGitTag
-		pctx := shipplan.Context{
-			Version: r.NewReleaseVersion, Channel: r.NewReleaseChannel, Tag: r.NewReleaseGitTag, GitHead: r.NewReleaseGitHead,
-			DryRun: s.dryRun, ArtifactsDir: s.ws.ArtifactsDir(),
-		}
-		// A release has no stages or hooks: an empty plan.
-		items = append(items, releaseItem{result: r, plan: &shipplan.Plan{Project: r.Project, Context: pctx}, outcome: o})
-	}
-	s.listRelease(items)
-	if len(items) == 0 {
-		return outcomes, nil
-	}
-	if err := s.confirm(len(items), "Release", errDeclined, "to release without asking (or --dry-run to rehearse)"); err != nil {
-		return nil, err
-	}
-	if !s.dryRun {
-		if err := s.ws.CheckPush(ctx); err != nil {
-			return nil, err
-		}
-		s.tokenEnv = s.githubTokenEnv(ctx)
-	}
-	for _, it := range items {
-		fmt.Fprintf(s.stderr, "nerv ship: %s %s\n", it.result.Project, it.result.NewReleaseVersion)
-		if err := s.releaseOnlyStep(ctx, it); err != nil {
-			it.outcome.Status = shipFailed
-			it.outcome.Error = err.Error()
-			fmt.Fprintf(s.stderr, "nerv ship: %s failed: %v\n%s\n", it.result.Project, err, it.outcome.Action)
-			return outcomes, fmt.Errorf("project %s failed (see above)", it.result.Project)
-		}
-	}
-	return outcomes, nil
-}
-
-// listRelease prints what will be released on stderr.
-func (s *shipRun) listRelease(items []releaseItem) {
-	what := fmt.Sprintf("%d project(s) to release", len(items))
-	if s.dryRun {
-		what += " (dry run: nothing is released or published)"
-	}
-	fmt.Fprintf(s.stderr, "nerv ship: %s from origin/%s (%s)\n", what, s.branch, short(s.ws.OriginHead()))
-	if len(s.results) > 0 {
-		if src := configSourceText(s.results[0]); src != "" {
-			fmt.Fprintf(s.stderr, "nerv ship: semantic-release config: %s\n", src)
-		}
-	}
-	for _, r := range s.results {
-		if !r.NewReleasePublished {
-			fmt.Fprintf(s.stderr, "%s: no new release (last %s)\n", r.Project, orNone(r.LastReleaseVersion))
-		}
-	}
-	for _, it := range items {
-		r := it.result
-		fmt.Fprint(s.stderr, it.plan.Render())
-		if r.LastReleaseVersion != "" {
-			fmt.Fprintf(s.stderr, "  last release %s (tag %s)\n", r.LastReleaseVersion, r.LastReleaseGitTag)
-		} else {
-			fmt.Fprintln(s.stderr, "  last release: none")
-		}
-	}
-}
-
-// githubTokenEnv returns GH_TOKEN for semantic-release when neither GH_TOKEN
-// nor GITHUB_TOKEN is set, from `gh auth token`; nil when the environment
-// already has one or none can be read. The token only ever travels in the
-// runner's environment.
-func (s *shipRun) githubTokenEnv(ctx context.Context) []string {
-	getenv := s.opts.Getenv
-	if getenv == nil {
-		getenv = os.Getenv
-	}
-	if getenv("GH_TOKEN") != "" || getenv("GITHUB_TOKEN") != "" {
-		return nil
-	}
-	token := ""
-	if s.opts.GitHubToken != nil {
-		token = s.opts.GitHubToken(ctx)
-	} else if out, _, code, err := s.opts.Runner.Run(ctx, "gh", "auth", "token"); err == nil && code == 0 {
-		token = strings.TrimSpace(out)
-	}
-	if token == "" {
-		fmt.Fprintln(s.stderr, "nerv ship: no GH_TOKEN or GITHUB_TOKEN, and `gh auth token` gave none: a GitHub plugin in the semantic-release configuration will fail its checks (before any tag)")
-		return nil
-	}
-	return []string{"GH_TOKEN=" + token}
-}
-
-// releaseOnlyStep is nerv pipeline release's step: the version files, then
-// semantic-release, nothing else. A dry run stops before writing anything.
-func (s *shipRun) releaseOnlyStep(ctx context.Context, it releaseItem) error {
-	r, o := it.result, it.outcome
-	if s.dryRun {
-		o.Status = shipDryRun
-		return nil
-	}
-	if err := s.writeVersionFiles(r); err != nil {
-		o.Action = "Nothing was tagged or released for " + r.Project + ". Fix the cause. " + s.rerunAdvice(ctx)
-		return err
-	}
-	vars := shiprun.Vars{Project: r.Project, Version: r.NewReleaseVersion, Tag: r.NewReleaseGitTag, Branch: s.branch}
-	released, err := s.ws.Release(ctx, semrel.ReleaseRequest{Expected: r, Computed: s.computed, Env: s.tokenEnv, Output: s.stderr, ExtraAssets: s.versionFiles})
-	if err != nil {
-		s.releaseFailed(ctx, it, vars, released, err)
-		if o.Tagged && !errors.Is(err, semrel.ErrVersionMismatch) {
-			o.Action = fmt.Sprintf("Tag %s is on origin, but semantic-release failed after tagging (its publish or success plugins, e.g. the GitHub release): finish those by hand. Do not run nerv ship again for this release: it would compute the next version.", r.NewReleaseGitTag)
-		}
-		return err
-	}
-	o.Tagged, o.Status = true, shipReleased
-	s.released = released
-	return nil
-}
-
-// writeVersionFiles writes <Version> and the release link into each version
-// file in the release clone, before semantic-release, so the release commit
-// holds them (with the built-in configuration through ExtraAssets; a
-// repository's own @semantic-release/git must list them).
-func (s *shipRun) writeVersionFiles(r semrel.ProjectResult) error {
-	link := semrel.ReleaseURL(s.ws.PublicURL(), r.NewReleaseGitTag)
-	for _, f := range s.versionFiles {
-		path := filepath.Join(s.ws.Dir(), filepath.FromSlash(f))
-		var err error
-		if link == "" {
-			fmt.Fprintf(s.stderr, "nerv ship: warning: origin has no public address to link the release to; %s keeps its <PackageReleaseNotes>\n", f)
-			err = shipplan.WriteCsprojVersion(path, r.NewReleaseVersion)
-		} else {
-			err = shipplan.WriteCsproj(path, r.NewReleaseVersion, link)
-		}
-		if err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-// checkVersionFilesCommitted refuses, before anything is released, version
-// files that the repository's own semantic-release configuration would not
-// commit: it has no @semantic-release/git, or its assets do not cover them
-// (the built-in configuration gets them as extra assets).
-func checkVersionFilesCommitted(results []semrel.ProjectResult, files []string) error {
-	if len(files) == 0 || len(results) == 0 || results[0].SemanticReleaseConfig != semrel.ConfigRepository {
-		return nil
-	}
-	r := results[0]
-	if !r.GitPlugin {
-		return refuse("the repository's semantic-release configuration (%s) has no @semantic-release/git, so pipeline.release.version_files would not enter the release commit: add the plugin with those files in its assets, or drop version_files", r.SemanticReleaseConfigFile)
-	}
-	var missing []string
-	for _, f := range files {
-		if !semrel.AssetsCover(r.GitAssets, f) {
-			missing = append(missing, fmt.Sprintf("%q", f))
-		}
-	}
-	if len(missing) == 0 {
-		return nil
-	}
-	return refuse("the @semantic-release/git assets of %s do not include %s, so the version files would not enter the release commit: add them to its assets, or drop them from pipeline.release.version_files", r.SemanticReleaseConfigFile, strings.Join(missing, ", "))
-}
-
-// checkVersionFilesOnOrigin refuses version files that origin's branch does
-// not have.
-func checkVersionFilesOnOrigin(files []string, clone, branch string) error {
-	var missing []string
-	for _, f := range files {
-		if _, err := os.Stat(filepath.Join(clone, filepath.FromSlash(f))); err != nil {
-			missing = append(missing, fmt.Sprintf("%q", f))
-		}
-	}
-	if len(missing) == 0 {
-		return nil
-	}
-	return refuse("pipeline.release.version_files names files that are not on origin's %s: %s", branch, strings.Join(missing, ", "))
-}
-
-// releaseFailed records a failed semantic-release run: whether the tag
-// reached origin and what to do.
-func (s *shipRun) releaseFailed(ctx context.Context, it releaseItem, vars shiprun.Vars, released semrel.ProjectResult, err error) {
-	o, tag := it.outcome, it.result.NewReleaseGitTag
-	if ctx.Err() != nil {
-		o.Action = fmt.Sprintf("Interrupted while semantic-release was running: check whether origin has the tag (git ls-remote --tags origin %s) and the release commit before doing anything else.", tag)
-		return
-	}
-	tags := []string{tag}
-	if released.NewReleaseGitTag != "" && released.NewReleaseGitTag != tag {
-		tags = append(tags, released.NewReleaseGitTag)
-	}
-	var checkErr error
-	for _, t := range tags {
-		ok, err := s.ws.TagOnOrigin(ctx, t)
-		if err != nil {
-			checkErr = err
-		}
-		if ok {
-			o.Tagged, tag = true, t
-		}
-	}
-	confirmed := it.result.NewReleaseVersion
-	switch {
-	case o.Tagged && errors.Is(err, semrel.ErrVersionMismatch) && tag != it.result.NewReleaseGitTag:
-		o.Action = fmt.Sprintf("semantic-release released %s (tag %s, now on origin) instead of the confirmed %s. NERV's publish stage did not run (its packages were built as %s): either publish %s by hand from the tag (git checkout %s) rebuilt as %s, or delete the tag and its release on origin if %s is wrong. Pull first (git pull); do not run nerv ship again for this release: it would compute the next version.",
-			released.NewReleaseVersion, tag, confirmed, confirmed, listOrNothing(nil), tag, released.NewReleaseVersion, released.NewReleaseVersion)
-	case o.Tagged:
-		o.Action = fmt.Sprintf("Tag %s is on origin, but semantic-release failed after tagging (its publish or success plugins, e.g. the GitHub release): finish those by hand. NERV's publish stage did not run: publish %s by hand from the tag (git checkout %s). Do not run nerv ship again for this release: it would compute the next version.",
-			tag, listOrNothing(nil), tag)
-	case checkErr != nil:
-		o.Action = fmt.Sprintf("Could not tell whether tag %s reached origin (%v): check with git ls-remote --tags origin %s before running nerv ship again.", tag, checkErr, tag)
-	case errors.Is(err, semrel.ErrVersionMismatch):
-		o.Action = "semantic-release would have released another version than the one you confirmed (origin changed?): it was stopped before the tag, nothing was tagged or published. " + s.rerunAdvice(ctx) + " (to review the new plan)"
-	default:
-		o.Action = fmt.Sprintf("No tag %s on origin: nothing was tagged or published (a prepare plugin such as @semantic-release/git may have pushed a release commit). Fix the cause. %s", tag, s.rerunAdvice(ctx))
 	}
 }

@@ -2,23 +2,26 @@ package shipconfig_test
 
 import "testing"
 
-func TestRelease_ChangelogFor(t *testing.T) {
+// Every project's release writes its changelog: the one written in the
+// section, or <path>/<changelog.file> (the native engine has no repository
+// semantic-release configuration to defer to).
+func TestRelease_ProjectChangelog(t *testing.T) {
 	tests := []struct {
 		name, yaml string
 		want       map[string]string
 	}{
-		{"single project, implicit: the repository's own config", `release:
+		{"single project, implicit", `ship:
   projects:
     - name: api
       path: .
-`, map[string]string{"api": ""}},
-		{"single project, explicit", `release:
+`, map[string]string{"api": "CHANGELOG.md"}},
+		{"single project, explicit", `ship:
   projects:
     - name: api
       path: src/Api
       changelog: src/Api/CHANGES.md
 `, map[string]string{"api": "src/Api/CHANGES.md"}},
-		{"monorepo, implicit and explicit", `release:
+		{"monorepo, implicit and explicit", `ship:
   projects:
     - name: api
       path: api
@@ -26,13 +29,19 @@ func TestRelease_ChangelogFor(t *testing.T) {
       path: web
       changelog: docs\web-changes.md
 `, map[string]string{"api": "api/CHANGELOG.md", "web": "docs/web-changes.md"}},
+		{"section file name", `ship:
+  changelog: { file: HISTORY.md }
+  projects:
+    - name: api
+      path: api
+`, map[string]string{"api": "api/HISTORY.md"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			rel := mustLoad(t, tt.yaml)
 			for _, p := range rel.Projects {
-				if got := rel.ChangelogFor(p); got != tt.want[p.Name] {
-					t.Errorf("ChangelogFor(%s) = %q, want %q", p.Name, got, tt.want[p.Name])
+				if p.Changelog != tt.want[p.Name] {
+					t.Errorf("%s changelog = %q, want %q", p.Name, p.Changelog, tt.want[p.Name])
 				}
 			}
 		})

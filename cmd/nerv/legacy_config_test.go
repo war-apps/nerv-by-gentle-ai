@@ -86,36 +86,27 @@ func TestLegacyConfig_ShipRefusesAsUnconfiguredWithTheHint(t *testing.T) {
 	writeLegacy(t, old, shipMonorepoYAML)
 
 	code, _, stderr := f.run(t, "--yes")
-	if code != 1 || !strings.Contains(stderr, "no release: section in .ai-workflow.yml") {
+	if code != 1 || !strings.Contains(stderr, "no ship: section in .ai-workflow.yml") {
 		t.Fatalf("exit %d, stderr %q: want the not-configured refusal", code, stderr)
 	}
-	if got := hintLines(stderr, old); len(got) != 1 {
-		t.Errorf("stderr %q: want exactly one hint line naming %s", stderr, old)
+	got := hintLines(stderr, old)
+	if len(got) != 1 {
+		t.Fatalf("stderr %q: want exactly one hint line naming %s", stderr, old)
+	}
+	// L12: in text mode the hint is indented under the refusal it explains.
+	if !strings.HasPrefix(got[0], "  ") {
+		t.Errorf("hint line %q is not indented", got[0])
 	}
 }
 
 func TestLegacyConfig_VersionNextIsTheWholeRepositoryWithTheHint(t *testing.T) {
 	f := newNextFixture(t, "")
 	old := filepath.Join(f.top, ".nerv", "nerv.yaml")
-	writeLegacy(t, old, "release:\n  projects:\n    - name: api\n      path: api\n")
+	writeLegacy(t, old, "ship:\n  projects:\n    - name: api\n      path: api\n")
 
 	code, _, stderr := f.run(t, "--project", "api")
-	if code != 1 || !strings.Contains(stderr, "no release: section in .ai-workflow.yml") {
+	if code != 1 || !strings.Contains(stderr, "no ship: section in .ai-workflow.yml") {
 		t.Fatalf("exit %d, stderr %q: want the single-project refusal", code, stderr)
-	}
-	if got := hintLines(stderr, old); len(got) != 1 {
-		t.Errorf("stderr %q: want exactly one hint line naming %s", stderr, old)
-	}
-}
-
-func TestLegacyConfig_PipelineRefusesAsUnconfiguredWithTheHint(t *testing.T) {
-	f := newPipelineFixture(t, "")
-	old := filepath.Join(f.top, ".nerv", "nerv.yaml")
-	writeLegacy(t, old, "pipeline:\n  dotnet:\n    solution: App.slnx\n  images:\n    - name: ghcr.io/acme/app\n")
-
-	code, _, stderr := f.run(t, "validate")
-	if code != 1 || !strings.Contains(stderr, "no pipeline: section in .ai-workflow.yml") {
-		t.Fatalf("exit %d, stderr %q: want the not-configured refusal", code, stderr)
 	}
 	if got := hintLines(stderr, old); len(got) != 1 {
 		t.Errorf("stderr %q: want exactly one hint line naming %s", stderr, old)

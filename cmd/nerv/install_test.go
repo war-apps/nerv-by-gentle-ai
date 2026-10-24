@@ -308,6 +308,24 @@ func seedExtensionsForCLI(t *testing.T, home string) {
 	}
 }
 
+// seedShipFamilyForCLI records every embedded extension as cached at the
+// embedded version, next to nerv@nerv.
+func seedShipFamilyForCLI(t *testing.T, home string) {
+	t.Helper()
+	seedInstalledPluginsForCLI(t, home)
+	pv, err := version.PluginVersion(nerv.PluginFS())
+	if err != nil {
+		t.Fatal(err)
+	}
+	content := `{"plugins":{"nerv@nerv":[{"installPath":"/c/nerv","version":"` + pv + `"}]`
+	for _, name := range []string{"task", "task-teamwork", "ship", "deploy", "deploy-github", "deploy-ssh-compose"} {
+		content += `,"` + name + `@nerv":[{"installPath":"/c/` + name + `","version":"` + pv + `"}]`
+	}
+	if err := os.WriteFile(filepath.Join(home, ".claude", "plugins", "installed_plugins.json"), []byte(content+"}}"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestRunInstall_WithFlag_InstallsTheNamedExtensions(t *testing.T) {
 	home := t.TempDir()
 	seedExtensionsForCLI(t, home)

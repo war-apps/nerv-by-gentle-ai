@@ -10,6 +10,8 @@
 package paths
 
 import (
+	"errors"
+	"io/fs"
 	"os"
 	"os/user"
 	"path/filepath"
@@ -24,6 +26,24 @@ const ProjectConfigFile = ".ai-workflow.yml"
 // RuntimeDirName is the repository's runtime-only folder (artifacts, the
 // orchestrator lock, logs). It is git-ignored and never holds configuration.
 const RuntimeDirName = ".nerv"
+
+// EnsureRuntimeIgnored writes <repoRoot>/.nerv/.gitignore of "*" when it
+// is missing, so the runtime folder is never committed without touching the
+// repository's own .gitignore. Every writer under .nerv/ calls it. It
+// returns the path written, or "" when the file already existed.
+func EnsureRuntimeIgnored(repoRoot string) (string, error) {
+	ignore := filepath.Join(RuntimeDir(repoRoot), ".gitignore")
+	if _, err := os.Lstat(ignore); !errors.Is(err, fs.ErrNotExist) {
+		return "", err
+	}
+	if err := os.MkdirAll(RuntimeDir(repoRoot), 0o755); err != nil {
+		return "", err
+	}
+	if err := os.WriteFile(ignore, []byte("*\n"), 0o644); err != nil {
+		return "", err
+	}
+	return ignore, nil
+}
 
 // ProjectConfig is the project-scope configuration path of the repository
 // at repoRoot: "<repoRoot>/.ai-workflow.yml".
