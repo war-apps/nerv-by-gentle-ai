@@ -110,7 +110,7 @@ func planRepo(p *Plan, o Options, user *userState) error {
 	if err != nil {
 		return err
 	}
-	tdd, err := planODD(p, root, o.Now)
+	tdd, err := planODD(p, o)
 	if err != nil {
 		return err
 	}

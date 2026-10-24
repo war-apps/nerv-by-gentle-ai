@@ -10,6 +10,7 @@ nerv migrate --dry-run          # see every change; nothing is written
 nerv migrate                    # migrate this repository
 nerv migrate --user             # also migrate your user configuration
 nerv migrate --install          # then install the plugins the repository used
+nerv migrate --force            # also move a change whose lock is still held
 ```
 
 ## What it changes
@@ -25,7 +26,8 @@ nerv migrate --install          # then install the plugins the repository used
 | `release:` | `ship:` (see [Ship](#ship)) |
 | the semantic-release configuration (`package.json` `release`, `.releaserc*`) | Imported into `ship:` by the same code as `nerv ship setup --import`. Its warnings are printed. |
 | `pipeline:` | `deploy:` (see [Deploy](#deploy)) |
-| `openspec/changes/<change>/`, in flight | `odd/tasks/<change>.md`, with its run files in `odd/<change>/nerv/` and its lock in `.nerv/locks/<change>.lock` (see [ODD](#odd)) |
+| `openspec/changes/<change>/`, in flight, FULL | `odd/tasks/<change>.md`, with its run files in `odd/<change>/nerv/` and its lock in `.nerv/locks/<change>.lock` (see [ODD](#odd)) |
+| `openspec/changes/<change>/`, in flight, DIRECT or LIGHT | `.nerv/runs/<change>/`, with no ODD document, and its lock in `.nerv/locks/<change>.lock` (see [ODD](#odd)) |
 | `openspec/changes/archive/`, `openspec/specs/` | They stay where they are, read-only. |
 | `openspec/config.yaml` `strict_tdd`, `testing.runner` | `odd.tdd: strict` or `standard`, and `odd.test_runner`, in `.ai-workflow.yml`. |
 | — | `.nerv/.gitignore` (`*`): `.nerv/` now holds runtime files only. |
@@ -97,10 +99,18 @@ Reported, with no equivalent:
 
 ### ODD
 
-Each in-flight change becomes an ODD feature document
+Only FULL runs get an ODD document. A change whose `state.yaml` has
+`nerv.path: direct` or `light` moves whole (`state.yaml`, `proposal.md`,
+`design.md`, `tasks.md`, `specs/` and every file of `nerv/`) to the runtime
+folder `.nerv/runs/<change>/`, where the orchestrator keeps DIRECT and LIGHT
+runs, and its lock to `.nerv/locks/<change>.lock`. `.nerv/` is
+git-ignored, so those files leave version control. A change with no `path`
+is treated as FULL.
+
+Each in-flight FULL change becomes an ODD feature document
 (`plugin/skills/nerv-orchestrator/references/odd-document.md`):
 
-- **Header:** the branch, task and tier from `state.yaml`, and the TDD mode and runner from `openspec/config.yaml`.
+- **Header:** the branch, task and tier from `state.yaml`, and the TDD mode and runner from `openspec/config.yaml`, under a `<!-- nerv migrate: openspec/changes/<change> -->` marker.
 - **`## Specs`:** the spec deltas and the proposal, verbatim, with their headings lowered two levels.
 - **`## Tasks`:** the task table built from `tasks.md`'s `## T<n>` sections (ID, specs, route, pilot, depends on, status), then `tasks.md` itself.
 - **`## Log`:** the design, and pointers to the exploration and the test plan.
@@ -108,9 +118,15 @@ Each in-flight change becomes an ODD feature document
 `state.yaml`, the exploration files and every file of `nerv/` move to
 `odd/<change>/nerv/`. The lock moves to `.nerv/locks/<change>.lock`.
 
-Make sure no session is still running a change you migrate: the run would
-lose its lock. A change named `tasks` is left where it is, because it would
-collide with `odd/tasks/`.
+A change whose lock is held on this machine is refused: its `host` is this
+machine and its `heartbeat_at` is under 15 minutes old (the orchestrator's
+stale threshold), or its `waiting_on` is `user` at any age. The refusal
+names the session and the heartbeat. Let that run end, or pass `--force` to
+move it anyway; that session then loses its lock. A lock of another machine
+cannot be checked, so make sure no session there still runs the change.
+
+A FULL change named `tasks` is left where it is, because it would collide
+with `odd/tasks/`.
 
 ## Plugins
 
@@ -134,12 +150,15 @@ wizard). The install step reports old `/task:*` copies in
 ## Safety
 
 - **`--dry-run` writes nothing.** It prints a unified diff of each file written, one `move` line per move or rename, one `remove` line per removal, then the notes, the warnings and the plugin line.
-- **Backups.** Every file the migration changes, moves or removes is copied first. The repository's copies go to `.nerv/backups/migrate-<yyyyMMdd-HHmmss>/`, at the same relative path; that folder is git-ignored. The user config's copies go next to the file, as `<file>.bak-migrate-<yyyyMMdd-HHmmss>`.
+- **Backups.** Every file the migration changes, moves or removes is copied first. The repository's copies go to `.nerv/backups/migrate-<yyyyMMdd-HHmmss>/`, at the same relative path and with the file's permission bits; that folder is git-ignored. The user config's copies go next to the file, as `<file>.bak-migrate-<yyyyMMdd-HHmmss>`.
 - **Atomic writes.** Each file is written to a temporary file and renamed into place.
+- **One transaction.** When any step fails, every step already done is undone in reverse order, and the backups and `.nerv/.gitignore` that run created are removed; the error ends with `every change was rolled back`. Fix the cause and run it again.
+- **An interrupted run** (killed before it could roll back) is finished by the next one: it keeps the ODD document that carries its own marker and a `.ai-workflow.yml` equal to the one it would write, and moves what is left.
 - **A second run** changes nothing and prints `nerv migrate: nothing to migrate`.
 - **Refusals.** Nothing is written when:
   - the old file and its replacement both exist with different content (nerv migrate does not merge them);
-  - an ODD document of the same name already exists;
+  - an ODD document of the same name already exists, and `nerv migrate` did not write it;
+  - a change's lock is still held on this machine, without `--force`;
   - the migrated `.ai-workflow.yml` does not load with today's `ship:` and `deploy:` readers.
 
 Exit codes: 0 for migrated, nothing to migrate, or a dry run; 1 for a

@@ -13,7 +13,7 @@ import (
 	"github.com/war-apps/nerv-by-gentle-ai/internal/refusal"
 )
 
-const migrateUsage = `Usage: nerv migrate [--user] [--dry-run] [--install] [--cwd <dir>]
+const migrateUsage = `Usage: nerv migrate [--user] [--dry-run] [--install] [--force] [--cwd <dir>]
 
 Moves a repository (and, with --user, your user configuration) from nerv
 4.2.0 to this version, once:
@@ -33,16 +33,22 @@ Moves a repository (and, with --user, your user configuration) from nerv
     is imported (as nerv ship setup --import does);
   - pipeline: becomes deploy: (one deploy-ssh-compose target per
     environment), with deploy.host github when origin is on GitHub;
-  - each in-flight openspec/changes/<change>/ becomes odd/tasks/<change>.md,
-    its run files odd/<change>/nerv/ and its lock .nerv/locks/<change>.lock;
-    archived changes and openspec/specs stay; strict_tdd becomes odd.tdd;
+  - each in-flight FULL openspec/changes/<change>/ becomes
+    odd/tasks/<change>.md and its run files odd/<change>/nerv/; a DIRECT or
+    LIGHT one moves whole to .nerv/runs/<change>/ with no ODD document; the
+    lock moves to .nerv/locks/<change>.lock; a change whose lock is held on
+    this machine (a heartbeat under 15 minutes old, or a run waiting on
+    you) is refused unless --force; archived changes and openspec/specs
+    stay; strict_tdd becomes odd.tdd;
   - .nerv/.gitignore is created.
 
 It prints every change (a unified diff per file), what has no equivalent,
 and the nerv install line for the plugins the repository used. Every file
 it changes or removes is backed up first (the repository's under
-.nerv/backups/migrate-<timestamp>/, the user config's next to it). A second
-run changes nothing.
+.nerv/backups/migrate-<timestamp>/, the user config's next to it). When a
+step fails, every change already made is rolled back. A run interrupted
+before it could roll back is finished by the next one. A second run changes
+nothing.
 
 Flags:
   --dry-run      Print the changes; write nothing
@@ -50,11 +56,12 @@ Flags:
                  directory is not inside a git repository)
   --install      Then install the plugins the repository used (nerv install
                  --with ..., which also offers to remove old /task:* copies)
+  --force        Move a change whose orchestrator lock is still held
   --cwd <dir>    A directory inside the repository (default ".")
 
 Exit codes: 0 migrated, nothing to migrate, or a dry run; 1 refused (not a
 repository, both the old and the new file exist, a result that does not
-load); 2 usage or environment error.
+load, a lock still held); 2 usage or environment error.
 `
 
 func runMigrate(args []string, stdout, stderr io.Writer, opts options) int {
@@ -64,6 +71,7 @@ func runMigrate(args []string, stdout, stderr io.Writer, opts options) int {
 	dryRun := fs.Bool("dry-run", false, "")
 	user := fs.Bool("user", false, "")
 	install := fs.Bool("install", false, "")
+	force := fs.Bool("force", false, "")
 	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			fmt.Fprint(stdout, migrateUsage)
@@ -76,7 +84,7 @@ func runMigrate(args []string, stdout, stderr io.Writer, opts options) int {
 		fmt.Fprintf(stderr, "nerv migrate: unexpected argument %q\n\n%s", fs.Arg(0), migrateUsage)
 		return 2
 	}
-	err := migrateRun(context.Background(), *cwd, *dryRun, *user, *install, stdout, stderr, opts)
+	err := migrateRun(context.Background(), *cwd, *dryRun, *user, *install, *force, stdout, stderr, opts)
 	if err == nil {
 		return 0
 	}
@@ -93,7 +101,7 @@ type exitError struct{ code int }
 
 func (e *exitError) Error() string { return fmt.Sprintf("exit %d", e.code) }
 
-func migrateRun(ctx context.Context, cwd string, dryRun, user, install bool, stdout, stderr io.Writer, opts options) error {
+func migrateRun(ctx context.Context, cwd string, dryRun, user, install, force bool, stdout, stderr io.Writer, opts options) error {
 	home, err := configure.ResolveHome(opts.Home)
 	if err != nil {
 		return err
@@ -105,7 +113,7 @@ func migrateRun(ctx context.Context, cwd string, dryRun, user, install bool, std
 		}
 		top = "" // --user outside a repository: the user configuration only.
 	}
-	o := migrate.Options{RepoRoot: top, Home: home, User: user, ExtensionsFS: opts.ExtensionsFS, Now: opts.Now()}
+	o := migrate.Options{RepoRoot: top, Home: home, User: user, ExtensionsFS: opts.ExtensionsFS, Now: opts.Now(), Force: force}
 	if top != "" {
 		o.OriginURL = originURL(ctx, opts, top)
 	}

@@ -49,8 +49,13 @@ type Options struct {
 	ExtensionsFS fs.FS
 	// OriginURL is the repository's origin URL ("" when it has none).
 	OriginURL string
-	// Now names the backups.
+	// Now names the backups and dates a lock's heartbeat.
 	Now time.Time
+	// Host is this machine's name, compared with a lock's host (""
+	// reads os.Hostname).
+	Host string
+	// Force moves a change whose orchestrator lock is still held.
+	Force bool
 }
 
 // Kind is what a Change does.
@@ -167,42 +172,39 @@ func (u *userState) finish(p *Plan) {
 	p.Changes = append([]Change{c}, p.Changes...)
 }
 
-// Apply writes the plan: each changed or removed file is backed up first
-// (the repository's under .nerv/backups/migrate-<timestamp>/, the user's
+// Apply writes the plan as one transaction: each changed or removed file
+// is backed up first (the repository's under
+// .nerv/backups/migrate-<timestamp>/ with its permission bits, the user's
 // next to the file), then writes, renames and removes run in that order,
-// each write atomic. It returns the backups made.
-func Apply(p *Plan, now time.Time) ([]string, error) {
-	stamp := now.Format("20060102-150405")
-	var backups []string
+// each write atomic. When any step fails, every step already done is
+// undone in reverse order, the backups and the runtime .gitignore this run
+// created are removed, and the error says the run was rolled back. It
+// returns the backups made (none after a rollback).
+func Apply(p *Plan, now time.Time) (backups []string, err error) {
+	t := &txn{root: p.RepoRoot, stamp: now.Format("20060102-150405")}
+	defer func() {
+		if err == nil {
+			t.cleanup()
+			backups = t.backups
+			return
+		}
+		if rerr := t.rollback(); rerr != nil {
+			backups = t.backups
+			err = fmt.Errorf("%w; the rollback also failed (%v): restore from the backups listed", err, rerr)
+			return
+		}
+		backups = nil
+		err = fmt.Errorf("%w (every change was rolled back; nothing was migrated)", err)
+	}()
 	if p.RepoRoot != "" && needsRuntime(p) {
-		if _, err := paths.EnsureRuntimeIgnored(p.RepoRoot); err != nil {
+		t.mkdirs(paths.RuntimeDir(p.RepoRoot))
+		ignore, err := paths.EnsureRuntimeIgnored(p.RepoRoot)
+		if err != nil {
 			return nil, err
 		}
-	}
-	backup := func(c Change, path string) error {
-		if c.User {
-			return nil // atomicfile.Save backs the user files up itself.
+		if ignore != "" {
+			t.undo = append(t.undo, func() error { return removeIfExists(ignore) })
 		}
-		data, err := os.ReadFile(path)
-		if errors.Is(err, fs.ErrNotExist) {
-			return nil
-		}
-		if err != nil {
-			return err
-		}
-		rel, err := filepath.Rel(p.RepoRoot, path)
-		if err != nil || strings.HasPrefix(rel, "..") {
-			return fmt.Errorf("%s is outside the repository", path)
-		}
-		dst := filepath.Join(paths.RuntimeDir(p.RepoRoot), "backups", "migrate-"+stamp, rel)
-		if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
-			return err
-		}
-		if err := os.WriteFile(dst, data, 0o644); err != nil {
-			return err
-		}
-		backups = append(backups, dst)
-		return nil
 	}
 	for _, kind := range []Kind{Write, Rename, Remove} {
 		for _, c := range p.Changes {
@@ -216,53 +218,205 @@ func Apply(p *Plan, now time.Time) ([]string, error) {
 					continue
 				}
 			}
-			if err := backup(c, c.Path); err != nil {
-				return backups, err
-			}
-			switch c.Kind {
-			case Write:
-				if c.User {
-					b, err := atomicfile.Save(c.Path, c.New, atomicfile.Options{Now: now, BackupSuffix: BackupSuffix})
-					if err != nil {
-						return backups, err
-					}
-					if b != "" {
-						backups = append(backups, b)
-					}
-					continue
-				}
-				if err := os.MkdirAll(filepath.Dir(c.Path), 0o755); err != nil {
-					return backups, err
-				}
-				if err := atomicfile.Write(c.Path, c.New, 0o644); err != nil {
-					return backups, err
-				}
-			case Rename:
-				if c.User {
-					b := fmt.Sprintf("%s.%s%s", c.Path, BackupSuffix, stamp)
-					if err := copyFile(c.Path, b); err != nil {
-						return backups, err
-					}
-					backups = append(backups, b)
-				}
-				if err := os.MkdirAll(filepath.Dir(c.To), 0o755); err != nil {
-					return backups, err
-				}
-				if err := os.Rename(c.Path, c.To); err != nil {
-					return backups, err
-				}
-				if c.StopAt != "" {
-					removeEmptyParents(filepath.Dir(c.Path), c.StopAt)
-				}
-			case Remove:
-				if err := os.Remove(c.Path); err != nil && !errors.Is(err, fs.ErrNotExist) {
-					return backups, err
-				}
-				removeEmptyParents(filepath.Dir(c.Path), orDefault(c.StopAt, p.RepoRoot))
+			if err := t.apply(c, now); err != nil {
+				return nil, err
 			}
 		}
 	}
-	return backups, nil
+	return nil, nil
+}
+
+// txn is one Apply: what it backed up and how to undo each step.
+type txn struct {
+	root, stamp string
+	backups     []string
+	// undo runs in reverse order on failure.
+	undo []func() error
+	// created are the directories this run created, deepest last.
+	created []string
+	// emptied are the source directories to remove, on success, when
+	// empty, each with its stop directory.
+	emptied [][2]string
+}
+
+// mkdirs creates dir and its missing parents, recording the new ones.
+func (t *txn) mkdirs(dir string) error {
+	var missing []string
+	for d := dir; ; d = filepath.Dir(d) {
+		if _, err := os.Lstat(d); err == nil || filepath.Dir(d) == d {
+			break
+		}
+		missing = append(missing, d)
+	}
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return err
+	}
+	for i := len(missing) - 1; i >= 0; i-- {
+		t.created = append(t.created, missing[i])
+	}
+	return nil
+}
+
+// backup copies a repository file under .nerv/backups/migrate-<stamp>/,
+// keeping its permission bits.
+func (t *txn) backup(path string) error {
+	info, err := os.Lstat(path)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	rel, err := filepath.Rel(t.root, path)
+	if err != nil || strings.HasPrefix(rel, "..") {
+		return fmt.Errorf("%s is outside the repository", path)
+	}
+	dst := filepath.Join(paths.RuntimeDir(t.root), "backups", "migrate-"+t.stamp, rel)
+	if err := t.mkdirs(filepath.Dir(dst)); err != nil {
+		return err
+	}
+	if err := writeMode(dst, data, info.Mode().Perm()); err != nil {
+		return err
+	}
+	t.backups = append(t.backups, dst)
+	return nil
+}
+
+// apply runs one change and records its undo.
+func (t *txn) apply(c Change, now time.Time) error {
+	if !c.User {
+		if err := t.backup(c.Path); err != nil {
+			return err
+		}
+	}
+	switch c.Kind {
+	case Write:
+		prev, mode, existed, err := snapshot(c.Path)
+		if err != nil {
+			return err
+		}
+		if err := t.mkdirs(filepath.Dir(c.Path)); err != nil {
+			return err
+		}
+		if c.User {
+			b, err := atomicfile.Save(c.Path, c.New, atomicfile.Options{Now: now, BackupSuffix: BackupSuffix})
+			if b != "" {
+				t.backups = append(t.backups, b)
+			}
+			if err != nil {
+				return err
+			}
+		} else if err := atomicfile.Write(c.Path, c.New, 0o644); err != nil {
+			return err
+		}
+		t.undo = append(t.undo, func() error {
+			if !existed {
+				return removeIfExists(c.Path)
+			}
+			return atomicfile.Write(c.Path, prev, mode)
+		})
+	case Rename:
+		if c.User {
+			b := fmt.Sprintf("%s.%s%s", c.Path, BackupSuffix, t.stamp)
+			if err := copyFile(c.Path, b); err != nil {
+				return err
+			}
+			t.backups = append(t.backups, b)
+		}
+		if _, err := os.Lstat(c.To); err == nil {
+			return fmt.Errorf("%s cannot move: %s appeared while nerv migrate ran", c.Path, c.To)
+		}
+		if err := t.mkdirs(filepath.Dir(c.To)); err != nil {
+			return err
+		}
+		if err := os.Rename(c.Path, c.To); err != nil {
+			return err
+		}
+		t.undo = append(t.undo, func() error { return os.Rename(c.To, c.Path) })
+		if c.StopAt != "" {
+			t.emptied = append(t.emptied, [2]string{filepath.Dir(c.Path), c.StopAt})
+		}
+	case Remove:
+		prev, mode, existed, err := snapshot(c.Path)
+		if err != nil {
+			return err
+		}
+		if err := os.Remove(c.Path); err != nil && !errors.Is(err, fs.ErrNotExist) {
+			return err
+		}
+		if existed {
+			t.undo = append(t.undo, func() error { return writeMode(c.Path, prev, mode) })
+		}
+		t.emptied = append(t.emptied, [2]string{filepath.Dir(c.Path), orDefault(c.StopAt, t.root)})
+	}
+	return nil
+}
+
+// rollback undoes every step in reverse order, then removes the backups
+// and the directories this run created. It keeps the backups when a step
+// cannot be undone.
+func (t *txn) rollback() error {
+	var errs []error
+	for i := len(t.undo) - 1; i >= 0; i-- {
+		if err := t.undo[i](); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	if len(errs) > 0 {
+		return errors.Join(errs...)
+	}
+	for _, b := range t.backups {
+		_ = removeIfExists(b)
+	}
+	for i := len(t.created) - 1; i >= 0; i-- {
+		_ = os.Remove(t.created[i]) // only when empty
+	}
+	return nil
+}
+
+// cleanup removes the source directories a successful run emptied.
+func (t *txn) cleanup() {
+	for _, e := range t.emptied {
+		removeEmptyParents(e[0], e[1])
+	}
+}
+
+// snapshot reads a file's content and mode (existed false when absent).
+func snapshot(path string) ([]byte, fs.FileMode, bool, error) {
+	info, err := os.Stat(path)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil, 0, false, nil
+	}
+	if err != nil {
+		return nil, 0, false, err
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, 0, false, err
+	}
+	return data, info.Mode().Perm(), true, nil
+}
+
+// writeMode writes data to path with exactly mode (umask aside).
+func writeMode(path string, data []byte, mode fs.FileMode) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+	if err := os.WriteFile(path, data, mode); err != nil {
+		return err
+	}
+	return os.Chmod(path, mode)
+}
+
+func removeIfExists(path string) error {
+	if err := os.Remove(path); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return err
+	}
+	return nil
 }
 
 // needsRuntime reports whether the plan writes under the repository.
