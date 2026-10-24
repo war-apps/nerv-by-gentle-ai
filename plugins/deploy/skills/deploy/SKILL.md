@@ -5,7 +5,7 @@ description: NERV deploy plugin contract. Covers the deploy section of .ai-workf
 
 # NERV Deploy Plugin — Contract
 
-The deploy plugin turns a local artifact that `nerv ship` left (`ship:ship` skill, §4) into a release. It writes the release to git (release commit, tag, channel note, push), publishes and deploys the artifact to its **targets**, and creates the release on the **git host**. Every git write happens here, so an artifact that is never deployed leaves no trace in the repository. The plugin requires `ship`.
+The deploy plugin turns a local artifact that `nerv release` left (`release:release` skill, §4) into a release. It writes the release to git (release commit, tag, channel note, push), publishes and deploys the artifact to its **targets**, and creates the release on the **git host**. Every git write happens here, so an artifact that is never deployed leaves no trace in the repository. The plugin requires `release`.
 
 Hosts and targets are **provider plugins** named `deploy-<name>`, each with a `deploy-provider.yaml` manifest. The deploy plugin talks to no host or target itself: `nerv deploy` runs the provider's operations.
 
@@ -90,11 +90,11 @@ nerv deploy --artifact <dir> [--target <name> ...] [--dry-run] [--rebase] [--yes
 
 - The deploy stops at the first failure. Each step's status is `done`, `skipped`, `failed`, `not-run` or `dry-run`. `not-run` steps are the **pending** ones.
 - A dry run prepares the release in the clone and shows the steps; it pushes nothing and runs no provider.
-- **Origin moved** past the base commit: refused, unless `--rebase` re-applies the release files on the new head (a conflict is refused). If origin no longer has the base commit, ship again.
+- **Origin moved** past the base commit: refused, unless `--rebase` re-applies the release files on the new head (a conflict is refused). If origin no longer has the base commit, release again.
 - **Re-runs are safe.** A tag already on origin with the same content, a release commit already on the branch and an existing host release are reused or skipped; only the refs origin lacks are pushed. After a failure, fix the cause and run the same command again.
 - `--json` prints `{project, version, tag, channel, branch, dry_run, commit, steps: [{name, status, detail}], error}` on stdout; progress goes to stderr.
 - Exit codes: 0 deployed or a dry run; 1 refused, nothing written (invalid configuration or artifact, preflight, origin moved, a conflict, no confirmation); 2 a step failed (the report says which were done); 128 + the signal interrupted.
 
 ## 6. Migration from `pipeline:`
 
-`nerv pipeline` and the `pipeline:` section are removed. Its `docker` push and `deploy` steps are the `deploy-ssh-compose` target (`publish`, `deploy`, `verify`); `release` is `nerv ship` then `nerv deploy` with `deploy-github`; the `sync` back-merge is not ported, so merge the release back into `develop` by hand. `nerv migrate` translates the section.
+`nerv pipeline` and the `pipeline:` section are removed. Its `docker` push and `deploy` steps are the `deploy-ssh-compose` target (`publish`, `deploy`, `verify`); `release` is `nerv release` then `nerv deploy` with `deploy-github`; the `sync` back-merge is not ported, so merge the release back into `develop` by hand. `nerv migrate` translates the section.

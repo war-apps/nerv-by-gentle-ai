@@ -1,8 +1,8 @@
-// Package artifact writes, reads and verifies the local artifact `nerv ship`
+// Package artifact writes, reads and verifies the local artifact `nerv release`
 // leaves for one project's version: .nerv/artifacts/<project>/<version>/ in
 // the user's repository, holding
 //
-//	manifest.json         the Manifest (schema nerv.ship-artifact/v1)
+//	manifest.json         the Manifest (schema nerv.release-artifact/v1)
 //	notes.md              the release notes
 //	CHANGELOG.section.md  the CHANGELOG section of the release
 //	outputs/              the packaged outputs (image tars, files, directories)
@@ -34,7 +34,7 @@ import (
 )
 
 // Schema is the manifest's schema identifier.
-const Schema = "nerv.ship-artifact/v1"
+const Schema = "nerv.release-artifact/v1"
 
 // The files and directories of an artifact.
 const (
@@ -594,7 +594,7 @@ func prepare(repoRoot, dir string) error {
 }
 
 // CheckRoot refuses, without writing anything, a .nerv or .nerv/artifacts
-// that resolves (through a symlink) outside the repository: nerv ship checks
+// that resolves (through a symlink) outside the repository: nerv release checks
 // it before any stage runs, so a run is not wasted on an artifact it cannot
 // write.
 func CheckRoot(repoRoot string) error {

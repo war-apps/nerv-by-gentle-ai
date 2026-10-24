@@ -162,7 +162,7 @@ rm -rf "$tmp7"; rm -f "$out7" "$err7"
 
 # --- Case 7b: a top-level enabled: true after a nested enabled: false ---
 tmp7b="$(mktemp -d)"
-printf 'ship:\n  enabled: false\nenabled: true\n' > "$tmp7b/.ai-workflow.yml"
+printf 'release:\n  enabled: false\nenabled: true\n' > "$tmp7b/.ai-workflow.yml"
 out7b="$(mktemp)"; err7b="$(mktemp)"
 run_hook "$tmp7b" "$out7b" "$err7b"; exit7b=$?
 assert_active "enabled-true-top-level-after-nested" "$out7b" "$exit7b"

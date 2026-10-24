@@ -54,7 +54,7 @@ jobs:
         run: |
           set -uo pipefail
           # GitHub runs bash with -e: capture the exit code instead of aborting.
-          output=$(go run ./cmd/nerv release preview --pre-release alpha --json) && exit_code=0 || exit_code=$?
+          output=$(go run ./cmd/nerv maintainer-release preview --pre-release alpha --json) && exit_code=0 || exit_code=$?
           echo "$output"
 
           if [ "$exit_code" -ne 0 ]; then
@@ -64,7 +64,7 @@ jobs:
               echo "skip=true" >> "$GITHUB_OUTPUT"
               exit 0
             fi
-            echo "nerv release preview failed (exit $exit_code)."
+            echo "nerv maintainer-release preview failed (exit $exit_code)."
             exit "$exit_code"
           fi
 
@@ -145,11 +145,11 @@ jobs:
         run: |
           set -uo pipefail
           # GitHub runs bash with -e: capture the exit code instead of aborting.
-          output=$(go run ./cmd/nerv release preview --pre-release rc --pre-release-base current --json) && exit_code=0 || exit_code=$?
+          output=$(go run ./cmd/nerv maintainer-release preview --pre-release rc --pre-release-base current --json) && exit_code=0 || exit_code=$?
           echo "$output"
 
           if [ "$exit_code" -ne 0 ]; then
-            echo "nerv release preview failed (exit $exit_code)."
+            echo "nerv maintainer-release preview failed (exit $exit_code)."
             exit "$exit_code"
           fi
 
@@ -225,7 +225,7 @@ jobs:
           set -uo pipefail
           notes_path="${{ runner.temp }}/notes.md"
           # GitHub runs bash with -e: capture the exit code instead of aborting.
-          output=$(go run ./cmd/nerv release guard --notes "$notes_path" --json) && exit_code=0 || exit_code=$?
+          output=$(go run ./cmd/nerv maintainer-release guard --notes "$notes_path" --json) && exit_code=0 || exit_code=$?
           echo "$output"
           if [ "$exit_code" -ne 0 ]; then
             echo "Release guard refused this candidate (exit $exit_code)."

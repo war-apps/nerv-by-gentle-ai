@@ -18,21 +18,21 @@ const TaskPlugin = "task"
 // DeployPlugin is the extension every deploy provider needs installed.
 const DeployPlugin = "deploy"
 
-// ShipPlugin is the extension DeployPlugin needs installed: deploy consumes
-// the artifacts ship leaves.
-const ShipPlugin = "ship"
+// ReleasePlugin is the extension DeployPlugin needs installed: deploy consumes
+// the artifacts release leaves.
+const ReleasePlugin = "release"
 
 // pluginRequires are the requirements of the extension plugins that are not
 // providers (a provider requires its kind's plugin): a fixed map, because a
 // plugin.json cannot carry its own key for them.
 var pluginRequires = map[string][]string{
-	DeployPlugin: {ShipPlugin},
+	DeployPlugin: {ReleasePlugin},
 }
 
 // suggestionOrder is the order nerv install suggests the plugin families
 // in: each plugin, then its providers. A plugin outside it comes after, in
 // name order.
-var suggestionOrder = []string{TaskPlugin, ShipPlugin, DeployPlugin}
+var suggestionOrder = []string{TaskPlugin, ReleasePlugin, DeployPlugin}
 
 // deployProviderManifest marks a deploy provider plugin (see
 // internal/deployprovider.ManifestFile; not imported, to keep this package
@@ -104,10 +104,10 @@ func Extensions(fsys fs.FS) ([]Extension, error) {
 }
 
 // SuggestionOrder returns exts in the order nerv install suggests them:
-// task, then the task providers, then ship, then deploy, then the deploy
+// task, then the task providers, then release, then deploy, then the deploy
 // providers (each family's plugin before its providers); any other
 // extension after them, in name order. Asking only for an extension whose
-// requirements are selected then skips deploy when ship is declined and the
+// requirements are selected then skips deploy when release is declined and the
 // providers of a declined plugin.
 func SuggestionOrder(exts []Extension) []Extension {
 	rank := func(e Extension) (int, int) {

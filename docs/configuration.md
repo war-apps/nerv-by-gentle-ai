@@ -55,7 +55,7 @@ tasks:                              # read only by the optional task plugin (tas
       stages: { inDev: DESARROLLO, testing: TESTING, implemented: IMPLEMENTA, blocked: BLOQUEA, canceled: CANCEL, pending: PENDIENTE, analysis: ANALISIS }
   sources:                          # extra work sources for listings (replaces ~/.claude/work/sources.md)
     - { name: erp-proveedores, type: google-sheets, ... }
-ship:                               # ship plugin; project scope only, never merged with the user file; see release-commands.md
+release:                               # release plugin; project scope only, never merged with the user file; see release-commands.md
   projects:
     - { name: api, path: ., build: { mode: compose, file: docker-compose.yml, images: ["ghcr.io/acme/app:${version}"] } }
 deploy:                             # deploy plugin; see deploy.md
@@ -64,13 +64,13 @@ deploy:                             # deploy plugin; see deploy.md
     - { name: staging, provider: ssh-compose, config: { environment: staging } }
 ```
 
-`ship:` configures the ship plugin (`nerv version next` and `nerv ship`,
-also `/ship:version`, `/ship:setup` and `/ship:build`): the version engine
+`release:` configures the release plugin (`nerv version next` and `nerv release`,
+also `/release:version`, `/release:setup` and `/release:build`): the version engine
 (branches and channels, release rules, note keywords, tag format,
 changelog), the projects and their dependencies, and each project's
 `build.mode` (`compose` or `script`; there are no presets) with its
 stages, hooks and coverage. Its full reference is
-[release-commands.md](release-commands.md#configuration-ship).
+[release-commands.md](release-commands.md#configuration-release).
 
 `deploy:` configures the deploy plugin (`nerv deploy`, `/deploy:run`,
 `/deploy:setup`): the git host provider, the targets with their provider
@@ -79,11 +79,13 @@ config, and the release commit's message and remote. Provider keys with
 `deploy.providers.<provider>.`. Its full reference is
 [deploy.md](deploy.md#configuration).
 
-The old `release:` and `pipeline:` sections are no longer read: a command
-that finds one refuses and points to `/ship:setup` (or `/deploy:setup`).
-`nerv migrate` translates them, and `nerv ship setup --import` imports a
+A 4.2.0 `release:` section (told apart by its 4.2.0 keys, `semantic_release:`
+and the project presets) and the old `pipeline:` section are no longer read:
+a command that finds one refuses and points to `nerv migrate` (or
+`/release:setup`, `/deploy:setup`).
+`nerv migrate` translates them, and `nerv release setup --import` imports a
 semantic-release config; see
-[release-commands.md](release-commands.md#migrating-from-release-and-semantic-release)
+[release-commands.md](release-commands.md#migrating-from-the-420-release-section-and-semantic-release)
 and [pipeline.md](pipeline.md).
 
 `models:` assigns a per-role `model` and `effort` override, with project

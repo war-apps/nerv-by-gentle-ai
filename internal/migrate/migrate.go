@@ -1,8 +1,8 @@
 // Package migrate moves a repository and a user from nerv 4.2.0 to this
 // version: the old configuration files (.nerv/nerv.yaml and
 // ~/.claude/nerv/nerv.yaml) become .ai-workflow.yml and the user
-// config.yml, the release: and pipeline: sections become ship: and
-// deploy:, the semantic-release configuration is imported, the in-flight
+// config.yml, the 4.2.0 release: and pipeline: sections become today's
+// release: and deploy:, the semantic-release configuration is imported, the in-flight
 // openspec changes become ODD feature documents, and the plugins the
 // repository used are named for nerv install.
 //

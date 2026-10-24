@@ -21,7 +21,7 @@ import (
 
 const deployUsage = `Usage: nerv deploy --artifact <dir> [flags]
 
-Releases and deploys an artifact nerv ship left (.nerv/artifacts/<project>/
+Releases and deploys an artifact nerv release left (.nerv/artifacts/<project>/
 <version>/), as the deploy: section of .ai-workflow.yml says. It verifies
 the artifact's digests, clones the remote (deploy.git.remote, default
 origin) in a temporary directory at the artifact's base commit and:
@@ -44,7 +44,7 @@ authentication, infisical for source infisical).
 Your repository is never modified. When origin's branch moved past the
 artifact's base commit the deploy is refused, unless --rebase re-applies the
 release files on its new head (a conflict is refused; the tag then points at
-code nerv ship never built, and a warning says so). A re-run is
+code nerv release never built, and a warning says so). A re-run is
 idempotent: what origin already has is skipped, so after a failure, fix the
 cause and run the same command again. Without --yes it asks before pushing.
 
@@ -54,7 +54,7 @@ Flags:
   --dry-run          Prepare the release in the clone and show the steps;
                      push nothing and run no provider
   --rebase           Re-apply the release on origin's moved branch (the
-                     tagged code was never built: prefer shipping again)
+                     tagged code was never built: prefer releasing again)
   --yes              Deploy without asking for confirmation
   --cwd <dir>        A directory inside the repository (default ".")
   --json             Print the final report as JSON

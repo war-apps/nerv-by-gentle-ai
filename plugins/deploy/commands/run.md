@@ -1,11 +1,11 @@
 ---
-description: Release and deploy a ship artifact with nerv deploy — the latest local artifact or the one you name; always a dry run first, the release commit, tag, push, targets and git host release only after the user's explicit yes
+description: Release and deploy a release artifact with nerv deploy — the latest local artifact or the one you name; always a dry run first, the release commit, tag, push, targets and git host release only after the user's explicit yes
 argument-hint: [<artifact dir> | <project>[@<version>]] [--target <name> ...]
 ---
 
 # /deploy:run
 
-Turn a local artifact that `/ship:build` left into a release: the release
+Turn a local artifact that `/release:build` left into a release: the release
 commit, the tag and the channel note pushed to origin, every target's
 publish, deploy and verify, and the git host release. Load the `deploy`
 skill first: it is the contract the steps below refer to (§ numbers).
@@ -19,7 +19,7 @@ part is not accepted and stop without running `nerv`.
 
 1. **Pick the artifact.** List `.nerv/artifacts/<project>/<version>/`
    directories that hold a `manifest.json`.
-   - None: say there is no artifact and that `/ship:build` makes one; stop.
+   - None: say there is no artifact and that `/release:build` makes one; stop.
    - A directory or `project@version` names one: use it; if it does not
      exist, list the ones there are and stop.
    - Empty, or a project only: take the newest by the manifest's
@@ -43,7 +43,7 @@ part is not accepted and stop without running `nerv`.
    host or target without its provider: suggest `/deploy:setup`. A
    preflight refusal names the missing tool or value; say what to install
    or set. Origin moved: say that `--rebase` re-applies the release on the
-   new head but tags code that was never built from it, and that shipping
+   new head but tags code that was never built from it, and that releasing
    again is the safe path; run it only if the user explicitly asks for the
    rebase (then rehearse again with `--rebase`).
 

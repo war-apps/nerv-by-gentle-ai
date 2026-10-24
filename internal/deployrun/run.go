@@ -1,4 +1,4 @@
-// Package deployrun runs `nerv deploy`: it takes an artifact `nerv ship`
+// Package deployrun runs `nerv deploy`: it takes an artifact `nerv release`
 // left, makes the release on origin and deploys it.
 //
 //  1. verify-artifact: the artifact's digests, and nothing unlisted in it;
@@ -178,7 +178,7 @@ func (d *deployer) run(ctx context.Context, targets []deployconfig.Target) error
 		return err
 	}
 	if strings.TrimSpace(string(notes)) == "" {
-		fmt.Fprintf(o.Output, "nerv deploy: warning: %s has empty release notes (shipped with --version?): the commit and the release get none\n", m.Version)
+		fmt.Fprintf(o.Output, "nerv deploy: warning: %s has empty release notes (released with --version?): the commit and the release get none\n", m.Version)
 	}
 	url, err := d.remoteURL(ctx)
 	if err != nil {
@@ -303,7 +303,7 @@ func (d *deployer) releaseCommit(ctx context.Context, head, message string) (str
 	w, m, tr := d.ws, d.m, d.tr
 	base, files := m.BaseCommit, m.ReleaseFiles
 	if !w.ok(ctx, "merge-base", "--is-ancestor", base, head) {
-		return "", refuse("origin's %s no longer contains the artifact's base commit %s (was it rewritten?): ship again", m.Branch, short(base))
+		return "", refuse("origin's %s no longer contains the artifact's base commit %s (was it rewritten?): release again", m.Branch, short(base))
 	}
 	if head != base && w.matches(ctx, head, base, message, files) {
 		tr.set("commit", StatusSkipped, "already on origin (%s)", short(head))
@@ -311,7 +311,7 @@ func (d *deployer) releaseCommit(ctx context.Context, head, message string) (str
 	}
 	if head != base && !d.o.Rebase {
 		n, _ := w.git(ctx, "rev-list", "--count", base+".."+head)
-		return "", refuse("origin's %s moved past the artifact's base commit %s (%s new commits): pass --rebase to re-apply the release files on its new head, or ship again", m.Branch, short(base), n)
+		return "", refuse("origin's %s moved past the artifact's base commit %s (%s new commits): pass --rebase to re-apply the release files on its new head, or release again", m.Branch, short(base), n)
 	}
 	commit, made, err := w.commitRelease(ctx, base, d.o.ArtifactDir, message, files)
 	if err != nil {
@@ -328,7 +328,7 @@ func (d *deployer) releaseCommit(ctx context.Context, head, message string) (str
 		}
 		if errors.Is(err, errConflict) {
 			tr.set("commit", StatusFailed, "the release files conflict with origin's new commits")
-			return "", refuse("the release files do not apply on origin's new %s head %s (conflict): ship again from it", m.Branch, short(head))
+			return "", refuse("the release files do not apply on origin's new %s head %s (conflict): release again from it", m.Branch, short(head))
 		}
 		if err != nil {
 			tr.set("commit", StatusFailed, "%v", err)
@@ -337,7 +337,7 @@ func (d *deployer) releaseCommit(ctx context.Context, head, message string) (str
 	}
 	if head != base {
 		fmt.Fprintf(d.o.Output, "nerv deploy: warning: --rebase: the tag %s points at %s, origin's new %s head %s with the release files re-applied: "+
-			"that code was never built or tested by nerv ship (the artifact was built from %s); ship again from the new head to release built code\n",
+			"that code was never built or tested by nerv release (the artifact was built from %s); release again from the new head to release built code\n",
 			m.Tag, short(commit), m.Branch, short(head), short(base))
 	}
 	switch {

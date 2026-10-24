@@ -92,7 +92,7 @@ func TestWrite_LaysOutTheArtifactUnderTheRepository(t *testing.T) {
 		t.Fatal(err)
 	}
 	for key, want := range map[string]any{
-		"schema": "nerv.ship-artifact/v1", "project": "api", "version": "1.4.0-alpha.2", "channel": "alpha",
+		"schema": "nerv.release-artifact/v1", "project": "api", "version": "1.4.0-alpha.2", "channel": "alpha",
 		"tag": "api-v1.4.0-alpha.2", "base_commit": strings.Repeat("a", 40), "branch": "develop",
 		"build_mode": "compose", "created_at": "2026-10-23T12:00:00Z",
 	} {
@@ -211,7 +211,7 @@ func TestRead_RefusesAnotherSchemaOrAPathLeavingTheArtifact(t *testing.T) {
 		edit func(m map[string]any)
 		want string
 	}{
-		{"schema", func(m map[string]any) { m["schema"] = "nerv.ship-artifact/v2" }, "schema"},
+		{"schema", func(m map[string]any) { m["schema"] = "nerv.release-artifact/v2" }, "schema"},
 		{"output path", func(m map[string]any) {
 			m["outputs"] = []any{map[string]any{"path": "../escape", "kind": "file", "sha256": sum("")}}
 		}, "../escape"},

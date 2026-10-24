@@ -19,7 +19,7 @@ func TestRunInstall_Terminal_DecliningTaskOffersNoProvider(t *testing.T) {
 	opts.ExtensionsFS = nerv.ExtensionsFS()
 	opts.IsTerminal = func() bool { return true }
 	opts.Runner = baseInstallRunner()
-	// No to task, then no to ship (asked next, after task's providers).
+	// No to task, then no to release (asked next, after task's providers).
 	opts.Stdin = strings.NewReader("n\nn\n")
 
 	code := run([]string{"install", "--no-skills", "--no-configure"}, &stdout, &stderr, opts)
@@ -171,8 +171,8 @@ func TestRunUninstall_RerunAfterExtensionFailure_StillUninstallsIt(t *testing.T)
 	t.Errorf("rerun never ran claude plugin uninstall task@nerv; calls = %v", rerun.Calls)
 }
 
-func TestReleaseApply_ExtensionWithoutVersion_WritesNothing(t *testing.T) {
-	repo := releaseFixtureRepo(t, "0.1.0")
+func TestMaintainerReleaseApply_ExtensionWithoutVersion_WritesNothing(t *testing.T) {
+	repo := maintainerReleaseFixtureRepo(t, "0.1.0")
 	ext := filepath.Join(repo, "plugins", "task", ".claude-plugin", "plugin.json")
 	if err := os.MkdirAll(filepath.Dir(ext), 0o755); err != nil {
 		t.Fatal(err)
@@ -186,7 +186,7 @@ func TestReleaseApply_ExtensionWithoutVersion_WritesNothing(t *testing.T) {
 	}}
 	var stdout, stderr bytes.Buffer
 
-	code := run([]string{"release", "apply", "--repo", repo}, &stdout, &stderr, releaseOptions(t, t.TempDir(), runner))
+	code := run([]string{"maintainer-release", "apply", "--repo", repo}, &stdout, &stderr, maintainerReleaseOptions(t, t.TempDir(), runner))
 
 	if code == 0 {
 		t.Fatalf("exit code = 0, want non-zero; stdout:\n%s", stdout.String())
@@ -199,8 +199,8 @@ func TestReleaseApply_ExtensionWithoutVersion_WritesNothing(t *testing.T) {
 	}
 }
 
-func TestReleaseApply_ListsExtensionsAfterChangelog(t *testing.T) {
-	repo := releaseFixtureRepo(t, "0.1.0")
+func TestMaintainerReleaseApply_ListsExtensionsAfterChangelog(t *testing.T) {
+	repo := maintainerReleaseFixtureRepo(t, "0.1.0")
 	ext := filepath.Join(repo, "plugins", "task", ".claude-plugin", "plugin.json")
 	if err := os.MkdirAll(filepath.Dir(ext), 0o755); err != nil {
 		t.Fatal(err)
@@ -214,7 +214,7 @@ func TestReleaseApply_ListsExtensionsAfterChangelog(t *testing.T) {
 	}}
 	var stdout, stderr bytes.Buffer
 
-	code := run([]string{"release", "apply", "--repo", repo}, &stdout, &stderr, releaseOptions(t, t.TempDir(), runner))
+	code := run([]string{"maintainer-release", "apply", "--repo", repo}, &stdout, &stderr, maintainerReleaseOptions(t, t.TempDir(), runner))
 
 	if code != 0 {
 		t.Fatalf("exit code = %d, want 0; stdout:\n%s", code, stdout.String())
@@ -229,10 +229,10 @@ func TestReleaseApply_ListsExtensionsAfterChangelog(t *testing.T) {
 	}
 }
 
-// S1: --with a deploy provider brings deploy and, through it, ship.
-func TestRunInstall_WithDeployProvider_BringsDeployAndShip(t *testing.T) {
+// S1: --with a deploy provider brings deploy and, through it, release.
+func TestRunInstall_WithDeployProvider_BringsDeployAndRelease(t *testing.T) {
 	home := t.TempDir()
-	seedShipFamilyForCLI(t, home)
+	seedReleaseFamilyForCLI(t, home)
 	var stdout, stderr bytes.Buffer
 	opts := testOptions(home)
 	opts.ExtensionsFS = nerv.ExtensionsFS()
@@ -244,28 +244,28 @@ func TestRunInstall_WithDeployProvider_BringsDeployAndShip(t *testing.T) {
 		t.Fatalf("exit code = %d, want 0; stdout:\n%s\nstderr:\n%s", code, stdout.String(), stderr.String())
 	}
 	out := stdout.String()
-	ship, deploy, github := strings.Index(out, "Adding ship (required by deploy)"), strings.Index(out, "Adding deploy (required by deploy-github)"), strings.Index(out, "-> claude plugin install deploy-github@nerv")
-	if ship < 0 || deploy < 0 || github < 0 || !(ship < deploy) {
-		t.Errorf("want ship, then deploy added, then deploy-github installed:\n%s", out)
+	release, deploy, github := strings.Index(out, "Adding release (required by deploy)"), strings.Index(out, "Adding deploy (required by deploy-github)"), strings.Index(out, "-> claude plugin install deploy-github@nerv")
+	if release < 0 || deploy < 0 || github < 0 || !(release < deploy) {
+		t.Errorf("want release, then deploy added, then deploy-github installed:\n%s", out)
 	}
 }
 
-// S1: on a terminal the suggestions are task, its providers, ship, deploy
-// (only once ship is accepted) and the deploy providers (only once deploy
+// S1: on a terminal the suggestions are task, its providers, release, deploy
+// (only once release is accepted) and the deploy providers (only once deploy
 // is accepted).
 func TestRunInstall_Terminal_SuggestionOrder(t *testing.T) {
 	tests := []struct {
 		name, answers string
 		asked         []string
 	}{
-		{"everything accepted", "y\ny\ny\ny\ny\ny\n", []string{"task", "task-teamwork", "ship", "deploy", "deploy-github", "deploy-ssh-compose"}},
-		{"ship declined: no deploy", "n\nn\n", []string{"task", "ship"}},
-		{"deploy declined: no deploy provider", "n\ny\nn\n", []string{"task", "ship", "deploy"}},
+		{"everything accepted", "y\ny\ny\ny\ny\ny\n", []string{"task", "task-teamwork", "release", "deploy", "deploy-github", "deploy-ssh-compose"}},
+		{"release declined: no deploy", "n\nn\n", []string{"task", "release"}},
+		{"deploy declined: no deploy provider", "n\ny\nn\n", []string{"task", "release", "deploy"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			home := t.TempDir()
-			seedShipFamilyForCLI(t, home)
+			seedReleaseFamilyForCLI(t, home)
 			var stdout, stderr bytes.Buffer
 			opts := testOptions(home)
 			opts.ExtensionsFS = nerv.ExtensionsFS()

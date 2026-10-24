@@ -8,15 +8,15 @@ with a local artifact between them.
 
 | Old step | Now |
 |---|---|
-| `validate` | A `lint` stage of the project in the `ship:` section, run by `nerv ship` ([ship](release-commands.md)). |
+| `validate` | A `lint` stage of the project in the `release:` section, run by `nerv release` ([release](release-commands.md)). |
 | `test` | The `build`, `test` and `coverage` stages, with `build.coverage` floors. |
-| `release` | `nerv ship` (version, CHANGELOG section, version files, packages, into the artifact), then `nerv deploy` (release commit, tag, channel note, push, GitHub release with `deploy-github`). |
-| `docker` | Building and saving the images: `nerv ship` (`compose` mode, or a script `package` stage). Pushing them: the `publish` operation of the `deploy-ssh-compose` target. |
+| `release` | `nerv release` (version, CHANGELOG section, version files, packages, into the artifact), then `nerv deploy` (release commit, tag, channel note, push, GitHub release with `deploy-github`). |
+| `docker` | Building and saving the images: `nerv release` (`compose` mode, or a script `package` stage). Pushing them: the `publish` operation of the `deploy-ssh-compose` target. |
 | `sync` | Not ported. Merge the release back into `develop` and `release/*` by hand; an opt-in `deploy.sync` may come later. |
 | `deploy` | The `deploy` and `verify` operations of the `deploy-ssh-compose` target ([deploy.md](deploy.md#deploy-ssh-compose)). |
 
 A repository that still has a `pipeline:` section is told so: the section
-is no longer read, and the commands point to `/ship:setup` and
+is no longer read, and the commands point to `/release:setup` and
 `/deploy:setup`.
 
 ## Steps
@@ -24,22 +24,22 @@ is no longer read, and the commands point to `/ship:setup` and
 1. **Install the plugins**:
 
    ```sh
-   nerv install --with ship,deploy,deploy-github,deploy-ssh-compose
+   nerv install --with release,deploy,deploy-github,deploy-ssh-compose
    ```
 
 2. **See the whole migration** with `nerv migrate --dry-run`: it shows
    every change to the configuration files (the move to `.ai-workflow.yml`,
-   the translation of `release:` and `pipeline:` into `ship:` and
-   `deploy:`, the semantic-release import, the plugins to install) before
+   the translation of the 4.2.0 `release:` and `pipeline:` into today's
+   `release:` and `deploy:`, the semantic-release import, the plugins to install) before
    writing anything. `nerv migrate` applies it, with backups.
-3. **Or migrate by hand** with the two setup commands: `/ship:setup`
-   (offers `nerv ship setup --import` for the semantic-release config in
+3. **Or migrate by hand** with the two setup commands: `/release:setup`
+   (offers `nerv release setup --import` for the semantic-release config in
    `package.json`, and asks each project's `build.mode`), then
    `/deploy:setup` (the host, the targets, git).
-4. **Rehearse**: `/ship:build` (a dry run in a clone, then the artifact on
+4. **Rehearse**: `/release:build` (a dry run in a clone, then the artifact on
    your yes) and `/deploy:run` (a dry run, then the deploy on your yes).
 5. **Delete** the `pipeline:` section, and the semantic-release config once
-   `/ship:version` gives the versions you expect.
+   `/release:version` gives the versions you expect.
 
 ## Before: the old `pipeline:` section
 
@@ -105,7 +105,7 @@ pipeline:
       timeout: 3m
 ```
 
-## After: `ship:` and `deploy:`
+## After: `release:` and `deploy:`
 
 The same repository. The images are built by a compose file
 (`docker/compose.release.yml`, building both images with `APP_VERSION`), so
@@ -114,7 +114,7 @@ them; a script `package` stage running `docker build` and `docker save`
 works too.
 
 ```text
-ship:
+release:
   branches:
     - main
     - { name: release/rc, prerelease: rc, channel: beta }
@@ -160,7 +160,7 @@ And in the user configuration (`deploy.providers.ssh-compose.*`, the
 | `pipeline.dotnet.solution`, `configuration` (`Release`), `warnings_as_errors` (`true`) | The `restore`, `build` and `test` stage commands, written in full (`dotnet build <solution> -c Release -warnaserror`). There are no presets. |
 | `pipeline.dotnet.env` | Each stage's `env`, or `build.shared_host: true` for the build-server variables. |
 | `pipeline.dotnet.runsettings`, `coverage.mode` (`enforce`), `coverage.thresholds` | `--settings` in the test stage, and `build.coverage` `{line, branch, method}`, always enforced. `report` and `off` have no equivalent: leave `build.coverage` out. |
-| `pipeline.branches` | `ship.branches` (same meaning; `prerelease: true` is accepted when the branch name is a valid id). |
+| `pipeline.branches` | `release.branches` (same meaning; `prerelease: true` is accepted when the branch name is a valid id). |
 | `pipeline.registry.host` (`ghcr.io`), `username_env` (`GHCR_USER`), `token_env` (`GHCR_TOKEN`) | Log in with `docker login` before `nerv deploy`: the target pushes with docker's own credentials. |
 | `pipeline.images[].name`, `title`, `dockerfile` (`Dockerfile`), `context` (`.`), `platform` (`linux/amd64`), `build_args`, `computed_args` (shell `bash`), `tags`, `required` | The compose file's services (or a script `package` stage), and `build.images` with `${version}`. The pushed tags are exactly the `build.images` references; the moving tags (`channel`, `latest`) are not produced automatically. |
 | `pipeline.sync.enabled`, `develop` (`develop`), `release` (`release/*`) | Not ported. |

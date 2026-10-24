@@ -17,7 +17,7 @@ on PATH and no configuration keys.
 ## Install
 
 ```sh
-nerv install --with ship,deploy,deploy-github
+nerv install --with release,deploy,deploy-github
 ```
 
 Then set `host: github` in the `deploy:` section of `.ai-workflow.yml`, or run

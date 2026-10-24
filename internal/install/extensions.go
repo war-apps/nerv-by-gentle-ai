@@ -13,8 +13,8 @@ import (
 // order: the requested ones (each after its requirements), then those
 // settings already enables, then the ones the user accepts when
 // deps.ConfirmExtension is set, asked in plugin.SuggestionOrder (task, its
-// providers, ship, deploy, the deploy providers) and only when every
-// requirement is already selected: deploy only once ship is, a provider
+// providers, release, deploy, the deploy providers) and only when every
+// requirement is already selected: deploy only once release is, a provider
 // only once its plugin is.
 func selectExtensions(deps Deps, opts Options, settings *claude.Settings) ([]plugin.Extension, error) {
 	exts, err := plugin.Extensions(deps.ExtensionsFS)
@@ -39,7 +39,7 @@ func selectExtensions(deps Deps, opts Options, settings *claude.Settings) ([]plu
 	}
 
 	// require adds e after its requirements, transitively (deploy-github
-	// brings deploy, which brings ship).
+	// brings deploy, which brings release).
 	var require func(e plugin.Extension, by string) error
 	require = func(e plugin.Extension, by string) error {
 		for _, req := range e.Requires {

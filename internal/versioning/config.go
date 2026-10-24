@@ -8,7 +8,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/war-apps/nerv-by-gentle-ai/internal/shipconfig/yamlsection"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/releaseconfig/yamlsection"
 	"gopkg.in/yaml.v3"
 )
 
@@ -54,7 +54,7 @@ func DefaultBranches() []Branch {
 }
 
 // Config is the version engine's configuration: what semantic-release reads
-// from its own configuration, for the behaviours nerv relies on. The ship
+// from its own configuration, for the behaviours nerv relies on. The release
 // plugin's section of .ai-workflow.yml embeds it.
 type Config struct {
 	// Branches are the release branches, in semantic-release's order: a
@@ -274,7 +274,7 @@ func ParseConfig(data []byte) (Config, error) {
 	return DecodeConfig(doc.Content[0], "versioning")
 }
 
-// DecodeConfig reads a configuration from a YAML node (the ship plugin's
+// DecodeConfig reads a configuration from a YAML node (the release plugin's
 // section embeds one), refusing unknown keys reported under root, and
 // returns it with its defaults applied and validated.
 func DecodeConfig(node *yaml.Node, root string) (Config, error) {

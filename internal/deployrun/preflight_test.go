@@ -71,7 +71,7 @@ func TestRun_PreflightsEveryTargetBeforeAnyGitWrite(t *testing.T) {
 	}
 }
 
-// L15: --rebase says that the tag points at code nerv ship never built.
+// L15: --rebase says that the tag points at code nerv release never built.
 func TestRun_RebaseWarnsThatTheTaggedCodeWasNeverBuilt(t *testing.T) {
 	e := newEnv(t)
 	e.pushOther("other.txt", "x\n")

@@ -17,14 +17,14 @@ import (
 	"time"
 
 	"github.com/war-apps/nerv-by-gentle-ai/internal/env/envtest"
-	"github.com/war-apps/nerv-by-gentle-ai/internal/shipclone"
-	"github.com/war-apps/nerv-by-gentle-ai/internal/shipconfig"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/releaseclone"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/releaseconfig"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/versioning"
 )
 
-// shipconfigValidationError is a release configuration problem as the engine
+// releaseconfigValidationError is a release configuration problem as the engine
 // reports it.
-var shipconfigValidationError = shipconfig.ValidationError{Problems: []string{"ship.projects[0].path: required"}}
+var releaseconfigValidationError = releaseconfig.ValidationError{Problems: []string{"release.projects[0].path: required"}}
 
 // nextFixture is a fake repository for `nerv version next`: git's top-level
 // answer comes from a scripted runner, the release configuration (if any)
@@ -33,7 +33,7 @@ var shipconfigValidationError = shipconfig.ValidationError{Problems: []string{"s
 type nextFixture struct {
 	top     string
 	runner  *envtest.FakeRunner
-	calls   []shipclone.ComputeOptions
+	calls   []releaseclone.ComputeOptions
 	ctxErrs []error
 	results []versioning.Result
 	err     error
@@ -50,7 +50,7 @@ type nextFixture struct {
 
 func newNextFixture(t *testing.T, nervYAML string) *nextFixture {
 	t.Helper()
-	// The repository directory is named "repo": without a ship: section
+	// The repository directory is named "repo": without a release: section
 	// the engine names the only project after it.
 	top := filepath.Join(t.TempDir(), "repo")
 	if err := os.Mkdir(top, 0o755); err != nil {
@@ -75,7 +75,7 @@ func newNextFixture(t *testing.T, nervYAML string) *nextFixture {
 func (f *nextFixture) options(t *testing.T) options {
 	opts := testOptions(t.TempDir())
 	opts.Runner = f.runner
-	opts.ComputeVersions = func(ctx context.Context, o shipclone.ComputeOptions) ([]versioning.Result, error) {
+	opts.ComputeVersions = func(ctx context.Context, o releaseclone.ComputeOptions) ([]versioning.Result, error) {
 		f.calls = append(f.calls, o)
 		f.ctxErrs = append(f.ctxErrs, ctx.Err())
 		if ctx.Err() != nil {
@@ -106,7 +106,7 @@ func (f *nextFixture) run(t *testing.T, args ...string) (code int, stdout, stder
 }
 
 const twoProjectsYAML = `enabled: true
-ship:
+release:
   projects:
     - name: api
       path: api
@@ -210,7 +210,7 @@ func TestVersionNext_FlagsReachTheEngine(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("exit code = %d, stderr = %q", code, stderr)
 	}
-	want := shipclone.ComputeOptions{RepoRoot: f.top, Branch: "develop", Projects: []string{"api"}, Offline: true, FetchTimeout: 15 * time.Second}
+	want := releaseclone.ComputeOptions{RepoRoot: f.top, Branch: "develop", Projects: []string{"api"}, Offline: true, FetchTimeout: 15 * time.Second}
 	if len(f.calls) != 1 {
 		t.Fatalf("engine calls = %+v", f.calls)
 	}
@@ -220,7 +220,7 @@ func TestVersionNext_FlagsReachTheEngine(t *testing.T) {
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("engine options = %+v, want %+v", got, want)
 	}
-	// The ship: section's projects configure the engine.
+	// The release: section's projects configure the engine.
 	if len(cfg.Projects) != 2 || cfg.Projects[0].Name != "api" || cfg.Projects[1].TagFormat != "web-app-v${version}" {
 		t.Errorf("engine config = %+v", cfg)
 	}
@@ -235,7 +235,7 @@ func TestVersionNext_DefaultsReadOriginOnTheCurrentBranch(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("exit code = %d, stderr = %q", code, stderr)
 	}
-	want := shipclone.ComputeOptions{RepoRoot: f.top, FetchTimeout: shipclone.DefaultFetchTimeout, Config: versioning.Config{}.WithDefaults()}
+	want := releaseclone.ComputeOptions{RepoRoot: f.top, FetchTimeout: releaseclone.DefaultFetchTimeout, Config: versioning.Config{}.WithDefaults()}
 	if len(f.calls) != 1 || !reflect.DeepEqual(f.calls[0], want) {
 		t.Fatalf("engine options = %+v, want %+v (current branch, origin read, default timeout, the default configuration)", f.calls, want)
 	}
@@ -477,25 +477,25 @@ func TestVersionNext_UnknownProjectListsTheProjects(t *testing.T) {
 	}
 }
 
-func TestVersionNext_ProjectWithoutAShipSection(t *testing.T) {
+func TestVersionNext_ProjectWithoutAReleaseSection(t *testing.T) {
 	f := newNextFixture(t, "")
 
 	code, _, stderr := f.run(t, "--project", "api")
 
-	if code != 1 || !strings.Contains(stderr, "ship:") {
+	if code != 1 || !strings.Contains(stderr, "release:") {
 		t.Fatalf("code=%d stderr=%q", code, stderr)
 	}
 }
 
 func TestVersionNext_InvalidConfigIsARefusal(t *testing.T) {
-	f := newNextFixture(t, "ship:\n  projects:\n    - name: API\n      path: api\n      colour: red\n")
+	f := newNextFixture(t, "release:\n  projects:\n    - name: API\n      path: api\n      colour: red\n")
 
 	code, stdout, stderr := f.run(t)
 
 	if code != 1 {
 		t.Fatalf("exit code = %d, want 1", code)
 	}
-	if stdout != "" || !strings.Contains(stderr, "ship.projects[0].colour") || !strings.Contains(stderr, "ship.projects[0].name") {
+	if stdout != "" || !strings.Contains(stderr, "release.projects[0].colour") || !strings.Contains(stderr, "release.projects[0].name") {
 		t.Errorf("stdout=%q stderr=%q, want the path-qualified problems", stdout, stderr)
 	}
 	if len(f.calls) != 0 {
@@ -546,13 +546,13 @@ func TestVersionNext_EngineErrors(t *testing.T) {
 		},
 		{
 			name: "origin unreachable", code: 2,
-			err:      fmt.Errorf("reading release tags and notes from origin (https://***@github.com/x/y.git): %w: exit status 128", shipclone.ErrOriginFetch),
+			err:      fmt.Errorf("reading release tags and notes from origin (https://***@github.com/x/y.git): %w: exit status 128", releaseclone.ErrOriginFetch),
 			contains: []string{"origin", "--offline"},
 		},
 		{
 			name: "validation error from the engine", code: 1,
-			err:      fmt.Errorf("wrapped: %w", &shipconfigValidationError),
-			contains: []string{"ship.projects[0].path"},
+			err:      fmt.Errorf("wrapped: %w", &releaseconfigValidationError),
+			contains: []string{"release.projects[0].path"},
 		},
 		{
 			name: "engine configuration error", code: 1,
@@ -682,7 +682,7 @@ func TestVersionNext_WriteErrorsAreReported(t *testing.T) {
 }
 
 func TestVersionNext_UsageShowsTheDefaultFetchTimeout(t *testing.T) {
-	want := fmt.Sprintf("default %ds", int(shipclone.DefaultFetchTimeout.Seconds()))
+	want := fmt.Sprintf("default %ds", int(releaseclone.DefaultFetchTimeout.Seconds()))
 	if !strings.Contains(versionNextUsage, want) {
 		t.Errorf("usage lacks %q", want)
 	}
@@ -692,7 +692,7 @@ func TestVersionNext_UsageShowsTheDefaultFetchTimeout(t *testing.T) {
 // The output shape follows the request, not the number of results.
 // ---------------------------------------------------------------------------
 
-const threeProjectsYAML = `ship:
+const threeProjectsYAML = `release:
   projects:
     - name: core
       path: core
@@ -703,7 +703,7 @@ const threeProjectsYAML = `ship:
       path: web
 `
 
-const oneProjectYAML = `ship:
+const oneProjectYAML = `release:
   projects:
     - name: api
       path: .
@@ -760,7 +760,7 @@ func TestVersionNext_SingleProjectSectionIsAnObject(t *testing.T) {
 	}
 }
 
-// Without a ship: section the engine computes the whole repository as one
+// Without a release: section the engine computes the whole repository as one
 // project and names it itself; the CLI prints that single result whatever
 // its name, so a path that resolves differently (symlinks, Windows case)
 // cannot turn a computed version into "no result".
@@ -809,7 +809,7 @@ func TestVersionNext_SaysWhereTheVersionConfigCameFrom(t *testing.T) {
 		source, file        string
 		want                string
 	}{
-		{"ship section", oneProjectYAML, "api", "repository", ".ai-workflow.yml", "version config: ship: section (.ai-workflow.yml)"},
+		{"release section", oneProjectYAML, "api", "repository", ".ai-workflow.yml", "version config: release: section (.ai-workflow.yml)"},
 		{"built-in", "", "repo", "default", "", "version config: built-in default (dim)"},
 	}
 	for _, tt := range tests {
@@ -832,12 +832,12 @@ func TestVersionNext_SaysWhereTheVersionConfigCameFrom(t *testing.T) {
 	}
 }
 
-// S9: the old release: and pipeline: sections are refused before the engine
-// runs, saying what replaced them.
+// S9, S1: the 4.2.0 release: and pipeline: sections are refused before the
+// engine runs, saying what replaced them.
 func TestVersionNext_RefusesTheOldSections(t *testing.T) {
 	for _, tt := range []struct{ yaml, want string }{
-		{"release:\n  projects:\n    - name: api\n      path: .\n", "nerv ship setup --import"},
-		{"pipeline:\n  test: { run: make test }\n", "validate and test: nerv ship"},
+		{"release:\n  semantic_release: { version: 24.2.3 }\n  projects:\n    - name: api\n      path: .\n", "run nerv migrate"},
+		{"pipeline:\n  test: { run: make test }\n", "validate and test: nerv release"},
 	} {
 		f := newNextFixture(t, tt.yaml)
 		code, stdout, stderr := f.run(t)
@@ -847,7 +847,7 @@ func TestVersionNext_RefusesTheOldSections(t *testing.T) {
 	}
 }
 
-// S3: without a ship: section, a semantic-release configuration the engine
+// S3: without a release: section, a semantic-release configuration the engine
 // does not read is pointed out (the defaults are used).
 func TestVersionNext_WarnsAboutAnUnimportedSemanticReleaseConfig(t *testing.T) {
 	f := newNextFixture(t, "")
@@ -856,24 +856,24 @@ func TestVersionNext_WarnsAboutAnUnimportedSemanticReleaseConfig(t *testing.T) {
 	}
 	f.results = []versioning.Result{notReleased("repo")}
 	code, stdout, stderr := f.run(t)
-	if code != 0 || !strings.Contains(stderr, "nerv ship setup --import") || strings.Contains(stdout, "setup") {
+	if code != 0 || !strings.Contains(stderr, "nerv release setup --import") || strings.Contains(stdout, "setup") {
 		t.Errorf("code=%d stdout=%q stderr=%q", code, stdout, stderr)
 	}
-	// With a ship: section there is nothing to warn about.
+	// With a release: section there is nothing to warn about.
 	g := newNextFixture(t, oneProjectYAML)
 	if err := os.WriteFile(filepath.Join(g.top, ".releaserc.json"), []byte(`{"branches":["main"]}`), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	g.results = []versioning.Result{notReleased("api")}
 	if _, _, stderr := g.run(t); strings.Contains(stderr, "setup --import") {
-		t.Errorf("warned with a ship: section: %q", stderr)
+		t.Errorf("warned with a release: section: %q", stderr)
 	}
 }
 
-// A ship: section without projects configures the engine for the whole
+// A release: section without projects configures the engine for the whole
 // repository: one result, its settings reach the engine.
-func TestVersionNext_ShipSectionWithoutProjects(t *testing.T) {
-	f := newNextFixture(t, "ship:\n  tag_format: release-${version}\n")
+func TestVersionNext_ReleaseSectionWithoutProjects(t *testing.T) {
+	f := newNextFixture(t, "release:\n  tag_format: release-${version}\n")
 	f.results = []versioning.Result{released("repo", "1.2.0", "")}
 	code, stdout, stderr := f.run(t, "--json")
 	var got map[string]any

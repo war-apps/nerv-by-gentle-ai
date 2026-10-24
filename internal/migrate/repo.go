@@ -11,7 +11,7 @@ import (
 	"github.com/war-apps/nerv-by-gentle-ai/internal/config"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/deployconfig"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/paths"
-	"github.com/war-apps/nerv-by-gentle-ai/internal/shipconfig"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/releaseconfig"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/versioning"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/workflowconfig"
 )
@@ -123,6 +123,15 @@ func planRepo(p *Plan, o Options, user *userState) error {
 		}
 	case newExists:
 		doc = config.Parse(string(newData))
+		if legacy := releaseconfig.LegacyKeys(newData); len(legacy) > 0 {
+			// A 4.2.0 release: section has today's key: its 4.2.0 keys
+			// tell it apart.
+			p.note("%s: the release: section is the 4.2.0 one (%s)", paths.ProjectConfigFile, strings.Join(legacy, ", "))
+			if doc, _, err = migrateRelease(p, o, doc); err != nil {
+				return err
+			}
+			p.Plugins = append(p.Plugins, "release")
+		}
 	}
 	if doc != nil {
 		if tdd != nil && !doc.KeyExists("odd") {
@@ -167,7 +176,7 @@ func planRepo(p *Plan, o Options, user *userState) error {
 }
 
 // checkLoads refuses a migrated project file that today's strict loaders
-// of the ship: and deploy: sections reject.
+// of the release: and deploy: sections reject.
 func checkLoads(text string) error {
 	dir, err := os.MkdirTemp("", "nerv-migrate-check-*")
 	if err != nil {
@@ -177,7 +186,7 @@ func checkLoads(text string) error {
 	if err := os.WriteFile(paths.ProjectConfig(dir), []byte(text), 0o600); err != nil {
 		return err
 	}
-	if _, err := shipconfig.Load(dir); err != nil && !errors.Is(err, shipconfig.ErrNotConfigured) {
+	if _, err := releaseconfig.Load(dir); err != nil && !errors.Is(err, releaseconfig.ErrNotConfigured) {
 		return refuse("the migrated %s does not load: %v", paths.ProjectConfigFile, strings.ReplaceAll(err.Error(), dir+string(filepath.Separator), ""))
 	}
 	if _, err := deployconfig.Load(dir); err != nil && !errors.Is(err, deployconfig.ErrNotConfigured) {
@@ -208,36 +217,9 @@ func translateConfig(p *Plan, o Options, data []byte, user *userState) (*config.
 	hadRelease := doc.KeyExists("release")
 	githubRelease := false
 	if hadRelease {
-		ship, err := translateRelease(p, []byte(doc.String()), o.RepoRoot)
-		if err != nil {
+		var err error
+		if doc, githubRelease, err = migrateRelease(p, o, doc); err != nil {
 			return nil, err
-		}
-		doc.SetBlock("release", ship.block)
-		imported, err := versioning.Import(o.RepoRoot)
-		var manual *versioning.ManualMigrationError
-		switch {
-		case errors.As(err, &manual):
-			p.warn("%v; write the ship: section's branches and release_rules from it (see /ship:setup)", err)
-		case errors.Is(err, versioning.ErrNoSemanticReleaseConfig):
-			p.note("no semantic-release configuration: the version engine's default branches apply (main; develop alpha; release/* rc on beta; hotfix/* beta)")
-		case err != nil:
-			p.warn("the semantic-release configuration cannot be imported: %v", err)
-		default:
-			text, notes, err := shipconfig.ImportSection([]byte(doc.String()), imported.Config, false)
-			if err != nil {
-				return nil, refuse("importing %s into the ship: section: %v", imported.Source, err)
-			}
-			doc = config.Parse(text)
-			for _, n := range notes {
-				p.note("%s", n)
-			}
-			for _, w := range imported.Warnings {
-				if w.Where == "@semantic-release/github" {
-					githubRelease = true
-				}
-				p.warn("semantic-release %s: %s", imported.Source, w)
-			}
-			p.note("the semantic-release configuration of %s was imported into the ship: section; it is no longer used", imported.Source)
 		}
 	}
 	if (dep != nil || githubRelease) && !doc.KeyExists("deploy") {
@@ -273,7 +255,7 @@ func translateConfig(p *Plan, o Options, data []byte, user *userState) (*config.
 		p.note("tasks.provider: teamwork (%s): the task and task-teamwork plugins", from)
 	}
 	if hadRelease || dep != nil {
-		p.Plugins = append(p.Plugins, "ship")
+		p.Plugins = append(p.Plugins, "release")
 	}
 	if dep != nil {
 		p.Plugins = append(p.Plugins, "deploy")
@@ -286,6 +268,45 @@ func translateConfig(p *Plan, o Options, data []byte, user *userState) (*config.
 	}
 	p.Plugins = slices.Compact(p.Plugins)
 	return doc, nil
+}
+
+// migrateRelease converts the 4.2.0 release: section of doc into today's
+// and imports the repository's semantic-release configuration into it. It
+// reports whether that configuration released on GitHub.
+func migrateRelease(p *Plan, o Options, doc *config.Document) (*config.Document, bool, error) {
+	release, err := translateRelease(p, []byte(doc.String()), o.RepoRoot)
+	if err != nil {
+		return nil, false, err
+	}
+	doc.SetBlock("release", release.block)
+	githubRelease := false
+	imported, err := versioning.Import(o.RepoRoot)
+	var manual *versioning.ManualMigrationError
+	switch {
+	case errors.As(err, &manual):
+		p.warn("%v; write the release: section's branches and release_rules from it (see /release:setup)", err)
+	case errors.Is(err, versioning.ErrNoSemanticReleaseConfig):
+		p.note("no semantic-release configuration: the version engine's default branches apply (main; develop alpha; release/* rc on beta; hotfix/* beta)")
+	case err != nil:
+		p.warn("the semantic-release configuration cannot be imported: %v", err)
+	default:
+		text, notes, err := releaseconfig.ImportSection([]byte(doc.String()), imported.Config, false)
+		if err != nil {
+			return nil, false, refuse("importing %s into the release: section: %v", imported.Source, err)
+		}
+		doc = config.Parse(text)
+		for _, n := range notes {
+			p.note("%s", n)
+		}
+		for _, w := range imported.Warnings {
+			if w.Where == "@semantic-release/github" {
+				githubRelease = true
+			}
+			p.warn("semantic-release %s: %s", imported.Source, w)
+		}
+		p.note("the semantic-release configuration of %s was imported into the release: section; it is no longer used", imported.Source)
+	}
+	return doc, githubRelease, nil
 }
 
 // userProvider is the tasks.provider of the user's configuration, old or
