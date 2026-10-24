@@ -603,8 +603,8 @@ func TestTest_CoverageThresholdsOverrideTheRunsettings(t *testing.T) {
 	r, _ := runTest(t, dimRunsettings, []string{reportA, reportB}, func(c *pipelineconfig.Coverage) {
 		c.Thresholds = &pipelineconfig.CoverageThresholds{Line: ptr(50), Branch: ptr(50)}
 	})
-	want := []string{"line 50/50 nerv.yaml true", "branch 50/50 nerv.yaml true", "method 66.66/100 runsettings false"}
-	if r.Status != StatusFailed || !slices.Equal(checksOf(r.Coverage), want) || !strings.Contains(r.Error, "coverage below the thresholds of coverlet.runsettings and nerv.yaml (total)") {
+	want := []string{"line 50/50 .ai-workflow.yml true", "branch 50/50 .ai-workflow.yml true", "method 66.66/100 runsettings false"}
+	if r.Status != StatusFailed || !slices.Equal(checksOf(r.Coverage), want) || !strings.Contains(r.Error, "coverage below the thresholds of coverlet.runsettings and .ai-workflow.yml (total)") {
 		t.Errorf("status %s error %q checks %q", r.Status, r.Error, checksOf(r.Coverage))
 	}
 }
@@ -613,7 +613,7 @@ func TestTest_CoverageThresholdsWithoutRunsettings(t *testing.T) {
 	r, f := runTest(t, "", []string{reportA, reportB}, func(c *pipelineconfig.Coverage) {
 		c.Thresholds = &pipelineconfig.CoverageThresholds{Line: ptr(50), Stat: "total"}
 	})
-	if r.Status != StatusPassed || r.Coverage == nil || r.Coverage.Stat != "total" || !slices.Equal(checksOf(r.Coverage), []string{"line 50/50 nerv.yaml true"}) || !r.Coverage.Met {
+	if r.Status != StatusPassed || r.Coverage == nil || r.Coverage.Stat != "total" || !slices.Equal(checksOf(r.Coverage), []string{"line 50/50 .ai-workflow.yml true"}) || !r.Coverage.Met {
 		t.Fatalf("result %+v coverage %+v", r, r.Coverage)
 	}
 	if len(r.Notes) != 1 || r.Notes[0] != "coverage (total): line 50% >= 50%" {
@@ -651,7 +651,7 @@ func TestTest_CoverageMissingReportNamesTheThresholdsOrigin(t *testing.T) {
 	r, _ := runTest(t, "", nil, func(c *pipelineconfig.Coverage) {
 		c.Thresholds = &pipelineconfig.CoverageThresholds{Line: ptr(50)}
 	})
-	if r.Status != StatusFailed || !strings.Contains(r.Error, "no coverage report to check the thresholds of nerv.yaml against") || !r.Coverage.ReportMissing {
+	if r.Status != StatusFailed || !strings.Contains(r.Error, "no coverage report to check the thresholds of .ai-workflow.yml against") || !r.Coverage.ReportMissing {
 		t.Errorf("error %q coverage %+v", r.Error, r.Coverage)
 	}
 }

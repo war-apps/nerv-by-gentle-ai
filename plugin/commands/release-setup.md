@@ -1,11 +1,11 @@
 ---
-description: Set up the release section of .nerv/nerv.yaml interactively — detects the repository's semantic-release config, projects, compose files, Dockerfiles and scripts, picks each project's build mode (compose or script), asks only what it cannot detect, writes the section and validates it with nerv version next
+description: Set up the release section of .ai-workflow.yml interactively — detects the repository's semantic-release config, projects, compose files, Dockerfiles and scripts, picks each project's build mode (compose or script), asks only what it cannot detect, writes the section and validates it with nerv version next
 argument-hint: [--project <name>]
 ---
 
 # /nerv:release-setup
 
-Build the `release:` section of `<repo>/.nerv/nerv.yaml` for `nerv version
+Build the `release:` section of `<repo>/.ai-workflow.yml` for `nerv version
 next` and `nerv ship` (with each project's `build.mode`): detect what the
 repository already has, propose a
 complete section, ask only what cannot be detected (one question at a
@@ -34,7 +34,7 @@ comments, JSON) is in English.
 2. Run `git rev-parse --show-toplevel`. On failure, say the release
    commands need a git repository and stop. Every path below is relative
    to that top level.
-3. Read `.nerv/nerv.yaml` if it exists. If it already has a top-level
+3. Read `.ai-workflow.yml` if it exists. If it already has a top-level
    `release:` key, show that block as it is and ask one question: **edit
    it** (keep it as the starting point; the default) or **start over**
    (replace it). Stop and wait. Never overwrite it silently.
@@ -44,7 +44,7 @@ added (at the end of the file, after one blank line) or replaced (from the
 `release:` line up to the next line that starts at column 0 with a
 non-space, non-`#` character, or the end of the file). Keep every other
 byte as it is — the rest of the file is managed by `nerv configure`'s
-line-based editor and must not be reformatted. No `.nerv/nerv.yaml`
+line-based editor and must not be reformatted. No `.ai-workflow.yml`
 yet: create it holding only the section, and mention that `/nerv:init`
 adds the rest of NERV's configuration.
 
@@ -192,11 +192,11 @@ Adjust branch names to the repository's (`master`, no `release/rc`) and
 add to the git `assets` each project's CHANGELOG. Create it only on an
 explicit yes, and say it must be committed and pushed: `nerv ship` computes
 the versions with the semantic-release configuration on origin's branch
-(only `.nerv/nerv.yaml` is read locally).
+(only `.ai-workflow.yml` is read locally).
 
 ## 6. Write and validate
 
-1. Write the section into `.nerv/nerv.yaml` as described in step 1.
+1. Write the section into `.ai-workflow.yml` as described in step 1.
 2. Run `nerv version next --offline --format json`, and in a monorepo also
    `nerv version next --offline --format json --project <name>` per
    project. These need node and npm (semantic-release runs in a NERV
@@ -215,7 +215,7 @@ the versions with the semantic-release configuration on origin's branch
 
 Tell the user, without doing any of it:
 
-1. Review `.nerv/nerv.yaml`: `nerv ship` uses this local file as it is,
+1. Review `.ai-workflow.yml`: `nerv ship` uses this local file as it is,
    committed or not. Committing it is recommended so the team shares it,
    but not required. If step 5 created a semantic-release configuration,
    commit and push that: the versions are computed from origin's.
@@ -224,5 +224,5 @@ Tell the user, without doing any of it:
    tags or pushes.
 
 Never commit, push, run `nerv ship` or edit any file other than
-`.nerv/nerv.yaml` and, on an explicit yes, the semantic-release
+`.ai-workflow.yml` and, on an explicit yes, the semantic-release
 configuration.

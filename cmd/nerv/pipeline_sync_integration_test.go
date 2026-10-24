@@ -48,7 +48,7 @@ func TestIntegration_PipelineSyncMergesBackAfterAMainRelease(t *testing.T) {
 	work.git("push", "-q", "origin", "main", "develop", "release/a", "release/b", "--tags")
 	head := origin.git("rev-parse", "main")
 	base := origin.git("rev-parse", "main^")
-	work.write(".nerv/nerv.yaml", "pipeline:\n  dotnet:\n    solution: App.slnx\n  images:\n    - name: ghcr.io/acme/app\n")
+	work.write(".ai-workflow.yml", "pipeline:\n  dotnet:\n    solution: App.slnx\n  images:\n    - name: ghcr.io/acme/app\n")
 	// The earlier steps' records, as the release, test and docker steps
 	// write them: test at the commit the release was made from, docker for
 	// the release's tag and commit.

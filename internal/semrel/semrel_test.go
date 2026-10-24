@@ -102,11 +102,7 @@ func fakeRepo(t *testing.T, root string, run func(req runnerRequest) (Result, er
 
 func writeConfig(t *testing.T, root, yaml string) {
 	t.Helper()
-	dir := filepath.Join(root, ".nerv")
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(dir, "nerv.yaml"), []byte(yaml), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(root, ".ai-workflow.yml"), []byte(yaml), 0o644); err != nil {
 		t.Fatal(err)
 	}
 }

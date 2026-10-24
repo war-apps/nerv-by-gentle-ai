@@ -6,16 +6,16 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/war-apps/nerv-by-gentle-ai/internal/configure"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/paths"
 )
 
 // runReposSection is Section 3: an "Initialize a repository for NERV now?
 // (path, or Enter to skip)" loop, asking a repo's base branch and the
 // repo-scope settings of the enabled task providers (from their manifests),
-// then writing .nerv/nerv.yaml through configure.InitRepo — the same write
+// then writing .ai-workflow.yml through configure.InitRepo — the same write
 // path "nerv configure --init-repo --repo-provider-config" uses. baseBranch
 // is the User-config section's own answer, used as this section's default
 // regardless of whether Section 1 actually wrote anything.
@@ -49,7 +49,7 @@ func runReposSection(deps Deps, s *session, out io.Writer, baseBranch string, pr
 			continue
 		}
 
-		repoConfigPath := filepath.Join(toplevel, ".nerv", "nerv.yaml")
+		repoConfigPath := paths.ProjectConfig(toplevel)
 		if _, err := os.Stat(repoConfigPath); err == nil {
 			fmt.Fprintf(out, "%s already initialized, left untouched.\n", repoConfigPath)
 			continue

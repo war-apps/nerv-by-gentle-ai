@@ -12,7 +12,7 @@ would.
 | `nerv ship` (`/nerv:ship`) | Builds, tests and packages what is on origin, in a throwaway clone, in each project's build mode (`compose` or `script`), per project in dependency order, and leaves a local artifact (`.nerv/artifacts/<project>/<version>/`) for `nerv deploy`. | Only `.nerv/artifacts/` in your repository; never git (no commit, tag or push) and never a registry. |
 
 Both read the optional `release:` section of the project-scope
-`<repo>/.nerv/nerv.yaml`. Without it a repository is one project and is
+`<repo>/.ai-workflow.yml`. Without it a repository is one project and is
 computed exactly like plain semantic-release; `nerv ship` needs the
 section, with a `build.mode` for each project.
 
@@ -61,12 +61,12 @@ you:
    stage commands it found), explains each non-obvious choice, and asks
    only what it cannot detect, one question at a time (the build mode when
    both fit, the compose test service, a coverage floor, `depends_on`).
-3. It writes the section into `.nerv/nerv.yaml` (the rest of the file is
+3. It writes the section into `.ai-workflow.yml` (the rest of the file is
    kept as it is) and validates it with `nerv version next --offline`,
    showing each project's next version.
 
 It never commits, pushes or releases. `nerv version next` and `nerv ship`
-read your local `.nerv/nerv.yaml` as it is, committed or not (commit it for
+read your local `.ai-workflow.yml` as it is, committed or not (commit it for
 your team's sake; it is not required). A semantic-release configuration it
 creates must be committed and pushed: the versions are computed from
 origin's. Then run `/nerv:ship`. `/nerv:release-setup --project <name>`
@@ -80,7 +80,7 @@ configured in its `package.json` `release` (branches main, `release/rc`
 with channel `rc`, develop with channel `alpha`), the API's `.csproj`
 receives the version, the tests collect coverage with a line floor, and
 the package stage leaves the NuGet package and the image archive in the
-outputs. Add to `.nerv/nerv.yaml`:
+outputs. Add to `.ai-workflow.yml`:
 
 ```yaml
 release:
@@ -185,7 +185,7 @@ packaged).
 ## Configuration (`release:`)
 
 The section is project scope only: it is never read from the user-scope
-`~/.claude/nerv/nerv.yaml` and never merged with it. When it is absent, the
+`~/.config/ai-workflow/config.yml` and never merged with it. When it is absent, the
 repository simply has no release configuration.
 
 The versioning rules themselves (branches and channels, `releaseRules`,
@@ -196,10 +196,10 @@ projects a monorepo holds, how they depend on each other, and how each one
 is built, tested and packaged.
 
 Both commands read the `release:` section from your local
-`.nerv/nerv.yaml` (the working-tree file, committed or not), never origin's
+`.ai-workflow.yml` (the working-tree file, committed or not), never origin's
 copy. For `nerv ship` that is the only thing taken from your machine: the
 code, the semantic-release configuration and the branch content are
-origin's, in the release clone, whose own `.nerv/nerv.yaml` is ignored. The
+origin's, in the release clone, whose own `.ai-workflow.yml` is ignored. The
 paths the section names are resolved inside the release clone; a path that
 is not on origin's branch (a project folder that exists only locally) is
 refused before any stage.
@@ -397,7 +397,7 @@ refuses a project without `build.mode`.
 
 ### YAML notes
 
-- Only the `release:` block is parsed: it is cut out of `nerv.yaml` by
+- Only the `release:` block is parsed: it is cut out of `.ai-workflow.yml` by
   indentation, so a YAML error elsewhere in the file never affects the
   release commands. When the file's layout does not allow the cut
   (`---` between documents, an indented or flow top level), the whole file
@@ -621,7 +621,7 @@ yes, so the versions you approved are the only ones that can be packaged.
 ### Flow
 
 1. Resolve the repository and the branch (default: the current one), load
-   the `release:` section from your local `.nerv/nerv.yaml` (committed or
+   the `release:` section from your local `.ai-workflow.yml` (committed or
    not) and refuse, before anything else, a repository without the
    section, an invalid section, a project without `build.mode`, an unknown
    `--project`, or `--version` with several projects and no `--project`.

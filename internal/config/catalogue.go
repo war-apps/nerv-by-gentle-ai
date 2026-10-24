@@ -2,7 +2,7 @@ package config
 
 import "strings"
 
-// KeyDefault pairs one managed nerv.yaml key with its built-in default
+// KeyDefault pairs one managed configuration key with its built-in default
 // value, in the catalogue's canonical order.
 type KeyDefault struct {
 	Key   string
@@ -25,7 +25,7 @@ var skillsDefaults = map[string]string{
 	"audit":          "security-review, clean-code-guard",
 }
 
-// Defaults returns the built-in default for every managed nerv.yaml key, in
+// Defaults returns the built-in default for every managed configuration key, in
 // catalogue order — the complete catalogue of keys SetManagedValue accepts.
 // Mirrors Get-NervConfigDefaults.
 func Defaults() []KeyDefault {
@@ -123,7 +123,7 @@ type ProjectValues struct {
 	BaseBranch string
 }
 
-// FormatProjectFile renders a project-scope .nerv/nerv.yaml text:
+// FormatProjectFile renders a project-scope .ai-workflow.yml text:
 // enabled: true, then only the fields the caller set, each with a short
 // comment, plus a commented models: hint line. Mirrors
 // Format-NervProjectFile.

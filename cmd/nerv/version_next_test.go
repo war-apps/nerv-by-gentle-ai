@@ -27,7 +27,7 @@ var shipconfigValidationError = shipconfig.ValidationError{Problems: []string{"r
 
 // nextFixture is a fake repository for `nerv version next`: git's top-level
 // answer comes from a scripted runner, the release configuration (if any)
-// from a real .nerv/nerv.yaml in a temp dir, and the engine is a recorded
+// from a real .ai-workflow.yml in a temp dir, and the engine is a recorded
 // fake.
 type nextFixture struct {
 	top     string
@@ -59,7 +59,7 @@ func newNextFixture(t *testing.T, nervYAML string) *nextFixture {
 		if err := os.MkdirAll(filepath.Join(top, ".nerv"), 0o755); err != nil {
 			t.Fatal(err)
 		}
-		if err := os.WriteFile(filepath.Join(top, ".nerv", "nerv.yaml"), []byte(nervYAML), 0o644); err != nil {
+		if err := os.WriteFile(filepath.Join(top, ".ai-workflow.yml"), []byte(nervYAML), 0o644); err != nil {
 			t.Fatal(err)
 		}
 	}

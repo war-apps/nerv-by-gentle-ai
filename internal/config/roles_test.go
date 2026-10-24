@@ -161,7 +161,7 @@ func TestRoles_EveryRoleHasItsDisplayName(t *testing.T) {
 }
 
 // Every role ID stays a short lowercase slug usable as a Claude Code agent
-// name, a nerv:<id> subagent type and a nerv.yaml models: key.
+// name, a nerv:<id> subagent type and a models: configuration key.
 func TestRoles_IDsAreLowercaseSlugs(t *testing.T) {
 	slug := regexp.MustCompile(`^[a-z]+(-[a-z]+)*$`)
 	for _, role := range config.Roles().AllRoles {

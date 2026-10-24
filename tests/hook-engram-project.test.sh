@@ -154,8 +154,7 @@ if git_available; then
   tmp5="$(mktemp -d)"
   (cd "$tmp5" && git init -q .)
   base5="$(basename "$tmp5")"
-  mkdir -p "$tmp5/.nerv"
-  printf 'enabled: true\n' > "$tmp5/.nerv/nerv.yaml"
+  printf 'enabled: true\n' > "$tmp5/.ai-workflow.yml"
   out5="$(mktemp)"; err5="$(mktemp)"
   run_hook "$tmp5" "$out5" "$err5"; exit5=$?
   assert_output_exact "nerv-enabled-git-detected" "$out5" "$exit5" \
@@ -170,8 +169,7 @@ fi
 # fallback line, no ask line ---
 tmp6="$(mktemp -d)"
 if assert_no_git_repo "$tmp6"; then
-  mkdir -p "$tmp6/.nerv"
-  printf 'enabled: true\n' > "$tmp6/.nerv/nerv.yaml"
+  printf 'enabled: true\n' > "$tmp6/.ai-workflow.yml"
   out6="$(mktemp)"; err6="$(mktemp)"
   run_hook "$tmp6" "$out6" "$err6"; exit6=$?
   assert_output_exact "nerv-enabled-undetermined-fallback" "$out6" "$exit6" \
@@ -202,8 +200,7 @@ rm -rf "$tmp7"
 # --- Case 8: "enabled: true # comment" still counts as enabled ---
 tmp8="$(mktemp -d)"
 if assert_no_git_repo "$tmp8"; then
-  mkdir -p "$tmp8/.nerv"
-  printf 'enabled: true   # comment\n' > "$tmp8/.nerv/nerv.yaml"
+  printf 'enabled: true   # comment\n' > "$tmp8/.ai-workflow.yml"
   out8="$(mktemp)"; err8="$(mktemp)"
   run_hook "$tmp8" "$out8" "$err8"; exit8=$?
   assert_output_exact "nerv-enabled-inline-comment" "$out8" "$exit8" \
@@ -329,8 +326,8 @@ if git_available; then
   tmp15="$(mktemp -d)"
   (cd "$tmp15" && git init -q .)
   base15="$(basename "$tmp15")"
-  mkdir -p "$tmp15/.nerv" "$tmp15/src"
-  printf 'enabled: true\n' > "$tmp15/.nerv/nerv.yaml"
+  mkdir -p "$tmp15/src"
+  printf 'enabled: true\n' > "$tmp15/.ai-workflow.yml"
   out15="$(mktemp)"; err15="$(mktemp)"
   run_hook "$tmp15/src" "$out15" "$err15"; exit15=$?
   assert_output_exact "nested-nerv-gate-at-root" "$out15" "$exit15" \

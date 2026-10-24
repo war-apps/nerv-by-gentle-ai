@@ -85,7 +85,7 @@ func TestIntegration_PipelineDockerPushesToALocalRegistry(t *testing.T) {
 	work.git("push", "-q", "origin", "main", "--tags")
 	commit := origin.git("rev-parse", "v1.0.0^{commit}")
 	image := registry + "/acme/app"
-	work.write(".nerv/nerv.yaml", `pipeline:
+	work.write(".ai-workflow.yml", `pipeline:
   dotnet:
     solution: App.slnx
   registry:

@@ -1,5 +1,5 @@
 // Package yamlsection reads one top-level section of a repository's
-// .nerv/nerv.yaml with gopkg.in/yaml.v3, without depending on the rest of
+// .ai-workflow.yml with gopkg.in/yaml.v3, without depending on the rest of
 // the file: the section block is cut out of the text and parsed alone, its
 // keys are checked strictly against a Go struct, and paths are checked and
 // normalised. It backs the release: section (internal/shipconfig) and the
@@ -15,7 +15,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// The rest of nerv.yaml is maintained by internal/config, a line-based
+// The rest of .ai-workflow.yml is maintained by internal/config, a line-based
 // editor, and may not be strict YAML. A YAML error outside a section must not
 // break the commands that read it, so the section block is cut out of the
 // file by indentation and parsed alone. The consequence is that an alias
@@ -69,7 +69,7 @@ func newSection(key string) section {
 	}
 }
 
-// Locate returns the value node of the top-level key of a nerv.yaml text.
+// Locate returns the value node of the top-level key of a .ai-workflow.yml text.
 // It returns ErrAbsent when there is none, a *ProblemError for a document
 // whose top level is not a mapping or an alias to an anchor outside the
 // section, and a plain error prefixed by "<key>: " for a YAML syntax error
@@ -101,7 +101,7 @@ func Locate(data []byte, key string) (*yaml.Node, error) {
 			// escaped quoted key); a configured repository must not be read
 			// as unconfigured.
 			if line := s.possibleKey(data); line > 0 {
-				return nil, fmt.Errorf("%s: line %d may be the %s: key, but nerv.yaml is not valid YAML: %w", key, line, key, err)
+				return nil, fmt.Errorf("%s: line %d may be the %s: key, but .ai-workflow.yml is not valid YAML: %w", key, line, key, err)
 			}
 			// A broken file without the key: not this section's business.
 			return nil, ErrAbsent
@@ -124,7 +124,7 @@ func parseDocument(data []byte) (*yaml.Node, error) {
 	return &doc, nil
 }
 
-// block cuts the top-level section block out of a nerv.yaml text: the key
+// block cuts the top-level section block out of a .ai-workflow.yml text: the key
 // line and every following line that is blank, a comment, indented, or a
 // column-0 sequence entry (a block sequence may sit at its key's
 // indentation). The result keeps the block on its original line numbers by
@@ -248,7 +248,7 @@ func (s section) node(doc *yaml.Node) (*yaml.Node, error) {
 		return nil, ErrAbsent
 	}
 	if root.Kind != yaml.MappingNode {
-		return nil, &ProblemError{Problem: fmt.Sprintf("the top level of nerv.yaml must be a mapping (line %d)", root.Line)}
+		return nil, &ProblemError{Problem: fmt.Sprintf("the top level of .ai-workflow.yml must be a mapping (line %d)", root.Line)}
 	}
 	for i := 0; i+1 < len(root.Content); i += 2 {
 		if root.Content[i].Value == s.key {

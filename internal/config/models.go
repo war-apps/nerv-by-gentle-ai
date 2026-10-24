@@ -33,7 +33,7 @@ var GentleAIV4Agents = []string{
 type RoleInfo struct {
 	// DisplayName is the role's full character name, for people; the role
 	// ID (the catalogue key) stays the short lowercase slug used as agent
-	// name, nerv:<id> subagent type and nerv.yaml models: key.
+	// name, nerv:<id> subagent type and models: configuration key.
 	DisplayName string
 	// Purpose is a one-line description of what the role does.
 	Purpose string
@@ -116,7 +116,7 @@ func Roles() RoleCatalogue {
 
 // LegacyRoleAliases maps every retired role ID to the role ID that replaced
 // it. Old names stay accepted wherever a user types or stores a role key
-// (nerv.yaml models: keys, --set-model, the wizard) and resolve to the new
+// (models: configuration keys, --set-model, the wizard) and resolve to the new
 // ID; every write stores the new ID. A fresh map is returned on each call.
 func LegacyRoleAliases() map[string]string {
 	return map[string]string{

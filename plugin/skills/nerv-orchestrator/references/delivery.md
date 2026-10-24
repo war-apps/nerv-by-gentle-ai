@@ -13,7 +13,7 @@ slicing per their definitions). Resolve `work-unit-commits` and
 and PR creation are always the user's own decision — Aoba prepares the
 commands, never runs them.
 
-**Artifacts commit policy.** `artifacts.commit` in the merged `nerv.yaml`
+**Artifacts commit policy.** `artifacts.commit` in the merged configuration
 (`with-change`|`at-close`|`never`, default `at-close`): `with-change` adds
 `openspec/changes/{change}/` to each work-unit commit that touches it;
 `at-close` leaves it untracked until it is committed once (by the tier's
@@ -22,8 +22,9 @@ committer), whole, as
 commit; `never` leaves it untracked permanently.
 
 **Repos that git-ignore the artifacts.** Once per change, before the first
-commit, Ikari runs `git check-ignore -q .nerv/ openspec/changes/{change}/`.
-When either path is ignored, the repository's policy wins over
+commit, Ikari runs `git check-ignore -q openspec/changes/{change}/`
+(`.nerv/` is runtime only and always ignores itself, so it is not checked).
+When the path is ignored, the repository's policy wins over
 `artifacts.commit`: the artifacts stay local, nothing under them is
 committed or force-added, the archive is a plain move with no archive
 commit, and the run says so — in the first commit-validation prompt and in

@@ -40,7 +40,7 @@ func TestEmbeddedProviders_ListsTheShippedProviders(t *testing.T) {
 // one changes nothing.
 func TestSetProviderSettings_PreservesFormatAndReportsChanges(t *testing.T) {
 	root := t.TempDir()
-	path := filepath.Join(root, "nerv.yaml")
+	path := filepath.Join(root, "config.yml")
 	original := "enabled: true\r\n" +
 		"tasks:\r\n" +
 		"  providers:\r\n" +
@@ -92,7 +92,7 @@ func TestSetProviderSettings_PreservesFormatAndReportsChanges(t *testing.T) {
 	}
 }
 
-// A user-scope key belongs in ~/.claude/nerv/nerv.yaml, never in a repo
+// A user-scope key belongs in the user config.yml, never in a repo
 // file, so --repo-provider-config refuses it.
 func TestParseProviderConfig_RefusesUserScopeKeys(t *testing.T) {
 	_, err := configure.ParseProviderConfig(nerv.ExtensionsFS(), []string{"teamwork.assignee_id=5"})

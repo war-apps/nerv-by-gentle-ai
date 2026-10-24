@@ -11,6 +11,8 @@ import (
 
 	"github.com/war-apps/nerv-by-gentle-ai/internal/atomicfile"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/config"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/paths"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/workflowconfig"
 )
 
 // InitRepoRequest is --init-repo's parameters: the target directory plus
@@ -23,13 +25,16 @@ type InitRepoRequest struct {
 	ProviderConfig []string
 }
 
-// InitRepo initializes path for NERV by writing <toplevel>/.nerv/nerv.yaml
+// InitRepo initializes path for NERV by writing <toplevel>/.ai-workflow.yml
 // (config.FormatProjectFile, plus each ProviderConfig entry under
-// tasks.providers.<provider>.<key>) — never overwriting or editing an
+// tasks.providers.<provider>.<key>) and, when missing, the runtime folder's
+// <toplevel>/.nerv/.gitignore of "*" — never overwriting or editing an
 // existing project config, reporting that case as a warning rather than an
-// error. path must exist and be inside a git working tree (resolved with
-// "git -C <path> rev-parse --show-toplevel"); either failure, like an
-// invalid ProviderConfig entry, is a refusal.
+// error. A pre-rename <toplevel>/.nerv/nerv.yaml is not a project config:
+// it is left alone and reported in a warning that "nerv migrate" moves it.
+// path must exist and be inside a git working tree (resolved with "git -C
+// <path> rev-parse --show-toplevel"); either failure, like an invalid
+// ProviderConfig entry, is a refusal.
 func InitRepo(deps Deps, req InitRepoRequest) (Result, error) {
 	if _, err := os.Stat(req.Path); err != nil {
 		return Result{}, &RefusalError{Err: fmt.Errorf("Path not found: %s", req.Path)}
@@ -46,9 +51,12 @@ func InitRepo(deps Deps, req InitRepoRequest) (Result, error) {
 		return Result{}, &RefusalError{Err: fmt.Errorf("Not a git repository: %s", req.Path)}
 	}
 
-	repoConfigPath := filepath.Join(toplevel, ".nerv", "nerv.yaml")
+	repoConfigPath := paths.ProjectConfig(toplevel)
 
 	warnings := emptyStrings()
+	if hint := workflowconfig.LegacyHint(paths.LegacyProjectConfig(toplevel), repoConfigPath); hint != "" {
+		warnings = append(warnings, hint)
+	}
 	written := emptyStrings()
 	changes := emptyChanges()
 	changed := false
@@ -63,6 +71,13 @@ func InitRepo(deps Deps, req InitRepoRequest) (Result, error) {
 		}
 		written = append(written, repoConfigPath)
 		changed = true
+		ignore, err := ensureRuntimeIgnored(toplevel)
+		if err != nil {
+			return Result{}, err
+		}
+		if ignore != "" {
+			written = append(written, ignore)
+		}
 	} else {
 		return Result{}, statErr
 	}
@@ -75,4 +90,22 @@ func InitRepo(deps Deps, req InitRepoRequest) (Result, error) {
 		ConfigPath: repoConfigPath,
 		Backup:     nil,
 	}, nil
+}
+
+// ensureRuntimeIgnored writes <repoRoot>/.nerv/.gitignore of "*" when it is
+// missing, so the runtime folder is never committed without touching the
+// repository's own .gitignore. It returns the path written, or "" when the
+// file already existed.
+func ensureRuntimeIgnored(repoRoot string) (string, error) {
+	ignore := filepath.Join(paths.RuntimeDir(repoRoot), ".gitignore")
+	if _, err := os.Lstat(ignore); !errors.Is(err, fs.ErrNotExist) {
+		return "", err
+	}
+	if err := os.MkdirAll(paths.RuntimeDir(repoRoot), 0o755); err != nil {
+		return "", err
+	}
+	if err := os.WriteFile(ignore, []byte("*\n"), 0o644); err != nil {
+		return "", err
+	}
+	return ignore, nil
 }

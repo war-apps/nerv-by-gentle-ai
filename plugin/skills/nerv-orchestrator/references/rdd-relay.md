@@ -31,7 +31,8 @@ is all-or-declared, so Ikari declares it:
    claude-code --next-transition`, and take `eligible_untracked_inventory`
    (a `sha256:` digest).
 2. List the untracked paths with `git ls-files --others --exclude-standard`
-   and drop every path under `.nerv/` or `openspec/`.
+   and drop every path under `.nerv/` or `openspec/`, and `.ai-workflow.yml`
+   while it is still untracked.
 3. Nothing left → rerun assess (same flags) plus
    `--untracked-scope=exclude --expected-untracked-inventory=<digest>`.
    Paths left → plus `--untracked-scope=select` with one

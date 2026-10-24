@@ -125,7 +125,7 @@ esac
 		t.Fatalf("git init: %v %s", err, out)
 	}
 	knownHosts := filepath.Join(t.TempDir(), "known_hosts")
-	work.write(".nerv/nerv.yaml", `pipeline:
+	work.write(".ai-workflow.yml", `pipeline:
   dotnet: { solution: App.slnx }
   images: [{ name: ghcr.io/acme/api }]
   deploy:

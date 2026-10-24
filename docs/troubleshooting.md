@@ -14,7 +14,7 @@
   installed: the orchestrator emits task events only when the agent type
   `task:dispatcher` is available. Install it with `nerv install --with task`
   (or `--with task-teamwork`) and restart Claude Code. A `tasks:` block in
-  `nerv.yaml` alone does nothing; core ignores it and never deletes it.
+  the configuration alone does nothing; core ignores it and never deletes it.
 - **"Task events pending" in the run summary.** A provider answered
   `blocked` or `failed` (for example, missing MCP tools); the run went on
   without it. Fix the cause named in the envelope's `error`, then run
@@ -94,7 +94,7 @@
   check greps the commit message for this before it lands.
 - **`issue.deferred` or `/task:start` blocks with "tasklist not found."** A
   stale `tasks.providers.teamwork.tasklist_id` (or `project_id`) in
-  `nerv.yaml`. Fix the config (project or user scope), then replay the
+  the configuration. Fix the config (project or user scope), then replay the
   pending envelope with `/task:replay <change>`; the task plugin never
   silently creates the task elsewhere.
 - **Old `/task:*` copies in `~/.claude/commands/task/`.** An older release

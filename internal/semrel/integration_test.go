@@ -256,7 +256,7 @@ func TestIntegration_MonorepoPathOrScope(t *testing.T) {
 	requireToolchain(t)
 	r := newRepo(t)
 	r.write(".releaserc.json", angularMain)
-	r.write(".nerv/nerv.yaml", `release:
+	r.write(".ai-workflow.yml", `release:
   projects:
     - { name: api, path: api }
     - { name: web, path: web }
@@ -294,7 +294,7 @@ func TestIntegration_DependsOnBump(t *testing.T) {
 	requireToolchain(t)
 	r := newRepo(t)
 	r.write(".releaserc.json", angularMain)
-	r.write(".nerv/nerv.yaml", `release:
+	r.write(".ai-workflow.yml", `release:
   projects:
     - name: app
       path: app

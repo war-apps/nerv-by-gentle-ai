@@ -75,7 +75,7 @@ while testing; exercise them through the fakes in `go test ./...` instead.
 
 - **KISS** — the simplest thing that satisfies the CLI contract and its
   tests; no speculative flags or config knobs.
-- **DRY** — one write path for `nerv.yaml` (the format-preserving editor
+- **DRY** — one write path for `.ai-workflow.yml` and the user config (the format-preserving editor
   in `internal/config`); every command that mutates it goes through that
   path, never a second YAML writer.
 - **YAGNI** — no flag without a consumer; a script's old behavior is

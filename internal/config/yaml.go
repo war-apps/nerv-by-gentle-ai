@@ -1,10 +1,11 @@
-// Package config edits nerv.yaml documents in place while preserving their
+// Package config edits nerv's configuration documents (config.yml and
+// .ai-workflow.yml) in place while preserving their
 // exact formatting (comments, blank lines, indentation, key order, EOL
 // style), and holds the managed configuration-key catalogue and per-role
 // model catalogue used by "nerv configure". It never touches the
 // filesystem: callers read/write bytes and hand this package text.
 //
-// This package is a line-based, format-preserving editor over nerv.yaml —
+// This package is a line-based, format-preserving editor over those files —
 // never a general YAML parser/library.
 package config
 
@@ -24,7 +25,7 @@ var (
 	bareScalarRe      = regexp.MustCompile(`^[A-Za-z0-9_.\-/~]+$`)
 )
 
-// Document is a nerv.yaml text blob that can be inspected and edited in
+// Document is a .ai-workflow.yml text blob that can be inspected and edited in
 // place while preserving every byte it does not touch.
 type Document struct {
 	text string

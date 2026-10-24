@@ -23,7 +23,7 @@ func TestIntegration_PipelineReleaseRecordsItsBaseCommit(t *testing.T) {
 	work.git("tag", "v1.0.0")
 	work.commit("feat: add gadgets", "b.txt")
 	work.git("push", "-q", "origin", "main", "--tags")
-	work.write(".nerv/nerv.yaml", "pipeline:\n  dotnet:\n    solution: App.slnx\n  images:\n    - name: ghcr.io/acme/app\n")
+	work.write(".ai-workflow.yml", "pipeline:\n  dotnet:\n    solution: App.slnx\n  images:\n    - name: ghcr.io/acme/app\n")
 	base := origin.git("rev-parse", "main")
 	release := func(args ...string) pipeline.ReleaseOutputs {
 		t.Helper()

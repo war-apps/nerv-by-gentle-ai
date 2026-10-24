@@ -200,7 +200,7 @@ func TestIntegration_ShipPackagesWhatOriginHasAndNeverWritesToGit(t *testing.T) 
 	marker := filepath.Join(t.TempDir(), "marker.log")
 	origin, work := newShipRepos(t)
 	work.write("package.json", shipReleaseConfig)
-	work.write(".nerv/nerv.yaml", "release:\n  projects:\n"+markerProject("widgets", ".", "", marker))
+	work.write(".ai-workflow.yml", "release:\n  projects:\n"+markerProject("widgets", ".", "", marker))
 	work.commit("chore: init", "a.txt")
 	work.git("tag", "v1.0.0")
 	work.commit("feat: add gadgets", "b.txt")
@@ -287,7 +287,7 @@ func TestIntegration_ShipMonorepoInOrder(t *testing.T) {
 	marker := filepath.Join(t.TempDir(), "marker.log")
 	origin, work := newShipRepos(t)
 	work.write("package.json", shipReleaseConfig)
-	work.write(".nerv/nerv.yaml", "release:\n  projects:\n"+
+	work.write(".ai-workflow.yml", "release:\n  projects:\n"+
 		markerProject("api", "api", "api-v${version}", marker)+
 		markerProject("web", "web", "web-v${version}", marker)+
 		markerProject("docs", "docs", "docs-v${version}", marker))
@@ -331,7 +331,7 @@ func TestIntegration_ShipProjectRaisedByDependsOn(t *testing.T) {
 	marker := filepath.Join(t.TempDir(), "marker.log")
 	origin, work := newShipRepos(t)
 	work.write("package.json", shipReleaseConfig)
-	work.write(".nerv/nerv.yaml", "release:\n  projects:\n"+
+	work.write(".ai-workflow.yml", "release:\n  projects:\n"+
 		markerProject("core", "core", "core-v${version}", marker)+
 		markerProject("app", "app", "app-v${version}", marker)+
 		"      depends_on:\n        - project: core\n          bump: minor\n")
@@ -371,8 +371,8 @@ func TestIntegration_ShipUsesTheLocalUncommittedSection(t *testing.T) {
 	work.commit("feat: add gadgets", "b.txt")
 	work.git("push", "-q", "origin", "main", "--tags")
 	// Not committed: only the working tree has it.
-	work.write(".nerv/nerv.yaml", "release:\n  projects:\n"+markerProject("widgets", ".", "", marker))
-	if status := work.git("status", "--porcelain"); !strings.Contains(status, ".nerv/") {
+	work.write(".ai-workflow.yml", "release:\n  projects:\n"+markerProject("widgets", ".", "", marker))
+	if status := work.git("status", "--porcelain"); !strings.Contains(status, ".ai-workflow.yml") {
 		t.Fatalf("the section should be uncommitted: %q", status)
 	}
 
@@ -385,7 +385,7 @@ func TestIntegration_ShipUsesTheLocalUncommittedSection(t *testing.T) {
 	if len(got) != 2 || !strings.HasPrefix(got[0], "build widgets 1.1.0 v1.1.0") || !strings.HasPrefix(got[1], "prepare widgets") {
 		t.Errorf("the local section's stages and hooks did not run:\n%s", strings.Join(got, "\n"))
 	}
-	if out, err := exec.Command("git", "-C", origin.dir, "cat-file", "-e", "main:.nerv/nerv.yaml").CombinedOutput(); err == nil {
+	if out, err := exec.Command("git", "-C", origin.dir, "cat-file", "-e", "main:.ai-workflow.yml").CombinedOutput(); err == nil {
 		t.Errorf("the local section reached origin: %s", out)
 	}
 }
@@ -397,7 +397,7 @@ func TestIntegration_ShipWithTheBuiltInConfiguration(t *testing.T) {
 	shipEnv(t)
 	cache := t.TempDir()
 	origin, work := newShipRepos(t)
-	work.write(".nerv/nerv.yaml", "release:\n  projects:\n    - name: widgets\n      path: .\n      build: { mode: script }\n      stages:\n        build: { run: 'true' }\n")
+	work.write(".ai-workflow.yml", "release:\n  projects:\n    - name: widgets\n      path: .\n      build: { mode: script }\n      stages:\n        build: { run: 'true' }\n")
 	work.commit("chore: init", "a.txt")
 	work.git("tag", "v1.0.0")
 	work.git("checkout", "-q", "-b", "develop")
@@ -435,7 +435,7 @@ func TestIntegration_PipelineReleaseWithTheBuiltInConfiguration(t *testing.T) {
 	work.commit("feat: add gadgets", "b.txt")
 	work.git("push", "-q", "origin", "main", "develop", "--tags")
 	// The pipeline: section is local (untracked).
-	work.write(".nerv/nerv.yaml", "pipeline:\n  dotnet:\n    solution: App.slnx\n  images:\n    - name: ghcr.io/acme/app\n  release:\n    version_files: [src/Api/Api.csproj]\n")
+	work.write(".ai-workflow.yml", "pipeline:\n  dotnet:\n    solution: App.slnx\n  images:\n    - name: ghcr.io/acme/app\n  release:\n    version_files: [src/Api/Api.csproj]\n")
 	originBefore := origin.git("for-each-ref", "--format=%(refname) %(objectname)")
 	outputs := filepath.Join(work.dir, ".nerv", "artifacts", "pipeline", "release.json")
 	readJSON := func() map[string]any {
@@ -514,7 +514,7 @@ func TestIntegration_PipelineReleaseRepositoryConfigAssets(t *testing.T) {
 	work.git("tag", "v1.0.0")
 	work.commit("feat: add gadgets", "b.txt")
 	work.git("push", "-q", "origin", "main", "--tags")
-	work.write(".nerv/nerv.yaml", "pipeline:\n  dotnet:\n    solution: App.slnx\n  images:\n    - name: ghcr.io/acme/app\n  release:\n    version_files: [src/Api/Api.csproj]\n")
+	work.write(".ai-workflow.yml", "pipeline:\n  dotnet:\n    solution: App.slnx\n  images:\n    - name: ghcr.io/acme/app\n  release:\n    version_files: [src/Api/Api.csproj]\n")
 	runRelease := func(args ...string) (int, string, string) {
 		var stdout, stderr bytes.Buffer
 		code := run(append([]string{"pipeline", "release", "--cwd", work.dir}, args...), &stdout, &stderr, shipOptions(t, cache))

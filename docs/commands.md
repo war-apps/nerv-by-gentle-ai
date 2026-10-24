@@ -9,11 +9,11 @@ Nerv by Gentle-AI has two command surfaces: Claude Code slash commands
 | Command | What it does |
 |---|---|
 | `/nerv:configure` | Configure NERV through guided questions (git, skills, models, repo) |
-| `/nerv:init` | Bootstrap NERV for the current repository (writes `.nerv/nerv.yaml`) |
+| `/nerv:init` | Bootstrap NERV for the current repository (writes `.ai-workflow.yml`) |
 | `/nerv:status` | Show NERV activation, config resolution, and change status (read-only) |
 | `/nerv:version` | Show the next release version of the repository (or of each project) |
 | `/nerv:ship` | Release the repository from origin: dry run first, the real release only after your explicit yes |
-| `/nerv:release-setup` | Write the `release:` section of `.nerv/nerv.yaml` from what the repository has, asking only what it cannot detect |
+| `/nerv:release-setup` | Write the `release:` section of `.ai-workflow.yml` from what the repository has, asking only what it cannot detect |
 | `/nerv:pipeline` | Run the Docker pipeline (validate, test, release, docker, sync, deploy): dry run first, the real run only after your explicit yes |
 
 ### Task plugin commands (`/task:*`)
@@ -48,7 +48,7 @@ contract against the configured provider plugins.
 Walks through the sections you name — `git`, `skills`, `models`, `repo`,
 or `all` — reading the current state first and writing
 only the changes you confirm. Use it any time you want to change
-`nerv.yaml` without hand-editing YAML.
+`config.yml` and `.ai-workflow.yml` without hand-editing YAML.
 
 ```
 /nerv:configure git
@@ -65,7 +65,7 @@ only the changes you confirm. Use it any time you want to change
 ### /nerv:init
 
 Sets up NERV in a repository that doesn't have it yet: asks only for the
-keys that aren't already resolved (the base branch), writes `.nerv/nerv.yaml`, creates `openspec/config.yaml`
+keys that aren't already resolved (the base branch), writes `.ai-workflow.yml`, creates `openspec/config.yaml`
 (`strict_tdd` and the test runner) and the `openspec/specs/` and
 `openspec/changes/archive/` folders when they are missing, and refreshes
 the skill registry with `gentle-ai skill-registry refresh`. An existing
@@ -108,7 +108,7 @@ It detects the repository's semantic-release configuration, .NET projects
 and solutions, Dockerfiles and CI docker steps, `package.json` scripts,
 release scripts and monorepo layout; proposes a complete section; asks
 only what it cannot detect, one question at a time; writes the section
-into `.nerv/nerv.yaml` without touching the rest of the file; and
+into `.ai-workflow.yml` without touching the rest of the file; and
 validates it with `nerv version next --offline`. An existing section is
 shown first and never overwritten without asking. `--project <name>` adds
 or edits one project. It never commits, pushes or releases. See
@@ -193,15 +193,15 @@ With --init-repo:
   --repo-base <branch>      Base branch override
   --repo-provider-config <provider>.<key>=<value>
                             Write tasks.providers.<provider>.<key> into the
-                            repository's .nerv/nerv.yaml (repeatable; repo-scope
+                            repository's .ai-workflow.yml (repeatable; repo-scope
                             keys of the provider's provider.yaml only)
 
-If `.nerv/nerv.yaml` already exists it is not recreated, and an existing
+If `.ai-workflow.yml` already exists it is not recreated, and an existing
 `tasks:` block in it is left untouched.
 
 Other flags:
   --json                    Print the result as JSON (ignored by --print, which always does)
-  --config <path>           Override the user-scope nerv.yaml path
+  --config <path>           Override the user-scope config.yml path
 ```
 
 ```
@@ -351,7 +351,7 @@ nerv uninstall
 
 ### nerv apply-models
 
-Applies the `models:` overrides from the user-scope `nerv.yaml` (merged
+Applies the `models:` overrides from the user-scope `config.yml` (merged
 over the plugin's own committed defaults) to the cached agent frontmatter.
 Run this after hand-editing `models:`, or after `nerv configure --set-model`
 if you skipped the automatic apply step.

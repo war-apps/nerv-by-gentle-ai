@@ -9,8 +9,8 @@ governance veto, Hyuga's criticality, waves and ranking dispatches, all
 five pilots (`rei`, `shinji`, `asuka`, `toji`, `kaworu`),
 and the full audit-and-closure stage (Kaji, `gendo`, Fuyutsuki's
 read-only refute mode, the ranked issue gate, fix routing, the
-bounded re-audit loop, and Aoba's mechanical Archive duty). The single
-`nerv.yaml` config file (two scopes, one schema, project overrides user)
+bounded re-audit loop, and Aoba's mechanical Archive duty). The configuration
+(`config.yml` and `.ai-workflow.yml`: two scopes, one schema, project overrides user)
 is resolved at Preflight. Task tracking later moved out of core into the
 optional task plugin (`task@nerv`): core only emits the events of
 SKILL.md `## Task events` through `task:dispatcher`, and only when that

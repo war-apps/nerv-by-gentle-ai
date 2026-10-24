@@ -18,12 +18,12 @@ import (
 const ManifestFile = "provider.yaml"
 
 // ConfigScopes are where a provider config key lives: the user's
-// ~/.claude/nerv/nerv.yaml or the repository's .nerv/nerv.yaml.
+// ~/.config/ai-workflow/config.yml or the repository's .ai-workflow.yml.
 var ConfigScopes = []string{"user", "repo"}
 
 // ConfigTypes are the value types a provider config key may hold. Only the
 // scalar ones (string, int, bool) are prompted by nerv configure; map and
-// list keys are edited in nerv.yaml and need no prompt.
+// list keys are edited in the configuration files and need no prompt.
 var ConfigTypes = []string{"string", "int", "bool", "map", "list"}
 
 var (
@@ -33,7 +33,7 @@ var (
 )
 
 // Manifest is a provider's provider.yaml. Its config keys are read from
-// tasks.providers.<name>.<key> in nerv.yaml.
+// tasks.providers.<name>.<key> in the configuration files.
 type Manifest struct {
 	Name            string            `yaml:"name"`
 	ContractVersion int               `yaml:"contract_version"`

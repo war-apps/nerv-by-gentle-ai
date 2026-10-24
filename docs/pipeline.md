@@ -1,6 +1,6 @@
 # Docker pipeline configuration (`pipeline:`)
 
-The `pipeline:` section of the project-scope `.nerv/nerv.yaml` configures
+The `pipeline:` section of the project-scope `.ai-workflow.yml` configures
 `nerv pipeline`, a standalone copy of dim.comprobantes.api's GitHub Actions
 CI/CD (`.github/workflows/ci-cd.yml`) for repositories that deploy a Docker
 image, plus the Docker deploy that dim runs with `/update-deploy`. Every step
@@ -43,7 +43,7 @@ semantic-release-style commits) to a deployed release, end to end:
    `dotnet`, `node`/`npm` (semantic-release), `docker`, `ssh` (and
    `sshpass` for password auth), `infisical` when the deploy data comes
    from Infisical.
-2. **Write the `pipeline:` section** of the local `.nerv/nerv.yaml`
+2. **Write the `pipeline:` section** of the local `.ai-workflow.yml`
    (committed or not; nerv reads your working tree's copy). The smallest
    useful one, for dim.comprobantes.api:
 
@@ -115,7 +115,7 @@ semantic-release-style commits) to a deployed release, end to end:
    `nerv pipeline validate` (an invalid section is refused with every
    problem listed).
 4. **Prepare the credentials** the irreversible steps use, never written
-   in `nerv.yaml`: `GHCR_USER` / `GHCR_TOKEN` for the image push (or
+   in `.ai-workflow.yml`: `GHCR_USER` / `GHCR_TOKEN` for the image push (or
    `nerv pipeline docker --no-login` with docker's own login), your git
    credentials for the release and the merge-backs (ssh keys or `gh auth
    setup-git`), `infisical login` (or the `NERV_DEPLOY_*` variables), and
@@ -144,7 +144,7 @@ version. It never runs a deploy or a push without that yes.
 nerv pipeline <step> [--cwd <dir>] [--json]
 ```
 
-Each step reads the `pipeline:` section of your local `.nerv/nerv.yaml`
+Each step reads the `pipeline:` section of your local `.ai-workflow.yml`
 (committed or not); without one it is refused (exit 1) pointing here.
 `validate` and `test` run in your **working tree**, as CI runs on a
 checkout: they check the code as it is, uncommitted changes included. Every
@@ -200,9 +200,10 @@ threshold is checked), listed in the result as `coverage` and
 committed and the repository's own `.gitignore` is not touched.
 
 **Test record.** Before the commands run, the step reads what it tests:
-`HEAD` and the working tree's changes outside `.nerv/` (tracked or
-untracked, ignored files excluded; `.nerv/` holds the local `nerv.yaml`
-and the artifacts; the paths are recorded exactly, from `git status
+`HEAD` and the working tree's changes outside `.nerv/` and
+`.ai-workflow.yml` (tracked or untracked, ignored files excluded;
+`.nerv/` holds the artifacts and `.ai-workflow.yml` the local
+configuration; the paths are recorded exactly, from `git status
 --porcelain=v1 -z`, a rename with both its new and old path). Only a passing run writes
 `.nerv/artifacts/pipeline/test.json` (`step`, `status`, `commit`, `dirty`,
 `changes`); a failing build or test, or an unreadable `HEAD`, leaves an
@@ -228,7 +229,7 @@ directly), as `pipeline.dotnet.coverage` says:
   only thresholds (stat `minimum` unless set, as coverlet).
 - The step's `--json` document and `test.json` hold `coverage`: the mode,
   the stat, and per metric checked the measured value, the threshold, its
-  `source` (`runsettings` or `nerv.yaml`) and whether it is met;
+  `source` (`runsettings` or `.ai-workflow.yml`) and whether it is met;
   `report_missing: true` when thresholds were set but no readable report
   was found (nothing measured, `met: false`).
 
@@ -701,7 +702,7 @@ pipeline:
 Paths are relative to the repository root, written with forward slashes
 (backslashes are accepted and normalised); absolute paths and paths that
 escape the repository are rejected. The file read is always the local
-working-tree `.nerv/nerv.yaml`. The section holds names, never secret
+working-tree `.ai-workflow.yml`. The section holds names, never secret
 values: a credential is given by the name of the environment variable that
 holds it.
 
@@ -853,7 +854,7 @@ name upper-cased with `-` turned into `_`; the prefix is `NERV_DEPLOY`. For
 ```bash
 NERV_DEPLOY_PRODUCTION_BLUE_DOCKER_SSH_HOST=10.0.0.10
 NERV_DEPLOY_PRODUCTION_BLUE_DOCKER_SSH_USER=deploy
-NERV_DEPLOY_PRODUCTION_BLUE_DOCKER_SSH_PASS=...          # never in nerv.yaml
+NERV_DEPLOY_PRODUCTION_BLUE_DOCKER_SSH_PASS=...          # never in .ai-workflow.yml
 NERV_DEPLOY_PRODUCTION_BLUE_DOCKER_COMPOSE_PATH=/srv/apps
 NERV_DEPLOY_PRODUCTION_BLUE_DOCKER_COMPOSE_SCRIPT=./manage.sh
 NERV_DEPLOY_PRODUCTION_BLUE_DOCKER_CONTAINER_NAME=comprobantes-api
@@ -882,7 +883,7 @@ overrides):
 
 ## Validation
 
-`nerv.yaml` is read section by section: a YAML error elsewhere in the file
+`.ai-workflow.yml` is read section by section: a YAML error elsewhere in the file
 does not matter, and an alias inside `pipeline:` can only refer to an
 anchor defined inside it (merge keys `<<:` work). Every problem is reported
 at once, each with its path in the section, for example:

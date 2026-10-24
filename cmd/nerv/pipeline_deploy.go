@@ -113,7 +113,7 @@ func (d deployRun) run(ctx context.Context) (pipeline.DeployResult, string, erro
 	cfg, err := pipelineconfig.Load(top)
 	switch {
 	case errors.Is(err, pipelineconfig.ErrNotConfigured):
-		return res, top, refuse("the repository has no pipeline: section in .nerv/nerv.yaml; see docs/pipeline.md")
+		return res, top, refuse("%s", withLegacyHint("the repository has no pipeline: section in .ai-workflow.yml; see docs/pipeline.md", top))
 	case err != nil:
 		return res, top, &refusal.Error{Err: err}
 	}

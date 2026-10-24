@@ -11,6 +11,7 @@ import (
 	"github.com/war-apps/nerv-by-gentle-ai/internal/configure"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/install"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/wizard"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/workflowconfig"
 )
 
 const installUsage = `Usage: nerv install [flags]
@@ -45,7 +46,7 @@ and removes the materialized marketplace directory.
 
 const applyModelsUsage = `Usage: nerv apply-models [flags]
 
-Applies the models: overrides from the user-scope nerv.yaml (merged over
+Applies the models: overrides from the user-scope config.yml (merged over
 the plugin's own committed defaults) to the cached agent frontmatter.
 `
 
@@ -68,6 +69,7 @@ func runInstall(args []string, stdout, stderr io.Writer, opts options) int {
 		fmt.Fprintf(stdout, "nerv: %v\n", err)
 		return 2
 	}
+	workflowconfig.PrintHints(stderr, home, "")
 
 	deps := install.Deps{
 		Home:                        home,
@@ -157,6 +159,7 @@ func runApplyModels(args []string, stdout, stderr io.Writer, opts options) int {
 		fmt.Fprintf(stdout, "nerv: %v\n", err)
 		return 2
 	}
+	workflowconfig.PrintHints(stderr, home, "")
 
 	deps := install.Deps{
 		Home:     home,

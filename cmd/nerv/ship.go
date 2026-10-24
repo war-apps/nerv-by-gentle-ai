@@ -27,7 +27,7 @@ import (
 const shipUsage = `Usage: nerv ship [flags]
 
 Builds, tests and packages each project of the release: section of
-.nerv/nerv.yaml from your machine, as the CI build would, and leaves a local
+.ai-workflow.yml from your machine, as the CI build would, and leaves a local
 artifact for nerv deploy. In a fresh temporary clone of origin's branch, for
 each project with a new release in dependency order, it writes the version
 into build.version_files and the CHANGELOG section into the project's
@@ -41,7 +41,7 @@ nerv ship never writes to git: no commit, no tag, no push; nerv deploy does
 that from the artifact. Your repository is never modified (only its
 .nerv/artifacts/, which ignores itself), and only what origin has is built:
 a local branch ahead of or behind origin is refused. The release: section is
-your local .nerv/nerv.yaml, committed or not; the code is origin's.
+your local .ai-workflow.yml, committed or not; the code is origin's.
 
 Flags:
   --cwd <dir>              A directory inside the repository (default ".")
@@ -407,7 +407,7 @@ func (s *shipRun) verb() string {
 func (s *shipRun) checkShipConfig(top string) error {
 	rel, err := shipconfig.Load(top)
 	if errors.Is(err, shipconfig.ErrNotConfigured) {
-		return refuse("the repository has no release: section in .nerv/nerv.yaml: nerv ship needs one, with build.mode (compose or script) for each project; see docs/release-commands.md")
+		return refuse("%s", withLegacyHint("the repository has no release: section in .ai-workflow.yml: nerv ship needs one, with build.mode (compose or script) for each project; see docs/release-commands.md", top))
 	}
 	if err != nil {
 		return err
@@ -515,7 +515,7 @@ type shipItem struct {
 func (s *shipRun) shipProjects(ctx context.Context) ([]shipOutcome, error) {
 	rel := s.ws.Config()
 	if rel == nil {
-		return nil, refuse("the repository has no release: section in .nerv/nerv.yaml")
+		return nil, refuse("the repository has no release: section in .ai-workflow.yml")
 	}
 	ordered, err := rel.TopoOrder()
 	if err != nil {

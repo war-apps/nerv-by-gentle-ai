@@ -56,7 +56,7 @@ func EmbeddedProviders(fsys fs.FS) ([]Provider, error) {
 	return providers, nil
 }
 
-// ProviderKeyPath is where nerv.yaml holds a provider's config key.
+// ProviderKeyPath is where the configuration holds a provider's config key.
 func ProviderKeyPath(provider, key string) string {
 	return "tasks.providers." + provider + "." + key
 }
@@ -83,7 +83,7 @@ func ValidateProviderValue(provider string, c taskprovider.ConfigKey, value stri
 	return nil
 }
 
-// ProviderSetting is one nerv.yaml key a provider owns (Key is the full
+// ProviderSetting is one configuration key a provider owns (Key is the full
 // dotted path, such as tasks.providers.<name>.<key>) and its new value.
 type ProviderSetting struct {
 	Key   string
@@ -159,7 +159,7 @@ func applyProviderSettings(doc *config.Document, settings []ProviderSetting) []C
 }
 
 // SetProviderSettings writes provider-owned keys (validated by the caller
-// against the provider manifests) into the nerv.yaml at path, through the
+// against the provider manifests) into the configuration file at path, through the
 // same Store and backup rule as Set. Every other byte of the file is kept.
 func SetProviderSettings(deps Deps, path string, settings []ProviderSetting) (Result, error) {
 	store := Store{}

@@ -39,7 +39,7 @@ type defaultBranch struct {
 	Channel    string `json:"channel,omitempty"`
 }
 
-// localConfig is the user's local .nerv/nerv.yaml: its release: section and
+// localConfig is the user's local .ai-workflow.yml: its release: section and
 // its pipeline: section, whose branches feed the built-in default (an
 // invalid pipeline: section only matters when the default is used).
 type localConfig struct {
@@ -48,7 +48,7 @@ type localConfig struct {
 	pipelineErr error
 }
 
-// loadLocalConfig loads both sections of the .nerv/nerv.yaml in dir.
+// loadLocalConfig loads both sections of the .ai-workflow.yml in dir.
 func loadLocalConfig(dir string) (localConfig, error) {
 	rel, err := loadRelease(dir)
 	if err != nil {

@@ -19,7 +19,7 @@ func TestPrintModelTable_LongValuesKeepColumnsAligned(t *testing.T) {
 		{Role: "misato", Model: "fable", Effort: "high", Source: "gentle-ai:jd-fix-agent-extended"},
 	}
 	var out bytes.Buffer
-	printModelTable(&out, table, "/tmp/nerv.yaml")
+	printModelTable(&out, table, "/tmp/config.yml")
 
 	var rows []string
 	for _, line := range strings.Split(out.String(), "\n") {
@@ -57,7 +57,7 @@ func TestPrintModelTable_ShowsEveryPurposeInFull(t *testing.T) {
 		table = append(table, config.ModelRow{Role: role, Model: "sonnet", Effort: "medium", Source: "default"})
 	}
 	var out bytes.Buffer
-	printModelTable(&out, table, "/tmp/nerv.yaml")
+	printModelTable(&out, table, "/tmp/config.yml")
 
 	for _, role := range config.Roles().AllRoles {
 		purpose := config.Roles().Info[role].Purpose

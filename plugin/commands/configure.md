@@ -6,7 +6,7 @@ argument-hint: [git | skills | models | repo | all]
 # /nerv:configure
 
 Configure Nerv by Gentle-AI through guided questions instead of hand-editing
-`nerv.yaml` or invoking `nerv configure` flags yourself. Reads the current
+the configuration files or invoking `nerv configure` flags yourself. Reads the current
 state first, asks only about the sections in scope, and writes exactly the
 changes confirmed — never more.
 
@@ -24,7 +24,7 @@ changes confirmed — never more.
    If `nerv` is not on PATH, tell the user to install it — `curl -fsSL
    https://raw.githubusercontent.com/war-apps/nerv-by-gentle-ai/main/scripts/install.sh
    | bash`, or `go install github.com/war-apps/nerv-by-gentle-ai/cmd/nerv@latest`
-   — and stop. Do not fall back to reading or writing `nerv.yaml` by hand.
+   — and stop. Do not fall back to reading or writing the configuration files by hand.
 
    From the returned JSON print a compact summary: `config_path` and
    whether it `exists`; `prerequisites` (`gentle_ai`, `engram`, `claude`);
@@ -121,7 +121,7 @@ changes confirmed — never more.
    - **models**: one call per confirmed batch —
      `nerv configure --set-model role=model[/effort] --set-model role2=from:jd-judge-a --json`.
    - **repo**: `nerv configure --init-repo <path> --repo-base <base> --json`.
-     This never overwrites an existing `.nerv/nerv.yaml`; if one is already
+     This never overwrites an existing `.ai-workflow.yml`; if one is already
      present, the result carries a `warnings` entry saying so — report it
      and move on without asking again.
 
@@ -145,7 +145,7 @@ changes confirmed — never more.
      `backup` path, and the line: "Restart Claude Code for the change to
      take effect."
 
-   Never run `gentle-ai install`. Never edit `nerv.yaml` by hand. Never
+   Never run `gentle-ai install`. Never edit the configuration files by hand. Never
    write to any path other than the ones `nerv configure`, `nerv skills`,
    `nerv apply-models`, or `nerv install` themselves report writing.
 

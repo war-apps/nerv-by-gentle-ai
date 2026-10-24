@@ -1,13 +1,22 @@
 # Configuration schema
 
-Every Nerv by Gentle-AI setting lives in `nerv.yaml`. There are exactly two
-copies, same schema: user scope `~/.claude/nerv/nerv.yaml` (personal
-defaults, never committed) and project scope `<repo>/.nerv/nerv.yaml`
+Every Nerv by Gentle-AI setting lives in one of two files with the same
+schema: user scope `~/.config/ai-workflow/config.yml` (personal
+defaults, never committed) and project scope `<repo>/.ai-workflow.yml`
 (committed). Project overrides user key by key; a missing key falls back
-to the user file, then to the built-in default.
+to the user file, then to the built-in default. `~/.config/ai-workflow` is
+`os.UserConfigDir()`: `$XDG_CONFIG_HOME` when set on Linux,
+`~/Library/Application Support` on macOS and `%AppData%` on Windows. The
+repository's `.nerv/` folder is runtime only (artifacts, the orchestrator
+lock, logs) and ignores itself with a `.nerv/.gitignore` of `*`.
+
+The files used before, `~/.claude/nerv/nerv.yaml` and
+`<repo>/.nerv/nerv.yaml`, are no longer read. When only an old file exists,
+every command behaves as unconfigured and prints one line naming it and
+saying that `nerv migrate` moves it.
 
 ```yaml
-# ~/.claude/nerv/nerv.yaml (user) and <repo>/.nerv/nerv.yaml (project): same schema
+# ~/.config/ai-workflow/config.yml (user) and <repo>/.ai-workflow.yml (project): same schema
 enabled: true                       # project scope only: activates NERV in this repo
 skills:                             # stacks per consuming role; names must exist in .atl/skill-registry.md
   testing: [tdd, playwright-best-practices]                        # ritsuko, kaworu, maya
@@ -78,7 +87,7 @@ applied differently, because Claude Code itself treats them differently:
 it takes effect immediately, no reinstall needed. `effort` is honored only
 from the launched agent file's own frontmatter, so it can only be applied
 by rewriting the cached agent files themselves: `nerv apply-models` reads
-`models:` from the **user-scope** file only (`~/.claude/nerv/nerv.yaml`)
+`models:` from the **user-scope** file only (`~/.config/ai-workflow/config.yml`)
 and rewrites `model:`/`effort:` in each affected `<role>.md` under the
 plugin cache. Project-scope `models:` therefore applies to `model` only —
 `effort` is not applicable at project scope, since project config cannot
@@ -110,7 +119,7 @@ full key reference is in the task plugin's contract
   provider is enabled. `nerv configure --init-repo <path>
   --repo-provider-config <provider>.<key>=<value>` (repeatable) writes
   `tasks.providers.<provider>.<key>` into the repository's
-  `.nerv/nerv.yaml`.
+  `.ai-workflow.yml`.
 
 **Migration.** A `tasks:` block written by an older release keeps working:
 
@@ -133,7 +142,7 @@ Two roles and one group were renamed: `melchor` is now `melchior`,
 `kaji-audit` is now `gendo`, and the group `kaji-passes` is now
 `audit-passes`. The old names stay accepted as legacy aliases wherever you
 type or store a role: a `models.melchor` or `models.kaji-audit` key in
-`nerv.yaml` keeps applying to the renamed role (`nerv configure --print`,
+either configuration file keeps applying to the renamed role (`nerv configure --print`,
 `nerv apply-models` and the wizard read it as `melchior` / `gendo`),
 `nerv configure --set-model melchor=...` and the wizard's role prompt
 accept the old role and group names, and any write stores the new ID once.
@@ -200,7 +209,7 @@ from `~/.gentle-ai/state.json`, with the role's own `from_phase` listed
 first and marked `(equivalent)`; roles without one get no mark) and an effort (`low`/`medium`/`high`/
 `xhigh`/`max`), with Enter keeping the current value; `reset <role|group>`
 clears an override back to the plugin default. Confirming writes the block
-to the user-scope `nerv.yaml`, after backing up the file to
+to the user-scope `config.yml`, after backing up the file to
 `<path>.bak-models-<yyyyMMdd-HHmmss>`, then offers to run
 `nerv apply-models` immediately.
 
@@ -209,11 +218,11 @@ Non-interactively, `nerv configure --set-model role=model[/effort]` (or
 applies one role's override at a time to the same user-scope file; pass it
 repeatedly for a batch. This always edits the user-scope file — project
 scope has no dedicated command, since project-scope `models:` only ever
-affects `model` (see above). Edit the project `.nerv/nerv.yaml` `models:`
+affects `model` (see above). Edit the project `.ai-workflow.yml` `models:`
 block by hand for that case, using the same inline-map syntax and `from:`
 behavior described above.
 
 You can also skip both the wizard and `--set-model`, and edit the
-`models:` block by hand in either `nerv.yaml`, then run
+`models:` block by hand in either configuration file, then run
 `nerv apply-models` yourself. Either way, restart Claude Code afterwards
 for the change to take effect.

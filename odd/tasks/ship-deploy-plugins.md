@@ -73,11 +73,11 @@ Branch: `feature/ship-deploy-plugins`, cut from `feature/tasks-plugin-split` at 
 | ID | Specs | Route | Status | Commit |
 |---|---|---|---|---|
 | T1 | S2, S3 | delegated writer, in parallel with T2 (Writer trigger (a): independent units with disjoint surfaces, each over 100 lines; also the context backstop) | committed (RED: 14 Compute and Import tests plus the changelog test; GREEN: `go test ./internal/versioning` ok; parity 16/16 against semantic-release 24.2.9) | see `git log -- internal/versioning` |
-| T2 | S4, S5 | delegated writer, in parallel with T1 (same trigger) | committed; verifier running (risk: items 3 and 5) | f0254d2 |
-| T3 | S6, S7, S8 | inline | pending | — |
+| T2 | S4, S5 | delegated writer, in parallel with T1 (same trigger) | committed and verified (no blockers) | f0254d2 |
+| T3 | S6, S7, S8 | delegated writer (context backstop) | in progress | — |
 | T4 | S1, S9 | inline | pending | — |
 | T5 | S10 | — | pending | — |
-| T6 | S11 | delegated writer (context backstop; the edit surface spans the whole tree) | in progress | — |
+| T6 | S11 | delegated writer (context backstop; the edit surface spans the whole tree) | committed and verified; fixes in c5c0bf4 | 9c6032c, c5c0bf4 |
 | T7 | S12 | — | pending | — |
 
 - **T1:** the native version engine (`internal/versioning`), its config schema, and the semantic-release config importer. Parity tests against the behaviours listed in S2, using the dim configs as fixtures.
@@ -132,4 +132,22 @@ Forecast: well over 400 lines (about 11.5k lines of Go move or are rewritten), s
   - **Fix:** 26d33ef. `localeCompare` now uses `golang.org/x/text/collate` CLDR root, a new dependency (risk item 5), with the verifier's regression tests. RED observed, then GREEN.
   - **Advisories:** `presetConfig.types` (custom section titles) is not translated, and the importer warns. The order follows ICU root, not the es_ES locale.
   - **Importer on the dim repos:** it warns that `hotfix/*` with `prerelease: true` is invalid and needs a fixed id such as `beta`, that `npm` and `exec` (`bump-csproj.sh`, `set-release-outputs.sh`) are not translatable, and that `git`/`github` go to deploy.
-- **Next step:** T6 (running) and the T2 verifier. The user's L5 decisions are "ODD + agentes NERV encima (Recommended)", "Se mantiene, renombrado (Recommended)" and "Subcomando nerv migrate (Recommended)". Then T6.
+- **L10** (2026-10-23): the T2 verifier found no blockers. S4, S5, S7 (ship side) and S9 (T2 part) pass. After a real ship, the user's `.git` and origin hash identically.
+  - **Advisories assigned to T3:**
+    - `artifact.Verify` must also hash `notes.md` and `CHANGELOG.section.md` and reject extra files in `outputs/`;
+    - `--force` should rename the new artifact before deleting the old one;
+    - `--version` gives empty notes, so deploy should regenerate them or ship should compute them for the given version.
+  - **Advisories assigned to T4:**
+    - `hooks.before_publish`/`after_publish` should point to deploy;
+    - `.nerv/artifacts` symlinks should be refused before the pipeline runs;
+    - the `--expect` wording with `--version`;
+    - a possible tar name clash.
+- **L11** (2026-10-23): T6 committed in 9c6032c. RED/GREEN reported per rule. The differential check found differences only in file names, the hint line and the new `.nerv/.gitignore`. Checks: `go test ./...` ok; hook tests ok. The two versioning tests the writer saw fail had run between the parent adding the regression test and applying the fix in 26d33ef; with `-count=5` they pass every time.
+- **L12** (2026-10-23): the T6 verifier found one blocker.
+  - **B1:** the prose hard-coded the Linux user-config path, so agents on Windows would miss `%AppData%`. Fixed in c5c0bf4, with a RED-then-GREEN prose test.
+  - **Advisories:**
+    - Fixed in c5c0bf4: the fake-home guard is no longer bypassed by `XDG_CONFIG_HOME` (the real home now comes from the user database, compared case-insensitively on Windows), and the damaged comments are corrected.
+    - Assigned to T4: a nested `enabled: true` activates the hook (a baseline defect); `.nerv/.gitignore` is written only by init and the wizard; the hint line is not indented in pipeline text mode.
+    - Assigned to T7: `workflowconfig.Load` and `Scalar` have no production callers; the merge lives in prose.
+  - **Interference:** while T3 was in progress, `plugin.Extensions` treated `deploy-*` (they have a `provider.yaml`) as task providers that require `task`, so two `cmd/nerv` install tests failed. Fix in T4: provider kinds and requirements per manifest kind.
+- **Next step:** T3 (running). The user's L5 decisions are "ODD + agentes NERV encima (Recommended)", "Se mantiene, renombrado (Recommended)" and "Subcomando nerv migrate (Recommended)". Then T6.

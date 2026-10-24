@@ -16,7 +16,7 @@ deploy`. The user's repository only gets the artifacts, which
 
 `nerv ship` builds **what is on origin**: the local branch must equal
 origin's (it never pushes the user's commits). Its `release:` section is
-the local `.nerv/nerv.yaml`, committed or not, and every project needs
+the local `.ai-workflow.yml`, committed or not, and every project needs
 `build.mode`; a path it names that is not on origin's branch is refused.
 `--branch <name>` picks the branch (default: the current one); `--project
 <name>` packages only that project of the `release:` section; `--version

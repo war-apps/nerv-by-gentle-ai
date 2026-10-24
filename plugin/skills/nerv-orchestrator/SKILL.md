@@ -1,12 +1,12 @@
 ---
 name: nerv-orchestrator
-description: NERV orchestrator (Ikari) protocol. Loaded with the Skill tool in repos where .nerv/nerv.yaml has enabled: true, after the SessionStart hook prints the activation header; reloaded after any compaction. This core carries the always-needed sections; run-time sections (the DIRECT, LIGHT and FULL pipelines, RDD relay, Delivery, Usage collection, Deliberation log, Resume, Phase note) live in references/ and load on demand.
+description: NERV orchestrator (Ikari) protocol. Loaded with the Skill tool in repos where .ai-workflow.yml has enabled: true, after the SessionStart hook prints the activation header; reloaded after any compaction. This core carries the always-needed sections; run-time sections (the DIRECT, LIGHT and FULL pipelines, RDD relay, Delivery, Usage collection, Deliberation log, Resume, Phase note) live in references/ and load on demand.
 ---
 
 # NERV Orchestrator (Ikari) Protocol
 
 The SessionStart hook prints only a short activation header whenever the
-current repository declares `enabled: true` in `.nerv/nerv.yaml` — Claude
+current repository declares `enabled: true` in `.ai-workflow.yml` — Claude
 Code caps hook stdout at 10,000 characters, well under this protocol's
 full size. The header instructs the session to load this skill
 (`nerv:nerv-orchestrator`) with the Skill tool before its first response
@@ -59,7 +59,7 @@ carries "Do NOT delegate" in its own file and has no Agent tool access.
   and FULL every source mutation goes through a delegated NERV agent. In
   DIRECT and LIGHT Ikari runs the git state, the user-validated commits
   and the run summary itself; Aoba only prepares PRs, slices or archives.
-- Ikari's own writes are limited to mechanical bookkeeping: `.nerv/nerv.yaml`
+- Ikari's own writes are limited to mechanical bookkeeping: `.ai-workflow.yml`
   (only when the user asks to persist preflight answers), the change's
   `state.yaml` (including `closed_at`, written once at close), appending to
   `nerv/deliberation-log.md`, `nerv/.orchestrator.lock` (create, heartbeat
@@ -124,8 +124,9 @@ writes.
 
 Resolve NERV configuration from exactly two files, same schema:
 
-1. `~/.claude/nerv/nerv.yaml` (user scope, personal defaults)
-2. `<repo>/.nerv/nerv.yaml` (project scope, committed)
+1. the user config (the path `nerv configure --print --json` reports as `config_path`: `~/.config/ai-workflow/config.yml` on Linux, `%AppData%\ai-workflow\config.yml` on Windows) (user scope, personal defaults)
+2. `<repo>/.ai-workflow.yml` (project scope, committed); the old
+   `~/.claude/nerv/nerv.yaml` and `.nerv/nerv.yaml` are never read.
 
 The project file overrides the user file key by key; a key missing from the
 project file falls back to the user file, then to the built-in default.
@@ -143,8 +144,8 @@ Inject only the configuration each agent needs, never the full document:
 
 **Model and effort per role.** Resolve every `nerv:<role>` launch's
 model and effort once per session, in this order: the project
-`models.<role>` entry in `<repo>/.nerv/nerv.yaml`, then the user
-`models.<role>` entry in `~/.claude/nerv/nerv.yaml`, then — for whichever
+`models.<role>` entry in `<repo>/.ai-workflow.yml`, then the user
+`models.<role>` entry in `~/.config/ai-workflow/config.yml`, then — for whichever
 entry resolved and names a phase via `from: <phase>` instead of an explicit
 `model`/`effort` — that phase's `{model, effort}` in
 `~/.gentle-ai/state.json`'s `claude_phase_assignments`, then the plugin's
@@ -157,7 +158,7 @@ Within each file, a role's entry may sit under its pre-rename key
 when the file has no entry under the current ID, before falling back to the
 next file, so a project legacy key still wins over a user current key.
 Cache the resolved per-role table for the session, the same as the two-file
-merge above; re-resolve only if `nerv.yaml` or `state.json` changes
+merge above; re-resolve only if a configuration file or `state.json` changes
 mid-session.
 
 **Engram project and knowledge base.** Every NERV-governed repo has its
@@ -184,8 +185,8 @@ agent's behalf.
 On the first implementation request of the session, before any intel or
 code, Ikari:
 
-1. **Resolves `nerv.yaml`.** Merge `~/.claude/nerv/nerv.yaml` (user scope)
-   and `<repo>/.nerv/nerv.yaml` (project scope) per `## Configuration
+1. **Resolves the configuration.** Merge `~/.config/ai-workflow/config.yml` (user scope)
+   and `<repo>/.ai-workflow.yml` (project scope) per `## Configuration
    resolution` above. Core reads no `tasks` key and never deletes a
    `tasks:` block; it only relays it to the task plugin.
 2. **Detects the task plugin.** It is installed when the agent type
@@ -215,7 +216,7 @@ code, Ikari:
 5. **Creates the worktree and branch** from the confirmed names, at the
    path resolved from `git.worktree_pattern`: Ikari itself in DIRECT and
    LIGHT (git state is inline work), `nerv:aoba` in FULL. Ikari offers
-   **once** to persist the base branch into the project `.nerv/nerv.yaml`;
+   **once** to persist the base branch into the project `.ai-workflow.yml`;
    writes only on explicit "yes".
 
 `commit_ref` is `git.commit_ref_pattern` filled with the task ref (e.g.
