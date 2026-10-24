@@ -50,9 +50,6 @@ func TestFormatCriticalPathsLine_GroupD(t *testing.T) {
 func TestFormatProjectFile_GroupD(t *testing.T) {
 	got := config.FormatProjectFile(config.ProjectValues{
 		BaseBranch: "develop2",
-		Provider:   "teamwork",
-		ProjectID:  "111",
-		TasklistID: "222",
 	})
 
 	t.Run("format-project-enabled", func(t *testing.T) {
@@ -65,19 +62,9 @@ func TestFormatProjectFile_GroupD(t *testing.T) {
 			t.Errorf("got %q", got)
 		}
 	})
-	t.Run("format-project-provider", func(t *testing.T) {
-		if !strings.Contains(got, "provider: teamwork") {
-			t.Errorf("got %q", got)
-		}
-	})
-	t.Run("format-project-project-id", func(t *testing.T) {
-		if !strings.Contains(got, "project_id: 111") {
-			t.Errorf("got %q", got)
-		}
-	})
-	t.Run("format-project-tasklist-id", func(t *testing.T) {
-		if !strings.Contains(got, "tasklist_id: 222") {
-			t.Errorf("got %q", got)
+	t.Run("format-project-no-tasks-block", func(t *testing.T) {
+		if strings.Contains(got, "tasks:") {
+			t.Errorf("core wrote a tasks: block: %q", got)
 		}
 	})
 	t.Run("format-project-models-hint", func(t *testing.T) {
@@ -88,7 +75,7 @@ func TestFormatProjectFile_GroupD(t *testing.T) {
 
 	t.Run("format-project-minimal-enabled-only", func(t *testing.T) {
 		minimal := config.FormatProjectFile(config.ProjectValues{})
-		if !strings.HasPrefix(minimal, "enabled: true") || strings.Contains(minimal, "project_id") {
+		if !strings.HasPrefix(minimal, "enabled: true") || strings.Contains(minimal, "git:") {
 			t.Errorf("got %q", minimal)
 		}
 	})
@@ -107,40 +94,24 @@ func TestDefaults(t *testing.T) {
 	defaults := config.Defaults()
 
 	t.Run("has-28-managed-keys", func(t *testing.T) {
-		if len(defaults) != 28 {
-			t.Errorf("got %d managed keys, want 28", len(defaults))
+		if len(defaults) != 12 {
+			t.Errorf("got %d managed keys, want 12", len(defaults))
 		}
 	})
 
 	wantSample := map[string]string{
-		"git.base_branch":                              "develop",
-		"git.worktree":                                 "ask",
-		"git.worktree_pattern":                         ".claude/worktrees/{slug}",
-		"git.branch_pattern":                           "feature/{prefix}-{id}-{slug}",
-		"git.commit_ref_pattern":                       "({PREFIX}-{id})",
-		"tasks.provider":                               "teamwork",
-		"tasks.ask_when_missing":                       "true",
-		"tasks.subtasks_per_wave":                      "false",
-		"tasks.timer_store":                            "~/.claude/work/timers.json",
-		"tasks.rounding_minutes":                       "15",
-		"tasks.providers.teamwork.task_ref_prefix":     "tw",
-		"tasks.providers.teamwork.assignee_id":         "",
-		"tasks.providers.teamwork.default_project_id":  "",
-		"tasks.providers.teamwork.default_tasklist_id": "",
-		"tasks.providers.teamwork.stages.inDev":        "DESARROLLO",
-		"tasks.providers.teamwork.stages.testing":      "TESTING",
-		"tasks.providers.teamwork.stages.implemented":  "IMPLEMENTA",
-		"tasks.providers.teamwork.stages.blocked":      "BLOQUEA",
-		"tasks.providers.teamwork.stages.canceled":     "CANCEL",
-		"tasks.providers.teamwork.stages.pending":      "PENDIENTE",
-		"tasks.providers.teamwork.stages.analysis":     "ANALISIS",
-		"skills.testing":                               "tdd, playwright-best-practices",
-		"skills.code":                                  "dotnet-best-practices, typescript-best-practices",
-		"skills.best-practices":                        "best-practices, solid-principles, clean-code-guard",
-		"skills.architecture":                          "hexagonal-architecture, c4-architecture",
-		"skills.audit":                                 "security-review, clean-code-guard",
-		"critical_paths":                               "auth/, payments/, migrations/, infra/",
-		"artifacts.commit":                             "at-close",
+		"git.base_branch":        "develop",
+		"git.worktree":           "ask",
+		"git.worktree_pattern":   ".claude/worktrees/{slug}",
+		"git.branch_pattern":     "feature/{prefix}-{id}-{slug}",
+		"git.commit_ref_pattern": "({PREFIX}-{id})",
+		"skills.testing":         "tdd, playwright-best-practices",
+		"skills.code":            "dotnet-best-practices, typescript-best-practices",
+		"skills.best-practices":  "best-practices, solid-principles, clean-code-guard",
+		"skills.architecture":    "hexagonal-architecture, c4-architecture",
+		"skills.audit":           "security-review, clean-code-guard",
+		"critical_paths":         "auth/, payments/, migrations/, infra/",
+		"artifacts.commit":       "at-close",
 	}
 	for key, want := range wantSample {
 		t.Run("default-"+key, func(t *testing.T) {
@@ -176,9 +147,6 @@ func TestAllowedValues(t *testing.T) {
 		want []string
 	}{
 		{"git.worktree", []string{"ask", "always", "never"}},
-		{"tasks.provider", []string{"teamwork", "none"}},
-		{"tasks.ask_when_missing", []string{"true", "false"}},
-		{"tasks.subtasks_per_wave", []string{"true", "false"}},
 		{"artifacts.commit", []string{"with-change", "at-close", "never"}},
 	}
 	for _, tc := range cases {
@@ -197,17 +165,14 @@ func TestAllowedValues(t *testing.T) {
 	})
 }
 
-func TestValidateManagedValue_RemovedTaskProviders(t *testing.T) {
-	for _, value := range []string{"github-projects", "jira"} {
-		t.Run(value, func(t *testing.T) {
-			if err := config.ValidateManagedValue("tasks.provider", value); err == nil {
-				t.Errorf("ValidateManagedValue(tasks.provider, %q) = nil, want an error", value)
-			}
-		})
-	}
-	for _, value := range []string{"teamwork", "none"} {
-		if err := config.ValidateManagedValue("tasks.provider", value); err != nil {
-			t.Errorf("ValidateManagedValue(tasks.provider, %q) = %v, want nil", value, err)
+// S1: core manages no tasks.* key; a tasks.* key is unknown to it.
+func TestDefaults_HoldNoTaskKeys(t *testing.T) {
+	for _, key := range config.ManagedKeys() {
+		if strings.HasPrefix(key, "tasks.") {
+			t.Errorf("managed key %q belongs to the task plugin", key)
 		}
+	}
+	if err := config.ValidateManagedKey("tasks.provider"); err == nil {
+		t.Error("ValidateManagedKey(tasks.provider) = nil, want an unknown-key error")
 	}
 }

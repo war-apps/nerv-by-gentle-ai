@@ -59,8 +59,8 @@ func Set(deps Deps, paths Paths, args []string) (Result, error) {
 
 // finalizeMutation writes working to paths.Config through store when
 // touched is true and its text actually differs from original, and
-// assembles the shared Result shape. Shared by Set and SetModel — the only
-// two modes that mutate the user-scope nerv.yaml.
+// assembles the shared Result shape. Shared by Set, SetModel and
+// SetProviderSettings — the modes that mutate the user-scope nerv.yaml.
 func finalizeMutation(deps Deps, paths Paths, store Store, working *config.Document, original []byte, touched bool, changes []Change) (Result, error) {
 	result := Result{
 		Changed:    false,
@@ -72,14 +72,13 @@ func finalizeMutation(deps Deps, paths Paths, store Store, working *config.Docum
 	}
 
 	if touched && working.String() != string(original) {
-		written, backup, removed, err := store.Save(paths.Config, working, original, deps.Now())
+		written, backup, err := store.Save(paths.Config, working, original, deps.Now())
 		if err != nil {
 			return Result{}, err
 		}
 		if written {
 			result.Changed = true
 			result.Written = []string{paths.Config}
-			result.Removed = removed
 			if backup != "" {
 				b := backup
 				result.Backup = &b

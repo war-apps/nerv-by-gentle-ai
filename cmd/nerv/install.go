@@ -21,7 +21,9 @@ applies model/effort assignments to the cached agents, ensures the Engram
 "nerv" knowledge base, and installs skills. It also installs the optional
 extension plugins named by --with, keeps the ones already enabled up to
 date, and, when stdin is a terminal, offers the others: the task plugin
-(task@nerv, the /task:* commands), then its providers (task-teamwork@nerv).
+(task@nerv, the /task:* commands), then its providers (task-<name>@nerv).
+Old /task:* copies in <home>/.claude/commands/task, which shadow the task
+plugin's commands, are reported, and removed when you confirm on a terminal.
 Unless --no-configure is given,
 it then runs the interactive setup wizard when stdin is a terminal, or
 prints the "run nerv configure" hint otherwise.
@@ -31,7 +33,7 @@ Flags:
   --no-skills           Skip installing skills
   --no-configure        Skip the closing wizard/hint entirely
   --with <names>        Comma-separated extension plugins to install, such as
-                        task,task-teamwork (a provider brings the task plugin)
+                        task,task-<provider> (a provider brings the task plugin)
 `
 
 const uninstallUsage = `Usage: nerv uninstall [flags]
@@ -68,16 +70,17 @@ func runInstall(args []string, stdout, stderr io.Writer, opts options) int {
 	}
 
 	deps := install.Deps{
-		Home:             home,
-		SettingsPath:     opts.Settings,
-		FS:               opts.PluginFS,
-		ExtensionsFS:     opts.ExtensionsFS,
-		Runner:           opts.Runner,
-		Now:              opts.Now,
-		LookPath:         opts.LookPath,
-		ConfirmSync:      syncConfirmer(opts, stdout),
-		ConfirmExtension: extensionConfirmer(opts, stdout),
-		Stdout:           stdout,
+		Home:                        home,
+		SettingsPath:                opts.Settings,
+		FS:                          opts.PluginFS,
+		ExtensionsFS:                opts.ExtensionsFS,
+		Runner:                      opts.Runner,
+		Now:                         opts.Now,
+		LookPath:                    opts.LookPath,
+		ConfirmSync:                 syncConfirmer(opts, stdout),
+		ConfirmExtension:            extensionConfirmer(opts, stdout),
+		ConfirmRemoveLegacyCommands: legacyCommandsConfirmer(opts, stdout),
+		Stdout:                      stdout,
 	}
 
 	err = install.Install(context.Background(), deps, install.Options{
@@ -97,7 +100,7 @@ func runInstall(args []string, stdout, stderr io.Writer, opts options) int {
 		return 0
 	}
 
-	wizDeps := configure.Deps{Home: home, FS: opts.PluginFS, Runner: opts.Runner, Now: opts.Now, LookPath: opts.LookPath, Getenv: opts.Getenv}
+	wizDeps := configure.Deps{Home: home, FS: opts.PluginFS, ExtensionsFS: opts.ExtensionsFS, Runner: opts.Runner, Now: opts.Now, LookPath: opts.LookPath, Getenv: opts.Getenv}
 	wizPaths := configure.ResolvePaths(home, "")
 	wizOpts := wizard.Options{Paths: wizPaths, SettingsPath: opts.Settings}
 	if _, err := wizard.Run(wizDeps, opts.Stdin, stdout, wizOpts); err != nil {

@@ -13,7 +13,7 @@ import (
 )
 
 // runSkillsSection drives the wizard through the required-skills section only
-// (every later section skipped, the 28 user-config prompts kept blank) with the
+// (every later section skipped, the 12 user-config prompts kept blank) with the
 // given scripted answers for the skills prompts, against an empty skills
 // directory so every gentle-ai skill is missing.
 func runSkillsSection(t *testing.T, runner *envtest.FakeRunner, answers ...string) string {
@@ -21,9 +21,9 @@ func runSkillsSection(t *testing.T, runner *envtest.FakeRunner, answers ...strin
 	root, home := t.TempDir(), t.TempDir()
 	writeFixture(t, testPaths(root, home).Config)
 	deps := configure.Deps{Home: home, FS: nerv.PluginFS(), Runner: runner, Now: fixedNow, LookPath: lookPathNone}
-	opts := wizard.Options{Paths: testPaths(root, home), SkipModels: true, SkipRepos: true, SkipCommands: true, NoRefresh: true}
+	opts := wizard.Options{Paths: testPaths(root, home), SkipModels: true, SkipRepos: true, NoRefresh: true}
 
-	in := strings.NewReader(strings.Join(answers, "\n") + "\n" + strings.Repeat("\n", 28))
+	in := strings.NewReader(strings.Join(answers, "\n") + "\n" + strings.Repeat("\n", 12))
 	var out bytes.Buffer
 	if _, err := wizard.Run(deps, in, &out, opts); err != nil && !errors.Is(err, wizard.ErrInputClosed) {
 		t.Fatalf("Run() error = %v; output:\n%s", err, out.String())

@@ -280,7 +280,7 @@ func isSpace(r rune) bool {
 // ---------------------------------------------------------------------------
 
 // Scalar reads one dotted-path scalar (e.g. "git.base_branch" or
-// "tasks.providers.teamwork.assignee_id"), returning its trailing scalar
+// "skills.code"), returning its trailing scalar
 // text (bare or quoted, trailing comment stripped, quotes trimmed) and
 // found=true, or found=false when any segment of the path is missing or
 // the leaf has no inline value. Mirrors Read-NervScalar.
