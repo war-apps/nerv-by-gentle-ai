@@ -439,6 +439,32 @@ func TestRunConfigure_InitRepo_ProviderConfig_WritesProviderKeys(t *testing.T) {
 	}
 }
 
+// --init-repo copies the user file's defaults.tasks into the new project
+// file and lists each copied value; the user's run-time tasks: is ignored.
+func TestRunConfigure_InitRepo_SeedsTasksFromTheUserDefaults(t *testing.T) {
+	home := t.TempDir()
+	repo := t.TempDir()
+	user := paths.Resolve(home).UserConfig
+	if err := os.MkdirAll(filepath.Dir(user), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(user, []byte("tasks:\n  provider: other\ndefaults:\n  tasks:\n    provider: teamwork\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"configure", "--init-repo", repo}, &stdout, &stderr, initRepoOptions(home, repo))
+	if code != 0 {
+		t.Fatalf("exit code = %d (stdout=%q stderr=%q)", code, stdout.String(), stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "Changed:\n  tasks.provider:  -> teamwork (from defaults.tasks)\n") {
+		t.Errorf("stdout does not list the seed:\n%s", stdout.String())
+	}
+	data, _ := os.ReadFile(filepath.Join(repo, ".ai-workflow/config.yaml"))
+	if got, _ := config.Parse(string(data)).Scalar("tasks.provider"); got != "teamwork" {
+		t.Errorf("tasks.provider = %q, want teamwork:\n%s", got, data)
+	}
+}
+
 // S3: --repo-provider-config is refused (exit 1, naming the problem, writing
 // nothing) for a provider with no embedded manifest, a key outside its
 // config, or a value that is not valid for the key's type; used without

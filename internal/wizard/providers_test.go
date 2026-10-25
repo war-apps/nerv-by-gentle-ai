@@ -184,14 +184,20 @@ func TestRun_TaskProviders_AsksTheProviderWhenSeveralAreEnabled(t *testing.T) {
 
 	var out bytes.Buffer
 	in := promptInput(&out, []promptAnswer{
-		{prompt: "Task provider (other|teamwork) [teamwork]: ", answer: "other"},
+		{prompt: "Default task provider for new repositories (other|teamwork) [teamwork]: ", answer: "other"},
 		{prompt: "Write to ", answer: "y"},
 	})
 	if _, err := wizard.Run(deps, in, &out, opts); err != nil {
 		t.Fatalf("Run() error = %v; output:\n%s", err, out.String())
 	}
-	if got, _ := scalarOf(t, opts.Paths.Config, "tasks.provider"); got != "other" {
-		t.Errorf("tasks.provider = %q, want other", got)
+	// The user file holds a default, the seed of a new repository's
+	// tasks.provider; its older tasks.provider (the prompt's prefill) no
+	// longer applies at run time and is left as it was.
+	if got, _ := scalarOf(t, opts.Paths.Config, "defaults.tasks.provider"); got != "other" {
+		t.Errorf("defaults.tasks.provider = %q, want other", got)
+	}
+	if got, _ := scalarOf(t, opts.Paths.Config, "tasks.provider"); got != "teamwork" {
+		t.Errorf("tasks.provider = %q, want teamwork (untouched)", got)
 	}
 	if !strings.Contains(out.String(), "-- other --") || !strings.Contains(out.String(), "-- teamwork --") {
 		t.Errorf("both providers' keys not prompted:\n%s", out.String())
@@ -232,6 +238,55 @@ func TestRun_RepoInit_PromptsRepoScopeProviderKeys(t *testing.T) {
 	}
 	if got, _ := scalarOf(t, repoConfig, "enabled"); got != "true" {
 		t.Errorf("enabled = %q, want true", got)
+	}
+}
+
+// The repo flow seeds the new repository's tasks: section from the user
+// file's defaults.tasks and shows each value it copied; the answers win.
+func TestRun_RepoInit_SeedsTasksFromTheUserDefaults(t *testing.T) {
+	root := t.TempDir()
+	home := t.TempDir()
+	writeFixture(t, filepath.Join(root, "config.yml"))
+	repoDir := t.TempDir()
+	runner := &envtest.FakeRunner{Responses: map[string]envtest.Response{
+		"git -C " + repoDir + " rev-parse --show-toplevel": {Stdout: repoDir + "\n"},
+	}}
+	deps := configure.Deps{Home: home, FS: nerv.PluginFS(), ExtensionsFS: nerv.ExtensionsFS(), Runner: runner, Now: fixedNow, LookPath: lookPathNone}
+	opts := wizard.Options{Paths: testPaths(root, home), SkipSkills: true, SkipModels: true, NoRefresh: true}
+	opts.SettingsPath = writeSettings(t, home, "task@nerv", "task-teamwork@nerv")
+	user, err := os.ReadFile(opts.Paths.Config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(opts.Paths.Config, append(user, []byte("\ndefaults:\n  tasks:\n    provider: teamwork\n    providers:\n      teamwork:\n        tasklist_id: 9\n")...), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	var out bytes.Buffer
+	in := promptInput(&out, []promptAnswer{
+		{prompt: "Initialize a repository for NERV now?", answer: repoDir},
+		{prompt: "Base branch for this repo", answer: ""},
+		{prompt: "Teamwork project id of this repository (overrides default_project_id) []: ", answer: "111"},
+		{prompt: "Teamwork tasklist id of this repository (overrides default_tasklist_id) []: ", answer: ""},
+		{prompt: "Initialize a repository for NERV now?", answer: ""},
+	})
+	if _, err := wizard.Run(deps, in, &out, opts); err != nil {
+		t.Fatalf("Run() error = %v; output:\n%s", err, out.String())
+	}
+	repoConfig := filepath.Join(repoDir, ".ai-workflow/config.yaml")
+	for key, want := range map[string]string{
+		"tasks.provider":                       "teamwork",
+		"tasks.providers.teamwork.project_id":  "111",
+		"tasks.providers.teamwork.tasklist_id": "9",
+	} {
+		if got, _ := scalarOf(t, repoConfig, key); got != want {
+			t.Errorf("%s = %q, want %q", key, got, want)
+		}
+	}
+	for _, want := range []string{"Copied from your defaults.tasks: tasks.provider: teamwork\n", "Copied from your defaults.tasks: tasks.providers.teamwork.tasklist_id: 9\n"} {
+		if !strings.Contains(out.String(), want) {
+			t.Errorf("output lacks %q:\n%s", want, out.String())
+		}
 	}
 }
 

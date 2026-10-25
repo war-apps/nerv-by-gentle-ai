@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"net/http"
 	"os"
 	"time"
 
@@ -43,6 +44,9 @@ Commands:
   doctor [flags]       Check that NERV is in order on this machine and in
                        the repository, and list the steps to take
                        (see "nerv doctor --help")
+  upgrade [--alpha | --rc]
+                       Replace this binary with the newest release, then
+                       run its install (see "nerv upgrade --help")
   configure [flags]    Configure NERV (non-interactive; see "nerv configure --help")
   install [flags]      Install NERV (see "nerv install --help")
   uninstall [flags]    Uninstall NERV (see "nerv uninstall --help")
@@ -122,6 +126,23 @@ type options struct {
 	// release-<name> <operation>`); tests may inject a fake. Nil means
 	// proc.ExecRunner.
 	ReleaseProc proc.Runner
+	// HTTPClient, ReleaseAPIBase and ReleaseDownloadBase are where nerv
+	// upgrade looks up and downloads releases; tests point them at an
+	// httptest.Server. Nil or empty means a client with a timeout,
+	// upgrade.DefaultAPIBase and upgrade.DefaultDownloadBase.
+	HTTPClient          *http.Client
+	ReleaseAPIBase      string
+	ReleaseDownloadBase string
+	// Executable locates the running nerv binary nerv upgrade replaces
+	// (symlinks are resolved after it); nil means os.Executable.
+	Executable func() (string, error)
+	// GOOS and GOARCH are the platform nerv upgrade downloads for; empty
+	// means runtime.GOOS and runtime.GOARCH.
+	GOOS, GOARCH string
+	// RunBinary runs the new binary's install after nerv upgrade, with this
+	// process's stdin, streaming to stdout and stderr, and returns its exit
+	// code; tests inject a recorder. Nil means execBinary.
+	RunBinary func(ctx context.Context, bin string, args []string, stdout, stderr io.Writer) (int, error)
 }
 
 func defaultOptions() options {
@@ -174,6 +195,8 @@ func run(args []string, stdout, stderr io.Writer, opts options) int {
 		return runMigrate(args[1:], stdout, stderr, opts)
 	case "doctor":
 		return runDoctor(args[1:], stdout, stderr, opts)
+	case "upgrade":
+		return runUpgrade(args[1:], stdout, stderr, opts)
 	case "provider":
 		// Hidden: the operations of nerv's native providers, run by their
 		// extension (nerv deploy runs deploy-ssh-compose's, nerv release

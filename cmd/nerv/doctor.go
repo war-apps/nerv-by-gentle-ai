@@ -26,6 +26,7 @@ import (
 	"github.com/war-apps/nerv-by-gentle-ai/internal/releaseconfig"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/skills"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/version"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/workflowconfig"
 )
 
 const doctorUsage = `Usage: nerv doctor [--json] [--cwd <dir>]
@@ -209,8 +210,31 @@ func (d *doctorRun) userConfig() {
 		d.add(name, doctor.OK, "none: the defaults apply", "")
 	default:
 		d.user = doc
-		d.add(name, doctor.OK, d.paths.UserConfig, "")
+		runTime, err := workflowconfig.RunTimeUserKeys(doc, d.personal())
+		switch {
+		case err != nil:
+			d.add(name, doctor.Fail, d.paths.UserConfig+": "+err.Error(), "Fix "+d.paths.UserConfig)
+		case len(runTime) > 0:
+			d.add(name, doctor.Warn, strings.Join(runTime, ", ")+" no longer apply: tasks, release and deploy are read from each project's .ai-workflow/config.yaml", step)
+		default:
+			d.add(name, doctor.OK, d.paths.UserConfig, "")
+		}
 	}
+}
+
+// personal is the keys of the tasks:, release: and deploy: sections that
+// stay in the user file: the personal task keys and the scope: user keys
+// of the providers nerv ships.
+func (d *doctorRun) personal() workflowconfig.Personal {
+	fsys := d.opts.ExtensionsFS
+	if fsys == nil {
+		fsys = nerv.ExtensionsFS()
+	}
+	p, err := workflowconfig.LoadPersonal(fsys)
+	if err != nil {
+		return workflowconfig.Personal{}
+	}
+	return p
 }
 
 // repository checks the repository the directory cwd is in, if any.
@@ -235,16 +259,10 @@ func (d *doctorRun) repository(cwd string) {
 	if !ok {
 		return
 	}
+	wc := workflowconfig.Config{Project: project, User: d.user}
 	scalar := func(key string) string {
-		for _, doc := range []*config.Document{project, d.user} {
-			if doc == nil {
-				continue
-			}
-			if v, found := doc.Scalar(key); found {
-				return v
-			}
-		}
-		return ""
+		v, _ := wc.Scalar(key)
+		return v
 	}
 	d.projectExtensions(top)
 	release, deploy := d.release(top), d.deploy(top)

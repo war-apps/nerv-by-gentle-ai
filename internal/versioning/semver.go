@@ -149,6 +149,22 @@ func compareVersionStrings(a, b string) int {
 	return compareVersions(va, vb)
 }
 
+// Compare orders two semantic versions as semver 2.0 does (-1, 0 or 1), with
+// a leading v or = and build metadata ignored. ok is false when either is
+// not a valid version.
+func Compare(a, b string) (cmp int, ok bool) {
+	va, okA := parseVersion(a)
+	vb, okB := parseVersion(b)
+	if !okA || !okB {
+		return 0, false
+	}
+	return compareVersions(va, vb), true
+}
+
+// Valid reports whether s is a valid semantic version (a leading v or = and
+// build metadata allowed).
+func Valid(s string) bool { return validVersion(s) }
+
 // inc increments v by a release type exactly as node-semver's inc does
 // (major, minor, patch or prerelease, without a prerelease identifier).
 func (v version) inc(releaseType string) version {

@@ -106,7 +106,7 @@ func Run(deps Deps, in io.Reader, out io.Writer, opts Options) (Summary, error) 
 	}
 
 	if !opts.SkipRepos {
-		changed, err := runReposSection(deps, s, out, uc.BaseBranch, providers)
+		changed, err := runReposSection(deps, s, out, uc.BaseBranch, providers, opts.Paths.Config)
 		if err != nil {
 			return summary, err
 		}

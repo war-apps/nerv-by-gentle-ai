@@ -14,7 +14,7 @@ Nerv by Gentle-AI has two command surfaces: Claude Code slash commands
 
 ### Task extension commands (`/task:*`)
 
-The `/task:*` commands belong to the optional task extension (`task@nerv`),
+The `/task:*` commands belong to the optional task extension (`task`),
 not to core. Claude Code serves them from the extension's installed plugin, so nothing
 is copied to `~/.claude/commands/task/`. Each one runs the task extension's
 contract against the configured providers.
@@ -41,7 +41,7 @@ contract against the configured providers.
 
 ### Release extension commands (`/release:*`)
 
-The optional release extension (`release@nerv`) versions, builds and packages; its
+The optional release extension (`release`) versions, builds and packages; its
 agents are `release:versioner` and `release:builder`. Reference:
 [release-commands.md](release-commands.md).
 
@@ -53,7 +53,7 @@ agents are `release:versioner` and `release:builder`. Reference:
 
 ### Deploy extension commands (`/deploy:*`)
 
-The optional deploy extension (`deploy@nerv`, which requires `release`) releases
+The optional deploy extension (`deploy`, which requires `release`) releases
 an artifact; its agent is `deploy:deployer`, and its git hosts and targets
 are providers (`deploy-github`, `deploy-ssh-compose`, `deploy-bash`). Reference:
 [deploy.md](deploy.md).
@@ -120,6 +120,7 @@ isn't taking effect.
 | `nerv deploy` | Release and deploy a release artifact: release commit, tag, push, targets, git host release (deploy extension) |
 | `nerv migrate` | Move a repository (and, with `--user`, the user configuration) from nerv 4.2.0 or 5.0.0-alpha.1 |
 | `nerv doctor` | Check that NERV is in order on this machine and in the repository, and list the steps to take |
+| `nerv upgrade` | Replace the nerv binary with the newest release (`--alpha`, `--rc`), then run its install |
 | `nerv configure` | Configure NERV non-interactively (or run the wizard) |
 | `nerv install` | Install NERV (plugin, cache, skills, Engram KB) |
 | `nerv uninstall` | Uninstall NERV |
@@ -184,7 +185,7 @@ nerv configure --set-model aoba=opus/high
 nerv configure --init-repo . --repo-base develop --repo-provider-config teamwork.project_id=1271726 --repo-provider-config teamwork.tasklist_id=3951970
 ```
 
-When `task@nerv` is enabled, the wizard's "Task providers" section prompts
+When the `task` extension is enabled, the wizard's "Task providers" section prompts
 each enabled provider's scalar config keys, read from its `provider.yaml`,
 plus `tasks.provider` when more than one provider is enabled. It replaces
 the former tasks, Teamwork and commands sections, and the flags
@@ -273,11 +274,17 @@ Moves a repository from nerv 4.2.0 or 5.0.0-alpha.1 to this version, once:
 - the 4.2.0 `release:` section becomes today's `release:` section, with the semantic-release config imported;
 - `pipeline:` becomes `deploy:`;
 - the in-flight `openspec/changes` become ODD feature documents;
+- a project file without `tasks.provider` gets the user's
+  (`defaults.tasks.provider`, or the older user `tasks.provider`), since
+  `tasks:` is read from the project only;
 - `.nerv/.gitignore` is created.
 
 `--user` also moves `~/.claude/nerv/nerv.yaml`, or the user `config.yml`,
 to the user `config.yaml`,
-with the personal keys of the project file. `--dry-run` lists the steps
+with the personal keys of the project file, and moves the user file's
+run-time `tasks:`, `release:` and `deploy:` keys under
+`defaults.<section>`, keeping the personal ones in place (see
+[configuration.md](configuration.md#extension-sections-tasks-release-deploy)). `--dry-run` lists the steps
 it would take and writes nothing. `--install` installs the extensions and
 providers the repository used. Every changed or removed file is backed up first, and a
 second run changes nothing. See [migration.md](migration.md).
@@ -293,11 +300,13 @@ Checks that everything NERV needs is in order and changes nothing:
 
 - on this machine: gentle-ai 4.x, Claude Code and engram on the PATH, the
   NERV plugin installed, enabled and at this binary's version, its skills,
-  and the user configuration;
+  and the user configuration (a warning names its `tasks:`, `release:` and
+  `deploy:` keys that no longer apply, with `nerv migrate --user` as the
+  step);
 - in the repository: `.ai-workflow/config.yaml` with `enabled: true`, a
   pending `nerv migrate`, the project extensions and providers, the
-  `release:`, `deploy:` and `tasks:` sections with the extensions they need,
-  the origin remote and the base branch.
+  `release:`, `deploy:` and `tasks:` sections (read from the project file
+  only) with the extensions they need, the origin remote and the base branch.
 
 Each check prints `[ok]`, `[!!]` (should be changed), `[xx]` (NERV cannot
 work until it is fixed) or `[--]` (optional, not set up). Then come the
@@ -317,6 +326,30 @@ Next steps:
 `--json` prints the same results. The exit code is 1 when a check failed,
 0 otherwise.
 
+### nerv upgrade
+
+```bash
+nerv upgrade          # newest stable release
+nerv upgrade --rc     # newest of stable and vX.Y.Z-rc.N
+nerv upgrade --alpha  # newest of stable and vX.Y.Z-alpha.N
+```
+
+Replaces the running `nerv` binary (symlinks resolved) with the newest
+release of the channel, the way `scripts/install.sh` installs one: it
+downloads `nerv_<version>_<os>_<arch>.tar.gz` and `checksums.txt` from the
+GitHub release, verifies the archive's SHA-256, and renames the new binary
+over the old one. A prerelease channel also considers stable releases, so
+it never stays on an older prerelease when a newer stable one exists. Then
+it runs the new binary's `nerv install` (`nerv install --no-configure`
+without an interactive terminal) and exits with its exit code.
+
+Already on the newest release, or on a newer one (a `dev` build counts as
+older than any release), it says so and changes nothing. A failed
+download or checksum leaves the current binary untouched and exits 1;
+only Linux and macOS on amd64 or arm64 have prebuilt binaries (anywhere
+else, use `go install ...@latest`). `--alpha` with `--rc` is a usage
+error (exit 2).
+
 ### nerv install
 
 Materializes the embedded core plugin, registers it in Claude Code's
@@ -326,15 +359,15 @@ skills. It also installs the optional extensions and providers named by `--with`
 keeps the ones already enabled up to date, and, when stdin is a terminal,
 offers the others, in this order:
 
-1. the task extension (`task@nerv`, the `/task:*` commands);
-2. its providers (`task-<name>@nerv`, such as `task-teamwork@nerv`), only
+1. the task extension (`task`, the `/task:*` commands);
+2. its providers (`task-<name>`, such as `task-teamwork`), only
    once task is installed;
-3. the release extension (`release@nerv`: `nerv release`), which brings its
-   providers with it, unasked (`release-conventional-commits@nerv`, the
-   version engine, `release-docker-compose@nerv` and `release-bash@nerv`);
-4. the deploy extension (`deploy@nerv`: `nerv deploy`), only once release is
+3. the release extension (`release`: `nerv release`), which brings its
+   providers with it, unasked (`release-conventional-commits`, the
+   version engine, `release-docker-compose` and `release-bash`);
+4. the deploy extension (`deploy`: `nerv deploy`), only once release is
    installed, which brings its providers with it, unasked
-   (`deploy-bash@nerv`, `deploy-github@nerv`, `deploy-ssh-compose@nerv`).
+   (`deploy-bash`, `deploy-github`, `deploy-ssh-compose`).
 
 An extension whose `extension.yaml` says `providers: bundled` (release,
 deploy) installs every provider it ships with it, each listed as `Adding

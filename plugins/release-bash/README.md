@@ -1,6 +1,6 @@
 # release-bash
 
-The script build of `nerv release` (Claude Code plugin `release-bash@nerv`, provider
+The script build of `nerv release` (Claude Code plugin `release-bash`, provider
 name `bash`, slot `build`). It has no commands of its own: the release
 extension calls its operations from `provider.yaml`, the provider contract
 (`docs/extensions.md`, "The release slots"), through the hidden `nerv

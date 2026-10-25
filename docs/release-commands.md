@@ -1,6 +1,6 @@
 # Release extension: `nerv version next` and `nerv release`
 
-The release extension (`release@nerv`) versions and packages your own repositories
+The release extension (`release`) versions and packages your own repositories
 (any language, single repository or monorepo) from your machine. Its
 version engine is native: it gives the version, the tag, the release notes
 and the CHANGELOG section that semantic-release with the
@@ -203,7 +203,11 @@ packaged).
 ## Configuration (`release:`)
 
 The section is project scope only: it is never read from the user-scope
-configuration and never merged with it. It holds everything: the
+configuration and never merged with it. The user file's `defaults.release`
+(same shape) is only a seed: `/release:setup` copies the keys the project
+lacks when it writes the section, and shows them; see
+[configuration.md](configuration.md#extension-sections-tasks-release-deploy).
+It holds everything: the
 versioning rules (branches and channels, release rules, note keywords, tag
 format, changelog), which projects a monorepo holds, how they depend on each
 other, and how each one is built, tested and packaged. No semantic-release

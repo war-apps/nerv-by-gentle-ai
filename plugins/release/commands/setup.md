@@ -41,6 +41,13 @@ comments) is in English.
      block (§2 of this command, the skill's §6), and leave `pipeline:` for
      `nerv migrate` or for the user to delete. One question; stop and wait.
 
+4. Read the user config (the path `nerv configure --print --json` reports
+   as `config_path`). Its `defaults.release`, when present, has the shape
+   of `release:` and is the user's seed for new sections: it never applies
+   at run time. Its other `release:` keys, if any, no longer apply either
+   (`nerv migrate --user` moves them under `defaults.release`). Hold the
+   seed for step 4 below.
+
 Only the `release:` block is added (at the end of the file, after one blank
 line) or replaced (from the `release:` line up to the next line that starts at
 column 0 with a non-space, non-`#` character, or the end of the file). Keep
@@ -95,6 +102,14 @@ built or run.
 
 Show the whole `release:` section as one YAML block, then one line of reason
 per non-obvious choice. Rules:
+
+- **Seed.** Start from the user's `defaults.release` (step 1.4): copy each
+  of its keys the section does not set yet, once. What the repository
+  already has, what the import brought and what detection shows always
+  win over a default. Mark every copied key in the proposal ("from your
+  `defaults.release`") so the user sees it before anything is written;
+  never re-copy a default into an existing section on later runs unless
+  the user asks.
 
 - **Projects.** One project with `path: .` for a single deployable repo;
   one per deployable unit in a monorepo, each with its `path`, its `scopes`

@@ -11,7 +11,12 @@ The task extension connects NERV to task trackers (Teamwork today). It does not 
 
 ## 1. Configuration
 
-The configuration merges the user config (the path `nerv configure --print --json` reports as `config_path`: `~/.config/ai-workflow/config.yaml` on Linux, `%AppData%\ai-workflow\config.yaml` on Windows) with the repository's `<repo>/.ai-workflow/config.yaml`, key by key, and the repository wins. Everything lives under `tasks:`.
+Everything lives under `tasks:`, and it is read from the repository's `<repo>/.ai-workflow/config.yaml` only. The user config (the path `nerv configure --print --json` reports as `config_path`: `~/.config/ai-workflow/config.yaml` on Linux, `%AppData%\ai-workflow\config.yaml` on Windows) adds only the personal keys, and the repository still wins when it sets one:
+
+- each `tasks.providers.<name>.<key>` whose provider manifest declares `scope: user` (such as `assignee_id` or `billable`);
+- `tasks.timer_store`, `tasks.stale_after_hours` and the older `tasks.rounding_minutes`, which belong to the machine (an assumption of this contract: they are personal, like the `scope: user` keys).
+
+Any other `tasks.*` key of the user config is ignored, `tasks.provider` included. The user config's `defaults.tasks` (same shape as `tasks:`) is never read here either: it is the seed that `/nerv:init` and `nerv configure --init-repo` copy into a repository being set up. `nerv doctor` warns about user keys that no longer apply, and `nerv migrate --user` moves them under `defaults.tasks`.
 
 | Key | Default | Meaning |
 |---|---|---|
@@ -31,7 +36,7 @@ The `git.*` keys `branch_pattern`, `commit_ref_pattern`, `worktree`, `worktree_p
 
 A provider comes from one of two places, and its **root** is where its `provider.yaml` lives:
 
-- **Installed:** its plugin `task-<name>@nerv` appears in `~/.claude/plugins/installed_plugins.json`. The root is that entry's `installPath`.
+- **Installed:** the provider `task-<name>` is installed: its Claude Code id `task-<name>@nerv` appears in `~/.claude/plugins/installed_plugins.json`. The root is that entry's `installPath`.
 - **Project:** the repository ships it as `.ai-workflow/providers/task-<name>/provider.yaml`, in the **main checkout** (`git rev-parse --path-format=absolute --git-common-dir`, then its parent), committed with the repository and never installed. The root is that folder. A project provider whose `task-<name>` is also an installed plugin's name is skipped and reported (`nerv` refuses that name collision), and so is one whose folder resolves outside the repository.
 
 Then read `<root>/provider.yaml` and `<root>/<operation file>`; an operation file must stay inside the root.

@@ -146,6 +146,7 @@ func runConfigure(args []string, stdout, stderr io.Writer, opts options) int {
 			Path:           *initRepo,
 			Base:           *repoBase,
 			ProviderConfig: repoProviderConfig,
+			UserConfig:     paths.Config,
 		}
 		result, err := configure.InitRepo(deps, req)
 		return emitMutation(stdout, result, err, *jsonOut)

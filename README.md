@@ -63,21 +63,21 @@ activation, and pipeline diagrams.
 
 The marketplace ships the core and three optional extensions (`task`,
 `release`, `deploy`) with their providers. Each one is installed as its own
-Claude Code plugin, `<name>@nerv`:
+Claude Code plugin:
 
-| Claude Code plugin | Required | What it does |
+| Plugin | Required | What it does |
 |---|---|---|
 | `nerv@nerv` | yes | Core: adapts gentle-ai's agents to the NERV pipeline. It holds no task, timer or tracker logic. |
-| `task@nerv` | no | The task extension: the `/task:*` commands, local timers, and the `task:dispatcher` agent that turns pipeline events into tracker operations. |
-| `task-teamwork@nerv` | no | A task provider for Teamwork, with a `provider.yaml` manifest. |
-| `release@nerv` | no | The release extension: `/release:version`, `/release:setup`, `/release:build`, the `release:versioner` and `release:builder` agents. Its providers come with it: the native `conventional-commits` version engine (no semantic-release) and the `docker-compose` and `bash` builds, which leave a local artifact; it never writes to git. |
-| `release-conventional-commits@nerv` | no | The release version provider: the native Conventional Commits engine, the `version` slot's default. Installed with `release`. |
-| `release-docker-compose@nerv` | no | A release build provider: `docker compose` build, test service and saved images. Installed with `release`. |
-| `release-bash@nerv` | no | A release build provider: each stage runs the project's own command. Installed with `release`. |
-| `deploy@nerv` | no | The deploy extension (requires `release`): `/deploy:run`, `/deploy:setup` and the `deploy:deployer` agent. It turns an artifact into a release: release commit, tag, push, targets, git host release. |
-| `deploy-github@nerv` | no | A deploy git host provider for GitHub releases (`gh`), with a `provider.yaml` manifest. Installed with `deploy`. |
-| `deploy-ssh-compose@nerv` | no | A deploy target provider: pushes the artifact's images and updates the containers over SSH with the host's compose script. Installed with `deploy`. |
-| `deploy-bash@nerv` | no | A deploy target provider: runs the repository's own deploy script from the release commit. Installed with `deploy`. |
+| `task` | no | The task extension: the `/task:*` commands, local timers, and the `task:dispatcher` agent that turns pipeline events into tracker operations. |
+| `task-teamwork` | no | A task provider for Teamwork, with a `provider.yaml` manifest. |
+| `release` | no | The release extension: `/release:version`, `/release:setup`, `/release:build`, the `release:versioner` and `release:builder` agents. Its providers come with it: the native `conventional-commits` version engine (no semantic-release) and the `docker-compose` and `bash` builds, which leave a local artifact; it never writes to git. |
+| `release-conventional-commits` | no | The release version provider: the native Conventional Commits engine, the `version` slot's default. Installed with `release`. |
+| `release-docker-compose` | no | A release build provider: `docker compose` build, test service and saved images. Installed with `release`. |
+| `release-bash` | no | A release build provider: each stage runs the project's own command. Installed with `release`. |
+| `deploy` | no | The deploy extension (requires `release`): `/deploy:run`, `/deploy:setup` and the `deploy:deployer` agent. It turns an artifact into a release: release commit, tag, push, targets, git host release. |
+| `deploy-github` | no | A deploy git host provider for GitHub releases (`gh`), with a `provider.yaml` manifest. Installed with `deploy`. |
+| `deploy-ssh-compose` | no | A deploy target provider: pushes the artifact's images and updates the containers over SSH with the host's compose script. Installed with `deploy`. |
+| `deploy-bash` | no | A deploy target provider: runs the repository's own deploy script from the release commit. Installed with `deploy`. |
 
 When the task extension is installed, the orchestrator emits pipeline events
 (`run.started`, `verification.started`, `audit.ranked`, `issue.deferred`,
@@ -185,14 +185,19 @@ bring every provider they ship with them, unasked; `deploy` requires
 
 ### Updating
 
-Re-run the install method you used (the `scripts/install.sh` one-liner, or
-`go install ...@latest` on Windows), then
-run `nerv install` again to refresh the plugin cache and re-apply
-configuration.
+On Linux and macOS, run `nerv upgrade` (`--alpha` or `--rc` to follow a
+pre-release channel): it downloads the newest release, verifies its
+checksum, replaces the binary, then runs the new binary's `nerv install`.
+See [docs/commands.md](docs/commands.md#nerv-upgrade).
+
+On Windows, re-run `go install ...@latest`, then run `nerv install` again
+to refresh the plugin cache and re-apply configuration.
 
 **Upgrading from a release with built-in tasks.** An existing `tasks:`
-block in `~/.config/ai-workflow/config.yaml` or `.ai-workflow/config.yaml` keeps working once
-the task extension is installed; without it, core ignores the block and never
+block in `.ai-workflow/config.yaml` keeps working once the task extension is
+installed. The task settings that are not personal are read from the project
+only: `nerv migrate --user` moves the ones in `~/.config/ai-workflow/config.yaml`
+under `defaults.tasks`, which seeds new projects. Without the extension, core ignores the block and never
 deletes it. Copies of the `/task:*` commands that an older release put in
 `~/.claude/commands/task/` are reported by `nerv install` and removed only
 after you confirm. See [docs/configuration.md](docs/configuration.md#tasks-task-extension).
@@ -264,10 +269,10 @@ The wizard walks through these sections:
 5. **Repos** (`--skip-repos`) — optionally writes `.ai-workflow/config.yaml` in one
    or more local git repositories, leaving an already-initialized repo
    untouched.
-6. **Task providers** — shown only when `task@nerv` is enabled. It prompts
+6. **Task providers** — shown only when the `task` extension is enabled. It prompts
    each enabled provider's scalar config keys, read from its
-   `provider.yaml`, plus `tasks.provider` when more than one provider is
-   enabled. The `/task:*` commands are served by the `task` extension itself,
+   `provider.yaml`, plus the default task provider for new repositories
+   (`defaults.tasks.provider`) when more than one provider is enabled. The `/task:*` commands are served by the `task` extension itself,
    so nothing is copied to `~/.claude/commands/task/`.
 
 The closing step (`--no-refresh` to skip) applies the resolved `models:`

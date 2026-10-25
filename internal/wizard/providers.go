@@ -93,8 +93,13 @@ func scalarKeys(m *taskprovider.Manifest, scope string) []taskprovider.ConfigKey
 	return keys
 }
 
+// seedProviderKey is the user file's default task provider, which
+// nerv configure --init-repo copies into a new repository.
+const seedProviderKey = "defaults.tasks.provider"
+
 // runTaskProvidersSection is the Task providers section, shown only when
-// the task extension is enabled: tasks.provider when more than one provider is
+// the task extension is enabled: the default task provider
+// (defaults.tasks.provider) when more than one provider is
 // enabled, then every user-scope scalar key of each enabled provider's
 // manifest, shown with its current value or its Default. The changed
 // answers are written to the user config.yaml in one
@@ -128,16 +133,19 @@ func runTaskProvidersSection(deps Deps, cfg configure.Paths, providers []configu
 	}
 
 	if names := providerNames(providers); len(names) > 1 {
-		old := current("tasks.provider", "")
-		def := old
+		// The user file holds the default a new repository's tasks.provider
+		// is seeded from; its older tasks.provider, which no longer
+		// applies at run time, only prefills the answer.
+		old := current(seedProviderKey, "")
+		def := current(seedProviderKey, current("tasks.provider", ""))
 		if !slices.Contains(names, def) {
 			def = names[0]
 		}
-		answer, err := s.choose("Task provider", names, def)
+		answer, err := s.choose("Default task provider for new repositories", names, def)
 		if err != nil {
 			return false, err
 		}
-		record("tasks.provider", old, answer)
+		record(seedProviderKey, old, answer)
 	}
 
 	for _, p := range providers {

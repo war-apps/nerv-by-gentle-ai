@@ -1,7 +1,7 @@
 # deploy-ssh-compose
 
 The SSH and docker compose target for `nerv deploy` (Claude Code plugin
-`deploy-ssh-compose@nerv`, provider name `ssh-compose`, slot `target`). It
+`deploy-ssh-compose`, provider name `ssh-compose`, slot `target`). It
 has no commands of its own: `nerv deploy` runs its operations from
 `provider.yaml`, the provider contract (`docs/extensions.md`) that the
 `deploy` extension's skill details. It is a native provider: `preflight`,

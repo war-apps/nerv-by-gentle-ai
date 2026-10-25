@@ -28,11 +28,42 @@ func TestRunInstall_Terminal_DecliningTaskOffersNoProvider(t *testing.T) {
 		t.Fatalf("exit code = %d, want 0; stdout:\n%s", code, stdout.String())
 	}
 	out := stdout.String()
-	if !strings.Contains(out, "Install task@nerv") {
-		t.Errorf("task@nerv was not offered:\n%s", out)
+	if !strings.Contains(out, "Install task (") {
+		t.Errorf("task was not offered:\n%s", out)
 	}
-	if strings.Contains(out, "Install task-teamwork@nerv") || strings.Contains(out, "claude plugin install task-teamwork@nerv") {
+	if strings.Contains(out, "Install task-teamwork") || strings.Contains(out, "claude plugin install task-teamwork@nerv") {
 		t.Errorf("a provider was offered or installed after task was declined:\n%s", out)
+	}
+}
+
+// S3: the output names the task extension by its bare name, while Claude
+// Code still receives its id: claude plugin install task@nerv and
+// enabledPlugins["task@nerv"] stay unchanged.
+func TestRunInstall_WithTask_BareNameInOutputClaudeCodeIDUnchanged(t *testing.T) {
+	home := t.TempDir()
+	seedExtensionsForCLI(t, home)
+	var stdout, stderr bytes.Buffer
+	opts := testOptions(home)
+	opts.ExtensionsFS = nerv.ExtensionsFS()
+	opts.Runner = baseInstallRunner()
+
+	code := run([]string{"install", "--no-skills", "--no-configure", "--with", "task"}, &stdout, &stderr, opts)
+
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0; stdout:\n%s", code, stdout.String())
+	}
+	out := stdout.String()
+	for _, want := range []string{"-> claude plugin uninstall task@nerv", "-> claude plugin install task@nerv", "\ntask version : "} {
+		if !strings.Contains(out, want) {
+			t.Errorf("stdout lacks %q:\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, "task@nerv version") {
+		t.Errorf("version line names task by its Claude Code id:\n%s", out)
+	}
+	settings, _ := os.ReadFile(filepath.Join(home, ".claude", "settings.json"))
+	if !strings.Contains(string(settings), `"task@nerv": true`) {
+		t.Errorf("enabledPlugins[\"task@nerv\"] not written:\n%s", settings)
 	}
 }
 
@@ -287,7 +318,7 @@ func TestRunInstall_Terminal_SuggestionOrder(t *testing.T) {
 			}
 			var asked []string
 			for _, part := range strings.Split(stdout.String(), "Install ")[1:] {
-				name, _, _ := strings.Cut(part, "@nerv")
+				name, _, _ := strings.Cut(part, " (")
 				asked = append(asked, name)
 			}
 			if strings.Join(asked, ",") != strings.Join(tt.asked, ",") {

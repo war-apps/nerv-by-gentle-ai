@@ -7,7 +7,7 @@
   during the corner-case interview is a recorded decision, not a missing
   case, and will not surface as a finding.
 - **Teamwork is the only task provider shipped today.** Task tracking is the
-  optional task extension (`task@nerv`), and `task-teamwork@nerv` is its only
+  optional `task` extension, and `task-teamwork` is its only
   provider. Another provider is a new `task-<name>` provider with a valid `provider.yaml`; see
   "Adding a provider" in [integration.md](integration.md#task-extension).
 - **No task question, no timer, no task event.** The task extension is not
@@ -51,6 +51,11 @@ lists the steps to take ([commands.md](commands.md#nerv-doctor)).
   `$NERV_INSTALL_DIR` (default `$HOME/.local/bin`); add that directory to
   `PATH`, or re-run with `NERV_INSTALL_DIR` pointed at a directory already
   on `PATH`.
+- **`nerv upgrade` says "Unsupported OS" or fails to replace the binary.**
+  Prebuilt binaries exist for Linux and macOS on amd64 and arm64 only;
+  elsewhere use `go install ...@latest`. The binary is replaced in its own
+  directory, so that directory must be writable by you; on any failure
+  the current binary is left as it was.
 - **Plugin cache version does not match.** Run
   `nerv install --no-configure --no-skills` to re-materialize the plugin,
   re-register it, and refresh the Claude Code cache without touching

@@ -472,11 +472,11 @@ instead of asking.
 Core holds no task, timer or tracker logic. Task tracking is split across
 the optional task extension and its providers, from the same marketplace:
 
-- **`task@nerv`**, the task extension. It owns the `/task:*` commands, the
+- **`task`**, the task extension. It owns the `/task:*` commands, the
   local timer store, timelog consolidation, the composite operations
   (block, cancel, done, close, stopAll) and the `task:dispatcher` agent.
   Its contract is `plugins/task/skills/task/SKILL.md`.
-- **Providers**, such as `task-teamwork@nerv`. Each one ships a
+- **Providers**, such as `task-teamwork`. Each one ships a
   `provider.yaml` manifest and one procedure file per remote operation.
 
 **Detection.** The orchestrator treats the task extension as installed when
@@ -521,8 +521,8 @@ A `needs_input` envelope carries a question; Ikari relays it verbatim and
 dispatches the event again with the answer in `data`. Dispatch is
 fail-soft: a `blocked` or `failed` envelope never halts or retries the run.
 
-**Per-event switches.** `tasks.events.<event>: off` in either configuration file
-scope turns one event off, and a run can switch events off for itself
+**Per-event switches.** `tasks.events.<event>: off` in the project's
+`.ai-workflow/config.yaml` turns one event off, and a run can switch events off for itself
 (`disabled_events`). A switched-off event is answered `skipped`. See
 [configuration.md](configuration.md#tasks-task-extension).
 

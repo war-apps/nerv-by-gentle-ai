@@ -2,8 +2,10 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"io/fs"
 	"strings"
 	"testing"
@@ -93,6 +95,39 @@ func TestRun_NoArgsPrintsUsageAndExits0(t *testing.T) {
 	}
 	if stderr.Len() != 0 {
 		t.Errorf("stderr = %q, want empty", stderr.String())
+	}
+}
+
+// The usage lists nerv upgrade, and the upgrade options (an HTTP client, a
+// releases API, an executable) change nothing for the other commands:
+// nerv version still prints the same line and never reaches the network
+// or runs a binary.
+func TestRun_UsageListsUpgradeAndUpgradeOptionsLeaveVersionAlone(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	if code := run([]string{}, &stdout, &stderr, testOptions(t.TempDir())); code != 0 {
+		t.Fatalf("exit code = %d, want 0", code)
+	}
+	if !strings.Contains(stdout.String(), "\n  upgrade [--alpha | --rc]") {
+		t.Errorf("usage lacks nerv upgrade:\n%s", stdout.String())
+	}
+
+	var plain, withUpgrade bytes.Buffer
+	if code := run([]string{"version"}, &plain, &stderr, testOptions(t.TempDir())); code != 0 {
+		t.Fatalf("exit code = %d, want 0", code)
+	}
+	opts := testOptions(t.TempDir())
+	opts.ReleaseAPIBase = "http://127.0.0.1:1/unreachable"
+	opts.ReleaseDownloadBase = "http://127.0.0.1:1/unreachable"
+	opts.Executable = func() (string, error) { t.Error("version resolved the executable"); return "", nil }
+	opts.RunBinary = func(context.Context, string, []string, io.Writer, io.Writer) (int, error) {
+		t.Error("version ran a binary")
+		return 0, nil
+	}
+	if code := run([]string{"version"}, &withUpgrade, &stderr, opts); code != 0 {
+		t.Fatalf("exit code = %d, want 0", code)
+	}
+	if withUpgrade.String() != plain.String() || stderr.Len() != 0 {
+		t.Errorf("version = %q (stderr %q), want %q", withUpgrade.String(), stderr.String(), plain.String())
 	}
 }
 

@@ -27,6 +27,14 @@ Moves a repository (and, with --user, your user configuration) from nerv
   - personal settings in the project file (models, and every provider key
     of user scope) move to the user config with --user, and are reported
     otherwise;
+  - with --user, the user config's tasks:, release: and deploy: keys,
+    which apply from the project file only, move under defaults.<section>
+    (the defaults the setup commands copy into a project); the personal
+    ones stay: provider keys of user scope, tasks.timer_store,
+    tasks.stale_after_hours and tasks.rounding_minutes;
+  - a project file without tasks.provider gets the user's
+    (defaults.tasks.provider, or the user tasks.provider), so a repository
+    that relied on it keeps its provider;
   - tasks.rounding_minutes moves to tasks.providers.teamwork, and the
     removed jira and github-projects providers are dropped;
   - the 4.2.0 release: section becomes today's release: section (in

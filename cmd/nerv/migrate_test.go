@@ -12,6 +12,7 @@ import (
 	nerv "github.com/war-apps/nerv-by-gentle-ai"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/env/envtest"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/migrate"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/paths"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/releaserun"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/versioning"
 )
@@ -129,6 +130,44 @@ func TestMigrate_OutsideARepositoryRefusesUnlessUser(t *testing.T) {
 	code, out, errOut := runMigrateCLI(t, opts, "--user")
 	if code != 0 || !strings.Contains(out, "nothing to migrate") {
 		t.Errorf("--user outside a repository: exit %d\n%s\n%s", code, out, errOut)
+	}
+}
+
+// nerv migrate --user moves the user file's run-time task keys under
+// defaults:: the dry run lists the step and writes nothing, the run writes
+// it with a backup, and a second run has nothing to do.
+func TestMigrate_UserRunTimeKeysMoveUnderDefaults(t *testing.T) {
+	home := t.TempDir()
+	opts := testOptions(home)
+	opts.ExtensionsFS = nerv.ExtensionsFS()
+	opts.Runner = &envtest.FakeRunner{Responses: map[string]envtest.Response{
+		"git -C . rev-parse --show-toplevel": {Stderr: "fatal: not a git repository", ExitCode: 128},
+	}}
+	user := paths.Resolve(home).UserConfig
+	if err := os.MkdirAll(filepath.Dir(user), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(user, []byte("tasks:\n  provider: teamwork\n  providers:\n    teamwork:\n      assignee_id: 7\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	before := treeHash(t, home)
+
+	code, out, errOut := runMigrateCLI(t, opts, "--user", "--dry-run")
+	if code != 0 || !strings.Contains(out, "1. Update "+user+": your user configuration") || !strings.Contains(out, "user config: tasks.provider moved under defaults.tasks") {
+		t.Errorf("dry run: exit %d\n%s\n%s", code, out, errOut)
+	}
+	if treeHash(t, home) != before {
+		t.Error("the dry run wrote the home")
+	}
+	if code, out, errOut := runMigrateCLI(t, opts, "--user"); code != 0 || !strings.Contains(out, ".bak-migrate-") {
+		t.Errorf("run: exit %d\n%s\n%s", code, out, errOut)
+	}
+	data, _ := os.ReadFile(user)
+	if want := "tasks:\n  providers:\n    teamwork:\n      assignee_id: 7\n\ndefaults:\n  tasks:\n    provider: teamwork\n"; string(data) != want {
+		t.Errorf("user config:\n%s\nwant:\n%s", data, want)
+	}
+	if code, out, _ := runMigrateCLI(t, opts, "--user"); code != 0 || !strings.Contains(out, "nothing to migrate") {
+		t.Errorf("second run: exit %d\n%s", code, out)
 	}
 }
 
