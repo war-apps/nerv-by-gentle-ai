@@ -24,13 +24,14 @@ type InitRepoRequest struct {
 	ProviderConfig []string
 }
 
-// InitRepo initializes path for NERV by writing <toplevel>/.ai-workflow.yml
+// InitRepo initializes path for NERV by writing <toplevel>/.ai-workflow/config.yaml
 // (config.FormatProjectFile, plus each ProviderConfig entry under
 // tasks.providers.<provider>.<key>) and, when missing, the runtime folder's
 // <toplevel>/.nerv/.gitignore of "*" — never overwriting or editing an
 // existing project config, reporting that case as a warning rather than an
-// error. A pre-rename <toplevel>/.nerv/nerv.yaml is not a project config:
-// it is left alone and reported in a warning that "nerv migrate" moves it.
+// error. A 4.2.0 <toplevel>/.nerv/nerv.yaml is not a project config: it is
+// left alone and reported in a warning that "nerv migrate" moves it. A
+// previous <toplevel>/.ai-workflow.yml is refused, naming "nerv migrate".
 // path must exist and be inside a git working tree (resolved with "git -C
 // <path> rev-parse --show-toplevel"); either failure, like an invalid
 // ProviderConfig entry, is a refusal.
@@ -39,17 +40,20 @@ func InitRepo(deps Deps, req InitRepoRequest) (Result, error) {
 		return Result{}, &RefusalError{Err: fmt.Errorf("Path not found: %s", req.Path)}
 	}
 
-	settings, err := ParseProviderConfig(deps.ExtensionsFS, req.ProviderConfig)
-	if err != nil {
-		return Result{}, err
-	}
-
 	stdout, _, exitCode, err := deps.Runner.Run(context.Background(), "git", "-C", req.Path, "rev-parse", "--show-toplevel")
 	toplevel := strings.TrimSpace(stdout)
 	if err != nil || exitCode != 0 || toplevel == "" {
 		return Result{}, &RefusalError{Err: fmt.Errorf("Not a git repository: %s", req.Path)}
 	}
 
+	settings, err := ParseProviderConfig(deps.ExtensionsFS, toplevel, req.ProviderConfig)
+	if err != nil {
+		return Result{}, err
+	}
+
+	if err := paths.RefusePreviousProject(toplevel); err != nil {
+		return Result{}, err
+	}
 	repoConfigPath := paths.ProjectConfig(toplevel)
 
 	warnings := emptyStrings()

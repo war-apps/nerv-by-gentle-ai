@@ -10,7 +10,7 @@ import (
 )
 
 // An Apply that fails part way (here: odd/ is not writable, so the run
-// files cannot move after the ODD document and .ai-workflow.yml were
+// files cannot move after the ODD document and .ai-workflow/config.yaml were
 // written) must leave a repository that either still has the old layout or
 // that a second nerv migrate, once the cause is fixed, finishes. Today the
 // second run refuses: "odd/tasks/<change>.md already exists".
@@ -50,7 +50,7 @@ func TestInterrupted_ApplyLeavesARepositoryASecondRunFinishes(t *testing.T) {
 	if _, err := migrate.Apply(p2, now); err != nil {
 		t.Fatalf("second Apply: %v", err)
 	}
-	for _, rel := range []string{"odd/tasks/tw-1-feature.md", "odd/tw-1-feature/nerv/state.yaml", ".nerv/locks/tw-1-feature.lock", ".ai-workflow.yml"} {
+	for _, rel := range []string{"odd/tasks/tw-1-feature.md", "odd/tw-1-feature/nerv/state.yaml", ".nerv/locks/tw-1-feature.lock", ".ai-workflow/config.yaml"} {
 		if !w.exists(rel) {
 			t.Errorf("%s is missing after the second run", rel)
 		}

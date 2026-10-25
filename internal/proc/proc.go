@@ -1,6 +1,6 @@
 // Package proc runs external processes for NERV's release commands: git,
 // npm and node for `nerv version next`, and the stage and hook scripts of
-// `nerv ship`.
+// `nerv release`.
 //
 // Every command runs in its own session and process group (Unix) or new
 // process group (Windows), with standard input detached unless given, so a

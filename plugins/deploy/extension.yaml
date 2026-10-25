@@ -1,0 +1,26 @@
+# The deploy extension's contract with the NERV core (docs/extensions.md).
+# nerv deploy runs the providers of its two slots as exec steps, with the
+# step variables and the request payload of skills/deploy/SKILL.md.
+name: deploy
+contract_version: 1
+suggest_order: 3
+# Every deploy provider is installed with deploy, never asked.
+providers: bundled
+requires: [release]
+runtime: exec
+argv: ["{nerv}", deploy]
+slots:
+  # The git host that makes the release of the deployed tag (deploy.host).
+  - name: host
+    cardinality: one
+    operations:
+      releaseExists: required
+      createRelease: required
+  # One provider per deploy.targets entry, run in that order.
+  - name: target
+    cardinality: per-target
+    operations:
+      preflight: optional
+      publish: optional
+      deploy: required
+      verify: optional

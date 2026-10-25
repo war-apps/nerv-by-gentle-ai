@@ -1,13 +1,13 @@
 ---
 name: deploy
-description: NERV deploy plugin contract. Covers the deploy section of .ai-workflow.yml (git host, targets, git), how deploy providers are found (deploy-provider.yaml), the operations a git host and a target implement, the step variables and the JSON request and response, the steps of nerv deploy with their statuses, preflight, re-runs and the dry-run-then-yes rule. Loaded by the /deploy:* commands and by the deploy:deployer agent.
+description: NERV deploy extension contract. Covers the deploy section of .ai-workflow/config.yaml (git host, targets, git), how deploy providers are found (provider.yaml), the operations a git host and a target implement, the step variables and the JSON request and response, the steps of nerv deploy with their statuses, preflight, re-runs and the dry-run-then-yes rule. Loaded by the /deploy:* commands and by the deploy:deployer agent.
 ---
 
-# NERV Deploy Plugin — Contract
+# NERV Deploy Extension — Contract
 
-The deploy plugin turns a local artifact that `nerv ship` left (`ship:ship` skill, §4) into a release. It writes the release to git (release commit, tag, channel note, push), publishes and deploys the artifact to its **targets**, and creates the release on the **git host**. Every git write happens here, so an artifact that is never deployed leaves no trace in the repository. The plugin requires `ship`.
+The deploy extension turns a local artifact that `nerv release` left (`release:release` skill, §4) into a release. It writes the release to git (release commit, tag, channel note, push), publishes and deploys the artifact to its **targets**, and creates the release on the **git host**. Every git write happens here, so an artifact that is never deployed leaves no trace in the repository. The extension requires `release`.
 
-Hosts and targets are **provider plugins** named `deploy-<name>`, each with a `deploy-provider.yaml` manifest. The deploy plugin talks to no host or target itself: `nerv deploy` runs the provider's operations.
+Hosts and targets are **providers** named `deploy-<name>`, each with a `provider.yaml` manifest: the shape every provider of every extension shares, checked against the `host` and `target` slots of `plugins/deploy/extension.yaml` (`docs/extensions.md`). The deploy extension talks to no host or target itself: `nerv deploy` runs the provider's operations.
 
 If `nerv` is not on PATH, tell the user to install it — `curl -fsSL https://raw.githubusercontent.com/war-apps/nerv-by-gentle-ai/main/scripts/install.sh | bash`, or `go install github.com/war-apps/nerv-by-gentle-ai/cmd/nerv@latest` — and stop.
 
@@ -20,14 +20,14 @@ If `nerv` is not on PATH, tell the user to install it — `curl -fsSL https://ra
 
 ## 2. Configuration
 
-The `deploy:` section of `<repo>/.ai-workflow.yml`. Unknown keys are refused.
+The `deploy:` section of `<repo>/.ai-workflow/config.yaml`. Unknown keys are refused.
 
 ```yaml
 deploy:
-  host: github                    # git host provider: plugin deploy-github
+  host: github                    # git host provider: deploy-github
   targets:                        # deployed in this order
     - name: staging
-      provider: ssh-compose       # target provider: plugin deploy-ssh-compose
+      provider: ssh-compose       # target provider: deploy-ssh-compose
       config:
         environment: staging
   git:
@@ -48,25 +48,27 @@ A provider key's value comes from the target's `config`; when unset, from `deplo
 
 ## 3. Finding providers
 
-`nerv deploy` resolves a provider by name, `deploy-<name>`, from the providers this nerv build ships (today `deploy-github` and `deploy-ssh-compose`). A `host` or `provider` it does not know is refused before anything runs. Install the matching plugin with `nerv install --with deploy-<name>` so the configuration prompts and its description are available in Claude Code.
+`nerv deploy` resolves a provider by name, `deploy-<name>`, from the providers this nerv build ships (today `deploy-github`, `deploy-ssh-compose` and `deploy-bash`). A `host` or `provider` it does not know is refused before anything runs. Install the matching provider with `nerv install --with deploy-<name>` so the configuration prompts and its description are available in Claude Code.
 
 The manifest declares:
 
-- `name`, `contract_version` (1) and `kind`: `git-host` or `target`.
+- `name`, `extension: deploy`, `slot` (`host`: one git host, `deploy.host`; or `target`: one provider per `deploy.targets` entry), `contract_version` (1) and `runtime: exec`.
 - `requires`: the executables that must be on PATH.
 - `config`: `key`, `scope` (`user` or `repo`), `type` (`string`, `int`, `bool`), `default` and the `prompt` `/deploy:setup` and `nerv configure` show.
-- `operations`: a git host implements `releaseExists` and `createRelease`; a target implements `publish`, `deploy` and `verify` (`publish` and `verify` may be `not_implemented`).
+- `operations`: every operation of its slot. A host implements `releaseExists` and `createRelease`; a target implements `deploy`, and `preflight`, `publish` and `verify` or declares them `not_implemented`.
 
 ## 4. Operations
 
 - An operation is a list of steps. Go runs each step's `argv` directly, without a shell, in the temporary clone.
 - An `argv` element is a literal or one whole `{variable}`, replaced as one argument, so values such as the notes can never inject a command. `{arg: <flag>, when: prerelease}` keeps an argument only for a release on a channel; `when: prerelease` on a step does the same for the step.
-- Variables: `project`, `version`, `channel`, `tag`, `base_commit`, `branch`, `build_mode`, `prerelease`, `artifact_dir`, `notes_file`, `changelog_file`, `target`, `nerv` (the nerv binary), `config.<key>`, and `item` in a step with `for_each` (`images`, `image_tars` or `outputs`).
-- Each step reads a JSON request on stdin: `contract_version`, `operation`, `target`, `artifact` (the manifest), `artifact_dir`, `config`, `item`.
-- A step may print `{"status": "ok" | "skipped" | "failed", "message": "...", "exists": true | false}` on stdout. Without JSON, its exit code decides.
-- `releaseExists` has one step. An `exists` answer decides; otherwise exit 0 means it exists, and a non-zero exit whose stderr matches `absent_stderr` means it does not. Any other failure is an error.
+- Variables: `project`, `version`, `channel`, `tag`, `base_commit`, `branch`, `build_provider` (`docker-compose` or `bash`), `prerelease`, `artifact_dir`, `notes_file`, `changelog_file`, `target`, `nerv` (the nerv binary), `config.<key>`, and `item` in a step with `for_each` (`images`, `image_tars` or `outputs`).
+- Each step reads the common JSON request on stdin: `contract` (1), `extension` (`deploy`), `slot`, `provider`, `operation`, `config` (the provider's resolved config) and `payload`: `target`, `artifact` (the manifest), `artifact_dir`, `item`.
+- A step may print the common response on stdout: `{"status": "ok" | "skipped" | "blocked" | "failed" | "needs_input", "message": "...", "data": {...}}`. `nerv deploy` cannot ask the user, so `blocked` and `needs_input` fail the operation like `failed`, with the message. Without JSON, its exit code decides.
+- `releaseExists` has one step. A `data.exists` answer decides; otherwise exit 0 means it exists, and a non-zero exit whose stderr matches `absent_stderr` means it does not. Any other failure is an error.
+- `preflight` runs once per target before anything is cloned or pushed (also in a dry run). It refuses a bad config with `failed` and its message, and answers in `data.requires` the executables that config needs besides `requires`.
+- A **native** provider, such as `deploy-ssh-compose`, is an exec provider whose steps run the hidden `{nerv} provider deploy-<name> <operation>`.
 
-Adding a host or a target, such as GitLab or Gitea, is another `deploy-<name>` plugin with its manifest, with no change to `deploy`.
+Adding a host or a target, such as GitLab or Gitea, is another `deploy-<name>` provider with its manifest, with no change to `deploy`.
 
 ## 5. `nerv deploy`
 
@@ -74,7 +76,7 @@ Adding a host or a target, such as GitLab or Gitea, is another `deploy-<name>` p
 nerv deploy --artifact <dir> [--target <name> ...] [--dry-run] [--rebase] [--yes] [--json]
 ```
 
-**Preflight.** Before any push, `nerv deploy` checks every selected target's and the host's `requires` tools and the data they need (for `deploy-ssh-compose`: `sshpass` with `ssh_auth: password`, the `infisical` CLI with `source: infisical`, the environment's deploy data). A missing tool or value is a refusal (exit 1) with nothing written.
+**Preflight.** Before any push, `nerv deploy` runs every selected target's `preflight` and checks the host's and the targets' `requires` tools plus the tools each preflight answers (for `deploy-ssh-compose`: `sshpass` with `ssh_auth: password`, the `infisical` CLI with `source: infisical`). A missing tool or a refused config is a refusal (exit 1) with nothing written.
 
 | Step | What happens |
 |---|---|
@@ -89,12 +91,12 @@ nerv deploy --artifact <dir> [--target <name> ...] [--dry-run] [--rebase] [--yes
 | `release` | The host's `createRelease` (a prerelease on a channel), skipped when `releaseExists` says it is there. |
 
 - The deploy stops at the first failure. Each step's status is `done`, `skipped`, `failed`, `not-run` or `dry-run`. `not-run` steps are the **pending** ones.
-- A dry run prepares the release in the clone and shows the steps; it pushes nothing and runs no provider.
-- **Origin moved** past the base commit: refused, unless `--rebase` re-applies the release files on the new head (a conflict is refused). If origin no longer has the base commit, ship again.
+- A dry run prepares the release in the clone and shows the steps; it pushes nothing and runs no provider operation but the targets' `preflight`.
+- **Origin moved** past the base commit: refused, unless `--rebase` re-applies the release files on the new head (a conflict is refused). If origin no longer has the base commit, release again.
 - **Re-runs are safe.** A tag already on origin with the same content, a release commit already on the branch and an existing host release are reused or skipped; only the refs origin lacks are pushed. After a failure, fix the cause and run the same command again.
 - `--json` prints `{project, version, tag, channel, branch, dry_run, commit, steps: [{name, status, detail}], error}` on stdout; progress goes to stderr.
 - Exit codes: 0 deployed or a dry run; 1 refused, nothing written (invalid configuration or artifact, preflight, origin moved, a conflict, no confirmation); 2 a step failed (the report says which were done); 128 + the signal interrupted.
 
 ## 6. Migration from `pipeline:`
 
-`nerv pipeline` and the `pipeline:` section are removed. Its `docker` push and `deploy` steps are the `deploy-ssh-compose` target (`publish`, `deploy`, `verify`); `release` is `nerv ship` then `nerv deploy` with `deploy-github`; the `sync` back-merge is not ported, so merge the release back into `develop` by hand. `nerv migrate` translates the section.
+`nerv pipeline` and the `pipeline:` section are removed. Its `docker` push and `deploy` steps are the `deploy-ssh-compose` target (`publish`, `deploy`, `verify`); `release` is `nerv release` then `nerv deploy` with `deploy-github`; the `sync` back-merge is not ported, so merge the release back into `develop` by hand. `nerv migrate` translates the section.

@@ -1,8 +1,9 @@
 // Package paths is the single catalogue of every filesystem location nerv
 // resolves from a user's home directory or a repository root: the
-// user-scope config.yml and the project-scope .ai-workflow.yml (plus the
-// legacy nerv.yaml locations nerv no longer reads, kept only to point at
-// "nerv migrate"), the .nerv/ runtime folder, gentle-ai's state.json, the Claude Code skills directory,
+// user-scope config.yaml and the project-scope .ai-workflow/config.yaml
+// with its project extensions and providers (plus the earlier locations
+// nerv no longer reads, kept only to point at "nerv migrate"), the .nerv/
+// runtime folder, gentle-ai's state.json, the Claude Code skills directory,
 // settings.json, the materialized marketplace, installed_plugins.json, and
 // the per-version plugin cache agents directory. Every other package
 // resolves these paths from Resolve instead of rebuilding the same joins
@@ -11,17 +12,31 @@ package paths
 
 import (
 	"errors"
+	"fmt"
 	"io/fs"
 	"os"
 	"os/user"
 	"path/filepath"
 	"runtime"
 	"strings"
+
+	"github.com/war-apps/nerv-by-gentle-ai/internal/refusal"
 )
 
-// ProjectConfigFile is the project-scope configuration file, at the
-// repository root. It is meant to be committed.
-const ProjectConfigFile = ".ai-workflow.yml"
+// ProjectDirName is the repository's committed nerv folder: the project
+// configuration (config.yaml), the project extensions (extensions/<name>/)
+// and the project providers (providers/<extension>-<name>/).
+const ProjectDirName = ".ai-workflow"
+
+// ProjectConfigFile is the project-scope configuration file, relative to
+// the repository root. It is meant to be committed.
+const ProjectConfigFile = ProjectDirName + "/config.yaml"
+
+// PreviousProjectConfigFile is where the project configuration lived
+// before the .ai-workflow/ folder, relative to the repository root. nerv
+// never reads it: every command refuses while it exists, naming "nerv
+// migrate", which moves it.
+const PreviousProjectConfigFile = ".ai-workflow.yml"
 
 // RuntimeDirName is the repository's runtime-only folder (artifacts, the
 // orchestrator lock, logs). It is git-ignored and never holds configuration.
@@ -46,13 +61,56 @@ func EnsureRuntimeIgnored(repoRoot string) (string, error) {
 }
 
 // ProjectConfig is the project-scope configuration path of the repository
-// at repoRoot: "<repoRoot>/.ai-workflow.yml".
+// at repoRoot: "<repoRoot>/.ai-workflow/config.yaml".
 func ProjectConfig(repoRoot string) string {
-	return filepath.Join(repoRoot, ProjectConfigFile)
+	return filepath.Join(repoRoot, filepath.FromSlash(ProjectConfigFile))
 }
 
-// LegacyProjectConfig is where the project configuration lived before
-// .ai-workflow.yml: "<repoRoot>/.nerv/nerv.yaml". nerv never reads it as
+// ProjectExtensionsDir holds the repository's own extensions, one folder
+// per extension with its extension.yaml: "<repoRoot>/.ai-workflow/extensions".
+func ProjectExtensionsDir(repoRoot string) string {
+	return filepath.Join(repoRoot, ProjectDirName, "extensions")
+}
+
+// ProjectProvidersDir holds the repository's own providers, one
+// <extension>-<name> folder per provider with its provider.yaml:
+// "<repoRoot>/.ai-workflow/providers".
+func ProjectProvidersDir(repoRoot string) string {
+	return filepath.Join(repoRoot, ProjectDirName, "providers")
+}
+
+// PreviousProjectConfig is "<repoRoot>/.ai-workflow.yml", the project
+// configuration before the .ai-workflow/ folder (see
+// PreviousProjectConfigFile).
+func PreviousProjectConfig(repoRoot string) string {
+	return filepath.Join(repoRoot, PreviousProjectConfigFile)
+}
+
+// RefusePreviousProject refuses the repository at repoRoot while its
+// previous .ai-workflow.yml exists, with the "nerv migrate" hint: that file
+// is never read, and silently ignoring it would lose its settings.
+func RefusePreviousProject(repoRoot string) error {
+	return refusePrevious(PreviousProjectConfig(repoRoot), ProjectConfig(repoRoot), "nerv migrate")
+}
+
+// RefusePreviousUser refuses while the previous user config.yml exists,
+// with the "nerv migrate --user" hint.
+func (p Paths) RefusePreviousUser() error {
+	if p.PreviousUserConfig == "" {
+		return nil
+	}
+	return refusePrevious(p.PreviousUserConfig, p.UserConfig, "nerv migrate --user")
+}
+
+func refusePrevious(previous, current, command string) error {
+	if _, err := os.Lstat(previous); err != nil {
+		return nil
+	}
+	return &refusal.Error{Err: fmt.Errorf("%s is no longer read (configuration now lives in %s); run %q to move it", previous, current, command)}
+}
+
+// LegacyProjectConfig is where the project configuration lived in nerv
+// 4.2.0: "<repoRoot>/.nerv/nerv.yaml". nerv never reads it as
 // configuration; it only reports that "nerv migrate" moves it.
 func LegacyProjectConfig(repoRoot string) string {
 	return filepath.Join(repoRoot, RuntimeDirName, "nerv.yaml")
@@ -123,10 +181,14 @@ type Paths struct {
 	// from.
 	Home string
 	// UserConfig is the user-scope configuration path:
-	// "<os.UserConfigDir()>/ai-workflow/config.yml".
+	// "<os.UserConfigDir()>/ai-workflow/config.yaml".
 	UserConfig string
-	// LegacyUserConfig is where the user configuration lived before
-	// config.yml: "<home>/.claude/nerv/nerv.yaml". nerv never reads it as
+	// PreviousUserConfig is the user configuration before config.yaml:
+	// "<os.UserConfigDir()>/ai-workflow/config.yml". nerv never reads it:
+	// RefusePreviousUser refuses while it exists.
+	PreviousUserConfig string
+	// LegacyUserConfig is where the user configuration lived in nerv
+	// 4.2.0: "<home>/.claude/nerv/nerv.yaml". nerv never reads it as
 	// configuration; it only reports that "nerv migrate" moves it.
 	LegacyUserConfig string
 	// State is gentle-ai's state.json path.
@@ -144,14 +206,15 @@ type Paths struct {
 // Resolve builds Paths from a resolved home directory.
 func Resolve(home string) Paths {
 	return Paths{
-		Home:             home,
-		UserConfig:       filepath.Join(userConfigDir(home), "ai-workflow", "config.yml"),
-		LegacyUserConfig: filepath.Join(home, ".claude", "nerv", "nerv.yaml"),
-		State:            filepath.Join(home, ".gentle-ai", "state.json"),
-		SkillsDir:        filepath.Join(home, ".claude", "skills"),
-		Settings:         filepath.Join(home, ".claude", "settings.json"),
-		Marketplace:      filepath.Join(home, ".nerv", "marketplace"),
-		InstalledPlugins: filepath.Join(home, ".claude", "plugins", "installed_plugins.json"),
+		Home:               home,
+		UserConfig:         filepath.Join(userConfigDir(home), "ai-workflow", "config.yaml"),
+		PreviousUserConfig: filepath.Join(userConfigDir(home), "ai-workflow", "config.yml"),
+		LegacyUserConfig:   filepath.Join(home, ".claude", "nerv", "nerv.yaml"),
+		State:              filepath.Join(home, ".gentle-ai", "state.json"),
+		SkillsDir:          filepath.Join(home, ".claude", "skills"),
+		Settings:           filepath.Join(home, ".claude", "settings.json"),
+		Marketplace:        filepath.Join(home, ".nerv", "marketplace"),
+		InstalledPlugins:   filepath.Join(home, ".claude", "plugins", "installed_plugins.json"),
 	}
 }
 

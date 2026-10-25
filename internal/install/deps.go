@@ -32,7 +32,7 @@ type Deps struct {
 	SettingsPath string
 	// FS is the embedded plugin tree, typically nerv.PluginFS().
 	FS fs.FS
-	// ExtensionsFS holds the optional extension plugins shipped in the same
+	// ExtensionsFS holds the optional extensions and providers shipped in the same
 	// marketplace, one folder per plugin, typically nerv.ExtensionsFS().
 	// Nil ships none.
 	ExtensionsFS fs.FS
@@ -70,7 +70,7 @@ type Options struct {
 	RequireGentleAI bool
 	// NoSkills skips the skills-install step entirely.
 	NoSkills bool
-	// Extensions names extension plugins to install (such as "task" or a
+	// Extensions names the extensions and providers to install (such as "task" or a
 	// "task-<provider>" plugin); their requirements are added. Unknown names are a
 	// RefusalError.
 	Extensions []string

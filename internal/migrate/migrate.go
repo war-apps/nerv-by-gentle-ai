@@ -1,8 +1,9 @@
-// Package migrate moves a repository and a user from nerv 4.2.0 to this
-// version: the old configuration files (.nerv/nerv.yaml and
-// ~/.claude/nerv/nerv.yaml) become .ai-workflow.yml and the user
-// config.yml, the release: and pipeline: sections become ship: and
-// deploy:, the semantic-release configuration is imported, the in-flight
+// Package migrate moves a repository and a user from nerv 4.2.0 (or
+// 5.0.0-alpha.1) to this version: the old configuration files
+// (.nerv/nerv.yaml or .ai-workflow.yml, and ~/.claude/nerv/nerv.yaml or the
+// user config.yml) become .ai-workflow/config.yaml and the user
+// config.yaml, the 4.2.0 release: and pipeline: sections become today's
+// release: and deploy:, the semantic-release configuration is imported, the in-flight
 // openspec changes become ODD feature documents, and the plugins the
 // repository used are named for nerv install.
 //
@@ -92,7 +93,7 @@ type Plan struct {
 	// Notes say what was translated; Warnings what has no equivalent or
 	// needs the user's hand.
 	Notes, Warnings []string
-	// Plugins are the extension plugins the old configuration used, in
+	// Plugins are the extensions and providers the old configuration used, in
 	// install order.
 	Plugins []string
 }
@@ -150,6 +151,9 @@ type userState struct {
 	doc      *config.Document
 	original []byte
 	exists   bool
+	// moved is set when the previous config.yml moves to path: path does
+	// not exist yet, and original is the previous file's content.
+	moved bool
 }
 
 // set records a personal key moved into the user configuration.
@@ -161,7 +165,7 @@ func (u *userState) finish(p *Plan) {
 	if u.exists && bytes.Equal(text, u.original) {
 		return
 	}
-	if !u.exists && len(bytes.TrimSpace(text)) == 0 {
+	if !u.exists && !u.moved && len(bytes.TrimSpace(text)) == 0 {
 		return
 	}
 	c := Change{Kind: Write, Path: u.path, New: text, User: true}

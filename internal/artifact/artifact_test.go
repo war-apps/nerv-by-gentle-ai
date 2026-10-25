@@ -33,7 +33,7 @@ func sample(t *testing.T) Input {
 	return Input{
 		Manifest: Manifest{
 			Project: "api", Version: "1.4.0-alpha.2", Channel: "alpha", Tag: "api-v1.4.0-alpha.2",
-			BaseCommit: strings.Repeat("a", 40), Branch: "develop", BuildMode: "compose",
+			BaseCommit: strings.Repeat("a", 40), Branch: "develop", BuildProvider: "docker-compose",
 			CreatedAt: time.Date(2026, 10, 23, 12, 0, 0, 0, time.UTC),
 			Images:    []string{"ghcr.io/acme/api:1.4.0-alpha.2"},
 		},
@@ -92,9 +92,9 @@ func TestWrite_LaysOutTheArtifactUnderTheRepository(t *testing.T) {
 		t.Fatal(err)
 	}
 	for key, want := range map[string]any{
-		"schema": "nerv.ship-artifact/v1", "project": "api", "version": "1.4.0-alpha.2", "channel": "alpha",
+		"schema": "nerv.release-artifact/v1", "project": "api", "version": "1.4.0-alpha.2", "channel": "alpha",
 		"tag": "api-v1.4.0-alpha.2", "base_commit": strings.Repeat("a", 40), "branch": "develop",
-		"build_mode": "compose", "created_at": "2026-10-23T12:00:00Z",
+		"build_provider": "docker-compose", "created_at": "2026-10-23T12:00:00Z",
 	} {
 		if doc[key] != want {
 			t.Errorf("manifest %s = %v, want %v", key, doc[key], want)
@@ -211,7 +211,11 @@ func TestRead_RefusesAnotherSchemaOrAPathLeavingTheArtifact(t *testing.T) {
 		edit func(m map[string]any)
 		want string
 	}{
-		{"schema", func(m map[string]any) { m["schema"] = "nerv.ship-artifact/v2" }, "schema"},
+		{"schema", func(m map[string]any) { m["schema"] = "nerv.release-artifact/v2" }, "schema"},
+		// S1: an artifact nerv ship wrote (5.0.0-alpha.1) says how to get a
+		// current one.
+		{"alpha.1 schema", func(m map[string]any) { m["schema"] = "nerv.ship-artifact/v1" },
+			`schema "nerv.ship-artifact/v1": this artifact was made by nerv 5.0.0-alpha.1 (nerv ship); rebuild it with nerv release`},
 		{"output path", func(m map[string]any) {
 			m["outputs"] = []any{map[string]any{"path": "../escape", "kind": "file", "sha256": sum("")}}
 		}, "../escape"},

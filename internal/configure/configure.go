@@ -1,5 +1,5 @@
 // Package configure implements the "nerv configure" use case: reading and
-// editing the user-scope config.yml, per-role model overrides, project-scope
+// editing the user-scope config.yaml, per-role model overrides, project-scope
 // repo initialization, and the task provider settings described by the
 // embedded provider manifests. It is the non-interactive half of "nerv configure"; the interactive
 // setup wizard lives in internal/wizard.
@@ -32,7 +32,7 @@ type Deps struct {
 	// so "agents/misato.md" and "skills-manifest.json" are
 	// top-level entries.
 	FS fs.FS
-	// ExtensionsFS holds the optional extension plugins, typically
+	// ExtensionsFS holds the optional extensions and providers, typically
 	// nerv.ExtensionsFS(): the task provider manifests that describe the
 	// provider settings InitRepo and the wizard accept. Nil holds none.
 	ExtensionsFS fs.FS
@@ -54,7 +54,7 @@ type Deps struct {
 // Paths is every filesystem location "nerv configure" reads or writes,
 // resolved from a home directory and an optional --config override.
 type Paths struct {
-	// Config is the user-scope config.yml path.
+	// Config is the user-scope config.yaml path.
 	Config string
 	// State is gentle-ai's state.json path, used to resolve from:<phase>
 	// overrides for -Print's models table.
@@ -73,7 +73,7 @@ func ResolveHome(override string) (string, error) {
 }
 
 // ResolvePaths builds Paths from a resolved home directory and an optional
-// --config override (empty means the default `<os.UserConfigDir()>/ai-workflow/config.yml`),
+// --config override (empty means the default `<os.UserConfigDir()>/ai-workflow/config.yaml`),
 // plus the skills directory --print uses.
 // The joins themselves live in the shared internal/paths catalogue.
 func ResolvePaths(home, configOverride string) Paths {
@@ -119,11 +119,11 @@ type Result struct {
 type RefusalError = refusal.Error
 
 // missingUserConfigHeader seeds the in-memory working document when the
-// user-scope config.yml does not exist yet, so Set/SetModel can auto-vivify
+// user-scope config.yaml does not exist yet, so Set/SetModel can auto-vivify
 // the managed blocks the same way against either a real or a bootstrapped
 // file. It is never written to disk by itself — only once a real managed
 // value has actually changed and Store.Save has something new to persist.
-const missingUserConfigHeader = "# ai-workflow/config.yml -- NERV user-scope configuration\n# Generated/updated by nerv configure\n"
+const missingUserConfigHeader = "# ai-workflow/config.yaml -- NERV user-scope configuration\n# Generated/updated by nerv configure\n"
 
 func emptyChanges() []Change {
 	return []Change{}

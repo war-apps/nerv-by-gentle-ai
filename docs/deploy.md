@@ -1,27 +1,27 @@
-# Deploy plugin: `nerv deploy`
+# Deploy extension: `nerv deploy`
 
-The deploy plugin (`deploy@nerv`) releases what the [ship plugin](release-commands.md)
-packaged. It requires `ship`, and its git hosts and targets are provider
-plugins (`deploy-github`, `deploy-ssh-compose`). Install them with:
+The deploy extension (`deploy@nerv`) releases what the [release extension](release-commands.md)
+packaged. It requires `release`, and its git hosts and targets are providers
+(`deploy-github`, `deploy-ssh-compose`, `deploy-bash`), installed with it. Install them with:
 
 ```sh
-nerv install --with ship,deploy,deploy-github
+nerv install --with release,deploy,deploy-github
 nerv install --with deploy-ssh-compose   # the SSH and compose target
 ```
 
 | Slash command | What it does |
 |---|---|
 | `/deploy:run` | Picks the latest local artifact, or the one you name (`api`, `api@1.4.0`, a directory), runs `nerv deploy --dry-run`, and deploys only after your explicit yes. It reports every step and the pending ones. |
-| `/deploy:setup` | Writes the `deploy:` section (host, targets with their provider config, git), asks only what it cannot detect, and suggests the provider plugins to install. |
+| `/deploy:setup` | Writes the `deploy:` section (host, targets with their provider config, git), asks only what it cannot detect, and suggests the providers to install. |
 
-The plugin's agent, `deploy:deployer`, runs the same dry run and, with your
+The extension's agent, `deploy:deployer`, runs the same dry run and, with your
 approved project, version and tag, the real deploy. Its skill, `deploy`, is
 the contract below.
 
-`nerv deploy` takes an artifact that `nerv ship` left in
+`nerv deploy` takes an artifact that `nerv release` left in
 `.nerv/artifacts/<project>/<version>/` and turns it into a release. It writes
 the release to git, publishes and deploys the artifact to its targets, and
-creates the release on the git host. `nerv ship` never writes to git. Every
+creates the release on the git host. `nerv release` never writes to git. Every
 git write happens here, so an artifact that is never deployed leaves no trace
 in the repository.
 
@@ -36,12 +36,19 @@ and asks before it pushes anything.
 ### Preflight
 
 Before any push, `nerv deploy` checks every selected target and the host:
-the tools their manifests `require` (`gh`, `docker`, `ssh`), the tools
-their configuration implies (`sshpass` with `ssh_auth: password`, the
-`infisical` CLI with `source: infisical`), and the data they need (each
-environment's deploy data). A missing tool or value is a refusal (exit 1)
-with nothing written, so a deploy never stops half-way for a missing
-binary after the tag is on origin.
+the tools their manifests `require` (`gh`, `docker`, `ssh`), and each
+target's `preflight` operation, which refuses a bad configuration and
+answers the tools that configuration implies (`sshpass` with
+`ssh_auth: password`, the `infisical` CLI with `source: infisical`). A
+missing tool or a refused configuration is a refusal (exit 1) with nothing
+written, so a deploy never stops half-way for a missing binary after the
+tag is on origin. The preflight also runs in a dry run.
+
+The preflight runs in your repository, not in the temporary clone: it runs
+before the clone exists (a refused configuration costs no clone), and the
+clone has no working tree to check anyway. A provider that checks files,
+such as `deploy-bash`'s scripts, therefore checks your working tree; it
+checks them again in the release commit when it deploys.
 
 ## What it does
 
@@ -65,10 +72,10 @@ status: `done`, `skipped`, `failed`, `not-run` or `dry-run`.
 When origin's branch has commits after the artifact's base commit, the deploy
 is refused. With `--rebase`, the release commit is cherry-picked onto the new
 head. A conflict, for example someone else editing the CHANGELOG, is refused.
-If origin no longer contains the base commit, ship again.
+If origin no longer contains the base commit, release again.
 
 `--rebase` warns that the tag then points at a commit whose code was never
-built: the artifact was built from the base commit. Shipping again is the
+built: the artifact was built from the base commit. Releasing again is the
 safe path; `/deploy:run` never adds `--rebase` on its own.
 
 ### Re-runs
@@ -86,14 +93,14 @@ resumes after the steps that were done.
 
 ## Configuration
 
-The `deploy:` section of `.ai-workflow.yml`. Unknown keys are refused.
+The `deploy:` section of `.ai-workflow/config.yaml`. Unknown keys are refused.
 
 ```yaml
 deploy:
-  host: github                    # git host provider: plugin deploy-github
+  host: github                    # git host provider: deploy-github
   targets:                        # deployed in this order
     - name: staging
-      provider: ssh-compose       # target provider: plugin deploy-ssh-compose
+      provider: ssh-compose       # target provider: deploy-ssh-compose
       config:
         environment: staging
     - name: production
@@ -119,18 +126,22 @@ deploy:
 
 A provider key's value comes from the target's `config`. If the target does
 not set it, nerv reads `deploy.providers.<provider>.<key>` in the user
-configuration (`~/.config/ai-workflow/config.yml`). If neither sets it, the
+configuration (`~/.config/ai-workflow/config.yaml`). If neither sets it, the
 manifest's default applies.
 
 ## Providers
 
-Git hosts and targets are provider plugins named `deploy-<name>`. Each one
-ships a `deploy-provider.yaml` manifest:
+Git hosts and targets are providers named `deploy-<name>`. Each one
+ships a `provider.yaml` manifest, the shape every provider shares
+([extensions.md](extensions.md)), checked against the `host` and `target`
+slots of the deploy extension's `extension.yaml`:
 
 ```yaml
 name: github
+extension: deploy
+slot: host                  # host (deploy.host) or target (deploy.targets[])
 contract_version: 1
-kind: git-host              # git-host or target
+runtime: exec               # nerv deploy runs exec providers
 requires: [gh]              # executables that must be on PATH
 config:                     # key, scope (user or repo), type (string, int, bool), default, prompt
   - key: repo
@@ -138,40 +149,57 @@ config:                     # key, scope (user or repo), type (string, int, bool
     type: string
     prompt: The repository
 operations:
-  releaseExists:            # git-host: releaseExists, createRelease
+  releaseExists:            # host: releaseExists, createRelease
     - argv: [gh, release, view, "{tag}"]
       absent_stderr: "release not found"
   createRelease:
     - argv: [gh, release, create, "{tag}", --notes-file, "{notes_file}", {arg: --prerelease, when: prerelease}]
 ```
 
-- A target implements `publish`, `deploy` and `verify`. `publish` and
-  `verify` may be declared `not_implemented`.
+- A target implements `deploy`, and `preflight`, `publish` and `verify` or
+  declares them `not_implemented`. Every operation of the slot is declared.
 - An operation is a list of steps. Go runs each step's `argv` directly,
   without a shell.
 - An element is either a literal or one whole `{variable}`, and the variable
   is replaced as one argument. Values such as the release notes can never
   inject a command.
 - The variables are `project`, `version`, `channel`, `tag`, `base_commit`,
-  `branch`, `build_mode`, `prerelease`, `artifact_dir`, `notes_file`,
+  `branch`, `build_provider` (the release build provider that made the
+  artifact), `prerelease`, `artifact_dir`, `notes_file`,
   `changelog_file`, `target`, `nerv` (the nerv binary), `config.<key>`, and
   `item` in a step with `for_each` (`images`, `image_tars` or `outputs`).
 - `when: prerelease` keeps a step or an argument only for a release on a
   channel.
-- Each step reads a JSON request on stdin: `contract_version`, `operation`,
-  `target`, `artifact` (the manifest), `artifact_dir`, `config` and `item`.
-- A step may print a JSON response on stdout:
-  `{"status": "ok" | "skipped" | "failed", "message": "...", "exists": true | false}`.
-  A step that prints no JSON succeeds or fails by its exit code.
-- `releaseExists` has one step. An `exists` answer decides. Otherwise exit 0
-  means the release exists, and a non-zero exit whose stderr matches
+- Each step reads the common JSON request on stdin: `contract` (1),
+  `extension` (`deploy`), `slot`, `provider`, `operation`, `config` and
+  `payload` (`target`, `artifact`: the manifest, `artifact_dir` and `item`).
+- A step may print the common JSON response on stdout:
+  `{"status": "ok" | "skipped" | "blocked" | "failed" | "needs_input", "message": "...", "data": {...}}`.
+  nerv deploy cannot ask you anything, so `blocked` and `needs_input` fail
+  the operation like `failed`, with the message. A step that prints no JSON
+  succeeds or fails by its exit code.
+- `releaseExists` has one step. A `data.exists` answer decides. Otherwise
+  exit 0 means the release exists, and a non-zero exit whose stderr matches
   `absent_stderr` means it does not. Any other failure is an error.
-- Provider steps run in the temporary clone. The `gh` CLI therefore works on
-  origin's repository, with your `gh auth login` session.
+- A target's `preflight` runs before anything is cloned or pushed, also in a
+  dry run. It refuses a bad config with `failed` and its message, and
+  answers in `data.requires` the executables that config needs besides
+  `requires`.
+- A step answering a status that is none of these fails the operation: it
+  speaks another contract.
+- A native provider, such as `deploy-ssh-compose` or `deploy-bash`, is an
+  exec provider whose steps run nerv's hidden
+  `{nerv} provider deploy-<name> <operation>`.
+- Provider steps run in the temporary clone, except `preflight`, which runs
+  in your repository (see [Preflight](#preflight)). The clone holds origin's
+  commits, the release commit and its tag, but no checked-out files. The
+  `gh` CLI therefore works on origin's repository, with your
+  `gh auth login` session.
+- A refused preflight shows the provider's stderr under its message.
 
 ### deploy-github
 
-Kind `git-host`, requires `gh`. `releaseExists` runs `gh release view <tag>`.
+Slot `host`, requires `gh`. `releaseExists` runs `gh release view <tag>`.
 `createRelease` runs:
 
 ```sh
@@ -180,11 +208,14 @@ gh release create <tag> --title <tag> --notes-file <notes> [--prerelease] --veri
 
 ### deploy-ssh-compose
 
-Kind `target`, requires `docker` and `ssh`.
+Slot `target`, requires `docker` and `ssh`.
 
+- `preflight` runs `nerv provider deploy-ssh-compose preflight`: it checks
+  the config and answers `sshpass` for `ssh_auth: password` and `infisical`
+  for `source: infisical`.
 - `publish` runs `docker load -i` for each image tar of the artifact, then
   `docker push` for each image. Log in to the registry first.
-- `deploy` and `verify` run `nerv deploy-ssh-compose deploy|verify`, the
+- `deploy` and `verify` run `nerv provider deploy-ssh-compose deploy|verify`, the
   update-deploy flow of the removed `nerv pipeline deploy`.
   - It reads the environment's deploy data, either from the
     `NERV_DEPLOY_<ENVIRONMENT>_<KEY>` variables (`source: env`) or from
@@ -214,6 +245,56 @@ Kind `target`, requires `docker` and `ssh`.
 | `verify_healthy` | repo | `true` |
 | `version_label` | repo | `org.opencontainers.image.version` |
 | `verify_timeout` | repo | `120s` |
+
+### deploy-bash
+
+Slot `target`, requires `bash` and `git`. It runs your repository's own
+scripts, through `nerv provider deploy-bash <operation>`:
+
+| Key | Scope | Default | Meaning |
+|---|---|---|---|
+| `script` | repo | required | The deploy script, relative to the repository root. |
+| `publish_script` | repo | none (`publish` is skipped) | Run by `publish`, before any target deploys. |
+| `verify_script` | repo | none (`verify` is skipped) | Run by `verify`, after the target's deploy. |
+| `timeout` | repo | none (no limit) | A duration (`10m`, `90s`) bounding each script run; past it the script's process group is killed and the operation fails. |
+
+```yaml
+deploy:
+  targets:
+    - name: docs
+      provider: bash
+      config:
+        script: deploy/deploy.sh
+        verify_script: deploy/check.sh
+```
+
+- `preflight` checks, in your repository, that every configured script is a
+  regular file inside it: a relative path without `..`, outside `.git`, and
+  no symlink leading out of the repository.
+- `publish`, `deploy` and `verify` run the script of the release commit (the
+  artifact's tag), never your working tree's: the script must be a regular
+  file there, not a symlink. That commit's files are extracted into a
+  temporary directory, all of them (`export-ignore` attributes do not
+  apply) with their executable modes, and `bash <script>` runs there.
+- The script reads the common JSON request on stdin, and finds the deploy
+  variables in its environment:
+
+  | Variable | Value |
+  |---|---|
+  | `NERV_DEPLOY_OPERATION` | `publish`, `deploy` or `verify`. |
+  | `NERV_DEPLOY_TARGET` | The target's name (`deploy.targets[].name`). |
+  | `NERV_DEPLOY_PROJECT`, `NERV_DEPLOY_VERSION`, `NERV_DEPLOY_TAG` | The artifact's project, version and tag. |
+  | `NERV_DEPLOY_CHANNEL`, `NERV_DEPLOY_PRERELEASE` | The release channel (empty for none) and `true` or `false`. |
+  | `NERV_DEPLOY_BRANCH`, `NERV_DEPLOY_BASE_COMMIT`, `NERV_DEPLOY_COMMIT` | The release branch, the artifact's base commit and the release commit. |
+  | `NERV_DEPLOY_BUILD_PROVIDER` | The build provider that made the artifact. |
+  | `NERV_DEPLOY_ARTIFACT_DIR`, `NERV_DEPLOY_NOTES_FILE`, `NERV_DEPLOY_CHANGELOG_FILE` | The artifact's directory, its release notes and its CHANGELOG section. |
+  | `NERV_DEPLOY_IMAGES` | The artifact's image references, space-separated. |
+
+- The script may print the common JSON response on stdout: its `status`,
+  `message` and `data` are the operation's, and `failed`, `blocked` or
+  `needs_input` fail the deploy with its message. Without a response, exit
+  0 is `ok` and a non-zero exit fails with the script's last stderr line.
+  Its stderr is shown as it runs.
 
 ## Deploy data
 
@@ -248,7 +329,7 @@ name upper-cased with `-` turned into `_`; the prefix is `NERV_DEPLOY`. For
 ```bash
 NERV_DEPLOY_PRODUCTION_BLUE_DOCKER_SSH_HOST=10.0.0.10
 NERV_DEPLOY_PRODUCTION_BLUE_DOCKER_SSH_USER=deploy
-NERV_DEPLOY_PRODUCTION_BLUE_DOCKER_SSH_PASS=...          # never in .ai-workflow.yml
+NERV_DEPLOY_PRODUCTION_BLUE_DOCKER_SSH_PASS=...          # never in .ai-workflow/config.yaml
 NERV_DEPLOY_PRODUCTION_BLUE_DOCKER_COMPOSE_PATH=/srv/apps
 NERV_DEPLOY_PRODUCTION_BLUE_DOCKER_COMPOSE_SCRIPT=./manage.sh
 NERV_DEPLOY_PRODUCTION_BLUE_DOCKER_CONTAINER_NAME=comprobantes-api
@@ -276,11 +357,191 @@ overrides):
 
 ## Migrating from `nerv pipeline`
 
-The `pipeline:` section's `docker` push and `deploy` steps are this
-plugin's `deploy-ssh-compose` target, and its `release` step is `nerv ship`
-then `nerv deploy` with `deploy-github`. The key-by-key translation is in
-[pipeline.md](pipeline.md); `nerv migrate --dry-run` shows it for your
-repository.
+`nerv pipeline`, its Claude Code command and the `pipeline:` section were
+removed.
+Its release step ran semantic-release, which nerv no longer uses: the
+version engine is native, and building and releasing are now two extensions
+with a local artifact between them.
+
+| Old step | Now |
+|---|---|
+| `validate` | A `lint` stage of the project in the `release:` section, run by `nerv release` ([release](release-commands.md)). |
+| `test` | The `build`, `test` and `coverage` stages, with `coverage` floors. |
+| `release` | `nerv release` (version, CHANGELOG section, version files, packages, into the artifact), then `nerv deploy` (release commit, tag, channel note, push, GitHub release with `deploy-github`). |
+| `docker` | Building and saving the images: `nerv release` (`compose` mode, or a script `package` stage). Pushing them: the `publish` operation of the `deploy-ssh-compose` target. |
+| `sync` | Not ported. Merge the release back into `develop` and `release/*` by hand; an opt-in `deploy.sync` may come later. |
+| `deploy` | The `deploy` and `verify` operations of the `deploy-ssh-compose` target ([deploy.md](#deploy-ssh-compose)). |
+
+A repository that still has a `pipeline:` section is told so: the section
+is no longer read, and the commands point to `/release:setup` and
+`/deploy:setup`.
+
+### Steps
+
+1. **Install the extensions and providers**:
+
+   ```sh
+   nerv install --with release,deploy,deploy-github,deploy-ssh-compose
+   ```
+
+2. **See the whole migration** with `nerv migrate --dry-run`: it shows
+   every change to the configuration files (the move to `.ai-workflow/config.yaml`,
+   the translation of the 4.2.0 `release:` and `pipeline:` into today's
+   `release:` and `deploy:`, the semantic-release import, the extensions to install) before
+   writing anything. `nerv migrate` applies it, with backups.
+3. **Or migrate by hand** with the two setup commands: `/release:setup`
+   (offers `nerv release setup --import` for the semantic-release config in
+   `package.json`, and asks each project's build provider), then
+   `/deploy:setup` (the host, the targets, git).
+4. **Rehearse**: `/release:build` (a dry run in a clone, then the artifact on
+   your yes) and `/deploy:run` (a dry run, then the deploy on your yes).
+5. **Delete** the `pipeline:` section, and the semantic-release config once
+   `/release:version` gives the versions you expect.
+
+### Before: the old `pipeline:` section
+
+dim.comprobantes.api, deploying from environment variables:
+
+```yaml
+pipeline:
+  dotnet:
+    solution: Dim.Comprobantes.slnx
+    runsettings: coverlet.runsettings      # coverage thresholds 100/80/100
+    env:                                   # no MSBuild node reuse on a shared host
+      MSBUILDDISABLENODEREUSE: "1"
+  # branches: omitted, the defaults are dim's (main, develop, release/*, hotfix/*)
+  registry:
+    host: ghcr.io
+    username_env: GHCR_USER
+    token_env: GHCR_TOKEN
+  images:
+    - name: ghcr.io/dirm-s-a/dim.comprobantes.api
+      title: dim.comprobantes.api
+      dockerfile: docker/Dockerfile
+      build_args: { APP_VERSION: "${version}" }
+    - name: ghcr.io/dirm-s-a/dim.comprobantes.api-login-broker
+      title: dim.comprobantes.login-broker
+      dockerfile: docker/LoginBroker.Dockerfile
+      build_args: { APP_VERSION: "${version}" }
+      computed_args:
+        # Google's apt index keeps only the latest Chrome: pin it at build
+        # time; a failed build is retried once with the version resolved again.
+        CHROME_VERSION:
+          run: >-
+            curl -fsSL https://dl.google.com/linux/chrome/deb/dists/stable/main/binary-amd64/Packages
+            | awk '/^Package: google-chrome-stable$/ { found = 1 } found && /^Version:/ { print $2; exit }'
+  deploy:
+    source: env
+    environments: [development, staging]
+    ssh:
+      auth: password
+      known_hosts: ~/.config/update-deploy/known_hosts
+```
+
+The same pipeline reading the deploy data from Infisical:
+
+```yaml
+pipeline:
+  dotnet:
+    solution: Dim.Comprobantes.slnx
+    runsettings: coverlet.runsettings
+  images:
+    - name: ghcr.io/dirm-s-a/dim.comprobantes.api
+      dockerfile: docker/Dockerfile
+      build_args: { APP_VERSION: "${version}" }
+  deploy:
+    source: infisical
+    infisical:
+      project_id: 5d9af001-6928-47cb-81ce-0789904385b7
+      app_path: /comprobantes-api
+      domain: https://infisical.dim.com.ar
+    environments: [production-green, production-blue, staging, development]
+    ssh:
+      known_hosts: ~/.config/update-deploy/known_hosts
+    verify:
+      timeout: 3m
+```
+
+### After: `release:` and `deploy:`
+
+The same repository. The images are built by a compose file
+(`docker/compose.release.yml`, building both images with `APP_VERSION`), so
+the docker-compose build saves them into the artifact and `deploy-ssh-compose` pushes
+them; a script `package` stage running `docker build` and `docker save`
+works too.
+
+```text
+release:
+  providers:
+    conventional-commits:
+      branches:
+        - main
+        - { name: release/rc, prerelease: rc, channel: beta }
+        - { name: develop, prerelease: alpha, channel: alpha }
+        - { name: "hotfix/*", prerelease: beta, channel: beta }
+  projects:
+    - name: api
+      path: .
+      build: docker-compose
+      providers:
+        docker-compose: { file: docker/compose.release.yml, test_service: tests }
+      images:
+        - "ghcr.io/dirm-s-a/dim.comprobantes.api:${version}"
+        - "ghcr.io/dirm-s-a/dim.comprobantes.api-login-broker:${version}"
+      version_files: [src/Dim.Comprobantes.Api/Dim.Comprobantes.Api.csproj]
+      coverage: { line: 89, branch: 80, method: 92 }
+      stages:
+        restore: { run: dotnet restore Dim.Comprobantes.slnx }
+        lint: { run: dotnet format Dim.Comprobantes.slnx --verify-no-changes --no-restore }
+
+deploy:
+  host: github
+  targets:
+    - name: production-green
+      provider: ssh-compose
+      config:
+        environment: production-green
+        source: infisical
+        infisical_project_id: 5d9af001-6928-47cb-81ce-0789904385b7
+        infisical_app_path: /comprobantes-api
+        verify_timeout: 3m
+```
+
+And in the user configuration (`deploy.providers.ssh-compose.*`, the
+`scope: user` keys): `infisical_domain: https://infisical.dim.com.ar` and
+`ssh_known_hosts: ~/.config/update-deploy/known_hosts`.
+
+### Key by key
+
+| Old key (default) | Now |
+|---|---|
+| `pipeline.dotnet.solution`, `configuration` (`Release`), `warnings_as_errors` (`true`) | The `restore`, `build` and `test` stage commands, written in full (`dotnet build <solution> -c Release -warnaserror`). There are no presets. |
+| `pipeline.dotnet.env` | Each stage's `env`, or `providers.bash.shared_host: true` for the build-server variables. |
+| `pipeline.dotnet.runsettings`, `coverage.mode` (`enforce`), `coverage.thresholds` | `--settings` in the test stage, and the project's `coverage` `{line, branch, method}`, always enforced. `report` and `off` have no equivalent: leave `coverage` out. |
+| `pipeline.branches` | `release.providers.conventional-commits.branches` (same meaning; `prerelease: true` is accepted when the branch name is a valid id). |
+| `pipeline.registry.host` (`ghcr.io`), `username_env` (`GHCR_USER`), `token_env` (`GHCR_TOKEN`) | Log in with `docker login` before `nerv deploy`: the target pushes with docker's own credentials. |
+| `pipeline.images[].name`, `title`, `dockerfile` (`Dockerfile`), `context` (`.`), `platform` (`linux/amd64`), `build_args`, `computed_args` (shell `bash`), `tags`, `required` | The compose file's services (or a bash `package` stage), and the project's `images` with `${version}`. The pushed tags are exactly the `images` references; the moving tags (`channel`, `latest`) are not produced automatically. |
+| `pipeline.sync.enabled`, `develop` (`develop`), `release` (`release/*`) | Not ported. |
+| `pipeline.release.version_files` | the project's `version_files`. |
+| `pipeline.deploy.source` (`env`) | The target's `source`. |
+| `pipeline.deploy.infisical.project_id`, `app_path`, `domain` | `infisical_project_id`, `infisical_app_path` (repo), `infisical_domain` (user). |
+| `pipeline.deploy.selection` (`target`) | Always `target`: an environment is deployed when its `DOCKER_IMAGE_VERSION` points at the release. `branches` has no equivalent. |
+| `pipeline.deploy.environments` (`production-green`, `production-blue`, `staging`, `development`) | One target per environment, in deploy order. |
+| `pipeline.deploy.update_timeout` (`15m`) | `update_timeout`. |
+| `pipeline.deploy.ssh.auth` (`password`), `key_file`, `known_hosts` (`~/.ssh/known_hosts`), `port` (`22`), `connect_timeout` (`10s`) | `ssh_auth`, `ssh_key_file`, `ssh_known_hosts`, `ssh_connect_timeout` (user), `ssh_port` (repo). |
+| `pipeline.deploy.verify.healthy`, `version_label` (`org.opencontainers.image.version`), `timeout` (`120s`) | `verify_healthy`, `version_label`, `verify_timeout`. |
+
+The deploy data is unchanged: the same keys, read from the same
+`NERV_DEPLOY_<ENVIRONMENT>_<KEY>` variables (prefix `NERV_DEPLOY`) or the
+same Infisical layout. The host keys are `DOCKER_SSH_HOST`,
+`DOCKER_SSH_USER`, `DOCKER_SSH_PASS`, `DOCKER_COMPOSE_PATH` and
+`DOCKER_COMPOSE_SCRIPT`; the application keys are `DOCKER_CONTAINER_NAME`,
+`DOCKER_CONTAINER_VARIANT`, `DOCKER_DEPLOY_ENABLED`,
+`DOCKER_DEPLOY_STRATEGY`, `DOCKER_IMAGE` and `DOCKER_IMAGE_VERSION`
+([deploy.md](#deploy-data)).
+
+The records `nerv pipeline` left in `.nerv/artifacts/pipeline/` are not
+read by anything; delete the folder.
 
 ## Exit codes
 

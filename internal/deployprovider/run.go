@@ -1,15 +1,15 @@
 package deployprovider
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"regexp"
+	"slices"
 	"strings"
 
+	"github.com/war-apps/nerv-by-gentle-ai/internal/extension"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/proc"
 )
 
@@ -23,9 +23,11 @@ type Env struct {
 	Values map[string]string
 	// Lists are the for_each lists (ForEach).
 	Lists map[string][]string
-	// Request is the base of every step's stdin; Operation, ContractVersion
-	// and Item are filled per step.
-	Request Request
+	// Config is the provider's resolved config, sent in every request.
+	Config map[string]string
+	// Payload is the base of every request's payload; Item is filled per
+	// step.
+	Payload Payload
 	// Dir is the steps' working directory; ProcEnv their environment (nil
 	// inherits nerv's).
 	Dir     string
@@ -113,8 +115,8 @@ func renderArgv(args []Arg, values map[string]string, item string) ([]string, er
 }
 
 // Run runs op's commands in order, stopping at the first failure: a
-// non-zero exit or a response with status failed. A skipped response
-// makes the outcome skipped.
+// non-zero exit or a response with status failed, blocked or needs_input.
+// A skipped response makes the outcome skipped.
 func (m *Manifest) Run(ctx context.Context, runner proc.Runner, op string, env Env) (Outcome, error) {
 	cmds, err := m.render(op, env)
 	if err != nil {
@@ -155,68 +157,83 @@ func (m *Manifest) ReleaseExists(ctx context.Context, runner proc.Runner, env En
 	quiet.Output = nil
 	resp, res, err := m.exec(ctx, runner, OpReleaseExists, quiet, c)
 	if err != nil {
-		if pattern := c.step.AbsentStderr; pattern != "" && exitCode(err) > 0 && regexp.MustCompile(pattern).Match(res.Stderr) {
+		if pattern := c.step.AbsentStderr; pattern != "" && extension.ExitCode(err) > 0 && regexp.MustCompile(pattern).Match(res.Stderr) {
 			return false, nil
 		}
 		return false, err
 	}
-	if resp.Exists != nil {
-		return *resp.Exists, nil
+	var data ExistsData
+	if err := resp.DecodeData(&data); err != nil {
+		return false, fmt.Errorf("provider %s: %s: data: %w", m.Name, OpReleaseExists, err)
+	}
+	if data.Exists != nil {
+		return *data.Exists, nil
 	}
 	return true, nil
 }
 
-// exec runs one command with its request on stdin and reads its response.
-func (m *Manifest) exec(ctx context.Context, runner proc.Runner, op string, env Env, c command) (Response, proc.Result, error) {
-	req := env.Request
-	req.ContractVersion, req.Operation, req.Item = ContractVersion, op, c.item
-	stdin, err := json.Marshal(req)
+// Preflight runs a target's preflight, before anything is written, and
+// returns the executables its config needs besides requires (the
+// response's data.requires). A provider that does not implement it needs
+// none. A refused config is an error carrying the provider's message.
+func (m *Manifest) Preflight(ctx context.Context, runner proc.Runner, env Env) ([]string, error) {
+	if !m.Implements(OpPreflight) {
+		return nil, nil
+	}
+	cmds, err := m.render(OpPreflight, env)
 	if err != nil {
-		return Response{}, proc.Result{}, err
+		return nil, err
 	}
-	pc := proc.Command{Name: c.argv[0], Args: c.argv[1:], Dir: env.Dir, Env: env.ProcEnv, Stdin: stdin, Stderr: env.Output}
-	res, err := runner.Run(ctx, pc)
-	resp := parseResponse(res.Stdout)
-	where := fmt.Sprintf("provider %s: %s: %s", m.Name, op, strings.Join(c.argv, " "))
-	if err != nil {
-		detail := lastLine(res.Stderr)
-		if resp.Message != "" {
-			detail = resp.Message
+	var requires []string
+	for _, c := range cmds {
+		quiet := env
+		quiet.Output = nil
+		resp, res, err := m.exec(ctx, runner, OpPreflight, quiet, c)
+		if err != nil {
+			if resp.Failure() && resp.Message != "" {
+				return nil, withStderr(resp.Message, res.Stderr)
+			}
+			return nil, withStderr(err.Error(), res.Stderr)
 		}
-		if detail != "" {
-			return resp, res, fmt.Errorf("%s: %w: %s", where, err, detail)
+		var data PreflightData
+		if err := resp.DecodeData(&data); err != nil {
+			return nil, fmt.Errorf("provider %s: %s: data: %w", m.Name, OpPreflight, err)
 		}
-		return resp, res, fmt.Errorf("%s: %w", where, err)
+		for _, tool := range data.Requires {
+			if !extension.ValidTool(tool) {
+				return nil, fmt.Errorf("provider %s: %s: %q is not an executable name", m.Name, OpPreflight, tool)
+			}
+			if !slices.Contains(requires, tool) {
+				requires = append(requires, tool)
+			}
+		}
 	}
-	if resp.Status == StatusFailed {
-		return resp, res, fmt.Errorf("%s: failed: %s", where, resp.Message)
-	}
-	return resp, res, nil
+	return requires, nil
 }
 
-// parseResponse reads a JSON object response; anything else is no
-// response.
-func parseResponse(stdout []byte) Response {
-	trimmed := bytes.TrimSpace(stdout)
-	var r Response
-	if len(trimmed) == 0 || trimmed[0] != '{' || json.Unmarshal(trimmed, &r) != nil {
-		return Response{}
+// exec runs one command through the shared exec runner (extension.Exec)
+// with its request on stdin, and reads its response.
+func (m *Manifest) exec(ctx context.Context, runner proc.Runner, op string, env Env, c command) (extension.Response, proc.Result, error) {
+	payload := env.Payload
+	payload.Item = c.item
+	config := make(map[string]any, len(env.Config))
+	for k, v := range env.Config {
+		config[k] = v
 	}
-	return r
+	req := extension.Request{
+		Contract: ContractVersion, Extension: Extension, Slot: m.Slot, Provider: m.Name, Operation: op,
+		Config: config, Payload: payload,
+	}
+	call := extension.Call{Argv: c.argv, Dir: env.Dir, Env: env.ProcEnv, Stderr: env.Output}
+	return extension.Exec(ctx, runner, fmt.Sprintf("provider %s: %s", m.Name, op), call, req)
 }
 
-func exitCode(err error) int {
-	var coder interface{ ExitCode() int }
-	if errors.As(err, &coder) {
-		return coder.ExitCode()
+// withStderr adds what a refused step wrote on stderr to its refusal,
+// indented under it, unless the refusal already is that one line.
+func withStderr(refusal string, stderr []byte) error {
+	text := strings.TrimSpace(string(stderr))
+	if text == "" || strings.HasSuffix(refusal, text) {
+		return errors.New(refusal)
 	}
-	return -1
-}
-
-func lastLine(b []byte) string {
-	s := strings.TrimSpace(string(b))
-	if i := strings.LastIndex(s, "\n"); i >= 0 {
-		s = s[i+1:]
-	}
-	return strings.TrimSpace(s)
+	return fmt.Errorf("%s\n  stderr:\n    %s", refusal, strings.ReplaceAll(text, "\n", "\n    "))
 }

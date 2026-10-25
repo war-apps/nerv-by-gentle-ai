@@ -37,7 +37,7 @@ type Options struct {
 	// and writes (see configure.ResolvePaths).
 	Paths configure.Paths
 	// SettingsPath overrides the Claude Code settings.json path the Task
-	// providers section reads (which extension plugins are enabled) and
+	// providers section reads (which extensions and providers are enabled) and
 	// the closing "apply and refresh" step's install.Deps uses. Empty means
 	// the default "<Home>/.claude/settings.json".
 	SettingsPath string
@@ -52,15 +52,15 @@ type Options struct {
 type Summary struct {
 	// Changed is true when any section actually wrote something (user
 	// config, task provider settings, the models block, or a repo's
-	// .ai-workflow.yml).
+	// .ai-workflow/config.yaml).
 	Changed bool
 }
 
 // Run drives the interactive NERV setup wizard end to end: prerequisites,
 // the optional required-skills install, user-scope config (git, skills
 // stacks, critical paths, artifacts), the task provider settings when the
-// task plugin is enabled, the optional per-role models editor, the
-// optional per-repo .ai-workflow.yml init loop, and the closing
+// task extension is enabled, the optional per-role models editor, the
+// optional per-repo .ai-workflow/config.yaml init loop, and the closing
 // apply/refresh step.
 //
 // Run prints its closing "Restart Claude Code..." line only when
@@ -165,7 +165,7 @@ func toolLine(found bool, yes, no string) string {
 // runApplyAndRefreshSection is the closing section: optionally applies the
 // resolved models: block to the plugin cache (install.ApplyModels) and
 // refreshes the "claude plugin" cache (install.RefreshCache, which also
-// refreshes the enabled extension plugins) — the same tail install.Install
+// refreshes the enabled extensions and providers) — the same tail install.Install
 // itself runs after registering settings.json.
 func runApplyAndRefreshSection(ctx context.Context, deps Deps, opts Options, s *session, out io.Writer) error {
 	fmt.Fprintln(out)

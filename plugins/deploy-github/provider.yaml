@@ -1,0 +1,26 @@
+# GitHub git host of the NERV deploy extension (contract: docs/extensions.md
+# and internal/deployprovider). gh runs in nerv deploy's clone of origin, so
+# it releases origin's GitHub repository with the user's `gh auth login`
+# session.
+name: github
+extension: deploy
+slot: host
+contract_version: 1
+runtime: exec
+requires: [gh]
+operations:
+  releaseExists:
+    - argv: [gh, release, view, "{tag}"]
+      absent_stderr: "release not found"
+  createRelease:
+    - argv:
+        - gh
+        - release
+        - create
+        - "{tag}"
+        - --title
+        - "{tag}"
+        - --notes-file
+        - "{notes_file}"
+        - {arg: --prerelease, when: prerelease}
+        - --verify-tag

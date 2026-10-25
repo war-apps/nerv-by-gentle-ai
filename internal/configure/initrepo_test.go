@@ -21,7 +21,7 @@ func gitToplevelRunner(repoPath string) *envtest.FakeRunner {
 }
 
 // ---------------------------------------------------------------------------
-// initrepo: creates <repo>/.ai-workflow.yml with the given fields; running it
+// initrepo: creates <repo>/.ai-workflow/config.yaml with the given fields; running it
 // again reports "already initialized" and writes nothing.
 // ---------------------------------------------------------------------------
 
@@ -39,7 +39,7 @@ func TestInitRepo_CreatesProjectConfig(t *testing.T) {
 		t.Fatal("Changed = false, want true")
 	}
 
-	repoConfigPath := filepath.Join(repoDir, ".ai-workflow.yml")
+	repoConfigPath := filepath.Join(repoDir, ".ai-workflow/config.yaml")
 	content, err := os.ReadFile(repoConfigPath)
 	if err != nil {
 		t.Fatalf("file not created: %v", err)
@@ -73,7 +73,7 @@ func TestInitRepo_CreatesProjectConfig(t *testing.T) {
 }
 
 // A repository with only the old .nerv/nerv.yaml is uninitialized: InitRepo
-// writes .ai-workflow.yml, leaves the old file alone and warns that nerv
+// writes .ai-workflow/config.yaml, leaves the old file alone and warns that nerv
 // migrate moves it.
 func TestInitRepo_OldFileOnly_WritesNewFileAndHints(t *testing.T) {
 	repoDir := t.TempDir()
@@ -90,9 +90,9 @@ func TestInitRepo_OldFileOnly_WritesNewFileAndHints(t *testing.T) {
 	if err != nil {
 		t.Fatalf("InitRepo() error = %v", err)
 	}
-	text, err := os.ReadFile(filepath.Join(repoDir, ".ai-workflow.yml"))
+	text, err := os.ReadFile(filepath.Join(repoDir, ".ai-workflow/config.yaml"))
 	if err != nil || !strings.Contains(string(text), "base_branch: develop") {
-		t.Fatalf(".ai-workflow.yml = %q, %v; want a fresh project file", text, err)
+		t.Fatalf(".ai-workflow/config.yaml = %q, %v; want a fresh project file", text, err)
 	}
 	if old, _ := os.ReadFile(oldPath); string(old) != "enabled: true\ngit:\n  base_branch: legacy\n" {
 		t.Errorf("old file changed: %q", old)
@@ -109,7 +109,7 @@ func TestInitRepo_AlreadyInitialized_WarnsNoOverwrite(t *testing.T) {
 	if _, err := configure.InitRepo(deps, configure.InitRepoRequest{Path: repoDir, Base: "develop"}); err != nil {
 		t.Fatalf("InitRepo() (first) error = %v", err)
 	}
-	repoConfigPath := filepath.Join(repoDir, ".ai-workflow.yml")
+	repoConfigPath := filepath.Join(repoDir, ".ai-workflow/config.yaml")
 	before, err := os.ReadFile(repoConfigPath)
 	if err != nil {
 		t.Fatal(err)
@@ -205,7 +205,7 @@ func TestInitRepo_InvalidProviderConfig_Refused(t *testing.T) {
 			if !strings.Contains(err.Error(), want) {
 				t.Errorf("error = %q, want it to contain %q", err.Error(), want)
 			}
-			if _, statErr := os.Stat(filepath.Join(repoDir, ".ai-workflow.yml")); statErr == nil {
+			if _, statErr := os.Stat(filepath.Join(repoDir, ".ai-workflow/config.yaml")); statErr == nil {
 				t.Error("file was created despite the invalid entry")
 			}
 		})
@@ -228,7 +228,7 @@ const legacyProjectConfig = "enabled: true\n" +
 
 func writeProjectConfig(t *testing.T, repoDir, content string) string {
 	t.Helper()
-	path := filepath.Join(repoDir, ".ai-workflow.yml")
+	path := filepath.Join(repoDir, ".ai-workflow/config.yaml")
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -269,7 +269,7 @@ func TestInitRepo_ExistingConfigWithTasksBlock_IsUntouchedWithoutBackup(t *testi
 
 func TestInitRepo_UnreadableExistingConfig_WarnsInsteadOfFailing(t *testing.T) {
 	repoDir := t.TempDir()
-	path := filepath.Join(repoDir, ".ai-workflow.yml")
+	path := filepath.Join(repoDir, ".ai-workflow/config.yaml")
 	// A directory at the config path exists for os.Stat but cannot be read
 	// as a file, like an unreadable config.
 	if err := os.MkdirAll(path, 0o755); err != nil {

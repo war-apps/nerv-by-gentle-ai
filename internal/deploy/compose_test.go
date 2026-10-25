@@ -9,7 +9,8 @@ import (
 	"time"
 )
 
-// requestFor is the deploy-provider request nerv deploy sends.
+// requestFor is the provider request nerv deploy sends: the common
+// envelope with deploy's payload.
 func requestFor(op string, config map[string]string) string {
 	cfg := map[string]string{
 		"environment": "staging", "source": "env", "ssh_auth": "password", "ssh_known_hosts": "~/.ssh/known_hosts",
@@ -20,8 +21,8 @@ func requestFor(op string, config map[string]string) string {
 		cfg[k] = v
 	}
 	data, _ := json.Marshal(map[string]any{
-		"contract_version": 1, "operation": op, "target": "staging",
-		"artifact": map[string]any{"version": "1.4.0", "branch": "main", "tag": "v1.4.0"}, "config": cfg,
+		"contract": 1, "extension": "deploy", "slot": "target", "provider": "ssh-compose", "operation": op, "config": cfg,
+		"payload": map[string]any{"target": "staging", "artifact": map[string]any{"version": "1.4.0", "branch": "main", "tag": "v1.4.0"}},
 	})
 	return string(data)
 }
@@ -108,5 +109,43 @@ func TestRunComposeOp_SkipsAndRefuses(t *testing.T) {
 	}
 	if len(f.cmds) != 0 {
 		t.Errorf("a refused operation connected: %d commands", len(f.cmds))
+	}
+}
+
+// preflight answers the tools the config needs besides the provider's
+// requires, or refuses the config, before nerv deploy writes anything.
+func TestRunComposeOp_PreflightAnswersTheToolsOrRefuses(t *testing.T) {
+	tests := []struct {
+		name     string
+		config   map[string]string
+		code     int
+		requires []string
+		message  string
+	}{
+		{"password auth needs sshpass", nil, 0, []string{"sshpass"}, ""},
+		{"source infisical needs the CLI", map[string]string{"ssh_auth": "key", "ssh_key_file": "~/.ssh/id", "source": "infisical", "infisical_project_id": "p", "infisical_app_path": "/app"}, 0, []string{"infisical"}, ""},
+		{"key auth needs a key file", map[string]string{"ssh_auth": "key"}, 1, nil, "config.ssh_key_file is required by ssh_auth key"},
+		{"the environment is required", map[string]string{"environment": ""}, 1, nil, "config.environment is required"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var out bytes.Buffer
+			f := &fakeProc{}
+			code := RunComposeOp(context.Background(), "preflight", strings.NewReader(requestFor("preflight", tt.config)), &out, ComposeDeps{Proc: f, Output: &bytes.Buffer{}})
+			var resp struct {
+				Status  string
+				Message string
+				Data    struct{ Requires []string }
+			}
+			if err := json.Unmarshal(out.Bytes(), &resp); err != nil {
+				t.Fatalf("response %q: %v", out.String(), err)
+			}
+			if code != tt.code || !strings.Contains(resp.Message, tt.message) || strings.Join(resp.Data.Requires, ",") != strings.Join(tt.requires, ",") {
+				t.Errorf("exit %d, response %+v", code, resp)
+			}
+			if len(f.cmds) != 0 {
+				t.Errorf("preflight ran %v", f.cmds)
+			}
+		})
 	}
 }

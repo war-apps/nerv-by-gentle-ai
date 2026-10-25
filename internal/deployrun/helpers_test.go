@@ -17,7 +17,9 @@ import (
 // fakeTool records its name, argv and stdin, and answers as the real tool
 // would for what deploy runs: gh release view/create keep a release per
 // tag in the fake's directory; docker push fails while fail-push exists;
-// any other tool (the fake nerv) prints an ok response.
+// the fake nerv runs the real deploy-ssh-compose preflight and every real
+// deploy-bash operation (the test binary, see TestMain), and prints an ok
+// response for any other operation.
 const fakeTool = `#!/bin/sh
 name=$(basename "$0")
 { printf '%s' "$name"; for a in "$@"; do printf ' [%s]' "$a"; done; printf '\n'; } >> "$FAKE_DIR/log"
@@ -34,15 +36,18 @@ docker)
   if [ "$1" = push ] && [ -f "$FAKE_DIR/fail-push" ]; then echo "denied: push access" >&2; exit 1; fi
   ;;
 nerv)
-  echo '{"status":"ok","message":"'"$2"' done"}'
+  if [ "$1" = provider ] && { [ "$3" = preflight ] || [ "$2" = deploy-bash ]; }; then
+    NERV_FAKE_PROVIDER=1 exec "$NERV_TEST_BINARY" "$@" < "$FAKE_DIR/nerv.stdin"
+  fi
+  echo '{"status":"ok","message":"'"$3"' done"}'
   ;;
 esac
 exit 0
 `
 
-// world is one test's world: a bare origin, the user's clone of it, an
-// artifact of the clone's develop head, and fake gh, docker, ssh and nerv
-// on PATH.
+// world is one test's world: a bare origin, the user's clone of it (with
+// files, when given, in its first commit), an artifact of the clone's
+// develop head, and fake gh, docker, ssh and nerv on PATH.
 type world struct {
 	t                  *testing.T
 	origin, repo, fake string
@@ -80,7 +85,7 @@ func writeFile(t *testing.T, path, content string, mode os.FileMode) {
 	}
 }
 
-func newEnv(t *testing.T) *world {
+func newEnv(t *testing.T, files ...map[string]string) *world {
 	t.Helper()
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("git not available")
@@ -96,6 +101,11 @@ func newEnv(t *testing.T) *world {
 	git(t, root, "clone", "-q", e.origin, e.repo)
 	writeFile(t, filepath.Join(e.repo, "app.txt"), "one\n", 0o644)
 	writeFile(t, filepath.Join(e.repo, "CHANGELOG.md"), "# Changelog\n", 0o644)
+	for _, set := range files {
+		for name, content := range set {
+			writeFile(t, filepath.Join(e.repo, filepath.FromSlash(name)), content, 0o644)
+		}
+	}
 	git(t, e.repo, "add", ".")
 	git(t, e.repo, "commit", "-q", "-m", "feat: first")
 	git(t, e.repo, "push", "-q", "origin", "HEAD:refs/heads/main", "HEAD:refs/heads/develop")
@@ -107,6 +117,11 @@ func newEnv(t *testing.T) *world {
 		writeFile(t, filepath.Join(bin, tool), fakeTool, 0o755)
 	}
 	t.Setenv("FAKE_DIR", e.fake)
+	exe, exeErr := os.Executable()
+	if exeErr != nil {
+		t.Fatal(exeErr)
+	}
+	t.Setenv("NERV_TEST_BINARY", exe)
 	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
 
 	src := filepath.Join(root, "image.tar")
@@ -114,7 +129,7 @@ func newEnv(t *testing.T) *world {
 	dir, err := artifact.Write(e.repo, artifact.Input{
 		Manifest: artifact.Manifest{
 			Project: "repo", Version: "1.0.0-alpha.1", Channel: "alpha", Tag: "v1.0.0-alpha.1",
-			BaseCommit: e.base, Branch: "develop", BuildMode: "compose", Images: []string{"reg.example/app:1.0.0-alpha.1"},
+			BaseCommit: e.base, Branch: "develop", BuildProvider: "docker-compose", Images: []string{"reg.example/app:1.0.0-alpha.1"},
 		},
 		Notes: notes, ChangelogSection: "## 1.0.0-alpha.1 (2026-10-23)\n\n* first\n",
 		Outputs:      []artifact.OutputSource{{Path: "app.tar", Kind: artifact.KindImageTar, From: src}},
@@ -148,6 +163,25 @@ func (e *world) run(opts Options) (Report, error) {
 func (e *world) log() []string {
 	data, _ := os.ReadFile(filepath.Join(e.fake, "log"))
 	return strings.Split(strings.TrimSpace(string(data)), "\n")
+}
+
+// preflightCall is the fake log line of the ssh-compose target's
+// preflight, which checks its config before anything is written.
+const preflightCall = "nerv [provider] [deploy-ssh-compose] [preflight]"
+
+// effects returns the fake tools' calls that act (every call but the
+// preflights); none is [""].
+func (e *world) effects() []string {
+	out := []string{}
+	for _, c := range e.log() {
+		if c != preflightCall && c != "" {
+			out = append(out, c)
+		}
+	}
+	if len(out) == 0 {
+		return []string{""}
+	}
+	return out
 }
 
 // originRefs lists every ref of origin with its object.

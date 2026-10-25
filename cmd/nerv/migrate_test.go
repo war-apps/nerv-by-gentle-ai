@@ -12,7 +12,7 @@ import (
 	nerv "github.com/war-apps/nerv-by-gentle-ai"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/env/envtest"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/migrate"
-	"github.com/war-apps/nerv-by-gentle-ai/internal/shiprun"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/releaserun"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/versioning"
 )
 
@@ -68,18 +68,18 @@ func TestMigrate_DryRunPrintsEveryChangeAndWritesNothing(t *testing.T) {
 		t.Fatalf("exit %d\n%s\n%s", code, out, errOut)
 	}
 	for _, want := range []string{
-		"--- /dev/null\n+++ b/.ai-workflow.yml\n", "+ship:", "+deploy:\n+  host: github",
+		"--- /dev/null\n+++ b/.ai-workflow/config.yaml\n", "+release:", "+deploy:\n+  host: github",
 		"move .nerv/nerv.yaml -> .nerv/nerv.yaml.migrated",
 		"warning: semantic-release package.json: @semantic-release/exec",
-		"plugins: nerv install --with task,task-teamwork,ship,deploy,deploy-github",
+		"plugins: nerv install --with task,task-teamwork,release,deploy,deploy-github",
 		"nerv migrate: dry run:",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("stdout lacks %q:\n%s", want, out)
 		}
 	}
-	if _, err := os.Stat(filepath.Join(top, ".ai-workflow.yml")); err == nil {
-		t.Error("--dry-run wrote .ai-workflow.yml")
+	if _, err := os.Stat(filepath.Join(top, ".ai-workflow/config.yaml")); err == nil {
+		t.Error("--dry-run wrote .ai-workflow/config.yaml")
 	}
 	if _, err := os.Stat(filepath.Join(top, ".nerv", "nerv.yaml")); err != nil {
 		t.Errorf("--dry-run moved .nerv/nerv.yaml: %v", err)
@@ -130,7 +130,7 @@ func TestMigrate_UsageErrors(t *testing.T) {
 
 func TestMigrate_InstallRunsTheInstallStep(t *testing.T) {
 	_, opts := migrateRepo(t, "dim.comprobantes.api")
-	seedShipFamilyForCLI(t, opts.Home)
+	seedReleaseFamilyForCLI(t, opts.Home)
 	runner := opts.Runner.(*envtest.FakeRunner)
 	for k, v := range baseInstallRunner().Responses {
 		runner.Responses[k] = v
@@ -139,18 +139,19 @@ func TestMigrate_InstallRunsTheInstallStep(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("exit %d\n%s\n%s", code, out, errOut)
 	}
-	for _, plugin := range []string{"task@nerv", "task-teamwork@nerv", "ship@nerv", "deploy@nerv", "deploy-github@nerv"} {
+	for _, plugin := range []string{"task@nerv", "task-teamwork@nerv", "release@nerv", "release-conventional-commits@nerv", "release-docker-compose@nerv", "release-bash@nerv", "deploy@nerv", "deploy-github@nerv"} {
 		if !strings.Contains(out, "claude plugin install "+plugin) {
 			t.Errorf("%s not installed:\n%s", plugin, out)
 		}
 	}
-	if strings.Contains(out, "claude plugin install deploy-ssh-compose@nerv") {
-		t.Errorf("deploy-ssh-compose installed, but the repository never used pipeline.deploy:\n%s", out)
+	// deploy bundles its providers: deploy-ssh-compose comes with it.
+	if !strings.Contains(out, "claude plugin install deploy-ssh-compose@nerv") {
+		t.Errorf("deploy-ssh-compose not installed with deploy:\n%s", out)
 	}
 }
 
 // oldDockerArgv is what the 4.2.0 docker preset ran for dim.comprobantes.api
-// (internal/shipplan/presets.go at 03d4401): one build per image with the
+// (internal/releaseplan/presets.go at 03d4401): one build per image with the
 // version tag, the channel tag off the default channel, latest on it, the
 // sorted build arguments and the version and revision labels.
 func oldDockerArgv(version, channel, head string) [][]string {
@@ -200,11 +201,11 @@ func evalDocker(t *testing.T, script string, env map[string]string) [][]string {
 	return builds
 }
 
-// nerv ship --dry-run of the migrated dim.comprobantes.api runs the commands
+// nerv release --dry-run of the migrated dim.comprobantes.api runs the commands
 // 4.2.0 ran: its own stage commands verbatim, and the docker preset's
-// builds; ship then saves build.images into the artifact. The push moved
+// builds; release then saves build.images into the artifact. The push moved
 // to deploy.
-func TestMigrate_ShipDryRunPlansThe420Commands(t *testing.T) {
+func TestMigrate_ReleaseDryRunPlansThe420Commands(t *testing.T) {
 	top, opts := migrateRepo(t, "dim.comprobantes.api")
 	old, err := os.ReadFile(filepath.Join(top, ".nerv", "nerv.yaml"))
 	if err != nil {
@@ -216,11 +217,11 @@ func TestMigrate_ShipDryRunPlansThe420Commands(t *testing.T) {
 	}
 	var migrated string
 	for _, c := range plan.Changes {
-		if filepath.Base(c.Path) == ".ai-workflow.yml" {
+		if c.Path == filepath.Join(top, ".ai-workflow", "config.yaml") {
 			migrated = string(c.New)
 		}
 	}
-	f := newShipFixture(t, migrated)
+	f := newReleaseFixture(t, migrated)
 	csproj := filepath.Join(f.ws.dir, "src", "Api", "Dim.Comprobantes.Api.csproj")
 	if err := os.MkdirAll(filepath.Dir(csproj), 0o755); err != nil {
 		t.Fatal(err)
@@ -228,12 +229,12 @@ func TestMigrate_ShipDryRunPlansThe420Commands(t *testing.T) {
 	if err := os.WriteFile(csproj, []byte("<Project><PropertyGroup><Version>1.0.0</Version></PropertyGroup></Project>\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	f.ws.results = []versioning.Result{shipResult("api", "1.2.0", "v1.2.0")}
+	f.ws.results = []versioning.Result{releaseResult("api", "1.2.0", "v1.2.0")}
 	code, stdout, stderr := f.run(t, "--dry-run")
 	if code != 0 {
-		t.Fatalf("nerv ship --dry-run: exit %d\n%s\n%s", code, stdout, stderr)
+		t.Fatalf("nerv release --dry-run: exit %d\n%s\n%s", code, stdout, stderr)
 	}
-	stages := map[string]shiprun.Step{}
+	stages := map[string]releaserun.Step{}
 	var order, saves []string
 	for _, s := range f.steps {
 		if _, seen := stages[s.Stage]; !seen {
@@ -248,7 +249,7 @@ func TestMigrate_ShipDryRunPlansThe420Commands(t *testing.T) {
 	if want := []string{"restore", "lint", "build", "test", "coverage", "package"}; !slices.Equal(order, want) {
 		t.Fatalf("stages run %q, want %q", order, want)
 	}
-	// L22/L23: after the package commands, ship tags each build.images
+	// L22/L23: after the package commands, release tags each build.images
 	// entry with its 4.2.0 tag kinds (a stable release adds latest) and
 	// saves every reference into the artifact (recorded for deploy to push).
 	outputs := filepath.Join(f.ws.ArtifactsDir(), "api", "outputs")
@@ -287,6 +288,51 @@ func TestMigrate_ShipDryRunPlansThe420Commands(t *testing.T) {
 		}
 	}
 	if strings.Contains(stages["package"].Command.Run, "docker save") {
-		t.Errorf("the package stage saves the pushed images itself (ship does):\n%s", stages["package"].Command.Run)
+		t.Errorf("the package stage saves the pushed images itself (release does):\n%s", stages["package"].Command.Run)
+	}
+}
+
+// S1, S9: nerv migrate takes an alpha.1 repository (.ai-workflow.yml with a
+// ship: section) to .ai-workflow/config.yaml with the release: section:
+// --dry-run writes nothing, the run writes it, the result is read by nerv
+// version next's loader, and a second run has nothing to do.
+func TestMigrate_Alpha1ShipSection(t *testing.T) {
+	top, opts := migrateRepo(t, "alpha1")
+	old := mustReadFile(t, filepath.Join(top, ".ai-workflow.yml"))
+	code, out, errOut := runMigrateCLI(t, opts, "--dry-run")
+	if code != 0 || !strings.Contains(out, "+release: # ship plugin") || !strings.Contains(out, "ship: renamed release:") || !strings.Contains(out, "plugins: nerv install --with") {
+		t.Fatalf("--dry-run: exit %d\n%s\n%s", code, out, errOut)
+	}
+	if got := mustReadFile(t, filepath.Join(top, ".ai-workflow.yml")); got != old {
+		t.Error("--dry-run changed .ai-workflow.yml")
+	}
+	if _, err := os.Stat(filepath.Join(top, ".ai-workflow", "config.yaml")); err == nil {
+		t.Error("--dry-run wrote .ai-workflow/config.yaml")
+	}
+	if code, out, errOut = runMigrateCLI(t, opts); code != 0 {
+		t.Fatalf("exit %d\n%s\n%s", code, out, errOut)
+	}
+	text := mustReadFile(t, filepath.Join(top, ".ai-workflow", "config.yaml"))
+	if strings.Contains(text, "\nship:") || !strings.Contains(text, "      build: docker-compose\n") {
+		t.Errorf(".ai-workflow/config.yaml:\n%s", text)
+	}
+	if code, out, _ = runMigrateCLI(t, opts); code != 0 || !strings.Contains(out, "nerv migrate: nothing to migrate") {
+		t.Errorf("second run: exit %d\n%s", code, out)
+	}
+}
+
+// A file with both ship: and release: is refused (exit 1), unchanged.
+func TestMigrate_RefusesShipAndReleaseTogether(t *testing.T) {
+	top, opts := migrateRepo(t, "alpha1")
+	both := mustReadFile(t, filepath.Join(top, ".ai-workflow.yml")) + "release:\n  projects: []\n"
+	if err := os.WriteFile(filepath.Join(top, ".ai-workflow.yml"), []byte(both), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	code, out, errOut := runMigrateCLI(t, opts)
+	if code != 1 || !strings.Contains(errOut, "both a ship: section (5.0.0-alpha.1) and a release: section") {
+		t.Errorf("exit %d\n%s\n%s", code, out, errOut)
+	}
+	if got := mustReadFile(t, filepath.Join(top, ".ai-workflow.yml")); got != both {
+		t.Error("a refused migration changed .ai-workflow.yml")
 	}
 }

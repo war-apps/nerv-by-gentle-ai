@@ -59,36 +59,43 @@ see or touch it.
 See [docs/integration.md](docs/integration.md) for the full layering,
 activation, and pipeline diagrams.
 
-## Core and optional plugins
+## Core and optional extensions
 
-The marketplace ships seven plugins:
+The marketplace ships the core and three optional extensions (`task`,
+`release`, `deploy`) with their providers. Each one is installed as its own
+Claude Code plugin, `<name>@nerv`:
 
-| Plugin | Required | What it does |
+| Claude Code plugin | Required | What it does |
 |---|---|---|
 | `nerv@nerv` | yes | Core: adapts gentle-ai's agents to the NERV pipeline. It holds no task, timer or tracker logic. |
-| `task@nerv` | no | The task plugin: the `/task:*` commands, local timers, and the `task:dispatcher` agent that turns pipeline events into tracker operations. |
-| `task-teamwork@nerv` | no | A task provider for Teamwork, shipped as its own plugin with a `provider.yaml` manifest. |
-| `ship@nerv` | no | The ship plugin: `/ship:version`, `/ship:setup`, `/ship:build`, the `ship:versioner` and `ship:builder` agents. A native version engine (no semantic-release) and a build in `compose` or `script` mode that leaves a local artifact; it never writes to git. |
-| `deploy@nerv` | no | The deploy plugin (requires `ship`): `/deploy:run`, `/deploy:setup` and the `deploy:deployer` agent. It turns an artifact into a release: release commit, tag, push, targets, git host release. |
-| `deploy-github@nerv` | no | A deploy git host for GitHub releases (`gh`), with a `deploy-provider.yaml` manifest. |
-| `deploy-ssh-compose@nerv` | no | A deploy target: pushes the artifact's images and updates the containers over SSH with the host's compose script. |
+| `task@nerv` | no | The task extension: the `/task:*` commands, local timers, and the `task:dispatcher` agent that turns pipeline events into tracker operations. |
+| `task-teamwork@nerv` | no | A task provider for Teamwork, with a `provider.yaml` manifest. |
+| `release@nerv` | no | The release extension: `/release:version`, `/release:setup`, `/release:build`, the `release:versioner` and `release:builder` agents. Its providers come with it: the native `conventional-commits` version engine (no semantic-release) and the `docker-compose` and `bash` builds, which leave a local artifact; it never writes to git. |
+| `release-conventional-commits@nerv` | no | The release version provider: the native Conventional Commits engine, the `version` slot's default. Installed with `release`. |
+| `release-docker-compose@nerv` | no | A release build provider: `docker compose` build, test service and saved images. Installed with `release`. |
+| `release-bash@nerv` | no | A release build provider: each stage runs the project's own command. Installed with `release`. |
+| `deploy@nerv` | no | The deploy extension (requires `release`): `/deploy:run`, `/deploy:setup` and the `deploy:deployer` agent. It turns an artifact into a release: release commit, tag, push, targets, git host release. |
+| `deploy-github@nerv` | no | A deploy git host provider for GitHub releases (`gh`), with a `provider.yaml` manifest. Installed with `deploy`. |
+| `deploy-ssh-compose@nerv` | no | A deploy target provider: pushes the artifact's images and updates the containers over SSH with the host's compose script. Installed with `deploy`. |
+| `deploy-bash@nerv` | no | A deploy target provider: runs the repository's own deploy script from the release commit. Installed with `deploy`. |
 
-When the task plugin is installed, the orchestrator emits pipeline events
+When the task extension is installed, the orchestrator emits pipeline events
 (`run.started`, `verification.started`, `audit.ranked`, `issue.deferred`,
 `wave.started`, `run.closed`, `run.halted`) to `task:dispatcher`, which
 answers one envelope per provider. When it is not installed, core emits
 nothing, asks no task question and logs nothing. See
-[docs/integration.md](docs/integration.md#task-plugin) for the event
+[docs/integration.md](docs/integration.md#task-extension) for the event
 table, the envelope, the per-event switches and `/task:replay`.
 
-The ship and deploy plugins are independent of the orchestrator: install
-them with `nerv install --with ship,deploy,deploy-github` (add
-`deploy-ssh-compose` for SSH and compose hosts), run `/ship:setup` and
-`/deploy:setup` once, then `/ship:build` leaves a local artifact in
+The release and deploy extensions are independent of the orchestrator: install
+them with `nerv install --with release,deploy,deploy-github` (add
+`deploy-ssh-compose` for SSH and compose hosts), run `/release:setup` and
+`/deploy:setup` once, then `/release:build` leaves a local artifact in
 `.nerv/artifacts/<project>/<version>/` and `/deploy:run` releases it. Both
 always rehearse with a dry run and act only after your explicit yes. A
-repository set up with nerv 4.2.0 migrates with `nerv migrate` (see
-[docs/migration.md](docs/migration.md)).
+repository set up with nerv 4.2.0 or 5.0.0-alpha.1 (`.ai-workflow.yml`)
+migrates with `nerv migrate` (see [docs/migration.md](docs/migration.md));
+until then nerv refuses to run on the old file.
 
 ## Requirements
 
@@ -151,7 +158,8 @@ Requires Go 1.26+ (see "Requirements" above).
 
 1. Runs a gentle-ai preflight check (warns if missing or not 4.x; refuses
    with `--require-gentle-ai`).
-2. Materializes the embedded plugin under `~/.nerv/marketplace`.
+2. Materializes the embedded core plugin, and the extensions and providers
+   you install, under `~/.nerv/marketplace`.
 3. Registers that directory marketplace in Claude Code's `settings.json`.
 4. Refreshes the plugin cache (`claude plugin uninstall`/`install`).
 5. Applies model/effort assignments to the cached agents.
@@ -169,10 +177,11 @@ Requires Go 1.26+ (see "Requirements" above).
 Flags: `--no-configure` (skip the closing wizard/hint entirely),
 `--no-skills` (skip installing skills), `--require-gentle-ai` (fail with
 exit 1 when gentle-ai is missing or not 4.x), `--with <names>` (install
-extension plugins such as `task,task-teamwork` or
-`ship,deploy,deploy-github`; in a terminal, install offers the task plugin,
-its providers, the ship plugin, the deploy plugin, then the deploy
-providers; `deploy` requires `ship`).
+extensions and providers such as `task,task-teamwork` or
+`release,deploy,deploy-github`; in a terminal, install offers the task extension,
+its providers, the release extension, then the deploy extension; release and deploy
+bring every provider they ship with them, unasked; `deploy` requires
+`release`).
 
 ### Updating
 
@@ -182,11 +191,11 @@ run `nerv install` again to refresh the plugin cache and re-apply
 configuration.
 
 **Upgrading from a release with built-in tasks.** An existing `tasks:`
-block in `~/.config/ai-workflow/config.yml` or `.ai-workflow.yml` keeps working once
-the task plugin is installed; without it, core ignores the block and never
+block in `~/.config/ai-workflow/config.yaml` or `.ai-workflow/config.yaml` keeps working once
+the task extension is installed; without it, core ignores the block and never
 deletes it. Copies of the `/task:*` commands that an older release put in
 `~/.claude/commands/task/` are reported by `nerv install` and removed only
-after you confirm. See [docs/configuration.md](docs/configuration.md#tasks-task-plugin).
+after you confirm. See [docs/configuration.md](docs/configuration.md#tasks-task-extension).
 
 ### Uninstall
 
@@ -217,12 +226,12 @@ native blocking prompts, pre-filled from the current config, and applies
 only the answers you confirm.
 
 **Activation per repository.** A repo opts in by writing
-`.ai-workflow.yml` with `enabled: true` — run
+`.ai-workflow/config.yaml` with `enabled: true` — run
 `nerv configure --init-repo <path>` (with `--repo-base`, and a repeatable
 `--repo-provider-config <provider>.<key>=<value>` for task-provider
 settings), or `/nerv:init` from inside Claude Code for the same thing
 through guided questions. Running `--init-repo` on a repo that already has
-`.ai-workflow.yml` leaves its content as written.
+`.ai-workflow/config.yaml` leaves its content as written.
 `/nerv:status` reports the resolved config and, while a run is in progress,
 the orchestrator lock state.
 
@@ -242,7 +251,7 @@ The wizard walks through these sections:
 3. **User config** — asks `git` (base branch, worktree policy, worktree
    pattern, branch and commit-ref patterns), `skills` (one comma-separated
    stack per consuming role), `critical_paths`, and `artifacts.commit`,
-   then writes `~/.config/ai-workflow/config.yml`, backing up any existing file
+   then writes `~/.config/ai-workflow/config.yaml`, backing up any existing file
    first. A field left unchanged (Enter keeps the shown value) is never
    rewritten at all; a whole block (`git:`, `skills:`, `artifacts:`) is
    only generated fresh when it is missing from the file entirely. An
@@ -252,13 +261,13 @@ The wizard walks through these sections:
    or regenerated.
 4. **Models** (`--skip-models`) — optionally edits per-role model/effort
    overrides (see "Configuring models and effort" below).
-5. **Repos** (`--skip-repos`) — optionally writes `.ai-workflow.yml` in one
+5. **Repos** (`--skip-repos`) — optionally writes `.ai-workflow/config.yaml` in one
    or more local git repositories, leaving an already-initialized repo
    untouched.
 6. **Task providers** — shown only when `task@nerv` is enabled. It prompts
    each enabled provider's scalar config keys, read from its
    `provider.yaml`, plus `tasks.provider` when more than one provider is
-   enabled. The `/task:*` commands are served by the `task` plugin itself,
+   enabled. The `/task:*` commands are served by the `task` extension itself,
    so nothing is copied to `~/.claude/commands/task/`.
 
 The closing step (`--no-refresh` to skip) applies the resolved `models:`
@@ -270,7 +279,7 @@ answer per line) instead of prompting, for scripted setup.
 
 After the wizard, open Claude Code in each configured repository and run
 `/nerv:init` once — this refreshes the skill registry; the wizard itself
-only writes `.ai-workflow.yml`. Runs are tracked on gentle-ai's ODD feature
+only writes `.ai-workflow/config.yaml`. Runs are tracked on gentle-ai's ODD feature
 documents (`odd/tasks/{feature}.md`), which the orchestrator creates for
 FULL runs.
 
@@ -299,7 +308,7 @@ nerv configure --init-repo <path> --repo-base <branch> [--repo-provider-config <
 one batch as its own occurrence on a single invocation. Nothing is written
 when nothing changed, and the command exits 1 on a rejected key or value,
 or on any unknown key in a `--set`/`--set-model` batch (writing nothing for
-that batch). `--config <path>` overrides the user-scope `config.yml` path,
+that batch). `--config <path>` overrides the user-scope `config.yaml` path,
 for scripted or tested runs.
 
 Skills and models directly:
@@ -309,9 +318,12 @@ nerv skills --dry-run --json
 nerv apply-models
 ```
 
-Where files live: user scope `~/.config/ai-workflow/config.yml` (personal
-defaults, never committed), project scope `<repo>/.ai-workflow.yml`
-(committed), and the plugin cache under
+Where files live: user scope `~/.config/ai-workflow/config.yaml` (personal
+defaults, never committed), project scope `<repo>/.ai-workflow/config.yaml`
+(committed, next to the repository's own extensions and providers in
+`.ai-workflow/extensions/` and `.ai-workflow/providers/`; see
+[docs/extensions.md](docs/extensions.md#project-extensions-and-providers)),
+and the plugin cache under
 `~/.claude/plugins/cache/nerv/nerv/<version>/`.
 
 ### Developer workflow
@@ -332,7 +344,7 @@ flags (tests inject them through options, not through argv): a fake home
 does not sandbox `claude` or `npx`, both of which read the real user's
 Claude Code and npm configuration regardless of `HOME`/`USERPROFILE`. Test
 config edits through the fakes exercised by `go test ./...`, or against a
-disposable, backed-up `~/.config/ai-workflow/config.yml` — never by pointing a real
+disposable, backed-up `~/.config/ai-workflow/config.yaml` — never by pointing a real
 `nerv install`/`nerv configure` run at a throwaway home directory.
 
 Behavioral tests live under `bench/`: see [`bench/README.md`](bench/README.md)
@@ -341,10 +353,10 @@ for the manual journey suite and the `claude plugin eval` corpus.
 ## Configuration schema
 
 Every Nerv by Gentle-AI setting lives in two scope copies of one schema
-(user `~/.config/ai-workflow/config.yml` and project `<repo>/.ai-workflow.yml`,
+(user `~/.config/ai-workflow/config.yaml` and project `<repo>/.ai-workflow/config.yaml`,
 project overriding user key by key) with sections for skills, per-role
 model/effort overrides, critical paths, artifacts and git. The `tasks:`
-section belongs to the optional task plugin; core ignores it.
+section belongs to the optional task extension; core ignores it.
 
 See [docs/configuration.md](docs/configuration.md) for the full schema,
 example YAML, and how to configure per-role models and effort (wizard,
@@ -356,29 +368,31 @@ example YAML, and how to configure per-role models and effort (wizard,
   Claude Code slash commands and the `nerv` CLI, with usage and examples.
 - [docs/integration.md](docs/integration.md) — how Nerv by Gentle-AI
   integrates with gentle-ai, the agent roles table, and operations
-  (activation, artifacts, the task plugin and its events, Engram project
+  (activation, artifacts, the task extension and its events, Engram project
   detection).
 - [docs/configuration.md](docs/configuration.md) — the configuration
   configuration schema and how to configure per-role models and effort.
 - [docs/releases.md](docs/releases.md) — versioning, release channels,
   and how to cut a release.
-- [docs/release-commands.md](docs/release-commands.md) — the ship plugin
-  for your own repositories: `nerv version next` / `/ship:version` (the next
+- [docs/release-commands.md](docs/release-commands.md) — the release extension
+  for your own repositories: `nerv version next` / `/release:version` (the next
   semantic version of a repo or of each monorepo project, from the native
-  engine), `nerv ship` / `/ship:build` (build, test and package what is on
-  origin into a local artifact) and the `ship:` section, which
-  `/ship:setup` writes interactively (importing an existing semantic-release
-  config with `nerv ship setup --import`).
-- [docs/deploy.md](docs/deploy.md) — the deploy plugin: `nerv deploy` /
+  engine), `nerv release` / `/release:build` (build, test and package what is on
+  origin into a local artifact) and the `release:` section, which
+  `/release:setup` writes interactively (importing an existing semantic-release
+  config with `nerv release setup --import`).
+- [docs/deploy.md](docs/deploy.md) — the deploy extension: `nerv deploy` /
   `/deploy:run` (release commit, tag, push, targets, git host release from
   an artifact), the `deploy:` section (`/deploy:setup`) and the provider
   contract (`deploy-github`, `deploy-ssh-compose`).
-- [docs/pipeline.md](docs/pipeline.md) — migrating from the removed `nerv
-  pipeline` and its `pipeline:` section to ship and deploy (`nerv migrate`).
+- [docs/extensions.md](docs/extensions.md) — the two contracts of the
+  extensions and their providers: `extension.yaml` (an extension and the core) and
+  `provider.yaml` (a provider and its extension), with the common
+  request/response envelope.
 - [docs/migration.md](docs/migration.md) — `nerv migrate`: moving a
-  repository and the user configuration from nerv 4.2.0 (configuration
-  files, `ship:` and `deploy:`, the semantic-release import, openspec to
-  ODD, the plugins to install).
+  repository and the user configuration from nerv 4.2.0 or 5.0.0-alpha.1 (configuration
+  files, `release:` and `deploy:`, the semantic-release import, openspec to
+  ODD, the extensions to install).
 - [docs/troubleshooting.md](docs/troubleshooting.md) — known limitations
   and troubleshooting.
 

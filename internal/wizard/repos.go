@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"slices"
 	"strings"
 
 	"github.com/war-apps/nerv-by-gentle-ai/internal/configure"
@@ -14,8 +15,10 @@ import (
 
 // runReposSection is Section 3: an "Initialize a repository for NERV now?
 // (path, or Enter to skip)" loop, asking a repo's base branch and the
-// repo-scope settings of the enabled task providers (from their manifests),
-// then writing .ai-workflow.yml through configure.InitRepo — the same write
+// repo-scope settings of the enabled task providers and of the
+// repository's own ones (.ai-workflow/providers/task-<name>/, from their
+// manifests),
+// then writing .ai-workflow/config.yaml through configure.InitRepo — the same write
 // path "nerv configure --init-repo --repo-provider-config" uses. baseBranch
 // is the User-config section's own answer, used as this section's default
 // regardless of whether Section 1 actually wrote anything.
@@ -59,7 +62,12 @@ func runReposSection(deps Deps, s *session, out io.Writer, baseBranch string, pr
 		if err != nil {
 			return anyChanged, err
 		}
-		providerConfig, err := askRepoProviderKeys(s, providers)
+		project, err := configure.ProjectProviders(deps.ExtensionsFS, toplevel)
+		if err != nil {
+			fmt.Fprintln(out, err.Error())
+			continue
+		}
+		providerConfig, err := askRepoProviderKeys(s, append(slices.Clone(providers), project...))
 		if err != nil {
 			return anyChanged, err
 		}

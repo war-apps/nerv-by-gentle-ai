@@ -105,7 +105,7 @@ changes confirmed — never more.
      user the path is not a git repository and skip this section instead
      of asking further.
 
-   Task settings are not a section of this command: when the task plugin
+   Task settings are not a section of this command: when the task extension
    is installed, `nerv configure` asks for its providers' settings, read
    from each provider's `provider.yaml`.
 
@@ -121,7 +121,7 @@ changes confirmed — never more.
    - **models**: one call per confirmed batch —
      `nerv configure --set-model role=model[/effort] --set-model role2=from:jd-judge-a --json`.
    - **repo**: `nerv configure --init-repo <path> --repo-base <base> --json`.
-     This never overwrites an existing `.ai-workflow.yml`; if one is already
+     This never overwrites an existing `.ai-workflow/config.yaml`; if one is already
      present, the result carries a `warnings` entry saying so — report it
      and move on without asking again.
 

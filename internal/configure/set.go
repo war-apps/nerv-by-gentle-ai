@@ -60,7 +60,7 @@ func Set(deps Deps, paths Paths, args []string) (Result, error) {
 // finalizeMutation writes working to paths.Config through store when
 // touched is true and its text actually differs from original, and
 // assembles the shared Result shape. Shared by Set, SetModel and
-// SetProviderSettings — the modes that mutate the user-scope config.yml.
+// SetProviderSettings — the modes that mutate the user-scope config.yaml.
 func finalizeMutation(deps Deps, paths Paths, store Store, working *config.Document, original []byte, touched bool, changes []Change) (Result, error) {
 	result := Result{
 		Changed:    false,

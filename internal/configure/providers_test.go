@@ -12,7 +12,7 @@ import (
 	"github.com/war-apps/nerv-by-gentle-ai/internal/configure"
 )
 
-// EmbeddedProviders lists every provider plugin nerv ships, by provider
+// EmbeddedProviders lists every provider nerv ships, by provider
 // name, with its parsed manifest.
 func TestEmbeddedProviders_ListsTheShippedProviders(t *testing.T) {
 	providers, err := configure.EmbeddedProviders(nerv.ExtensionsFS())
@@ -95,11 +95,11 @@ func TestSetProviderSettings_PreservesFormatAndReportsChanges(t *testing.T) {
 // A user-scope key belongs in the user config.yml, never in a repo
 // file, so --repo-provider-config refuses it.
 func TestParseProviderConfig_RefusesUserScopeKeys(t *testing.T) {
-	_, err := configure.ParseProviderConfig(nerv.ExtensionsFS(), []string{"teamwork.assignee_id=5"})
+	_, err := configure.ParseProviderConfig(nerv.ExtensionsFS(), "", []string{"teamwork.assignee_id=5"})
 	if err == nil || !strings.Contains(err.Error(), "user") {
 		t.Fatalf("expected a scope refusal, got %v", err)
 	}
-	if _, err := configure.ParseProviderConfig(nerv.ExtensionsFS(), []string{"teamwork.project_id=7"}); err != nil {
+	if _, err := configure.ParseProviderConfig(nerv.ExtensionsFS(), "", []string{"teamwork.project_id=7"}); err != nil {
 		t.Fatalf("a repo-scope key was refused: %v", err)
 	}
 }

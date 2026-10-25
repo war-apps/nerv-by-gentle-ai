@@ -2,12 +2,13 @@
 # nerv-session-start.sh
 #
 # SessionStart hook for the NERV plugin. When the current repo has opted in
-# via ".ai-workflow.yml" with a top-level "enabled: true" (a nested one does
-# not count; see nerv_file_enabled), prints a short activation
+# via ".ai-workflow/config.yaml" with a top-level "enabled: true" (a nested
+# one does not count; see nerv_file_enabled), prints a short activation
 # header that tells the session to load the NERV orchestrator (Ikari)
-# protocol itself, via the Skill tool. A repo that opted in only through
-# the pre-rename ".nerv/nerv.yaml" is not active: it gets one line saying
-# "nerv migrate" moves that file. Every other repo must see no output from
+# protocol itself, via the Skill tool. A repo that opted in through a file
+# nerv no longer reads (the previous ".ai-workflow.yml", even left next to
+# the new file, or the 4.2.0 ".nerv/nerv.yaml") is not active: it gets one
+# line saying "nerv migrate" moves that file. Every other repo must see no output from
 # this hook — NERV stays fully invisible outside opted-in repos.
 #
 # The header is intentionally short: Claude Code caps a hook's stdout at
@@ -29,8 +30,9 @@ main() {
   project_dir="${CLAUDE_PROJECT_DIR:-$PWD}"
 
   if ! nerv_repo_enabled "$project_dir"; then
-    if nerv_legacy_enabled "$project_dir"; then
-      nerv_legacy_notice
+    local old_file
+    if old_file="$(nerv_legacy_enabled "$project_dir")"; then
+      nerv_legacy_notice "$old_file"
     fi
     return 0
   fi
@@ -46,7 +48,7 @@ main() {
   fi
 
   cat <<'HEADER'
-# NERV orchestrator protocol (active: .ai-workflow.yml enabled)
+# NERV orchestrator protocol (active: .ai-workflow/config.yaml enabled)
 
 NERV is enabled in this repository. This session is the NERV orchestrator (Ikari).
 

@@ -1,21 +1,21 @@
 ---
 name: task
-description: NERV task plugin contract. Covers how providers are found (provider.yaml), the remote operations a provider implements, the composite operations, the local timer store, the pipeline events with their response envelope, fail-soft dispatch, the pending-event list, the listing table and the worktree offer. Loaded by the /task:* commands and by the task:dispatcher agent.
+description: NERV task extension contract. Covers how providers are found (provider.yaml), the remote operations a provider implements, the composite operations, the local timer store, the pipeline events with their response envelope, fail-soft dispatch, the pending-event list, the listing table and the worktree offer. Loaded by the /task:* commands and by the task:dispatcher agent.
 ---
 
-# NERV Task Plugin — Contract
+# NERV Task Extension — Contract
 
-The task plugin connects NERV to task trackers (Teamwork today). It does not talk to any tracker itself. Each tracker is a **provider plugin** that ships a `provider.yaml` manifest plus one procedure file per operation. This file defines what both sides agree on.
+The task extension connects NERV to task trackers (Teamwork today). It does not talk to any tracker itself. Each tracker is a **provider** that ships a `provider.yaml` manifest plus one procedure file per operation. Every provider of every extension has the same `provider.yaml` shape, checked against the slot the extension's `extension.yaml` declares (`docs/extensions.md`); this file defines what the task side adds.
 
-`nerv` core knows nothing about tasks. The core orchestrator emits pipeline **events** only when this plugin is installed. The `task:dispatcher` agent turns each event into provider operations and answers with one envelope per provider (§6).
+`nerv` core knows nothing about tasks. The core orchestrator emits pipeline **events** only when this extension is installed. The `task:dispatcher` agent turns each event into provider operations and answers with one envelope per provider (§6).
 
 ## 1. Configuration
 
-The configuration merges the user config (the path `nerv configure --print --json` reports as `config_path`: `~/.config/ai-workflow/config.yml` on Linux, `%AppData%\ai-workflow\config.yml` on Windows) with the repository's `<repo>/.ai-workflow.yml`, key by key, and the repository wins. Everything lives under `tasks:`.
+The configuration merges the user config (the path `nerv configure --print --json` reports as `config_path`: `~/.config/ai-workflow/config.yaml` on Linux, `%AppData%\ai-workflow\config.yaml` on Windows) with the repository's `<repo>/.ai-workflow/config.yaml`, key by key, and the repository wins. Everything lives under `tasks:`.
 
 | Key | Default | Meaning |
 |---|---|---|
-| `tasks.provider` | the only installed provider | Provider for bare task ids (no `PREFIX-`) and for `/task:me`, `/task:all`. `none` turns the plugin off in this scope: no events, no timers, no questions (S18). |
+| `tasks.provider` | the only installed provider | Provider for bare task ids (no `PREFIX-`) and for `/task:me`, `/task:all`. `none` turns the extension off in this scope: no events, no timers, no questions (S18). |
 | `tasks.ask_when_missing` | `true` | At `run.started` with no task, ask for one. `false` runs without a task, silently. |
 | `tasks.subtasks_per_wave` | `false` | Whether `wave.started` creates one subtask per FULL wave. |
 | `tasks.timer_store` | `~/.claude/work/timers.json` | Local timer store (§4). |
@@ -29,17 +29,26 @@ The `git.*` keys `branch_pattern`, `commit_ref_pattern`, `worktree`, `worktree_p
 
 ## 2. Finding providers
 
-A provider is installed when its plugin `task-<name>@nerv` appears in `~/.claude/plugins/installed_plugins.json`. Read the provider's root from that entry's `installPath`. Then read `<installPath>/provider.yaml` and `<installPath>/<operation file>`.
+A provider comes from one of two places, and its **root** is where its `provider.yaml` lives:
 
-Never read a copied procedure from another place, such as `~/.claude/commands/task/` or a repository checkout. The installed plugin is the only source, from any repository or worktree (S11).
+- **Installed:** its plugin `task-<name>@nerv` appears in `~/.claude/plugins/installed_plugins.json`. The root is that entry's `installPath`.
+- **Project:** the repository ships it as `.ai-workflow/providers/task-<name>/provider.yaml`, in the **main checkout** (`git rev-parse --path-format=absolute --git-common-dir`, then its parent), committed with the repository and never installed. The root is that folder. A project provider whose `task-<name>` is also an installed plugin's name is skipped and reported (`nerv` refuses that name collision), and so is one whose folder resolves outside the repository.
 
-The manifest declares:
+Then read `<root>/provider.yaml` and `<root>/<operation file>`; an operation file must stay inside the root.
 
-- `name`, `contract_version` (1) and `task_ref_prefix` (for example `TW`).
+Never read a copied procedure from another place, such as `~/.claude/commands/task/` or another folder of a repository checkout. The installed plugins and the repository's `.ai-workflow/providers/task-*/` folders are the only sources, from any repository or worktree (S11).
+
+The manifest declares the common provider fields:
+
+- `name`, `extension: task`, `slot: provider` (the task extension's only slot, several providers active at once), `contract_version` (1) and `runtime: agent` (this dispatcher follows its procedures).
 - `mcp.server` and `mcp.tools`: the exact MCP server and tool names its procedures call.
 - `config`: the provider's settings (§1).
+- `operations`: one procedure file per operation (§3), or `not_implemented`. Every operation of the slot is declared, and every one is optional: the events decide what a provider needs.
+
+And the task fields, which `plugins/task/extension.yaml` allows under `provider_fields`:
+
+- `task_ref_prefix` (required, for example `TW`).
 - `stages`: the default provider stage name for each canonical stage key (§5).
-- `operations`: one procedure file per operation (§3), or `not_implemented`.
 - `events`: the events it handles (§6).
 
 `nerv` validates every manifest it ships. An operation an event needs can never be `not_implemented`.
@@ -66,7 +75,7 @@ The manifest declares:
 | `setPriority` | taskRef, `high`, `medium` or `low` | `{priority}` |
 | `listTasks` | scope (`mine` or `all`), filters | rows for the listing table (§8) |
 
-## 4. Local timers (owned by this plugin)
+## 4. Local timers (owned by this extension)
 
 Timers are **always local**, never a provider-side timer. That way several tasks, and several sessions on one task, can be tracked in parallel.
 
@@ -144,7 +153,7 @@ The core orchestrator emits these events. Each one lists the operations it needs
 | `verification.started` | The quality gate (FULL) or the work unit's check (LIGHT, DIRECT) starts | `moveStage` | Moves the task to `testing`. |
 | `audit.ranked` | The FULL issue ranking is accepted | `comment` | Posts the ranked audit summary. |
 | `issue.deferred` | The user accepts a DEFER issue | `createTask` | Creates one task per deferred issue, linked from the parent in its description. |
-| `wave.started` | Every FULL wave starts | `createSubtask` | Creates the wave's subtask, but only when `tasks.subtasks_per_wave` is `true`. Otherwise it answers `skipped` with `reason: subtasks_per_wave is off`. Core emits the event every time; this plugin owns the check. |
+| `wave.started` | Every FULL wave starts | `createSubtask` | Creates the wave's subtask, but only when `tasks.subtasks_per_wave` is `true`. Otherwise it answers `skipped` with `reason: subtasks_per_wave is off`. Core emits the event every time; this extension owns the check. |
 | `run.closed` | A run ends complete | `moveStage`, `logTime` | Stops this session's timer (§4.2) and moves the task to `implemented`. **It never calls `complete`.** One task can span several changes and repositories; completing it stays an explicit `/task:close` (S13). |
 | `run.halted` | A run halts before completion | `comment`, `moveStage`, `logTime` | Comments the halt cause, moves the task to `blocked` and stops this session's timer. |
 
@@ -168,7 +177,7 @@ disabled_events: []          # per-run switches chosen by the user (S10)
 
 For each event, the dispatcher works through these steps:
 
-1. **Event switch.** When the plugin is off in this scope (`tasks.provider: none`), or the event is `off` in config or in `disabled_events`, answer one envelope with `result: skipped` and `reason: switched off`. Nothing else runs.
+1. **Event switch.** When the extension is off in this scope (`tasks.provider: none`), or the event is `off` in config or in `disabled_events`, answer one envelope with `result: skipped` and `reason: switched off`. Nothing else runs.
 2. **Provider choice.** Pick every installed provider that is enabled and subscribes to the event. When `task_ref` is set, only the provider whose `task_ref_prefix` matches it is picked.
 3. **Run each provider:**
    - first the tool check (§2), then the event's operations through that provider's procedure files;
@@ -199,7 +208,7 @@ The orchestrator appends every envelope to the run folder's `task-events.yaml`, 
 - The run summary lists the pending envelopes under "Task events pending", along with the `/task:replay {feature}` command (the run id for DIRECT and LIGHT).
 - `/task:replay {feature}` finds the file in either location and dispatches every pending envelope again, in order, and marks each one `replayed: <ISO time>` with its new result.
 
-## 7. Composite operations (owned by this plugin)
+## 7. Composite operations (owned by this extension)
 
 | Composite | Steps |
 |---|---|

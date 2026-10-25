@@ -1,6 +1,10 @@
-# Teamwork provider for the NERV task plugin (contract: task:task skill).
+# Teamwork provider of the NERV task extension (contract: docs/extensions.md
+# and the task:task skill).
 name: teamwork
+extension: task
+slot: provider
 contract_version: 1
+runtime: agent
 task_ref_prefix: TW
 
 # The local Teamwork MCP server registered as "teamwork" in ~/.claude.json.
@@ -22,7 +26,7 @@ mcp:
     - teamwork_list_projects
     - teamwork_list_tasklists
 
-# Read from tasks.providers.teamwork.<key> in the merged configuration (.ai-workflow.yml over config.yml).
+# Read from tasks.providers.teamwork.<key> in the merged configuration (.ai-workflow/config.yaml over config.yaml).
 config:
   - key: assignee_id
     scope: user

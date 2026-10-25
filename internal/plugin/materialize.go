@@ -51,13 +51,13 @@ type marketplacePlugin struct {
 // Materialize writes the whole tree from src under dest/plugin, byte-exact,
 // and writes dest/.claude-plugin/marketplace.json registering it as a
 // directory marketplace named "nerv". It is MaterializeBundle with no
-// extension plugins.
+// extensions and providers.
 func Materialize(src fs.FS, dest string) (Result, error) {
 	return MaterializeBundle(src, nil, dest)
 }
 
 // MaterializeBundle writes the core plugin tree from core under
-// dest/plugin and every extension plugin in extensions (one folder per
+// dest/plugin and every extension and provider in extensions (one folder per
 // plugin, see Extensions) under dest/plugins/<name>, byte-exact, then
 // writes dest/.claude-plugin/marketplace.json listing the core plugin
 // first and the extensions in name order. It is idempotent: a file whose

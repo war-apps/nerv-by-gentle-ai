@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-// L21 (ship --version): an explicit version is released as given, with the
+// L21 (release --version): an explicit version is released as given, with the
 // last release picked as the engine picks it (tags reachable from the
 // branch, of its channel) and the notes and CHANGELOG section written for
 // it from the commits since that release.

@@ -8,15 +8,17 @@ import (
 	"strings"
 
 	"github.com/war-apps/nerv-by-gentle-ai/internal/config"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/extension"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/plugin"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/taskprovider"
 )
 
-// Provider is a task provider plugin shipped in the extensions tree, with
+// Provider is a task provider shipped in the extensions tree, with
 // its parsed provider.yaml. Core knows providers only through manifests:
 // no provider name or key is written into this package.
 type Provider struct {
-	// Plugin is the extension plugin's name, such as "task-<name>".
+	// Plugin is the provider's folder (and Claude Code plugin) name, such
+	// as "task-<name>".
 	Plugin   string
 	Manifest *taskprovider.Manifest
 }
@@ -30,9 +32,9 @@ func (p Provider) Key(key string) (taskprovider.ConfigKey, bool) {
 	return p.Manifest.Config[i], true
 }
 
-// EmbeddedProviders parses the provider.yaml of every provider plugin in
-// fsys (typically nerv.ExtensionsFS()), in plugin name order. A nil fsys
-// has none.
+// EmbeddedProviders loads the provider.yaml of every task provider
+// in fsys (typically nerv.ExtensionsFS()), in plugin name order. A nil
+// fsys has none.
 func EmbeddedProviders(fsys fs.FS) ([]Provider, error) {
 	exts, err := plugin.Extensions(fsys)
 	if err != nil {
@@ -40,18 +42,53 @@ func EmbeddedProviders(fsys fs.FS) ([]Provider, error) {
 	}
 	var providers []Provider
 	for _, ext := range exts {
-		if ext.ProviderKind != plugin.TaskPlugin {
+		if ext.Owner != plugin.TaskPlugin {
 			continue
 		}
-		data, err := fs.ReadFile(fsys, ext.Name+"/"+taskprovider.ManifestFile)
+		m, err := taskprovider.Load(fsys, ext.Name)
 		if err != nil {
 			return nil, err
 		}
-		m, err := taskprovider.Parse(data)
-		if err != nil {
-			return nil, fmt.Errorf("%s: %w", ext.Name, err)
-		}
 		providers = append(providers, Provider{Plugin: ext.Name, Manifest: m})
+	}
+	return providers, nil
+}
+
+// RepoProviders is EmbeddedProviders followed by ProjectProviders.
+func RepoProviders(fsys fs.FS, repoRoot string) ([]Provider, error) {
+	providers, err := EmbeddedProviders(fsys)
+	if err != nil {
+		return nil, err
+	}
+	project, err := ProjectProviders(fsys, repoRoot)
+	if err != nil {
+		return nil, err
+	}
+	return append(providers, project...), nil
+}
+
+// ProjectProviders loads the repository's own task providers
+// (.ai-workflow/providers/task-<name>/, checked against fsys as
+// extension.WithProject does), in plugin name order; none when repoRoot is
+// empty. An invalid project extension or provider is a refusal.
+func ProjectProviders(fsys fs.FS, repoRoot string) ([]Provider, error) {
+	if repoRoot == "" {
+		return nil, nil
+	}
+	tree, err := extension.WithProject(fsys, repoRoot)
+	if err != nil {
+		return nil, &RefusalError{Err: err}
+	}
+	var providers []Provider
+	for _, folder := range extension.ProjectFolders(tree) {
+		if !strings.HasPrefix(folder, plugin.TaskPlugin+"-") {
+			continue
+		}
+		m, err := taskprovider.Load(tree, folder)
+		if err != nil {
+			return nil, &RefusalError{Err: fmt.Errorf("%s/%w", extension.ProjectProvidersDir, err)}
+		}
+		providers = append(providers, Provider{Plugin: folder, Manifest: m})
 	}
 	return providers, nil
 }
@@ -91,13 +128,14 @@ type ProviderSetting struct {
 }
 
 // ParseProviderConfig parses and validates --repo-provider-config entries,
-// each "<provider>.<key>=<value>", against the manifests embedded in fsys.
-// The first bad entry refuses them all.
-func ParseProviderConfig(fsys fs.FS, args []string) ([]ProviderSetting, error) {
+// each "<provider>.<key>=<value>", against the manifests embedded in fsys
+// and, when repoRoot is not empty, the repository's own task providers
+// (RepoProviders). The first bad entry refuses them all.
+func ParseProviderConfig(fsys fs.FS, repoRoot string, args []string) ([]ProviderSetting, error) {
 	if len(args) == 0 {
 		return nil, nil
 	}
-	providers, err := EmbeddedProviders(fsys)
+	providers, err := RepoProviders(fsys, repoRoot)
 	if err != nil {
 		return nil, err
 	}

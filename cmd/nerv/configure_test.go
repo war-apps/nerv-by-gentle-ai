@@ -345,7 +345,7 @@ func TestRunConfigure_RoundTrip_PreservesTasksBlock(t *testing.T) {
 	}
 
 	repo := t.TempDir()
-	projectPath := filepath.Join(repo, ".ai-workflow.yml")
+	projectPath := filepath.Join(repo, ".ai-workflow/config.yaml")
 	if err := os.MkdirAll(filepath.Dir(projectPath), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -419,7 +419,7 @@ func TestRunConfigure_InitRepo_ProviderConfig_WritesProviderKeys(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("exit code = %d, want 0 (stdout=%q stderr=%q)", code, stdout.String(), stderr.String())
 	}
-	data, err := os.ReadFile(filepath.Join(repo, ".ai-workflow.yml"))
+	data, err := os.ReadFile(filepath.Join(repo, ".ai-workflow/config.yaml"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -481,5 +481,19 @@ func TestRunConfigure_InitRepo_ProviderConfig_Refusals(t *testing.T) {
 	}
 	if !strings.Contains(stderr.String(), "--repo-provider-config requires --init-repo") {
 		t.Errorf("stderr = %q, want the --init-repo requirement", stderr.String())
+	}
+}
+
+// --help says --repo-provider-config values are checked against the
+// provider's provider.yaml, shipped or the project's own.
+func TestRunConfigure_HelpNamesShippedAndProjectProviders(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"configure", "--help"}, &stdout, &stderr, testOptions(t.TempDir()))
+	if code != 2 {
+		t.Fatalf("configure --help exit = %d, want 2", code)
+	}
+	help := stderr.String()
+	if strings.Contains(help, "embedded provider.yaml") || !strings.Contains(help, "against the provider's provider.yaml (shipped,\n                             or the project's in .ai-workflow/providers/)") {
+		t.Errorf("configure --help:\n%s", help)
 	}
 }

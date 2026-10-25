@@ -6,8 +6,10 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/releaseplan"
 	"io"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/war-apps/nerv-by-gentle-ai/internal/configure"
@@ -21,8 +23,8 @@ import (
 
 const deployUsage = `Usage: nerv deploy --artifact <dir> [flags]
 
-Releases and deploys an artifact nerv ship left (.nerv/artifacts/<project>/
-<version>/), as the deploy: section of .ai-workflow.yml says. It verifies
+Releases and deploys an artifact nerv release left (.nerv/artifacts/<project>/
+<version>/), as the deploy: section of .ai-workflow/config.yaml says. It verifies
 the artifact's digests, clones the remote (deploy.git.remote, default
 origin) in a temporary directory at the artifact's base commit and:
 
@@ -37,14 +39,15 @@ origin) in a temporary directory at the artifact's base commit and:
   5. creates the git host's release (deploy.host), a prerelease for a
      release on a channel, unless it exists.
 
-Before anything is cloned or pushed, every target's config and the tools
-its provider needs are checked (deploy-ssh-compose: sshpass for password
-authentication, infisical for source infisical).
+Before anything is cloned or pushed, each target's preflight checks the
+target's config and that the tools its provider needs are installed
+(deploy-ssh-compose: sshpass for password authentication, infisical for
+source infisical).
 
 Your repository is never modified. When origin's branch moved past the
 artifact's base commit the deploy is refused, unless --rebase re-applies the
 release files on its new head (a conflict is refused; the tag then points at
-code nerv ship never built, and a warning says so). A re-run is
+code nerv release never built, and a warning says so). A re-run is
 idempotent: what origin already has is skipped, so after a failure, fix the
 cause and run the same command again. Without --yes it asks before pushing.
 
@@ -52,9 +55,10 @@ Flags:
   --artifact <dir>   The artifact directory (required)
   --target <name>    Only this target of deploy.targets (repeatable)
   --dry-run          Prepare the release in the clone and show the steps;
-                     push nothing and run no provider
+                     push nothing and run no provider operation but the
+                     targets' preflight
   --rebase           Re-apply the release on origin's moved branch (the
-                     tagged code was never built: prefer shipping again)
+                     tagged code was never built: prefer releasing again)
   --yes              Deploy without asking for confirmation
   --cwd <dir>        A directory inside the repository (default ".")
   --json             Print the final report as JSON
@@ -145,7 +149,7 @@ func (d deployCmd) run(ctx context.Context) (deployrun.Report, error) {
 	cfg, err := deployconfig.Load(top)
 	switch {
 	case errors.Is(err, deployconfig.ErrNotConfigured):
-		return deployrun.Report{}, refuse("the repository has no deploy: section in .ai-workflow.yml; see docs/deploy.md")
+		return deployrun.Report{}, refuse("the repository has no deploy: section in .ai-workflow/config.yaml; see docs/deploy.md")
 	case err != nil:
 		return deployrun.Report{}, &refusal.Error{Err: err}
 	}
@@ -167,13 +171,17 @@ func (d deployCmd) run(ctx context.Context) (deployrun.Report, error) {
 		}
 		dir = filepath.Join(cwd, dir)
 	}
+	providers, err := projectTree(d.opts.ExtensionsFS, top)
+	if err != nil {
+		return deployrun.Report{}, err
+	}
 	var runner proc.Runner = proc.ExecRunner{}
 	if d.opts.DeployProc != nil {
 		runner = d.opts.DeployProc
 	}
 	o := deployrun.Options{
 		RepoRoot: top, ArtifactDir: dir, Config: cfg, Targets: d.targets, DryRun: d.dryRun, Rebase: d.rebase,
-		Providers: d.opts.ExtensionsFS, Proc: runner, Output: d.stderr,
+		Providers: providers, Proc: runner, Output: d.stderr,
 		UserValue: func(provider, key string) (string, bool) {
 			if wc.User == nil {
 				return "", false
@@ -247,17 +255,78 @@ func writeDeployReport(w io.Writer, asJSON bool, rep deployrun.Report, runErr er
 	return nil
 }
 
-// runDeploySSHCompose is the hidden `nerv deploy-ssh-compose <deploy|verify>`,
-// the deploy and verify operations of the deploy-ssh-compose provider: the
-// request on stdin, the JSON response on stdout.
-func runDeploySSHCompose(args []string, stdout, stderr io.Writer, opts options) int {
-	if len(args) != 1 {
-		fmt.Fprintln(stderr, "usage: nerv deploy-ssh-compose <deploy|verify> (run by nerv deploy, request on stdin)")
+// nativeProviders are the providers nerv implements itself, by their
+// plugin name (<extension>-<provider>): each is an exec provider whose
+// provider.yaml steps run the hidden `nerv provider <plugin> <operation>`
+// with the common request on stdin and the response on stdout.
+var nativeProviders = map[string]func(op string, stdout, stderr io.Writer, opts options) int{
+	"deploy-bash":                   runDeployBash,
+	"deploy-ssh-compose":            runDeploySSHCompose,
+	releaseplan.ConventionalCommits: nativeRelease(releaseplan.ConventionalCommits),
+	releaseplan.DockerCompose:       nativeRelease(releaseplan.DockerCompose),
+	releaseplan.Bash:                nativeRelease(releaseplan.Bash),
+}
+
+// runDeployBash runs one operation of the deploy-bash target provider: the
+// project's own deploy script, taken from the release commit.
+func runDeployBash(op string, stdout, stderr io.Writer, opts options) int {
+	stdin := opts.Stdin
+	if stdin == nil {
+		stdin = strings.NewReader("")
+	}
+	signalCtx := opts.SignalContext
+	if signalCtx == nil {
+		signalCtx = signalContext
+	}
+	ctx, stop, _ := signalCtx(context.Background())
+	defer stop()
+	return deploy.RunBashOp(ctx, op, stdin, stdout, deploy.BashDeps{Output: stderr})
+}
+
+// nativeRelease runs one operation of a native release provider: the
+// version engine (conventional-commits) or a build provider.
+func nativeRelease(plugin string) func(op string, stdout, stderr io.Writer, opts options) int {
+	return func(op string, stdout, stderr io.Writer, opts options) int {
+		stdin := opts.Stdin
+		if stdin == nil {
+			stdin = strings.NewReader("")
+		}
+		signalCtx := opts.SignalContext
+		if signalCtx == nil {
+			signalCtx = signalContext
+		}
+		ctx, stop, _ := signalCtx(context.Background())
+		defer stop()
+		return releaseplan.RunNative(ctx, plugin, op, stdin, stdout, stderr, releaseplan.NativeDeps{})
+	}
+}
+
+// runProvider is the hidden `nerv provider <extension>-<name> <operation>`.
+func runProvider(args []string, stdout, stderr io.Writer, opts options) int {
+	if len(args) != 2 {
+		fmt.Fprintln(stderr, "usage: nerv provider <extension>-<provider> <operation> (run by the extension, request on stdin)")
 		return 2
 	}
+	run, ok := nativeProviders[args[0]]
+	if !ok {
+		names := make([]string, 0, len(nativeProviders))
+		for name := range nativeProviders {
+			names = append(names, name)
+		}
+		slices.Sort(names)
+		fmt.Fprintf(stderr, "nerv provider: %q is not a native provider (%s)\n", args[0], strings.Join(names, ", "))
+		return 2
+	}
+	return run(args[1], stdout, stderr, opts)
+}
+
+// runDeploySSHCompose runs one operation of the deploy-ssh-compose provider
+// (preflight, deploy or verify): the request on stdin, the JSON response on
+// stdout.
+func runDeploySSHCompose(op string, stdout, stderr io.Writer, opts options) int {
 	home, err := configure.ResolveHome(opts.Home)
 	if err != nil {
-		fmt.Fprintf(stderr, "nerv deploy-ssh-compose: %v\n", err)
+		fmt.Fprintf(stderr, "nerv provider deploy-ssh-compose: %v\n", err)
 		return 2
 	}
 	var runner proc.Runner = proc.ExecRunner{}
@@ -278,7 +347,7 @@ func runDeploySSHCompose(args []string, stdout, stderr io.Writer, opts options) 
 	}
 	ctx, stop, _ := signalCtx(context.Background())
 	defer stop()
-	return deploy.RunComposeOp(ctx, args[0], stdin, stdout, deploy.ComposeDeps{
+	return deploy.RunComposeOp(ctx, op, stdin, stdout, deploy.ComposeDeps{
 		Proc: runner, Getenv: getenv, Home: home, Output: stderr, Sleep: opts.DeploySleep,
 	})
 }

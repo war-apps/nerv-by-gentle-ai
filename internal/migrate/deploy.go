@@ -9,7 +9,7 @@ import (
 	"strings"
 
 	"github.com/war-apps/nerv-by-gentle-ai/internal/deployprovider"
-	"github.com/war-apps/nerv-by-gentle-ai/internal/shipconfig/yamlsection"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/releaseconfig/yamlsection"
 	"gopkg.in/yaml.v3"
 )
 
@@ -57,11 +57,7 @@ var oldDeploySource = []struct{ from, to string }{
 
 // sshComposeManifest is the deploy-ssh-compose provider's manifest.
 func sshComposeManifest(fsys fs.FS) (*deployprovider.Manifest, error) {
-	data, err := fs.ReadFile(fsys, "deploy-"+sshComposeProvider+"/"+deployprovider.ManifestFile)
-	if err != nil {
-		return nil, err
-	}
-	return deployprovider.Parse(data)
+	return deployprovider.Load(fsys, deployprovider.Extension+"-"+sshComposeProvider)
 }
 
 // translatePipeline turns the 4.2.0 pipeline: section into deploy targets:
@@ -80,10 +76,10 @@ func translatePipeline(p *Plan, data []byte, fsys fs.FS, user *userState) (*depl
 		return out, nil
 	}
 	if value(node, "dotnet") != nil {
-		p.warn("pipeline.dotnet (the validate and test steps): already covered by nerv ship, the stages of each ship: project; dropped")
+		p.warn("pipeline.dotnet (the validate and test steps): already covered by nerv release, the stages of each release: project; dropped")
 	}
 	if b := value(node, "branches"); b != nil {
-		p.warn("pipeline.branches: the release branches are the ship: section's branches (imported from the semantic-release configuration); check them with nerv version next")
+		p.warn("pipeline.branches: the release branches are the release: section's branches (imported from the semantic-release configuration); check them with nerv version next")
 	}
 	if r := value(node, "registry"); r != nil {
 		p.warn("pipeline.registry: deploy-ssh-compose pushes with your docker login: run docker login %s before nerv deploy (username_env and token_env have no equivalent)", orDefault(scalarValue(value(r, "host")), "ghcr.io"))
@@ -93,13 +89,13 @@ func translatePipeline(p *Plan, data []byte, fsys fs.FS, user *userState) (*depl
 		for _, img := range imgs.Content {
 			names = append(names, scalarValue(value(img, "name")))
 		}
-		p.warn("pipeline.images (%s): nerv ship builds the images now: give the ship: project build.mode: compose with build.images (or a package stage that docker saves them into $NERV_RELEASE_OUTPUTS_DIR), and deploy-ssh-compose pushes them", strings.Join(names, ", "))
+		p.warn("pipeline.images (%s): nerv release builds the images now: give the release: project build: docker-compose with its images (or a package stage that docker saves them into $NERV_RELEASE_OUTPUTS_DIR), and deploy-ssh-compose pushes them", strings.Join(names, ", "))
 	}
 	if sync := value(node, "sync"); scalarValue(value(sync, "enabled")) != "false" {
 		p.warn("pipeline.sync (on unless sync.enabled: false): not ported: nerv deploy does no back-merge after a release; merge the released branch back into develop by hand")
 	}
 	if rel := value(node, "release"); rel != nil && value(rel, "version_files") != nil {
-		p.warn("pipeline.release.version_files: write them as build.version_files of the ship: project")
+		p.warn("pipeline.release.version_files: write them as the version_files of the release: project")
 	}
 	dep := value(node, "deploy")
 	if dep == nil {

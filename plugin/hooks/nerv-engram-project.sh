@@ -5,7 +5,7 @@
 # current repo resolves to and prints guidance so the session (and, inside
 # an opted-in NERV repo, the Ikari protocol) knows which project to pass on
 # every Engram write. Runs in EVERY session — unlike nerv-session-start.sh,
-# the detection line below is NOT gated behind ".ai-workflow.yml".
+# the detection line below is NOT gated behind ".ai-workflow/config.yaml".
 #
 # Must never fail the session: always exits 0, errors go to stderr only.
 

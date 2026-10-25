@@ -9,13 +9,14 @@ import (
 	"github.com/war-apps/nerv-by-gentle-ai/internal/plugin"
 )
 
-// selectExtensions decides which extension plugins Install enables, in
+// selectExtensions decides which extensions and providers Install enables, in
 // order: the requested ones (each after its requirements), then those
 // settings already enables, then the ones the user accepts when
 // deps.ConfirmExtension is set, asked in plugin.SuggestionOrder (task, its
-// providers, ship, deploy, the deploy providers) and only when every
-// requirement is already selected: deploy only once ship is, a provider
-// only once its plugin is.
+// providers, release, deploy, the deploy providers) and only when every
+// requirement is already selected: deploy only once release is, a provider
+// only once its extension is. An extension whose providers are bundled brings
+// them all with it (plugin.Extension.Bundle), never asked.
 func selectExtensions(deps Deps, opts Options, settings *claude.Settings) ([]plugin.Extension, error) {
 	exts, err := plugin.Extensions(deps.ExtensionsFS)
 	if err != nil {
@@ -32,14 +33,26 @@ func selectExtensions(deps Deps, opts Options, settings *claude.Settings) ([]plu
 	has := func(name string) bool {
 		return slices.ContainsFunc(selected, func(e plugin.Extension) bool { return e.Name == name })
 	}
+	// add selects e and, for an extension that bundles its providers
+	// (providers: bundled), every one of them right after it, without
+	// asking.
 	add := func(e plugin.Extension) {
-		if !has(e.Name) {
-			selected = append(selected, e)
+		if has(e.Name) {
+			return
+		}
+		selected = append(selected, e)
+		for _, name := range e.Bundle {
+			if p, shipped := byName[name]; shipped && !has(name) {
+				if !slices.Contains(opts.Extensions, name) {
+					fmt.Fprintf(deps.Stdout, "Adding %s (bundled with %s)\n", name, e.Name)
+				}
+				selected = append(selected, p)
+			}
 		}
 	}
 
 	// require adds e after its requirements, transitively (deploy-github
-	// brings deploy, which brings ship).
+	// brings deploy, which brings release).
 	var require func(e plugin.Extension, by string) error
 	require = func(e plugin.Extension, by string) error {
 		for _, req := range e.Requires {
@@ -48,7 +61,7 @@ func selectExtensions(deps Deps, opts Options, settings *claude.Settings) ([]plu
 			}
 			r, shipped := byName[req]
 			if !shipped {
-				return &RefusalError{Err: fmt.Errorf("extension plugin %q requires %q, which this nerv does not ship", e.Name, req)}
+				return &RefusalError{Err: fmt.Errorf("%s requires the extension %q, which this nerv does not ship", e.Name, req)}
 			}
 			if err := require(r, e.Name); err != nil {
 				return err
@@ -67,7 +80,7 @@ func selectExtensions(deps Deps, opts Options, settings *claude.Settings) ([]plu
 			if len(names) > 0 {
 				available = strings.Join(names, ", ")
 			}
-			return nil, &RefusalError{Err: fmt.Errorf("unknown extension plugin %q (available: %s)", name, available)}
+			return nil, &RefusalError{Err: fmt.Errorf("unknown extension or provider %q (available: %s)", name, available)}
 		}
 		if err := require(e, ""); err != nil {
 			return nil, err

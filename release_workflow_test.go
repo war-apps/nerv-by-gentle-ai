@@ -55,7 +55,7 @@ func TestWorkflows_NervCapturesSurviveErrexit(t *testing.T) {
 			}
 		}
 	}
-	// release.yml captures `release preview` twice and `release guard` once;
+	// release.yml captures `maintainer-release preview` twice and `maintainer-release guard` once;
 	// the lower bound pins those three known captures, so a stale pattern or
 	// a dropped capture both fail here.
 	if captures < 3 {

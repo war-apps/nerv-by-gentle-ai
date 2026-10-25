@@ -7,16 +7,16 @@ description: Show NERV activation, config resolution and change status for this 
 Report NERV's state for the current repository. Read-only. Keep the output
 short and imperative — this is a status check, not a narrative.
 
-1. **Activation.** Check whether `.ai-workflow.yml` exists in the repo root
+1. **Activation.** Check whether `.ai-workflow/config.yaml` exists in the repo root
    and contains `enabled: true`. Report `NERV: active` or `NERV: inactive`
    accordingly. If inactive, stop here — nothing else applies.
 
-2. **Config resolution.** Read the user config (the path `nerv configure --print --json` reports as `config_path`: `~/.config/ai-workflow/config.yml` on Linux, `%AppData%\ai-workflow\config.yml` on Windows) (user scope) and
-   `<repo>/.ai-workflow.yml` (project scope). Print a merged summary: which
+2. **Config resolution.** Read the user config (the path `nerv configure --print --json` reports as `config_path`: `~/.config/ai-workflow/config.yaml` on Linux, `%AppData%\ai-workflow\config.yaml` on Windows) (user scope) and
+   `<repo>/.ai-workflow/config.yaml` (project scope). Print a merged summary: which
    keys came from the project file, which fell back to the user file, and
    which fell back to a built-in default. The project file always wins key
-   by key. Also print one line: `Task plugin: installed (task:dispatcher
-   available)` or `Task plugin: not installed`; when it is installed, add
+   by key. Also print one line: `Task extension: installed (task:dispatcher
+   available)` or `Task extension: not installed`; when it is installed, add
    that `/task:timers` shows the running timers. Also print
    `artifacts.commit: <resolved value>`
    (`with-change` | `at-close` | `never`; built-in default `at-close` when neither file sets it).

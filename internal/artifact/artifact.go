@@ -1,8 +1,8 @@
-// Package artifact writes, reads and verifies the local artifact `nerv ship`
+// Package artifact writes, reads and verifies the local artifact `nerv release`
 // leaves for one project's version: .nerv/artifacts/<project>/<version>/ in
 // the user's repository, holding
 //
-//	manifest.json         the Manifest (schema nerv.ship-artifact/v1)
+//	manifest.json         the Manifest (schema nerv.release-artifact/v1)
 //	notes.md              the release notes
 //	CHANGELOG.section.md  the CHANGELOG section of the release
 //	outputs/              the packaged outputs (image tars, files, directories)
@@ -34,7 +34,11 @@ import (
 )
 
 // Schema is the manifest's schema identifier.
-const Schema = "nerv.ship-artifact/v1"
+const Schema = "nerv.release-artifact/v1"
+
+// AlphaSchema is the schema of the artifacts nerv ship wrote in
+// 5.0.0-alpha.1. Read refuses it, saying to rebuild the artifact.
+const AlphaSchema = "nerv.ship-artifact/v1"
 
 // The files and directories of an artifact.
 const (
@@ -74,10 +78,12 @@ type Manifest struct {
 	Channel string `json:"channel"`
 	Tag     string `json:"tag"`
 	// BaseCommit is the origin commit that was built.
-	BaseCommit string    `json:"base_commit"`
-	Branch     string    `json:"branch"`
-	BuildMode  string    `json:"build_mode"`
-	CreatedAt  time.Time `json:"created_at"`
+	BaseCommit string `json:"base_commit"`
+	Branch     string `json:"branch"`
+	// BuildProvider is the build provider that built it (docker-compose,
+	// bash).
+	BuildProvider string    `json:"build_provider"`
+	CreatedAt     time.Time `json:"created_at"`
 	// Outputs are the packaged outputs, under outputs/.
 	Outputs []Output `json:"outputs"`
 	// Images are the references of the images saved in the image tars.
@@ -459,6 +465,9 @@ func Read(dir string) (*Manifest, error) {
 	if err := json.Unmarshal(data, &m); err != nil {
 		return nil, fmt.Errorf("artifact: %s: %w", filepath.Join(dir, ManifestFile), err)
 	}
+	if m.Schema == AlphaSchema {
+		return nil, fmt.Errorf("artifact: %s: schema %q: this artifact was made by nerv 5.0.0-alpha.1 (nerv ship); rebuild it with nerv release", dir, m.Schema)
+	}
 	if m.Schema != Schema {
 		return nil, fmt.Errorf("artifact: %s: schema %q, want %q", dir, m.Schema, Schema)
 	}
@@ -594,7 +603,7 @@ func prepare(repoRoot, dir string) error {
 }
 
 // CheckRoot refuses, without writing anything, a .nerv or .nerv/artifacts
-// that resolves (through a symlink) outside the repository: nerv ship checks
+// that resolves (through a symlink) outside the repository: nerv release checks
 // it before any stage runs, so a run is not wasted on an artifact it cannot
 // write.
 func CheckRoot(repoRoot string) error {

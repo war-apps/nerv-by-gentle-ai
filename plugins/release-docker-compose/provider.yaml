@@ -1,0 +1,28 @@
+# Docker compose build of the NERV release extension (contract:
+# docs/extensions.md and internal/releaseplan/contract.go): build is docker
+# compose -f <file> build, test is docker compose -f <file> run --rm
+# <test_service>, and the project's images are saved into the artifact; the
+# project's own commands may fill only the restore, lint and coverage
+# stages. A native provider: its operations run nerv's own hidden
+# `nerv provider release-docker-compose <operation>`. Its keys live under
+# release.providers.docker-compose, and a project overrides them under
+# release.projects[].providers.docker-compose.
+name: docker-compose
+extension: release
+slot: build
+contract_version: 1
+runtime: exec
+config:
+  - key: file
+    scope: repo
+    type: string
+    prompt: The compose file, relative to the repository root
+  - key: test_service
+    scope: repo
+    type: string
+    prompt: The compose service whose exit code is the test result (empty runs no test stage)
+operations:
+  validate:
+    - argv: ["{nerv}", provider, release-docker-compose, validate]
+  plan:
+    - argv: ["{nerv}", provider, release-docker-compose, plan]

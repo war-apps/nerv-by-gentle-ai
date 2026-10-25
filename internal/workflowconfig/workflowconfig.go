@@ -1,12 +1,15 @@
 // Package workflowconfig is the one loader of nerv's two configuration
-// files: the user-scope "<os.UserConfigDir()>/ai-workflow/config.yml" and
-// the project-scope "<repo>/.ai-workflow.yml" (see internal/paths for the
-// path catalogue). Values merge key by key, with the project winning.
+// files: the user-scope "<os.UserConfigDir()>/ai-workflow/config.yaml" and
+// the project-scope "<repo>/.ai-workflow/config.yaml" (see internal/paths
+// for the path catalogue). Values merge key by key, with the project
+// winning.
 //
-// The pre-rename files, "~/.claude/nerv/nerv.yaml" and
-// "<repo>/.nerv/nerv.yaml", are never read as configuration: when only an
-// old file exists, the scope is unconfigured and Hints carries one line
-// saying "nerv migrate" moves it.
+// The 4.2.0 files, "~/.claude/nerv/nerv.yaml" and "<repo>/.nerv/nerv.yaml",
+// are never read as configuration: when only an old file exists, the scope
+// is unconfigured and Hints carries one line saying "nerv migrate" moves
+// it. The previous files, "<os.UserConfigDir()>/ai-workflow/config.yaml" and
+// "<repo>/.ai-workflow/config.yaml", are refused while they exist, so their
+// settings are never silently ignored.
 package workflowconfig
 
 import (
@@ -34,9 +37,20 @@ type Config struct {
 }
 
 // Load reads the user file of home and, when repoRoot is not empty, the
-// project file of repoRoot.
+// project file of repoRoot. A previous file (config.yml, .ai-workflow.yml)
+// of either scope is a refusal naming "nerv migrate".
 func Load(home, repoRoot string) (Config, error) {
 	p := paths.Resolve(home)
+	if home != "" {
+		if err := p.RefusePreviousUser(); err != nil {
+			return Config{}, err
+		}
+	}
+	if repoRoot != "" {
+		if err := paths.RefusePreviousProject(repoRoot); err != nil {
+			return Config{}, err
+		}
+	}
 	cfg := Config{UserPath: p.UserConfig, Project: config.Parse("")}
 	var err error
 	if cfg.User, cfg.UserExists, err = (configstore.Store{}).Load(p.UserConfig); err != nil {

@@ -1,5 +1,5 @@
 // Package deployconfig reads the deploy: section of a repository's
-// .ai-workflow.yml, the configuration of `nerv deploy`:
+// .ai-workflow/config.yaml, the configuration of `nerv deploy`:
 //
 //	deploy:
 //	  host: github                 # the git host provider (deploy-<name>)
@@ -11,7 +11,7 @@
 //	    commit_message: "chore(release): ${nextRelease.version} [skip ci]\n\n${nextRelease.notes}"
 //	    remote: origin
 //
-// Like internal/shipconfig it cuts the top-level block out of the file and
+// Like internal/releaseconfig it cuts the top-level block out of the file and
 // parses it strictly: unknown keys are refused. Which config keys a target
 // accepts is its provider manifest's business (internal/deployrun).
 package deployconfig
@@ -25,13 +25,13 @@ import (
 	"strings"
 
 	"github.com/war-apps/nerv-by-gentle-ai/internal/paths"
-	"github.com/war-apps/nerv-by-gentle-ai/internal/shipconfig"
-	"github.com/war-apps/nerv-by-gentle-ai/internal/shipconfig/yamlsection"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/releaseconfig"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/releaseconfig/yamlsection"
 )
 
 // ErrNotConfigured is returned by Load when the repository has no
-// .ai-workflow.yml or the file has no deploy: key.
-var ErrNotConfigured = errors.New("deploy: not configured in .ai-workflow.yml")
+// .ai-workflow/config.yaml or the file has no deploy: key.
+var ErrNotConfigured = errors.New("deploy: not configured in .ai-workflow/config.yaml")
 
 // DefaultCommitMessage is @semantic-release/git's default release commit
 // message.
@@ -103,8 +103,11 @@ func CommitMessage(message string, r Release) string {
 	})
 }
 
-// Load reads the deploy: section of repoRoot's .ai-workflow.yml.
+// Load reads the deploy: section of repoRoot's .ai-workflow/config.yaml.
 func Load(repoRoot string) (*Deploy, error) {
+	if err := paths.RefusePreviousProject(repoRoot); err != nil {
+		return nil, err
+	}
 	path := paths.ProjectConfig(repoRoot)
 	data, err := os.ReadFile(path)
 	if errors.Is(err, os.ErrNotExist) {
@@ -121,7 +124,7 @@ func Load(repoRoot string) (*Deploy, error) {
 }
 
 func parse(data []byte) (*Deploy, error) {
-	if msg := shipconfig.RemovedPipeline(data); msg != "" {
+	if msg := releaseconfig.RemovedPipeline(data); msg != "" {
 		return nil, errors.New(msg)
 	}
 	node, err := yamlsection.Locate(data, "deploy")

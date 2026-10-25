@@ -21,7 +21,7 @@ flowchart TB
     end
 
     subgraph Repo["repo"]
-        NConfig[".ai-workflow.yml"]
+        NConfig[".ai-workflow/config.yaml"]
         NDoc["odd/tasks/{feature}.md (ODD document)"]
         NRun["odd/{feature}/nerv/ (run folder)"]
     end
@@ -40,7 +40,7 @@ governs: Claude Code loads gentle-ai first (`CLAUDE.md`, its hooks, the
 `gentle-ai` binary, and the agents/skills it writes under `~/.claude`),
 Nerv by Gentle-AI's plugin cache layers its own hook, agents, skills, and
 commands on top, and the repo carries only the configuration
-(`.ai-workflow.yml`), each FULL feature's ODD document
+(`.ai-workflow/config.yaml`), each FULL feature's ODD document
 (`odd/tasks/{feature}.md`) and its NERV run folder (`odd/{feature}/nerv/`),
 plus the git-ignored runtime folder `.nerv/` (DIRECT and LIGHT run folders
 in `.nerv/runs/`, the locks in `.nerv/locks/`). `gentle-ai
@@ -56,7 +56,7 @@ sequenceDiagram
     participant Hook as SessionStart hook
     participant GA as gentle-ai review stop-hook
     participant NS as nerv-session-start.sh
-    participant Cfg as .ai-workflow.yml
+    participant Cfg as .ai-workflow/config.yaml
     participant Sess as Session
     participant Skill as nerv:nerv-orchestrator skill
 
@@ -77,7 +77,7 @@ sequenceDiagram
 
 Every session start runs gentle-ai's own `review stop-hook` first, then
 Nerv by Gentle-AI's `nerv-session-start.sh`. The Nerv by Gentle-AI hook checks
-`.ai-workflow.yml` for `enabled: true`; only then does it print a short
+`.ai-workflow/config.yaml` for `enabled: true`; only then does it print a short
 activation header — Claude Code caps hook stdout at 10,000 characters,
 well under the full protocol's size, so the hook cannot inject the
 protocol body itself. The header instructs the session to invoke the
@@ -121,7 +121,7 @@ judgment agents, the delivery and skill-resolution skills listed in
 `plugin/skills-manifest.json`, and the persistence and lossless-prompt
 contracts. It supersedes exactly one thing — gentle-ai's ODD
 Implementation Routing — with its own DIRECT/LIGHT/FULL classification and
-pipelines, only in repos carrying the `.ai-workflow.yml` marker. It keeps
+pipelines, only in repos carrying the `.ai-workflow/config.yaml` marker. It keeps
 gentle-ai's ODD feature document as the tracking surface, and its own roles
 (Misato, Ritsuko, the MAGI, the pilots) write it; see "NERV on ODD" below.
 
@@ -221,7 +221,7 @@ value or small known bug in one already-understood file. Ikari edits it
 itself (the only tier where it may), runs the focused check, shows the
 commit for the user to validate, and runs the RDD hook. No agent is
 launched except Maya only when RDD is off or unknown and the native
-assessment is high or unassessable. With the task plugin installed, Ikari
+assessment is high or unassessable. With the task extension installed, Ikari
 also emits the task events through `task:dispatcher`.
 
 ### LIGHT pipeline
@@ -298,7 +298,7 @@ Fuyutsuki's read-only refute mode on inferential severe items), ranks the issues
 routes approved fixes through the work-unit cycle with a re-audit over the
 fix delta (capped at 2), and closes with Ritsuko's documentation,
 Fuyutsuki's log summary, the run summary, the close on the ODD document
-and, with the task plugin installed, the `run.closed` event.
+and, with the task extension installed, the `run.closed` event.
 
 ### RDD per commit
 
@@ -402,7 +402,7 @@ per commit" above.
 
 ## Operations
 
-**Activation.** A repo opts in by creating `.ai-workflow.yml` with
+**Activation.** A repo opts in by creating `.ai-workflow/config.yaml` with
 `enabled: true` — `/nerv:init` writes it interactively (base branch,
 worktree policy, worktree location, skill stacks),
 and `/nerv:configure`
@@ -420,7 +420,7 @@ a blind MAGI vote per task, Fuyutsuki's governance veto, a plan-approval
 gate, wave-based implementation, and Kaji's four-pass audit before close.
 
 **Gates a human will see.** The grouped preflight question (worktree,
-branch, base), plus any task question the task plugin returns as
+branch, base), plus any task question the task extension returns as
 `needs_input` when it is installed; a commit-validation
 stop before every commit (Ikari's in DIRECT/LIGHT, Aoba's in FULL); the corner-case questions relayed as one
 grouped prompt in FULL; the whole-plan approval HARD gate in FULL; the
@@ -435,10 +435,10 @@ ask before taking over, however long the gate stays open.
 (`odd/tasks/{feature}.md`) and its run folder `odd/{feature}/nerv/`
 (`state.yaml`, deliberation log, exploration, votes, veto ruling, waves,
 Maya reports, audit rounds, run summary, and `task-events.yaml` when the
-task plugin is installed), the run folder `.nerv/runs/{run-id}/` of each
+task extension is installed), the run folder `.nerv/runs/{run-id}/` of each
 DIRECT or LIGHT run, plus the lock under `.nerv/locks/`; see "NERV on ODD"
-above. `.ai-workflow.yml` (project scope) and
-`~/.config/ai-workflow/config.yml` (user scope) hold configuration; nothing is
+above. `.ai-workflow/config.yaml` (project scope) and
+`~/.config/ai-workflow/config.yaml` (user scope) hold configuration; nothing is
 ever written under `~/.claude/agents` or `~/.claude/skills`.
 
 **Artifacts commit policy.** `artifacts.commit` controls when a FULL run's
@@ -456,34 +456,37 @@ and the run summary says so. The lock file is never staged.
 active config (merged user + project), and — while a run is in progress —
 the orchestrator lock state (`.nerv/locks/{run-id}.lock`: holder, step,
 `waiting_on`, heartbeat age); the lock line disappears once the run closes.
-It also prints whether the task plugin is installed (`task:dispatcher`
+It also prints whether the task extension is installed (`task:dispatcher`
 available); timers are shown by `/task:timers`.
 
-**`/nerv:configure`.** Configures `config.yml` (user scope) and `.ai-workflow.yml` (project scope),
+**`/nerv:configure`.** Configures `config.yaml` (user scope) and `.ai-workflow/config.yaml` (project scope),
 per-role models, skills, and repository registration through grouped
 guided questions instead of hand-editing YAML or the terminal wizard — see
 "Setup" in [README.md](../README.md). Read-only in `claude -p`, where it
 prints the current config and the exact `--set`/`--set-model` syntax
 instead of asking.
 
-### Task plugin
+### Task extension
 
 Core holds no task, timer or tracker logic. Task tracking is split across
-optional plugins from the same marketplace:
+the optional task extension and its providers, from the same marketplace:
 
-- **`task@nerv`**, the task plugin. It owns the `/task:*` commands, the
+- **`task@nerv`**, the task extension. It owns the `/task:*` commands, the
   local timer store, timelog consolidation, the composite operations
   (block, cancel, done, close, stopAll) and the `task:dispatcher` agent.
   Its contract is `plugins/task/skills/task/SKILL.md`.
-- **Provider plugins**, such as `task-teamwork@nerv`. Each one ships a
+- **Providers**, such as `task-teamwork@nerv`. Each one ships a
   `provider.yaml` manifest and one procedure file per remote operation.
 
-**Detection.** The orchestrator treats the task plugin as installed when
+**Detection.** The orchestrator treats the task extension as installed when
 the agent type `task:dispatcher` is available in the session. When it is
 not, a run asks no task question, emits no event, writes no `task_event`
 log entry and creates no `task-events.yaml`.
 
-**Events.** With the task plugin installed, Ikari launches
+**Events.** Ikari hands each event to every installed extension whose
+`extension.yaml` subscribes to it under `events`
+([extensions.md](extensions.md)); today that is the task extension, reached
+through its `agent` entry. With the task extension installed, Ikari launches
 `task:dispatcher` with one event at each hook point:
 
 | Event | Emitted when | Provider operations |
@@ -520,7 +523,7 @@ fail-soft: a `blocked` or `failed` envelope never halts or retries the run.
 **Per-event switches.** `tasks.events.<event>: off` in either configuration file
 scope turns one event off, and a run can switch events off for itself
 (`disabled_events`). A switched-off event is answered `skipped`. See
-[configuration.md](configuration.md#tasks-task-plugin).
+[configuration.md](configuration.md#tasks-task-extension).
 
 **`task-events.yaml` and `/task:replay`.** Ikari appends every envelope to
 the run folder's `task-events.yaml` (`odd/{feature}/nerv/task-events.yaml`
@@ -533,25 +536,28 @@ the run summary lists it under "Task events pending" with the hint
 file in either location and dispatches the pending envelopes again, in
 order, once the cause is fixed.
 
-**Adding a provider.** A new tracker is a new plugin, with no change to core
-or to the task plugin. It ships a `provider.yaml` that declares its `name`,
-`contract_version`, `task_ref_prefix`, the MCP server and exact tool names
-it calls, its `config` keys (scope, type, default, prompt), its canonical
-stage map, one procedure file per operation (or `not_implemented`), and the
-events it subscribes to. `nerv` validates every manifest it ships: an event
+**Adding a provider.** A new tracker is a new provider, `task-<name>`, with no
+change to core or to the task extension. It ships a `provider.yaml`, the shape
+every provider shares ([extensions.md](extensions.md)), that declares its
+`name`, `extension: task`, `slot: provider`, `contract_version`,
+`runtime: agent`, the MCP server and exact tool names it calls, its
+`config` keys (scope, type, default, prompt), one procedure file per
+operation (or `not_implemented`), and the task fields: its
+`task_ref_prefix`, its canonical stage map and the events it subscribes
+to. `nerv` validates every manifest it ships: an event
 whose operations are `not_implemented` makes the manifest invalid. At
 dispatch time the provider is skipped as `blocked`, naming the missing
 tools, when the session lacks any MCP tool the manifest declares.
 
-**Commands.** The `/task:*` commands are served by the `task` plugin, so
+**Commands.** The `/task:*` commands are served by the `task` extension, so
 nothing is copied to `~/.claude/commands/task/` any more. They read the
-same configuration files (user `config.yml` and project `.ai-workflow.yml`) as the rest of NERV.
+same configuration files (user `config.yaml` and project `.ai-workflow/config.yaml`) as the rest of NERV.
 
 ### Engram project detection
 
 A second SessionStart hook, `plugin/hooks/nerv-engram-project.sh`, runs in
 **every** session — unlike the Nerv by Gentle-AI activation hook above, it is
-not gated behind `.ai-workflow.yml` — to tell the session which Engram
+not gated behind `.ai-workflow/config.yaml` — to tell the session which Engram
 project to pass
 on every memory write. It detects the project in this order:
 
@@ -567,7 +573,7 @@ on every memory write. It detects the project in this order:
    nested subfolder).
 3. Otherwise, undetermined.
 
-Inside a NERV-enabled repo (`.ai-workflow.yml` with `enabled: true`), the
+Inside a NERV-enabled repo (`.ai-workflow/config.yaml` with `enabled: true`), the
 hook also prints a reminder that Nerv by Gentle-AI keeps a shared knowledge
 base in the Engram project named `nerv` — precedents (Misato rulings,
 Fuyutsuki vetoes,

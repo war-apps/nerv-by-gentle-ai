@@ -1,8 +1,8 @@
 # Configuration schema
 
 Every Nerv by Gentle-AI setting lives in one of two files with the same
-schema: user scope `~/.config/ai-workflow/config.yml` (personal
-defaults, never committed) and project scope `<repo>/.ai-workflow.yml`
+schema: user scope `~/.config/ai-workflow/config.yaml` (personal
+defaults, never committed) and project scope `<repo>/.ai-workflow/config.yaml`
 (committed). Project overrides user key by key; a missing key falls back
 to the user file, then to the built-in default. `~/.config/ai-workflow` is
 `os.UserConfigDir()`: `$XDG_CONFIG_HOME` when set on Linux,
@@ -12,13 +12,31 @@ lock under `.nerv/locks/`, logs) and ignores itself with a `.nerv/.gitignore`
 of `*`. Each run's ODD feature document (`odd/tasks/<feature>.md`) and NERV
 run folder (`odd/<feature>/nerv/`) are committed per `artifacts.commit`.
 
-The files used before, `~/.claude/nerv/nerv.yaml` and
-`<repo>/.nerv/nerv.yaml`, are no longer read. When only an old file exists,
-every command behaves as unconfigured and prints one line naming it and
-saying that `nerv migrate` moves it.
+The repository's committed nerv folder is `.ai-workflow/`:
+
+```
+.ai-workflow/
+  config.yaml                                   # the project configuration
+  extensions/<name>/extension.yaml              # the repository's own extensions
+  providers/<extension>-<name>/provider.yaml    # the repository's own providers (+ scripts, procedures)
+```
+
+Project extensions and providers are checked with the same contract as the
+ones nerv ships and added to them; see
+[extensions.md](extensions.md#project-extensions-and-providers).
+
+The files used before are no longer read:
+
+- `<repo>/.ai-workflow.yml` and the user `config.yml` (5.0.0-alpha.1): every
+  command refuses (exit 1) while one exists, with `run "nerv migrate" to
+  move it` (`nerv migrate --user` for the user file), even next to the new
+  file, so their settings are never silently ignored;
+- `~/.claude/nerv/nerv.yaml` and `<repo>/.nerv/nerv.yaml` (4.2.0): when only
+  an old file exists, every command behaves as unconfigured and prints one
+  line naming it and saying that `nerv migrate` moves it.
 
 ```yaml
-# ~/.config/ai-workflow/config.yml (user) and <repo>/.ai-workflow.yml (project): same schema
+# ~/.config/ai-workflow/config.yaml (user) and <repo>/.ai-workflow/config.yaml (project): same schema
 enabled: true                       # project scope only: activates NERV in this repo
 skills:                             # stacks per consuming role; names must exist in .atl/skill-registry.md
   testing: [tdd, playwright-best-practices]                        # ritsuko, kaworu, maya
@@ -41,8 +59,8 @@ git:
                                                   # reuses its own [worktrees] directory as <directory>/{repo}/{slug}
   branch_pattern: "feature/{prefix}-{id}-{slug}"   # {prefix}/{id} come from the run.started task_ref (tw-123)
   commit_ref_pattern: "({PREFIX}-{id})"
-tasks:                              # read only by the optional task plugin (task@nerv); core ignores it
-  provider: teamwork                # provider for bare task ids; "none" turns the task plugin off in this scope
+tasks:                              # read only by the optional task extension (task@nerv); core ignores it
+  provider: teamwork                # provider for bare task ids; "none" turns the task extension off in this scope
   ask_when_missing: true            # at run.started with no task, the dispatcher asks for one
   subtasks_per_wave: false          # whether wave.started creates one subtask per FULL wave
   events:                           # per-event switches, on (default) | off
@@ -55,36 +73,49 @@ tasks:                              # read only by the optional task plugin (tas
       stages: { inDev: DESARROLLO, testing: TESTING, implemented: IMPLEMENTA, blocked: BLOQUEA, canceled: CANCEL, pending: PENDIENTE, analysis: ANALISIS }
   sources:                          # extra work sources for listings (replaces ~/.claude/work/sources.md)
     - { name: erp-proveedores, type: google-sheets, ... }
-ship:                               # ship plugin; project scope only, never merged with the user file; see release-commands.md
+release:                               # release extension; project scope only, never merged with the user file; see release-commands.md
+  version: conventional-commits     # the version engine (the default); its keys under providers.conventional-commits
+  build: docker-compose             # every project's build provider: docker-compose or bash
+  providers:                        # release.providers.<provider>.<key>, as each provider.yaml declares
+    conventional-commits: { tag_format: "v${version}" }
+    docker-compose: { file: docker-compose.yml }
   projects:
-    - { name: api, path: ., build: { mode: compose, file: docker-compose.yml, images: ["ghcr.io/acme/app:${version}"] } }
-deploy:                             # deploy plugin; see deploy.md
+    - { name: api, path: ., images: ["ghcr.io/acme/app:${version}"] }
+deploy:                             # deploy extension; see deploy.md
   host: github
   targets:
     - { name: staging, provider: ssh-compose, config: { environment: staging } }
 ```
 
-`ship:` configures the ship plugin (`nerv version next` and `nerv ship`,
-also `/ship:version`, `/ship:setup` and `/ship:build`): the version engine
-(branches and channels, release rules, note keywords, tag format,
-changelog), the projects and their dependencies, and each project's
-`build.mode` (`compose` or `script`; there are no presets) with its
-stages, hooks and coverage. Its full reference is
-[release-commands.md](release-commands.md#configuration-ship).
+`release:` configures the release extension (`nerv version next` and `nerv release`,
+also `/release:version`, `/release:setup` and `/release:build`): its two
+provider slots, `release.version` (the version engine, by default
+`conventional-commits`) and `release.build` (the build provider of every
+project, overridden by `release.projects[].build`: `docker-compose` or
+`bash`; there is no default and there are no presets); each provider's keys
+under `release.providers.<provider>.<key>` (the engine's branches and
+channels, release rules, note keywords, tag format and changelog; the
+compose file and test service; bash's `shared_host`), which a project
+overrides for its build provider under
+`release.projects[].providers.<provider>`; and the projects, their
+dependencies, images, version files, stages, hooks and coverage. Its full reference is
+[release-commands.md](release-commands.md#configuration-release).
 
-`deploy:` configures the deploy plugin (`nerv deploy`, `/deploy:run`,
+`deploy:` configures the deploy extension (`nerv deploy`, `/deploy:run`,
 `/deploy:setup`): the git host provider, the targets with their provider
 config, and the release commit's message and remote. Provider keys with
 `scope: user` (credentials, local paths) go in the user file under
 `deploy.providers.<provider>.`. Its full reference is
 [deploy.md](deploy.md#configuration).
 
-The old `release:` and `pipeline:` sections are no longer read: a command
-that finds one refuses and points to `/ship:setup` (or `/deploy:setup`).
-`nerv migrate` translates them, and `nerv ship setup --import` imports a
+A 4.2.0 `release:` section (told apart by its 4.2.0 keys, `semantic_release:`
+and the project presets) and the old `pipeline:` section are no longer read:
+a command that finds one refuses and points to `nerv migrate` (or
+`/release:setup`, `/deploy:setup`).
+`nerv migrate` translates them, and `nerv release setup --import` imports a
 semantic-release config; see
-[release-commands.md](release-commands.md#migrating-from-release-and-semantic-release)
-and [pipeline.md](pipeline.md).
+[release-commands.md](release-commands.md#migrating-from-the-420-release-section-and-semantic-release)
+and [deploy.md](deploy.md#migrating-from-nerv-pipeline).
 
 `models:` assigns a per-role `model` and `effort` override, with project
 overriding user key by key like every other section — each entry is an
@@ -100,7 +131,7 @@ applied differently, because Claude Code itself treats them differently:
 it takes effect immediately, no reinstall needed. `effort` is honored only
 from the launched agent file's own frontmatter, so it can only be applied
 by rewriting the cached agent files themselves: `nerv apply-models` reads
-`models:` from the **user-scope** file only (`~/.config/ai-workflow/config.yml`)
+`models:` from the **user-scope** file only (`~/.config/ai-workflow/config.yaml`)
 and rewrites `model:`/`effort:` in each affected `<role>.md` under the
 plugin cache. Project-scope `models:` therefore applies to `model` only —
 `effort` is not applicable at project scope, since project config cannot
@@ -111,11 +142,11 @@ and warns when the cached agent frontmatter has drifted from it, so a
 pending `nerv apply-models` run is visible without inspecting the cache by
 hand.
 
-## `tasks:` (task plugin)
+## `tasks:` (task extension)
 
-Core never reads `tasks:`. The block belongs to the optional task plugin
-(`task@nerv`) and its provider plugins, such as `task-teamwork@nerv`. The
-full key reference is in the task plugin's contract
+Core never reads `tasks:`. The block belongs to the optional task extension
+(`task@nerv`) and its providers, such as `task-teamwork@nerv`. The
+full key reference is in the task extension's contract
 (`plugins/task/skills/task/SKILL.md`, section 1).
 
 - **Per-event switches.** `tasks.events.<event>: off` stops one pipeline
@@ -132,16 +163,16 @@ full key reference is in the task plugin's contract
   provider is enabled. `nerv configure --init-repo <path>
   --repo-provider-config <provider>.<key>=<value>` (repeatable) writes
   `tasks.providers.<provider>.<key>` into the repository's
-  `.ai-workflow.yml`.
+  `.ai-workflow/config.yaml`.
 
 **Migration.** A `tasks:` block written by an older release keeps working:
 
-- with the task plugin installed, it is read under the layout above, so the
+- with the task extension installed, it is read under the layout above, so the
   Teamwork keys under `tasks.providers.teamwork.*` keep their paths;
 - without it, core ignores the block and never deletes it;
 - copies of the `/task:*` commands that an older release put in
   `~/.claude/commands/task/` are reported by `nerv install` and removed only
-  after you confirm. The `task` plugin now serves those commands itself.
+  after you confirm. The `task` extension now serves those commands itself.
 
 ### Roles and their gentle-ai equivalents
 
@@ -222,7 +253,7 @@ from `~/.gentle-ai/state.json`, with the role's own `from_phase` listed
 first and marked `(equivalent)`; roles without one get no mark) and an effort (`low`/`medium`/`high`/
 `xhigh`/`max`), with Enter keeping the current value; `reset <role|group>`
 clears an override back to the plugin default. Confirming writes the block
-to the user-scope `config.yml`, after backing up the file to
+to the user-scope `config.yaml`, after backing up the file to
 `<path>.bak-models-<yyyyMMdd-HHmmss>`, then offers to run
 `nerv apply-models` immediately.
 
@@ -231,7 +262,7 @@ Non-interactively, `nerv configure --set-model role=model[/effort]` (or
 applies one role's override at a time to the same user-scope file; pass it
 repeatedly for a batch. This always edits the user-scope file — project
 scope has no dedicated command, since project-scope `models:` only ever
-affects `model` (see above). Edit the project `.ai-workflow.yml` `models:`
+affects `model` (see above). Edit the project `.ai-workflow/config.yaml` `models:`
 block by hand for that case, using the same inline-map syntax and `from:`
 behavior described above.
 

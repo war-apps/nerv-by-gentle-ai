@@ -43,7 +43,7 @@ func scalarOf(t *testing.T, path, key string) (string, bool) {
 }
 
 // S3: without task@nerv enabled, the wizard shows no Task providers section,
-// even when a provider plugin is enabled and its manifest is embedded.
+// even when a provider is enabled and its manifest is embedded.
 func TestRun_TaskProviders_HiddenWithoutTheTaskPlugin(t *testing.T) {
 	root := t.TempDir()
 	home := t.TempDir()
@@ -59,6 +59,26 @@ func TestRun_TaskProviders_HiddenWithoutTheTaskPlugin(t *testing.T) {
 	}
 	if strings.Contains(out.String(), "Task providers") {
 		t.Errorf("Task providers shown without task@nerv:\n%s", out.String())
+	}
+}
+
+// With task@nerv enabled and no provider, the Task providers section says
+// no task provider is enabled and points at nerv install.
+func TestRun_TaskProviders_SaysNoProviderIsEnabled(t *testing.T) {
+	root := t.TempDir()
+	home := t.TempDir()
+	writeFixture(t, filepath.Join(root, "config.yml"))
+	deps := configure.Deps{Home: home, FS: nerv.PluginFS(), ExtensionsFS: nerv.ExtensionsFS(), Runner: noRunner(), Now: fixedNow, LookPath: lookPathNone}
+	opts := skipAll()
+	opts.Paths = testPaths(root, home)
+	opts.SettingsPath = writeSettings(t, home, "nerv@nerv", "task@nerv")
+
+	var out bytes.Buffer
+	if _, err := wizard.Run(deps, strings.NewReader(strings.Repeat("\n", 12)), &out, opts); err != nil {
+		t.Fatalf("Run() error = %v; output:\n%s", err, out.String())
+	}
+	if !strings.Contains(out.String(), "--- Task providers ---\nNo task provider is enabled; install one with nerv install.\n") {
+		t.Errorf("output:\n%s", out.String())
 	}
 }
 
@@ -143,6 +163,11 @@ func twoProviders(t *testing.T) fs.FS {
 	manifest := strings.Replace(string(mapFS["task-teamwork/provider.yaml"].Data), "name: teamwork", "name: other", 1)
 	mapFS["task-other/provider.yaml"] = &fstest.MapFile{Data: []byte(manifest)}
 	mapFS["task-other/.claude-plugin/plugin.json"] = &fstest.MapFile{Data: []byte(`{"name":"task-other","version":"1.0.0","description":"other"}`)}
+	for path, file := range mapFS {
+		if rest, ok := strings.CutPrefix(path, "task-teamwork/procedures/"); ok {
+			mapFS["task-other/procedures/"+rest] = file
+		}
+	}
 	return mapFS
 }
 
@@ -174,7 +199,7 @@ func TestRun_TaskProviders_AsksTheProviderWhenSeveralAreEnabled(t *testing.T) {
 }
 
 // S3: the repo flow prompts the enabled providers' repo-scope scalar keys and
-// writes the answered ones into the repo's .ai-workflow.yml.
+// writes the answered ones into the repo's .ai-workflow/config.yaml.
 func TestRun_RepoInit_PromptsRepoScopeProviderKeys(t *testing.T) {
 	root := t.TempDir()
 	home := t.TempDir()
@@ -198,7 +223,7 @@ func TestRun_RepoInit_PromptsRepoScopeProviderKeys(t *testing.T) {
 	if _, err := wizard.Run(deps, in, &out, opts); err != nil {
 		t.Fatalf("Run() error = %v; output:\n%s", err, out.String())
 	}
-	repoConfig := filepath.Join(repoDir, ".ai-workflow.yml")
+	repoConfig := filepath.Join(repoDir, ".ai-workflow/config.yaml")
 	if got, _ := scalarOf(t, repoConfig, "tasks.providers.teamwork.project_id"); got != "111" {
 		t.Errorf("project_id = %q, want 111", got)
 	}
@@ -207,5 +232,46 @@ func TestRun_RepoInit_PromptsRepoScopeProviderKeys(t *testing.T) {
 	}
 	if got, _ := scalarOf(t, repoConfig, "enabled"); got != "true" {
 		t.Errorf("enabled = %q, want true", got)
+	}
+}
+
+// S9: the repo flow also prompts the repo-scope keys of the repository's
+// own task providers (.ai-workflow/providers/task-<name>/), which need no
+// plugin install.
+func TestRun_RepoInit_PromptsProjectTaskProviderKeys(t *testing.T) {
+	root := t.TempDir()
+	home := t.TempDir()
+	writeFixture(t, filepath.Join(root, "config.yml"))
+	repoDir := t.TempDir()
+	manifest := filepath.Join(repoDir, ".ai-workflow", "providers", "task-tracker", "provider.yaml")
+	if err := os.MkdirAll(filepath.Dir(manifest), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	ops := ""
+	for _, op := range []string{"getTask", "assign", "moveStage", "logTime", "updateTimelog", "deleteTimelog", "listTimelogs", "createTask", "createSubtask", "comment", "complete", "setPriority", "listTasks"} {
+		ops += "  " + op + ": not_implemented\n"
+	}
+	if err := os.WriteFile(manifest, []byte("name: tracker\nextension: task\nslot: provider\ncontract_version: 1\nruntime: agent\ntask_ref_prefix: TR\nmcp:\n  server: tracker\n  tools: [tracker_get]\nconfig:\n  - key: board\n    scope: repo\n    type: string\n    prompt: The tracker board of this repository\noperations:\n"+ops), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	runner := &envtest.FakeRunner{Responses: map[string]envtest.Response{
+		"git -C " + repoDir + " rev-parse --show-toplevel": {Stdout: repoDir + "\n"},
+	}}
+	deps := configure.Deps{Home: home, FS: nerv.PluginFS(), ExtensionsFS: nerv.ExtensionsFS(), Runner: runner, Now: fixedNow, LookPath: lookPathNone}
+	opts := wizard.Options{Paths: testPaths(root, home), SkipSkills: true, SkipModels: true, NoRefresh: true}
+	opts.SettingsPath = writeSettings(t, home, "task@nerv")
+
+	var out bytes.Buffer
+	in := promptInput(&out, []promptAnswer{
+		{prompt: "Initialize a repository for NERV now?", answer: repoDir},
+		{prompt: "Base branch for this repo", answer: ""},
+		{prompt: "The tracker board of this repository []: ", answer: "ops"},
+		{prompt: "Initialize a repository for NERV now?", answer: ""},
+	})
+	if _, err := wizard.Run(deps, in, &out, opts); err != nil {
+		t.Fatalf("Run() error = %v; output:\n%s", err, out.String())
+	}
+	if got, _ := scalarOf(t, filepath.Join(repoDir, ".ai-workflow", "config.yaml"), "tasks.providers.tracker.board"); got != "ops" {
+		t.Errorf("tasks.providers.tracker.board = %q, want ops; output:\n%s", got, out.String())
 	}
 }
