@@ -68,14 +68,21 @@ func TestMigrate_DryRunPrintsEveryChangeAndWritesNothing(t *testing.T) {
 		t.Fatalf("exit %d\n%s\n%s", code, out, errOut)
 	}
 	for _, want := range []string{
-		"--- /dev/null\n+++ b/.ai-workflow/config.yaml\n", "+release:", "+deploy:\n+  host: github",
-		"move .nerv/nerv.yaml -> .nerv/nerv.yaml.migrated",
-		"warning: semantic-release package.json: @semantic-release/exec",
-		"plugins: nerv install --with task,task-teamwork,release,deploy,deploy-github",
-		"nerv migrate: dry run:",
+		"nerv migrate --dry-run: these are the steps nerv migrate would take; nothing is written:\n",
+		"  1. Create .ai-workflow/config.yaml: the new project configuration, from .nerv/nerv.yaml\n",
+		". Move .nerv/nerv.yaml to .nerv/nerv.yaml.migrated: a copy of the old configuration, so an older nerv does not read it\n",
+		"\nHow the configuration changes:\n  - ",
+		"\nCheck by hand:\n  - ", "\n  - semantic-release package.json: @semantic-release/exec",
+		"\nNext, install the extensions it uses: nerv install --with task,task-teamwork,release,deploy,deploy-github\n",
+		"nerv migrate: dry run: 3 change(s), nothing was written",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("stdout lacks %q:\n%s", want, out)
+		}
+	}
+	for _, unwanted := range []string{"--- ", "+++ ", "@@ ", "\nnote: ", "\nwarning: "} {
+		if strings.Contains(out, unwanted) {
+			t.Errorf("stdout has %q, the steps carry no diff:\n%s", unwanted, out)
 		}
 	}
 	if _, err := os.Stat(filepath.Join(top, ".ai-workflow/config.yaml")); err == nil {
@@ -92,8 +99,17 @@ func TestMigrate_WritesThenASecondRunHasNothingToDo(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("exit %d\n%s\n%s", code, out, errOut)
 	}
-	if !strings.Contains(out, "backup: "+filepath.Join(top, ".nerv", "backups")) || !strings.Contains(out, "change(s) written") {
-		t.Errorf("stdout:\n%s", out)
+	for _, want := range []string{
+		"nerv migrate: these are the steps:\n  1. Create .ai-workflow/config.yaml: the new project configuration, from .nerv/nerv.yaml\n",
+		"\nBackups:\n  - " + filepath.Join(top, ".nerv", "backups"),
+		"change(s) written",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("stdout lacks %q", want)
+		}
+	}
+	if strings.Contains(out, "+++ ") {
+		t.Errorf("the run prints a diff:\n%s", out)
 	}
 	code, out, _ = runMigrateCLI(t, opts)
 	if code != 0 || !strings.Contains(out, "nerv migrate: nothing to migrate") {
@@ -300,7 +316,7 @@ func TestMigrate_Alpha1ShipSection(t *testing.T) {
 	top, opts := migrateRepo(t, "alpha1")
 	old := mustReadFile(t, filepath.Join(top, ".ai-workflow.yml"))
 	code, out, errOut := runMigrateCLI(t, opts, "--dry-run")
-	if code != 0 || !strings.Contains(out, "+release: # ship plugin") || !strings.Contains(out, "ship: renamed release:") || !strings.Contains(out, "plugins: nerv install --with") {
+	if code != 0 || !strings.Contains(out, "Create .ai-workflow/config.yaml: the new project configuration, from .ai-workflow.yml\n") || !strings.Contains(out, "  - ship: renamed release:") || !strings.Contains(out, "Next, install the extensions it uses: nerv install --with") {
 		t.Fatalf("--dry-run: exit %d\n%s\n%s", code, out, errOut)
 	}
 	if got := mustReadFile(t, filepath.Join(top, ".ai-workflow.yml")); got != old {

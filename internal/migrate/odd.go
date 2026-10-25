@@ -269,7 +269,11 @@ func planChange(p *Plan, o Options, name string, tdd *tddDefault) error {
 				continue
 			}
 		}
-		p.Changes = append(p.Changes, Change{Kind: Remove, Path: src, Old: data, StopAt: stop})
+		why := "an identical copy is already in place"
+		if dst == "" {
+			why = "its content is in " + oddTasksDir + "/" + name + ".md"
+		}
+		p.Changes = append(p.Changes, Change{Kind: Remove, Path: src, Old: data, StopAt: stop, Why: why})
 	}
 	if !full {
 		p.note("%s is a %s run: it moved to %s and its lock to .nerv/locks/%s.lock, with no ODD document (only FULL runs get one); .nerv/ is git-ignored, so its files leave version control", rel, strings.ToUpper(tier), runRel, name)
@@ -277,9 +281,8 @@ func planChange(p *Plan, o Options, name string, tdd *tddDefault) error {
 	}
 	if writeDoc {
 		text := oddDocument(name, state, tdd, read, specs, now)
-		p.Changes = append(p.Changes, Change{Kind: Write, Path: doc, New: []byte(text)})
+		p.Changes = append(p.Changes, Change{Kind: Write, Path: doc, New: []byte(text), Why: "the task document of " + rel})
 	}
-	p.note("%s became %s/%s.md, its run files %s", rel, oddTasksDir, name, runRel)
 	return nil
 }
 

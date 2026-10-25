@@ -6,7 +6,7 @@ user configuration. It is written in Go and works the same way on Linux,
 macOS and Windows.
 
 ```sh
-nerv migrate --dry-run          # see every change; nothing is written
+nerv migrate --dry-run          # list the steps; nothing is written
 nerv migrate                    # migrate this repository
 nerv migrate --user             # also migrate your user configuration
 nerv migrate --install          # then install the extensions the repository used
@@ -141,7 +141,7 @@ with `odd/tasks/`.
 
 The run ends with the exact install line for the extensions and providers
 the old configuration used (each installs as its `<name>@nerv` Claude Code
-plugin, hence the `plugins:` label):
+plugin):
 
 - the `task` extension and its `task-teamwork` provider when `tasks.provider` was `teamwork` (also the 4.2.0 default when nothing set it);
 - the `release` extension when the 4.2.0 `release:` section or the 5.0.0-alpha.1 `ship:` section existed;
@@ -149,7 +149,7 @@ plugin, hence the `plugins:` label):
 - the `deploy-ssh-compose` provider when `pipeline.deploy` existed.
 
 ```
-plugins: nerv install --with task,task-teamwork,release,deploy,deploy-github
+Next, install the extensions it uses: nerv install --with task,task-teamwork,release,deploy,deploy-github
 ```
 
 `--install` runs that line through `nerv install` (without the closing
@@ -225,7 +225,27 @@ release` again for the version you want to deploy.
 
 ## Safety
 
-- **`--dry-run` writes nothing.** It prints a unified diff of each file written, one `move` line per move or rename, one `remove` line per removal, then the notes, the warnings and the install line.
+- **It lists its steps, with or without `--dry-run`.** One numbered step per file it creates, updates, moves or deletes, in the order it takes them, each with what the file is or why it changes; then "How the configuration changes", "Check by hand" and the install line. It prints no diffs. `--dry-run` stops there and writes nothing:
+
+  ```
+  nerv migrate --dry-run: these are the steps nerv migrate would take; nothing is written:
+    1. Create .ai-workflow/config.yaml: the new project configuration, from .nerv/nerv.yaml
+    2. Create .nerv/.gitignore: keeps nerv's local files out of git
+    3. Move .nerv/nerv.yaml to .nerv/nerv.yaml.migrated: a copy of the old configuration, so an older nerv does not read it
+
+  How the configuration changes:
+    - release: converted from the 4.2.0 section
+    ...
+
+  Check by hand:
+    - deploy.host: the repository has no origin, so no git host is written: set deploy.host when it has one
+
+  Next, install the extensions it uses: nerv install --with task,task-teamwork,release,deploy
+
+  nerv migrate: dry run: 3 change(s), nothing was written
+  ```
+
+  A real run prints the same steps, then the backups it made and `nerv migrate: <n> change(s) written`.
 - **Backups.** Every file the migration changes, moves or removes is copied first. The repository's copies go to `.nerv/backups/migrate-<yyyyMMdd-HHmmss>/`, at the same relative path and with the file's permission bits; that folder is git-ignored. The user config's copies go next to the file, as `<file>.bak-migrate-<yyyyMMdd-HHmmss>`.
 - **Atomic writes.** Each file is written to a temporary file and renamed into place.
 - **One transaction.** When any step fails, every step already done is undone in reverse order, and the backups and `.nerv/.gitignore` that run created are removed; the error ends with `every change was rolled back`. Fix the cause and run it again.

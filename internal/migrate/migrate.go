@@ -80,6 +80,9 @@ type Change struct {
 	Old, New []byte
 	// User marks a change of the user scope (backed up next to the file).
 	User bool
+	// Why says, in a few words a user reads, what the file is or why it
+	// changes; the rendered step is "<verb> <path>: <Why>".
+	Why string
 	// StopAt bounds a Remove's cleanup of the directories it empties: they
 	// are removed up to, not including, StopAt (default the repository).
 	StopAt string
@@ -168,7 +171,7 @@ func (u *userState) finish(p *Plan) {
 	if !u.exists && !u.moved && len(bytes.TrimSpace(text)) == 0 {
 		return
 	}
-	c := Change{Kind: Write, Path: u.path, New: text, User: true}
+	c := Change{Kind: Write, Path: u.path, New: text, User: true, Why: "your user configuration"}
 	if u.exists {
 		c.Old = u.original
 	}
@@ -456,9 +459,10 @@ func removeEmptyParents(dir, root string) {
 	}
 }
 
-// Render writes the plan as a unified diff per written file and one line
-// per rename and removal, paths relative to the repository (or absolute
-// for the user files), sorted by path within each kind.
+// Render is the plan as a user reads it, without diffs: the numbered
+// steps in the order Apply takes them (paths relative to the repository,
+// absolute for the user files), how the configuration changes, what needs
+// the user's hand, and the install line.
 func Render(p *Plan) string {
 	var b strings.Builder
 	rel := func(path string) string {
@@ -470,21 +474,45 @@ func Render(p *Plan) string {
 		return path
 	}
 	changes := append([]Change(nil), p.Changes...)
-	sort.SliceStable(changes, func(i, j int) bool {
-		if changes[i].Kind != changes[j].Kind {
-			return changes[i].Kind < changes[j].Kind
-		}
-		return changes[i].Path < changes[j].Path
-	})
-	for _, c := range changes {
+	sort.SliceStable(changes, func(i, j int) bool { return changes[i].Kind < changes[j].Kind })
+	for i, c := range changes {
+		var s string
 		switch c.Kind {
 		case Write:
-			b.WriteString(UnifiedDiff(rel(c.Path), c.Old, c.New))
+			verb := "Update"
+			if c.Old == nil {
+				verb = "Create"
+			}
+			s = verb + " " + rel(c.Path)
 		case Rename:
-			fmt.Fprintf(&b, "move %s -> %s\n", rel(c.Path), rel(c.To))
+			s = "Move " + rel(c.Path) + " to " + rel(c.To)
 		case Remove:
-			fmt.Fprintf(&b, "remove %s\n", rel(c.Path))
+			s = "Delete " + rel(c.Path)
 		}
+		if c.Why != "" {
+			s += ": " + c.Why
+		}
+		fmt.Fprintf(&b, "  %d. %s\n", i+1, s)
+	}
+	list := func(title string, items []string) {
+		if len(items) == 0 {
+			return
+		}
+		if b.Len() > 0 {
+			b.WriteString("\n")
+		}
+		fmt.Fprintf(&b, "%s:\n", title)
+		for _, it := range items {
+			fmt.Fprintf(&b, "  - %s\n", it)
+		}
+	}
+	list("How the configuration changes", p.Notes)
+	list("Check by hand", p.Warnings)
+	if line := p.InstallCommand(); line != "" {
+		if b.Len() > 0 {
+			b.WriteString("\n")
+		}
+		fmt.Fprintf(&b, "Next, install the extensions it uses: %s\n", line)
 	}
 	return b.String()
 }
