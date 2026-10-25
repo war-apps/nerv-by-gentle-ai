@@ -113,6 +113,11 @@ func releaseSetupImport(ctx context.Context, cwd string, dryRun, force bool, std
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
+	// An alpha.1 ship: section is refused before anything is imported:
+	// the import would add a release: section next to it.
+	if msg := releaseconfig.RemovedShip(data); msg != "" {
+		return &releaseconfig.ValidationError{Problems: []string{msg}}
+	}
 	// The engine is the section's (its release.version), read before the
 	// section is validated: the import may be what makes it valid.
 	providers, err := releaseProviders(opts, top, stderr)

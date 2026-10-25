@@ -940,3 +940,44 @@ func TestVersionNext_RefusesAnInvalidBuildProvider(t *testing.T) {
 		})
 	}
 }
+
+// alphaShipYAML is a 5.0.0-alpha.1 project configuration: the ship:
+// section, with the version engine keys at its top and a compose build.
+const alphaShipYAML = `enabled: true
+ship:
+  branches: [main]
+  tag_format: "v${version}"
+  projects:
+    - { name: api, path: ., build: { mode: compose, file: docker-compose.yml, images: ["ghcr.io/acme/app:${version}"] } }
+`
+
+// alphaShipWants is what the refusal of an alpha.1 ship: section says.
+var alphaShipWants = []string{"ship: the ship: section of nerv 5.0.0-alpha.1 is no longer read", "run nerv migrate"}
+
+// S1, L8 advisory 1: an alpha.1 ship: section is refused, naming nerv
+// migrate, before the engine runs; the file is left as it was.
+func TestVersionNext_RefusesTheAlphaShipSection(t *testing.T) {
+	f := newNextFixture(t, alphaShipYAML)
+	code, stdout, stderr := f.run(t)
+	if code != 1 || stdout != "" || len(f.calls) != 0 {
+		t.Errorf("code=%d stdout=%q stderr=%q calls=%d", code, stdout, stderr, len(f.calls))
+	}
+	for _, want := range alphaShipWants {
+		if !strings.Contains(stderr, want) {
+			t.Errorf("stderr lacks %q: %s", want, stderr)
+		}
+	}
+	if got := mustReadFile(t, filepath.Join(f.top, ".ai-workflow/config.yaml")); got != alphaShipYAML {
+		t.Errorf(".ai-workflow/config.yaml changed:\n%s", got)
+	}
+}
+
+// A current release: section still computes (prior behaviour).
+func TestVersionNext_CurrentSectionStillComputes(t *testing.T) {
+	f := newNextFixture(t, "release:\n  providers:\n    conventional-commits: { branches: [main] }\n  projects:\n    - { name: api, path: ., build: docker-compose, providers: { docker-compose: { file: c.yml } } }\n")
+	f.results = []versioning.Result{released("api", "1.2.0", "")}
+	code, stdout, stderr := f.run(t, "--json")
+	if code != 0 || !strings.Contains(stdout, `"1.2.0"`) || len(f.calls) != 1 {
+		t.Errorf("code=%d stdout=%q stderr=%q calls=%d", code, stdout, stderr, len(f.calls))
+	}
+}

@@ -93,7 +93,7 @@ type Plan struct {
 	// Notes say what was translated; Warnings what has no equivalent or
 	// needs the user's hand.
 	Notes, Warnings []string
-	// Plugins are the extension plugins the old configuration used, in
+	// Plugins are the extensions and providers the old configuration used, in
 	// install order.
 	Plugins []string
 }

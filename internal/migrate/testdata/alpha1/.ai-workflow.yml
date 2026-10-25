@@ -1,0 +1,40 @@
+# .ai-workflow.yml -- NERV project configuration (5.0.0-alpha.1)
+enabled: true
+git:
+  base_branch: develop
+ship:                               # ship plugin; project scope only
+  # The version engine.
+  branches:
+    - main
+    - { name: develop, prerelease: alpha, channel: alpha }
+  release_rules:
+    - { type: docs, scope: readme, release: patch }
+  note_keywords: [BREAKING CHANGE, BREAKING]
+  tag_format: "v${version}"
+  repository_url: https://github.com/acme/widgets
+  changelog: { file: CHANGELOG.md, title: "# Changelog" }
+  projects:
+    - { name: api, path: api, build: { mode: compose, file: api/docker-compose.yml, test_service: tests, images: ["ghcr.io/acme/api:${version}"] } }
+    - name: worker
+      path: worker
+      tag_format: "worker-v${version}"
+      changelog: worker/HISTORY.md
+      depends_on:
+        - { project: api, bump: patch }
+      build:
+        mode: script
+        shared_host: true
+        version_files: [worker/Worker.csproj]
+        coverage: { line: 80 }
+      stages:
+        restore: { run: dotnet restore worker }
+        build: { run: dotnet build worker -c Release --no-restore }
+        test: { run: dotnet test worker --no-build }
+        package: { run: 'dotnet publish worker -o "$NERV_RELEASE_OUTPUTS_DIR"' }
+      hooks:
+        prepare:
+          - { run: echo ready }
+deploy:                             # deploy plugin
+  host: github
+  targets:
+    - { name: staging, provider: ssh-compose, config: { environment: staging } }

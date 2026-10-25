@@ -168,7 +168,18 @@ func planRepo(p *Plan, o Options, user *userState) error {
 			current = prevText
 		}
 		doc = config.Parse(string(current))
-		if legacy := releaseconfig.LegacyKeys(current); len(legacy) > 0 {
+		if doc.KeyExists(releaseconfig.AlphaSectionKey) {
+			// The 5.0.0-alpha.1 ship: section is today's release: under its
+			// old name, with the keys of before the version and build slots.
+			where := paths.ProjectConfigFile
+			if prevExists {
+				where = paths.PreviousProjectConfigFile
+			}
+			if err := migrateShip(p, doc, where); err != nil {
+				return err
+			}
+			p.Plugins = append(p.Plugins, "release")
+		} else if legacy := releaseconfig.LegacyKeys(current); len(legacy) > 0 {
 			// A 4.2.0 release: section has today's key: its 4.2.0 keys
 			// tell it apart.
 			p.note("%s: the release: section is the 4.2.0 one (%s)", paths.ProjectConfigFile, strings.Join(legacy, ", "))
@@ -176,6 +187,10 @@ func planRepo(p *Plan, o Options, user *userState) error {
 				return err
 			}
 			p.Plugins = append(p.Plugins, "release")
+		} else if doc.KeyExists(releaseconfig.SectionKey) {
+			if err := moveReleaseKeys(p, doc); err != nil {
+				return err
+			}
 		}
 	}
 	if doc != nil {
@@ -218,7 +233,7 @@ func planRepo(p *Plan, o Options, user *userState) error {
 	}
 	if o.Home != "" {
 		if entries, err := os.ReadDir(legacyCommandsDir(o.Home)); err == nil && len(entries) > 0 {
-			p.warn("%s: old /task:* copies shadow the task plugin's commands; nerv install reports them and removes them when you confirm", legacyCommandsDir(o.Home))
+			p.warn("%s: old /task:* copies shadow the task extension's commands; nerv install reports them and removes them when you confirm", legacyCommandsDir(o.Home))
 		}
 	}
 	return nil
@@ -304,7 +319,7 @@ func translateConfig(p *Plan, o Options, data []byte, user *userState) (*config.
 	}
 	if effective == teamwork {
 		p.Plugins = append(p.Plugins, "task", "task-teamwork")
-		p.note("tasks.provider: teamwork (%s): the task and task-teamwork plugins", from)
+		p.note("tasks.provider: teamwork (%s): the task extension and its task-teamwork provider", from)
 	}
 	if hadRelease || dep != nil {
 		p.Plugins = append(p.Plugins, "release")

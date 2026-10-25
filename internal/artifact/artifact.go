@@ -36,6 +36,10 @@ import (
 // Schema is the manifest's schema identifier.
 const Schema = "nerv.release-artifact/v1"
 
+// AlphaSchema is the schema of the artifacts nerv ship wrote in
+// 5.0.0-alpha.1. Read refuses it, saying to rebuild the artifact.
+const AlphaSchema = "nerv.ship-artifact/v1"
+
 // The files and directories of an artifact.
 const (
 	ManifestFile    = "manifest.json"
@@ -460,6 +464,9 @@ func Read(dir string) (*Manifest, error) {
 	var m Manifest
 	if err := json.Unmarshal(data, &m); err != nil {
 		return nil, fmt.Errorf("artifact: %s: %w", filepath.Join(dir, ManifestFile), err)
+	}
+	if m.Schema == AlphaSchema {
+		return nil, fmt.Errorf("artifact: %s: schema %q: this artifact was made by nerv 5.0.0-alpha.1 (nerv ship); rebuild it with nerv release", dir, m.Schema)
 	}
 	if m.Schema != Schema {
 		return nil, fmt.Errorf("artifact: %s: schema %q, want %q", dir, m.Schema, Schema)

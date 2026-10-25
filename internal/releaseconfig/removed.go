@@ -16,14 +16,18 @@ import (
 const MigrateHint = "nerv migrate rewrites it; by hand, see /release:setup and /deploy:setup"
 
 // RemovedSections reports the removed top-level sections of a
-// .ai-workflow/config.yaml text, each with what replaced it: pipeline: (nerv
-// pipeline was removed), naming where each of its parts went. Nil when the
-// text has none. Every reader of the release: and deploy: sections refuses
+// .ai-workflow/config.yaml text, each with what replaced it: ship: (the
+// 5.0.0-alpha.1 name of release:) and pipeline: (nerv pipeline was
+// removed), naming where each of its parts went. Nil when the text has
+// none. Every reader of the release: and deploy: sections refuses
 // a file with one, so the old configuration is never silently ignored. A
 // 4.2.0 release: section has the same key as today's: it is told apart by
 // its keys (LegacyKeys) and refused by Load.
 func RemovedSections(data []byte) []string {
 	var out []string
+	if msg := RemovedShip(data); msg != "" {
+		out = append(out, msg)
+	}
 	if msg := RemovedPipeline(data); msg != "" {
 		out = append(out, msg)
 	}
@@ -82,6 +86,21 @@ func legacyMessage(section *yaml.Node) string {
 		return ""
 	}
 	return fmt.Sprintf("%s: this is a 4.2.0 release: section (it has %s): %s; by hand, see /release:setup", SectionKey, strings.Join(keys, ", "), LegacyHint)
+}
+
+// AlphaSectionKey is the 5.0.0-alpha.1 name of the release: section.
+const AlphaSectionKey = "ship"
+
+// RemovedShip is RemovedSections' message for the 5.0.0-alpha.1 ship:
+// section ("" without one): the command that reads the release: section
+// before it imports into it (nerv release setup) refuses it first.
+func RemovedShip(data []byte) string {
+	if !present(data, AlphaSectionKey) {
+		return ""
+	}
+	return AlphaSectionKey + ": the ship: section of nerv 5.0.0-alpha.1 is no longer read: ship was renamed release " +
+		"(the version engine keys moved under release.providers." + EngineProvider + " and build.mode became the build provider's name, build: docker-compose or bash); " +
+		"run nerv migrate to convert it into the release: section"
 }
 
 // RemovedPipeline is RemovedSections' message for the pipeline: section

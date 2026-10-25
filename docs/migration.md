@@ -9,7 +9,7 @@ macOS and Windows.
 nerv migrate --dry-run          # see every change; nothing is written
 nerv migrate                    # migrate this repository
 nerv migrate --user             # also migrate your user configuration
-nerv migrate --install          # then install the plugins the repository used
+nerv migrate --install          # then install the extensions the repository used
 nerv migrate --force            # also move a change whose lock is still held
 ```
 
@@ -31,6 +31,7 @@ reported the same way, and the repository is treated as unconfigured.
 | `tasks.rounding_minutes` | `tasks.providers.teamwork.rounding_minutes` |
 | `tasks.provider: jira` or `github-projects`, `tasks.providers.jira` / `.github-projects` | Dropped and reported: those providers were removed. |
 | `tasks.providers.teamwork.task_ref_prefix` | Dropped: the provider's manifest fixes the prefix. |
+| `ship:` (5.0.0-alpha.1) | `release:`, today's section (see [From 5.0.0-alpha.1](#from-500-alpha1)). |
 | `release:` (4.2.0) | `release:`, today's section (see [Release](#release)). A 4.2.0 `release:` already in `.ai-workflow.yml` or `.ai-workflow/config.yaml` is told apart by its 4.2.0 keys (`semantic_release:`, the presets) and converted in place. |
 | the semantic-release configuration (`package.json` `release`, `.releaserc*`) | Imported into `release:` by the same code as `nerv release setup --import`. Its warnings are printed. |
 | `pipeline:` | `deploy:` (see [Deploy](#deploy)) |
@@ -136,15 +137,16 @@ cannot be checked, so make sure no session there still runs the change.
 A FULL change named `tasks` is left where it is, because it would collide
 with `odd/tasks/`.
 
-## Plugins
+## Extensions
 
-The run ends with the exact install line for the plugins the old
-configuration used:
+The run ends with the exact install line for the extensions and providers
+the old configuration used (each installs as its `<name>@nerv` Claude Code
+plugin, hence the `plugins:` label):
 
-- `task` and `task-teamwork` when `tasks.provider` was `teamwork` (also the 4.2.0 default when nothing set it);
-- `release` when the 4.2.0 `release:` section existed;
-- `deploy` and `deploy-github` when a git host was written;
-- `deploy-ssh-compose` when `pipeline.deploy` existed.
+- the `task` extension and its `task-teamwork` provider when `tasks.provider` was `teamwork` (also the 4.2.0 default when nothing set it);
+- the `release` extension when the 4.2.0 `release:` section or the 5.0.0-alpha.1 `ship:` section existed;
+- the `deploy` extension and its `deploy-github` provider when a git host was written;
+- the `deploy-ssh-compose` provider when `pipeline.deploy` existed.
 
 ```
 plugins: nerv install --with task,task-teamwork,release,deploy,deploy-github
@@ -155,9 +157,75 @@ wizard). The install step reports old `/task:*` copies in
 `~/.claude/commands/task`, and removes them when you confirm on a terminal.
 `nerv migrate` never removes them itself.
 
+## From 5.0.0-alpha.1
+
+In 5.0.0-alpha.1 the release extension was called ship: its section was
+`ship:`, its command `nerv ship`, and its configuration lived in
+`<repo>/.ai-workflow.yml`. The rename is a clean break: no command reads
+the old names. Until `nerv migrate` runs, `nerv version next`, `nerv
+release` and `nerv release setup` refuse a `ship:` section (exit 1, the
+file untouched) with `ship: the ship: section of nerv 5.0.0-alpha.1 is no
+longer read ... run nerv migrate to convert it into the release: section`.
+
+`nerv migrate` does it all in one transaction (dry run, backups, rollback,
+a second run that changes nothing):
+
+1. `.ai-workflow.yml` moves to `.ai-workflow/config.yaml` (a `ship:`
+   section already moved there by hand is converted in place).
+2. `ship:` is renamed `release:`, where it was, with its comments.
+3. The keys move to the release extension's provider slots:
+
+| 5.0.0-alpha.1 | Now |
+|---|---|
+| `ship.branches`, `release_rules`, `note_keywords`, `tag_format`, `repository_url`, `changelog` | `release.providers.conventional-commits.<key>` (the version engine's keys) |
+| `ship.projects[].tag_format`, `changelog` | Unchanged: still project keys. |
+| `build: { mode: compose, ... }` | `build: docker-compose` |
+| `build: { mode: script, ... }` | `build: bash` |
+| `build.file`, `build.test_service` | `release.projects[].providers.docker-compose.file`, `.test_service` |
+| `build.shared_host` | `release.projects[].providers.bash.shared_host` |
+| `build.images`, `build.version_files`, `build.coverage` | `release.projects[].images`, `.version_files`, `.coverage` |
+| everything else (`stages`, `hooks`, `depends_on`, `scopes`, ...) | Unchanged. |
+
+For example:
+
+```yaml
+# 5.0.0-alpha.1, .ai-workflow.yml
+ship:
+  tag_format: "v${version}"
+  projects:
+    - { name: api, path: ., build: { mode: compose, file: docker-compose.yml, images: ["ghcr.io/acme/app:${version}"] } }
+
+# now, .ai-workflow/config.yaml
+release:
+  providers:
+    conventional-commits:
+      tag_format: "v${version}"
+  projects:
+    - name: api
+      path: .
+      build: docker-compose
+      images: ["ghcr.io/acme/app:${version}"]
+      providers:
+        docker-compose:
+          file: docker-compose.yml
+```
+
+A `release:` section with the engine keys at its top or a `build:`
+mapping (the same shape under the new name) is moved the same way. A file
+with both `ship:` and `release:` is refused: merge them by hand.
+
+The user configuration moves with `nerv migrate --user`: the user
+`config.yml` becomes `config.yaml` in the same folder. It holds no `ship:`
+keys (the section was project scope only).
+
+Artifacts written by `nerv ship` (schema `nerv.ship-artifact/v1`) are not
+converted: `nerv deploy` refuses them with `this artifact was made by nerv
+5.0.0-alpha.1 (nerv ship); rebuild it with nerv release`. Run `nerv
+release` again for the version you want to deploy.
+
 ## Safety
 
-- **`--dry-run` writes nothing.** It prints a unified diff of each file written, one `move` line per move or rename, one `remove` line per removal, then the notes, the warnings and the plugin line.
+- **`--dry-run` writes nothing.** It prints a unified diff of each file written, one `move` line per move or rename, one `remove` line per removal, then the notes, the warnings and the install line.
 - **Backups.** Every file the migration changes, moves or removes is copied first. The repository's copies go to `.nerv/backups/migrate-<yyyyMMdd-HHmmss>/`, at the same relative path and with the file's permission bits; that folder is git-ignored. The user config's copies go next to the file, as `<file>.bak-migrate-<yyyyMMdd-HHmmss>`.
 - **Atomic writes.** Each file is written to a temporary file and renamed into place.
 - **One transaction.** When any step fails, every step already done is undone in reverse order, and the backups and `.nerv/.gitignore` that run created are removed; the error ends with `every change was rolled back`. Fix the cause and run it again.
@@ -167,6 +235,8 @@ wizard). The install step reports old `/task:*` copies in
   - the old file and its replacement both exist with different content (nerv migrate does not merge them);
   - an ODD document of the same name already exists, and `nerv migrate` did not write it;
   - a change's lock is still held on this machine, without `--force`;
+  - the file has both a `ship:` section (5.0.0-alpha.1) and a `release:` section;
+  - a `ship:` key has no place: an unknown `build.mode` or `build:` key, or a key its new place already holds;
   - the migrated `.ai-workflow/config.yaml` does not load with today's `release:` and `deploy:` readers.
 
 Exit codes: 0 for migrated, nothing to migrate, or a dry run; 1 for a
