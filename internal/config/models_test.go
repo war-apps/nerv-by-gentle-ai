@@ -262,7 +262,7 @@ func TestReadModelsOverrides(t *testing.T) {
 	})
 }
 
-// A nerv.yaml written before the melchor -> melchior and kaji-audit -> gendo
+// A config file written before the melchor -> melchior and kaji-audit -> gendo
 // renames keeps applying: legacy keys resolve to the new role ID, and when
 // both the legacy and the new key are present the new key wins, whatever
 // their order in the file.

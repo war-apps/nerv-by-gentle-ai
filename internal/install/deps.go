@@ -32,6 +32,10 @@ type Deps struct {
 	SettingsPath string
 	// FS is the embedded plugin tree, typically nerv.PluginFS().
 	FS fs.FS
+	// ExtensionsFS holds the optional extensions and providers shipped in the same
+	// marketplace, one folder per plugin, typically nerv.ExtensionsFS().
+	// Nil ships none.
+	ExtensionsFS fs.FS
 	// Runner launches "gentle-ai", "claude plugin ...", "engram ...",
 	// and "npx ..." (skills installs).
 	Runner env.Runner
@@ -44,6 +48,17 @@ type Deps struct {
 	// means no sync: non-interactive callers leave it unset. Injected so this
 	// package never reads os.Stdin.
 	ConfirmSync func(skills []string) bool
+	// ConfirmExtension, when set, is asked whether to install each
+	// extension that is neither requested nor already enabled: the task
+	// plugin first, then its providers only when the task plugin is
+	// installed. Nil suggests nothing: non-interactive callers leave it
+	// unset.
+	ConfirmExtension func(name, description string) bool
+	// ConfirmRemoveLegacyCommands, when set, is asked whether to delete the
+	// old /task:* copies found in <Home>/.claude/commands/task, which shadow
+	// the task plugin's commands. Nil only reports them: non-interactive
+	// callers leave it unset.
+	ConfirmRemoveLegacyCommands func(files []string) bool
 	// Stdout receives this package's step-by-step progress log.
 	Stdout io.Writer
 }
@@ -55,6 +70,10 @@ type Options struct {
 	RequireGentleAI bool
 	// NoSkills skips the skills-install step entirely.
 	NoSkills bool
+	// Extensions names the extensions and providers to install (such as "task" or a
+	// "task-<provider>" plugin); their requirements are added. Unknown names are a
+	// RefusalError.
+	Extensions []string
 }
 
 // RefusalError marks a rejected install/uninstall/apply-models request —

@@ -263,8 +263,8 @@ func TestAuditPasses_LegacyPassNameFallbackDocumented(t *testing.T) {
 	for _, want := range []string{
 		"`pass-melchor-round-N.json`",
 		"`pass-kaji-audit-round-N.json`",
-		"`nerv/{change}/audit-pass-melchor-round-N`",
-		"`nerv/{change}/audit-pass-kaji-audit-round-N`",
+		"`nerv/{feature}/audit-pass-melchor-round-N`",
+		"`nerv/{feature}/audit-pass-kaji-audit-round-N`",
 		"#### Legacy pass names",
 	} {
 		if !strings.Contains(artifacts, want) {

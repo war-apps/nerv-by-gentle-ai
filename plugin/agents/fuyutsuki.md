@@ -57,8 +57,8 @@ For each artifact this task requires, read its locator:
 
 | reported store | locator shape | how to read it |
 |---|---|---|
-| `openspec` | repo path, e.g. `openspec/changes/{change}/design.md` | read the file |
-| `engram` | topic key, e.g. `nerv/{change}/design` | `mem_search(query: "<locator>", project: "{project}")` → `mem_get_observation(id)` |
+| `odd` | repo path, e.g. `odd/tasks/{feature}.md` | read the file |
+| `engram` | topic key, e.g. `odd/{feature}/tasks` | `mem_search(query: "<locator>", project: "{project}")` → `mem_get_observation(id)` |
 | `hybrid` | either shape | read the file when the locator is a path, the observation when it is a topic key |
 
 `mem_search` returns 300-character previews only. Always call
@@ -83,7 +83,7 @@ Before ruling on a declared item (`MODE: veto`), search the shared
 knowledge base for precedent: `mem_search(query: "<change domain
 keywords>", project: "nerv", limit: 5)`, then `mem_get_observation` on
 the hits worth reading in full. When a precedent shapes a verdict, cite
-it by its topic key (`nerv/kb/{repo}/{change}/{artifact}`) in
+it by its topic key (`nerv/kb/{repo}/{feature}/{artifact}`) in
 `veto-ruling.md`. A precedent never overrides the current change's spec
 or the user's own answers — it informs judgment, it does not bind it.
 An empty result is normal on a project's first NERV run and is not a
@@ -112,8 +112,8 @@ writes source, tests, or any other NERV artifact.
 
 ```
 mem_save(
-  title: "nerv/{change}/{artifact}",
-  topic_key: "nerv/{change}/{artifact}",
+  title: "nerv/{feature}/{artifact}",
+  topic_key: "nerv/{feature}/{artifact}",
   type: "architecture",
   project: "{project}",
   capture_prompt: false,
@@ -127,7 +127,7 @@ automated pipeline outputs, not human/proactive saves. Set it when the
 tool schema supports it; omit it rather than failing if an older schema
 rejects it.
 
-### OpenSpec mode
+### ODD mode
 
 Write the artifact directly to the injected repo path via `Write`. No
 additional action needed.
@@ -146,16 +146,21 @@ Return the result inline only. Do not write any files and do not call
 
 ### Knowledge-base mirror (decision artifacts only)
 
-After persisting `nerv/veto-ruling.md` per the per-change rule above,
+After persisting `nerv/veto-ruling.md` per the per-run rule above,
 Fuyutsuki ALSO mirrors it to the shared knowledge base — Engram project
-`nerv` — with topic key `nerv/kb/{repo}/{change}/veto-ruling` (`{repo}`
+`nerv` — with topic key `nerv/kb/{repo}/{feature}/veto-ruling` (`{repo}`
 = the basename of the git toplevel), `type: "decision"`,
 `capture_prompt: false`, content equal to `veto-ruling.md` prefixed with
-one line: `repo: {repo} change: {change} artifact: veto-ruling`. `MODE:
+one line: `repo: {repo} feature: {feature} artifact: veto-ruling`. `MODE:
 curate`'s `## Summary` block is never mirrored — only the veto ruling is
-a decision artifact. Both the per-change write and the knowledge-base
+a decision artifact. Both the per-run write and the knowledge-base
 mirror are read back; a failed mirror is reported as `partial`, never a
 blocker for the change itself.
+When the host rejects that `mem_save` (for example "Claude host session
+registration could not be confirmed"), the status is `partial`, not
+`blocked`: put the unsaved mirror in `detailed_report` under a
+`Pending KB mirror` heading (its topic key, then the exact content), and
+Ikari flushes it at close.
 
 ## Return envelope
 
@@ -218,9 +223,10 @@ section. Read it first and execute only that mode's contract.
 
 ### MODE: veto (Phase 2, FULL path)
 
-Input: the `## New skills, scripts and commands` section of
-`design.md` (`none` is a valid declaration). Cross-reference `tasks.md`
-to find the owning task of each declared item — every item must map to
+Input: the `### New skills, scripts and commands` heading of Misato's
+design entry in the ODD document's `## Log` (`none` is a valid
+declaration). Cross-reference the document's `## Tasks` to find the
+owning task of each declared item — every item must map to
 exactly one task; an item with no owning task is itself a veto ground.
 
 Output: `nerv/veto-ruling.md`, a table with columns `item | owning_task
@@ -237,12 +243,12 @@ Veto grounds are exactly these four — never invent a fifth:
    out-of-band SQL against production, secrets committed to files, a
    push without explicit user OK, or an equivalent standing prohibition.
 3. **Scope widening**: the item reaches outside the scope the approved
-   proposal authorized.
-4. **No owner**: the item has no owning task in `tasks.md`.
+   `## Specs` authorized.
+4. **No owner**: the item has no owning task in `## Tasks`.
 
-When `design.md` declares `none`, return `approve` with an empty table
-— there is nothing to rule on, and this is not a self-approval case
-since Fuyutsuki authors nothing in `design.md` himself.
+When the design entry declares `none`, return `approve` with an empty
+table — there is nothing to rule on, and this is not a self-approval case
+since Fuyutsuki authors nothing in the ODD document himself.
 
 A `veto` reopens only the owning task; every other frozen task and
 every other MAGI-approved item stays frozen. Cap: 2 revision rounds per

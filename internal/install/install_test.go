@@ -15,6 +15,7 @@ import (
 	nerv "github.com/war-apps/nerv-by-gentle-ai"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/env/envtest"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/install"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/paths"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/version"
 )
 
@@ -382,12 +383,12 @@ func TestInstall_AppliesModelOverridesToCache(t *testing.T) {
 	pv := pluginVersion(t)
 	seedInstalledPlugins(t, home, pv)
 
-	userConfigDir := filepath.Join(home, ".claude", "nerv")
+	userConfigDir := filepath.Dir(paths.Resolve(home).UserConfig)
 	if err := os.MkdirAll(userConfigDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
 	yaml := "models:\n  aoba: { model: haiku, effort: low }\n"
-	if err := os.WriteFile(filepath.Join(userConfigDir, "nerv.yaml"), []byte(yaml), 0o644); err != nil {
+	if err := os.WriteFile(paths.Resolve(home).UserConfig, []byte(yaml), 0o644); err != nil {
 		t.Fatal(err)
 	}
 

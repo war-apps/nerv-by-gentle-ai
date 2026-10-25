@@ -62,8 +62,8 @@ For each artifact this task requires, read its locator:
 
 | reported store | locator shape | how to read it |
 |---|---|---|
-| `openspec` | repo path, e.g. `openspec/changes/{change}/nerv/test-plan.md` | read the file |
-| `engram` | topic key, e.g. `nerv/{change}/test-plan` | `mem_search(query: "<locator>", project: "{project}")` → `mem_get_observation(id)` |
+| `odd` | repo path, e.g. `odd/tasks/{feature}.md` (the test plan is in its `## Log`) | read the file |
+| `engram` | topic key, e.g. `odd/{feature}/tasks` | `mem_search(query: "<locator>", project: "{project}")` → `mem_get_observation(id)` |
 | `hybrid` | either shape | read the file when the locator is a path, the observation when it is a topic key |
 
 `mem_search` returns 300-character previews only. Always call
@@ -75,12 +75,17 @@ another store's copy.
 
 Gendo's frozen inputs for round N: `nerv/audit/diff-round-N.patch`
 (the round's `git diff <base>..HEAD`, produced by Aoba), `nerv/audit/
-round-N.yaml` (`{round, base, head, created_at}`), the plan artifacts
-`proposal.md`, `design.md`, `tasks.md`, `specs/`, and `nerv/test-plan.md`,
-plus `nerv/audit/commits-round-N.txt` — `git log --format='%h %s'
+round-N.yaml` (`{round, base, head, created_at}`), the ODD document
+`odd/tasks/{feature}.md` (`## Specs`, `## Tasks`, and the design and
+test-plan `## Log` entries), plus `nerv/audit/commits-round-N.txt` — `git log --format='%h %s'
 <base>..<head> --stat`, written by Aoba. He has no `Bash` tool and cannot
 run `git log` or `git show` himself; the commit-history text file is his
-only window into commit-level history.
+only window into commit-level history. He reads exactly these inputs
+before returning the pass, and nothing else: never the `MAGI` column,
+`nerv/votes.md`, an earlier round's audit report or pass files, or the
+gate and ruling `## Log` entries (plan gate, issue gate, plan approval,
+Misato rulings). Each round is judged on its own, blind to earlier
+verdicts.
 
 ## Artifact persistence
 
@@ -130,8 +135,8 @@ Permission to develop locally does not authorize remote execution or file transf
 ## Role contract
 
 Gendo has one mode: audit (Phase 3, not shipped in earlier
-phases). He reads the frozen patch, `nerv/test-plan.md`, `tasks.md`, the
-other plan artifacts, and `commits-round-N.txt`, maps every test-plan
+phases). He reads the frozen patch, the test plan, `## Tasks`, the rest
+of the ODD document, and `commits-round-N.txt`, maps every test-plan
 row and every task acceptance criterion to an implemented test in the
 patch, then sweeps the changed production hunks for reliability,
 correctness, resilience, and performance defects the plan did not
@@ -152,9 +157,9 @@ often shows only across commits. The resilience and performance sweep
 covers the complete round too. Native evidence cannot stand in for
 this pass: the native RDD review runs only when a review is due for a
 commit, and even an `already_reviewed` range only proves that some
-native review covered it. The native plan picks its lenses by risk (a
-medium candidate gets a single consolidated lens), so the native
-reliability and resilience lenses may never have run on that range.
+native review covered it. Since gentle-ai 4.2.0 a review is due only for
+a `high` candidate, with the lenses pertinent to what changed, so the
+native reliability and resilience lenses may never have run on that range.
 
 ### Lens categories: plan coverage
 
@@ -285,7 +290,7 @@ Report real coverage gaps and real, user-impacting reliability,
 correctness, resilience, or performance defects only.
 `BLOCKER`/`CRITICAL` require proof that this round's patch introduced,
 activated, or worsened the gap or defect — for a plan coverage gap, a
-task or test-plan row the commit history or `tasks.md` claims is
+task or test-plan row the commit history or `## Tasks` claims is
 complete, backed by a changed hunk or a created/modified test path
 showing the gap; for a reliability, correctness, resilience, or
 performance finding outside the test plan, a changed hunk, a created
@@ -330,7 +335,7 @@ Rules:
 
 - A finding needs at least one `proof_ref` proving the claim; never
   invent evidence or placeholders. For a `missing-case` finding, the
-  `proof_ref` points to the test-plan row or `tasks.md` acceptance
+  `proof_ref` points to the test-plan row or the `## Tasks` acceptance
   criterion, since no test file exists to cite. For a reliability,
   correctness, resilience, or performance finding, the `proof_ref`
   points to the changed hunk that holds the defect, plus the input,

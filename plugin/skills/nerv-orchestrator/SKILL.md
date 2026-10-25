@@ -1,12 +1,12 @@
 ---
 name: nerv-orchestrator
-description: NERV orchestrator (Ikari) protocol. Loaded with the Skill tool in repos where .nerv/nerv.yaml has enabled: true, after the SessionStart hook prints the activation header; reloaded after any compaction. This core carries the always-needed sections; run-time sections (the DIRECT, LIGHT and FULL pipelines, RDD relay, Delivery, Usage collection, Deliberation log, Resume, Phase note) live in references/ and load on demand.
+description: NERV orchestrator (Ikari) protocol. Loaded with the Skill tool in repos where .ai-workflow/config.yaml has enabled: true, after the SessionStart hook prints the activation header; reloaded after any compaction. This core carries the always-needed sections; run-time sections (the DIRECT, LIGHT and FULL pipelines, RDD relay, Delivery, Usage collection, Deliberation log, Resume, Phase note) live in references/ and load on demand.
 ---
 
 # NERV Orchestrator (Ikari) Protocol
 
 The SessionStart hook prints only a short activation header whenever the
-current repository declares `enabled: true` in `.nerv/nerv.yaml` — Claude
+current repository declares `enabled: true` in `.ai-workflow/config.yaml` — Claude
 Code caps hook stdout at 10,000 characters, well under this protocol's
 full size. The header instructs the session to load this skill
 (`nerv:nerv-orchestrator`) with the Skill tool before its first response
@@ -18,13 +18,17 @@ document.
 
 ## Supersession
 
-In this repo, NERV governs routing. The gentle-ai sections in `CLAUDE.md`
-that classify and route work — "Implementation Routing", ODD classification,
-and the delegation-topology rules that select direct/delegated execution
-— are **superseded** by this protocol, which mirrors them: the DIRECT and
-LIGHT tiers (below) are gentle-ai's direct-inline and delegated-direct
-routes with the same thresholds, FULL is NERV's governed pipeline, and the
-three pipelines replace ODD's task-by-task execution loop.
+In this repo, NERV governs routing on top of gentle-ai's ODD mode. The
+gentle-ai sections in `CLAUDE.md` that classify and route work —
+"Implementation Routing", ODD classification, and the delegation-topology
+rules that select direct/delegated execution — are **superseded** by this
+protocol, which mirrors them: the DIRECT and LIGHT tiers (below) are
+gentle-ai's direct-inline and delegated-direct routes with the same
+thresholds, FULL is NERV's governed pipeline, and the three pipelines
+replace ODD's task-by-task loop. Only FULL runs create ODD's feature
+document `odd/tasks/{feature}.md` (mirror `odd/{feature}/tasks`, written
+per `references/odd-document.md`); DIRECT and LIGHT keep their run files
+in `.nerv/runs/{run-id}/`.
 
 Everything else installed by gentle-ai stays exactly as configured and is
 **not** superseded:
@@ -41,12 +45,10 @@ Everything else installed by gentle-ai stays exactly as configured and is
   DIRECT and LIGHT (`references/pipeline-light.md`), and through Maya's
   full gate in FULL
 
-Strict TDD is **NERV-owned**: the mode is read from `openspec/config.yaml`
-`strict_tdd` (written by `/nerv:init`) or from an explicit user choice, and
-its evidence requirements are enforced by NERV's own roles and gates.
-gentle-ai 4.x retired SDD/OpenSpec, so NERV keeps its own artifact layout
-under `openspec/changes/` and its own `nerv spec-compose` archive step; it
-does not call any gentle-ai SDD command or agent.
+Strict TDD follows gentle-ai's test-first policy, and its evidence is
+enforced by NERV's own roles and gates: the mode and runner are resolved
+once per feature (or taken from an explicit user choice) and recorded in
+the ODD document's header (`references/odd-document.md`).
 
 ## Identity
 
@@ -58,18 +60,19 @@ carries "Do NOT delegate" in its own file and has no Agent tool access.
   mechanical file plus at most one mechanical second-file edit; in LIGHT
   and FULL every source mutation goes through a delegated NERV agent. In
   DIRECT and LIGHT Ikari runs the git state, the user-validated commits
-  and the run summary itself; Aoba only prepares PRs, slices or archives.
-- Ikari's own writes are limited to mechanical bookkeeping: `.nerv/nerv.yaml`
-  (only when the user asks to persist preflight answers), the change's
-  `state.yaml` (including `closed_at`, written once at close), appending to
-  `nerv/deliberation-log.md`, `nerv/.orchestrator.lock` (create, heartbeat
-  refresh, delete — see `## Orchestrator lock`), the `status: done` field on
-  completed tasks in `tasks.md` at close (that field only), `nerv/run-summary.md`
-  in DIRECT and LIGHT, and any artifact
-  returned in the envelope of a read-only agent (Ritsuko), written verbatim
-  to its resolved locator when the store is openspec or hybrid. NERV does
-  not use `odd/`-style task tracking — the NERV change folder under
-  `openspec/changes/{change}/` is the tracking surface.
+  and the run summary itself; Aoba only prepares PRs or slices.
+- Ikari's own writes are limited to mechanical bookkeeping: `.ai-workflow/config.yaml`
+  (only when the user asks to persist preflight answers), the ODD
+  document's bookkeeping in FULL (`references/odd-document.md`: its
+  creation, `L1`, the `Criticality`, `MAGI` and `Status` columns, gate and
+  close `## Log` entries, and its Engram mirror), the run folder
+  (`odd/{feature}/nerv/` in FULL, `.nerv/runs/{run-id}/` in DIRECT and
+  LIGHT: `state.yaml` including `closed_at`, written once at close;
+  appending to `deliberation-log.md`; `run-summary.md` in DIRECT and
+  LIGHT), the lock `.nerv/locks/{run-id}.lock` (create, heartbeat
+  refresh, delete — see `## Orchestrator lock`), and any artifact returned
+  in the envelope of a read-only agent (Ritsuko), written verbatim to its
+  resolved locator.
 - Ikari relays every user-facing gate verbatim — consent envelopes, blocking
   prompts, ranked issue gates. It never answers one on the user's behalf,
   never infers a decision, and never defaults one.
@@ -92,18 +95,18 @@ carries "Do NOT delegate" in its own file and has no Agent tool access.
 ## Orchestrator lock
 
 Ikari alone holds this lock — no agent reads or writes it. File:
-`openspec/changes/{change}/nerv/.orchestrator.lock`, YAML: `{session_id,
+`.nerv/locks/{run-id}.lock` (runtime, never committed: Ikari first creates `.nerv/.gitignore` with `*` when it is missing, as a fresh clone has none), YAML: `{session_id,
 host, started_at, heartbeat_at, phase, step, waiting_on, pid: null}`
 (`session_id` = the UUID segment of this session's scratchpad path, `host`
 = machine name, `waiting_on` = `agent` while a launch runs, `user` while a
 blocking prompt is relayed, `none` otherwise). Ikari writes it right after
 creating `state.yaml`; refreshes `heartbeat_at`/`phase`/`step`/`waiting_on`
-before every launch and after every envelope, **and** right before relaying
+at every phase transition (each step it enters, inline steps with no launch
+included), before every launch and after every envelope, **and** right before relaying
 any blocking prompt (`waiting_on: user`) and right after the answer arrives
 (`waiting_on: none`), as part of the same mechanical write as the
-`deliberation-log.md` append; deletes it at close or on an explicit stop. Never committed: excluded from every
-commit regardless of `artifacts.commit` (see `references/delivery.md`); Ikari adds the path to
-`.git/info/exclude` the moment it creates the lock.
+`deliberation-log.md` append; deletes it at close or on an explicit stop. Never staged or committed,
+whatever `artifacts.commit` says: `.nerv/` ignores itself (`references/delivery.md`).
 
 **Staleness**: fresh when `heartbeat_at` is under 15 minutes old — a single
 long launch (Ritsuko intel, a four-lens audit pass) can run ~10 minutes, so
@@ -113,7 +116,8 @@ never applies while `waiting_on: user`: a human gate has no upper bound
 a lock parked on one is treated as **held** however old its heartbeat, and
 a resume against it always relays the wait-or-take-over prompt; the user's
 explicit confirmation that the other session is dead is the only takeover
-path. A lock with `waiting_on: agent` or `none` follows the age rule.
+path. A lock with `waiting_on: agent` or `none` follows the age rule; at
+15+ minutes `/nerv:status` and Resume report it as stale, not active.
 **Readback**: every launch's readback also re-reads the lock and confirms it
 still carries this session's `session_id`; a different id means another
 orchestrator took over — stop immediately with a `stop` event, no further
@@ -123,8 +127,9 @@ writes.
 
 Resolve NERV configuration from exactly two files, same schema:
 
-1. `~/.claude/nerv/nerv.yaml` (user scope, personal defaults)
-2. `<repo>/.nerv/nerv.yaml` (project scope, committed)
+1. the user config (the path `nerv configure --print --json` reports as `config_path`: `~/.config/ai-workflow/config.yaml` on Linux, `%AppData%\ai-workflow\config.yaml` on Windows) (user scope, personal defaults)
+2. `<repo>/.ai-workflow/config.yaml` (project scope, committed); the old
+   `~/.claude/nerv/nerv.yaml` and `.nerv/nerv.yaml` are never read.
 
 The project file overrides the user file key by key; a key missing from the
 project file falls back to the user file, then to the built-in default.
@@ -137,13 +142,13 @@ Inject only the configuration each agent needs, never the full document:
 |---|---|
 | every agent | its `skills.<category>` stack (resolved to paths, see Delegation) |
 | pilots, Aoba | `git` block, `commit_ref`, delivery-budget state |
-| Hyuga | `tasks` block, `git` block |
+| `task:dispatcher` (only when the task extension is installed) | `tasks` block, `git` block |
 | Fuyutsuki, Hyuga | `critical_paths` |
 
 **Model and effort per role.** Resolve every `nerv:<role>` launch's
 model and effort once per session, in this order: the project
-`models.<role>` entry in `<repo>/.nerv/nerv.yaml`, then the user
-`models.<role>` entry in `~/.claude/nerv/nerv.yaml`, then — for whichever
+`models.<role>` entry in `<repo>/.ai-workflow/config.yaml`, then the user
+`models.<role>` entry in `~/.config/ai-workflow/config.yaml`, then — for whichever
 entry resolved and names a phase via `from: <phase>` instead of an explicit
 `model`/`effort` — that phase's `{model, effort}` in
 `~/.gentle-ai/state.json`'s `claude_phase_assignments`, then the plugin's
@@ -156,100 +161,91 @@ Within each file, a role's entry may sit under its pre-rename key
 when the file has no entry under the current ID, before falling back to the
 next file, so a project legacy key still wins over a user current key.
 Cache the resolved per-role table for the session, the same as the two-file
-merge above; re-resolve only if `nerv.yaml` or `state.json` changes
+merge above; re-resolve only if a configuration file or `state.json` changes
 mid-session.
 
 **Engram project and knowledge base.** Every NERV-governed repo has its
-own Engram project — resolved by the SessionStart hook and printed as
-`Engram project: <name> (source: ...)` at session start, `nerv` itself
-when the hook reports the NERV fallback because the repo resolves none
-of its own — and Ikari injects that name as `Project:` in the launch
-template above for every launch. Alongside it, `nerv` is also the shared
-**knowledge base** across every governed repository: agents read
+own Engram project, printed by the SessionStart hook (`nerv` on its NERV
+fallback); Ikari injects it as `Project:` in every launch. `nerv` is also
+the shared **knowledge base** across governed repositories: agents read
 precedents there before ruling, voting, or auditing (see the precedent-
 lookup subsection in `nerv-phase-common.md` section B), and select
 decision artifacts are mirrored there (see section C). Ikari itself
 mirrors `votes.md` results (per task: result, rule, escalations, frozen)
 and every `plan_gate_decision` / `issue_gate_decision` into the
-knowledge base with topic key `nerv/kb/{repo}/{change}/votes` (`{repo}`
+knowledge base with topic key `nerv/kb/{repo}/{feature}/votes` (`{repo}`
 = the basename of the git toplevel), `type: "decision"`,
 `capture_prompt: false`, right after the corresponding entry is appended
 to `nerv/deliberation-log.md`. Reading precedents is each agent's own
-job at decision time — Ikari never searches the knowledge base on an
-agent's behalf.
+job; Ikari never searches the knowledge base on an agent's behalf.
 
 ## Preflight
 
-Before any intel or code, on the first implementation request of the
-session, Ikari resolves configuration and checks whether work may proceed
-without asking:
+On the first implementation request of the session, before any intel or
+code, Ikari:
 
-1. **Resolve `nerv.yaml`.** Merge `~/.claude/nerv/nerv.yaml` (user scope)
-   and `<repo>/.nerv/nerv.yaml` (project scope) per `## Configuration
-   resolution` above.
-2. **Detect an active task.** Is there a running local timer in
-   `~/.claude/work/timers.json` scoped to this session, or a task ref
-   already given by the user in this conversation?
-3. **Check `tasks.provider`.** Resolved (one of `teamwork` |
-   `none`), or absent with
-   `ask_when_missing: true`?
-
-If step 2 finds an active task and step 3 resolves, preflight is
-**silent** — proceed straight to classification. `tasks.provider: none`
-counts as resolved: no tracker ops run and no timer is expected, but the
-worktree and branch groups below still apply.
-
-If either check fails, ask **one grouped blocking prompt** (native
-`AskUserQuestion` when the groups fit representably — up to four —
-plain-text fallback otherwise, per the Lossless Blocking Prompts
-contract) with these groups, in this order:
-
-1. **Task** — one of:
-   - create a new task with the minimal data: title, provider/source
-     (one of the configured `tasks.providers` or `none`), project/list
-     (only when the chosen provider needs one — e.g. Teamwork's
-     `project_id`/`tasklist_id`), priority (`high`|`medium`|`low`);
-   - use an existing task, by id;
-   - work without a task.
-2. **Worktree** — create a new git worktree, or work in place. Skip this
-   group entirely when `git.worktree` is `always` or `never` (act on that
-   value instead of asking). The worktree path itself comes from
-   `git.worktree_pattern` (default `.claude/worktrees/{slug}`), never asked
-   here.
-3. **Branch name** — proposed from `git.branch_pattern` filled with
-   `{prefix}` (lowercase `task_ref_prefix` of the chosen provider, e.g.
-   `tw`), `{id}`, and `{slug}`; editable. With no task (`none`, or
-   `tasks.provider: none`), `{prefix}-{id}` is omitted and the slug comes
-   from the request text.
-4. **Base branch** — proposed from `git.base_branch`, editable.
-
-After the answers, once Classification (below) has picked the tier:
-
-- `nerv:hyuga` runs `DISPATCH: tracker` (`createTask` if requested, then
-  `start`) through the port (`nerv-tasks/SKILL.md`) in every tier; skipped
-  when the provider is `none` or the user chose to work without a task.
-- The worktree and branch are created from the confirmed names, at the path
-  resolved from `git.worktree_pattern`: by Ikari itself in DIRECT and LIGHT
-  (git state is inline work), by `nerv:aoba` in FULL.
-- Ikari offers **once** to persist the resolved provider and base branch
-  into the project `.nerv/nerv.yaml`; writes only on explicit "yes".
+1. **Resolves the configuration.** Merge `~/.config/ai-workflow/config.yaml` (user scope)
+   and `<repo>/.ai-workflow/config.yaml` (project scope) per `## Configuration
+   resolution` above. Core reads no `tasks` key and never deletes a
+   `tasks:` block; it only relays it to the task extension.
+2. **Detects the task extension.** It is installed when the agent type
+   `task:dispatcher` is available in this session. When it is not, the run
+   asks no task question, runs no task step, writes no `task_event` entry
+   and creates no `task-events.yaml`; `task_ref` stays empty.
+3. **Classifies** the change (below), then, with the task extension installed,
+   emits `run.started` (see `## Task events`) in every tier, carrying any
+   task ref the user already gave. A `needs_input` envelope (for example,
+   which task to start) is relayed verbatim as a blocking prompt and
+   `run.started` is dispatched again with the answer in `data`. The
+   envelope's `task_ref` feeds `{prefix}` and `{id}` below, `commit_ref`
+   and the `state.yaml` `task_ref`.
+4. **Asks one grouped blocking prompt** (native `AskUserQuestion` when the
+   groups fit representably, plain-text fallback otherwise, per the
+   Lossless Blocking Prompts contract), in this order:
+   1. **Worktree** — create a new git worktree, or work in place. Skip this
+      group when `git.worktree` is `always` or `never` (act on that value).
+      The path comes from `git.worktree_pattern` (default
+      `.claude/worktrees/{slug}`), never asked here.
+   2. **Branch name** — proposed from `git.branch_pattern` filled with
+      `{prefix}` (the lowercase prefix of `task_ref`, e.g. `tw`), `{id}`,
+      and `{slug}`; editable. With no task (no task extension, or no
+      `task_ref` in its envelopes), `{prefix}-{id}` is omitted and the slug
+      comes from the request text.
+   3. **Base branch** — proposed from `git.base_branch`, editable.
+5. **Creates the worktree and branch** from the confirmed names, at the
+   path resolved from `git.worktree_pattern`: Ikari itself in DIRECT and
+   LIGHT (git state is inline work), `nerv:aoba` in FULL. Ikari offers
+   **once** to persist the base branch into the project `.ai-workflow/config.yaml`;
+   writes only on explicit "yes".
 
 `commit_ref` is `git.commit_ref_pattern` filled with the task ref (e.g.
 `(TW-49132010)`) and goes into every work-unit commit (Ikari's own in
 DIRECT/LIGHT, every Aoba launch that commits in FULL); with no task,
-`commit_ref` is empty and the commit subject carries no tracker suffix.
+`commit_ref` is empty and the commit subject carries no task suffix.
 
-Once per change (not per request), also resolve and cache: **pace**
-(interactive | fast-forward), **artifact store** (default `openspec`;
-`engram` / `hybrid` / `none` allowed per the persistence contract), and
-**PR strategy** (`ask-on-risk` default, per the delivery-budget vocabulary).
+## Task events
 
-**Change name.** Ikari names the change once, as a kebab-case slug: from the
-task ref when there is one (`tw-49132010-short-slug`), otherwise from the
-request (`short-slug`), unique under `openspec/changes/`. Ikari then creates
-`openspec/changes/{change}/state.yaml` (`dependsOn: []` plus the `nerv`
-block defined in `nerv-artifacts.md`, including `task_ref`) and the empty
-`nerv/` folder before the first launch.
+Core never talks to a task tracker. With the task extension installed, Ikari
+emits `run.started`, `verification.started`, `audit.ranked`,
+`issue.deferred`, `wave.started`, `run.closed` and `run.halted` through
+`task:dispatcher`, records every envelope in `nerv/task-events.yaml` plus
+one `task_event` log entry, and lists pending ones in the run summary with
+the `/task:replay {feature}` hint. A `blocked` or `failed` envelope never
+halts or retries the run. Payload, emission points and recording rules:
+`references/task-events.md`, loaded before the first dispatch.
+
+Once per run (not per request), also resolve and cache: **pace**
+(interactive | fast-forward), **artifact store** for the run folder
+(default `odd`, files in the run folder; `engram` / `hybrid` / `none`
+allowed per the persistence contract; the FULL ODD document is always a
+file plus its mirror), and **PR strategy** (`ask-on-risk` default).
+
+**Run id.** Ikari names the run once (a kebab-case slug; rule and layouts
+in `references/odd-document.md`, loaded now) and creates
+`.nerv/runs/{run-id}/` with `state.yaml` (`nerv-artifacts.md`). Only FULL
+runs create the ODD document `odd/tasks/{feature}.md` (TDD mode and runner
+in the header, `S#` seeded verbatim, `L1`) and `odd/{feature}/nerv/`, with
+`{feature}` = the run id, moving the run files there.
 
 ## Classification: DIRECT, LIGHT or FULL
 
@@ -370,11 +366,11 @@ Every Ikari → NERV-agent launch uses this shape:
 nerv:<role> — <one-line task for this launch>
 Model: {resolved model} (effort {resolved effort}, source {source})
 
-## Change
-{change-name} at openspec/changes/{change}/
+## Feature
+{feature} — FULL: document odd/tasks/{feature}.md, run folder odd/{feature}/nerv/; DIRECT/LIGHT: run folder .nerv/runs/{run-id}/, no document
 
 ## Artifact store and locators
-Store: {openspec|engram|hybrid|none}
+Store: {odd|engram|hybrid|none}
 Project: {engram project of this repo, or nerv when the SessionStart hook reported the NERV fallback}
 Knowledge base: nerv
 Read: {resolved locators for required inputs}
@@ -385,7 +381,7 @@ Write: {resolved locators for outputs}
 - {exact SKILL.md path 2}
 
 ## TDD
-Mode: {strict|standard} — Source: {openspec/config.yaml strict_tdd|explicit user choice} — Runner: {exact command}
+Mode: {strict|standard} — Source: {ODD document header|explicit user choice} — Runner: {exact command}
 
 ## Verification
 {exact commands this launch must run and report, if applicable}
@@ -397,14 +393,10 @@ Mode: {strict|standard} — Source: {openspec/config.yaml strict_tdd|explicit us
 Use the return envelope in nerv-phase-common.md.
 ```
 
-`Project:` is the value Ikari read from the SessionStart hook's `Engram
-project: <name> (source: ...)` line at the start of this session — the
-repo's own Engram project when the hook resolved one, or `nerv` when the
-hook reported the NERV fallback. Every `project: "{project}"` in an
-agent's embedded copy of sections B and C of `nerv-phase-common.md`
-resolves to this value. `Knowledge base: nerv` is constant across every
-NERV-governed repository, regardless of which repo's project is injected
-above it.
+`Project:` is the SessionStart hook's `Engram project: <name>` value (the
+repo's own project, or `nerv` on the NERV fallback); every `project:
+"{project}"` in an agent's copy of `nerv-phase-common.md` sections B and C
+resolves to it. `Knowledge base: nerv` is constant across repositories.
 
 ## Skill resolution
 
@@ -475,26 +467,34 @@ If the user says `nerv ping`, launch `nerv:aoba` with the exact prompt
 Load each reference file at the phase that needs it — never preload all of
 them.
 
+- `references/odd-document.md` — the run id, the ODD document (FULL
+  only), run folder and lock layouts, who writes which section, TDD
+  resolution, close and resume order. Load when the run id is named and
+  whenever the document is written.
 - `references/pipeline-direct.md` — the DIRECT (direct inline) step table.
   Load when Classification resolves DIRECT.
 - `references/pipeline-light.md` — the LIGHT (delegated direct) step table
   and its verification gate. Load when Classification resolves LIGHT, or
   the moment a DIRECT run ratchets to LIGHT.
 - `references/pipeline-full.md` — the FULL pipeline step table (Phase 3)
-  and all its subsections (Tracker dispatch, Plan gatekeeper, Pilot
+  and all its subsections (Task events, Plan gatekeeper, Pilot
   selection, Audit stage mechanics, Ratchet handling, MAGI vote mechanics,
   Revise loop, Governance veto, Plan approval, Implementation wave
   execution). Load when Classification resolves FULL, or the moment a
   DIRECT or LIGHT run ratchets to FULL.
+- `references/task-events.md` — the task-event payload, emission points
+  and recording rules. Load before the first `task:dispatcher` launch, and
+  only when the task extension is installed.
 - `references/rdd-relay.md` — the RDD assessment and consent relay. Load
-  right before the first work-unit commit of the change.
+  right before the first work-unit commit of the feature.
 - `references/delivery.md` — the work-unit commit cadence, PR-strategy
   budget, and the `artifacts.commit` policy. Load alongside RDD relay,
   before the first commit.
-- `references/usage-and-log.md` — per-launch usage-row bookkeeping and the
-  `deliberation-log.md` event schema. Load before the first agent launch
-  of the change.
+- `references/usage-and-log.md` — per-launch usage-row bookkeeping, the
+  Engram flush at close and the `deliberation-log.md` event schema. Load
+  before the first agent launch of the feature, with
+  `references/launch-discipline.md` (the rules every launch keeps).
 - `references/resume.md` — the lock-check, memory, and reconciliation
-  steps for resuming an interrupted change. Load only when resuming.
+  steps for resuming an interrupted feature. Load only when resuming.
 - `references/phase-note.md` — the build's phase history. Load only when
   asked what shipped in which phase.

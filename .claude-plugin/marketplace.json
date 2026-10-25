@@ -1,11 +1,63 @@
 {
   "name": "nerv",
-  "owner": { "name": "Walter Rodriguez" },
+  "owner": {
+    "name": "Walter Rodriguez"
+  },
   "plugins": [
     {
       "name": "nerv",
       "source": "./plugin",
-      "description": "Nerv by Gentle-AI: governance overlay on gentle-ai (Evangelion-named multi-agent workflow)"
+      "description": "Nerv by Gentle-AI: governance overlay on gentle-ai (Evangelion-named multi-agent workflow) — per-task MAGI vote, governance veto, quality gate, ranked audit, run summary"
+    },
+    {
+      "name": "deploy",
+      "source": "./plugins/deploy",
+      "description": "NERV deploy: takes a release artifact, makes the release commit, tag and push, runs the deploy targets and creates the git host's release (requires release)"
+    },
+    {
+      "name": "deploy-bash",
+      "source": "./plugins/deploy-bash",
+      "description": "Script target for nerv deploy: runs the repository's own deploy script (and optional publish and verify scripts) from the release commit, with the request on stdin and the deploy variables in its environment"
+    },
+    {
+      "name": "deploy-github",
+      "source": "./plugins/deploy-github",
+      "description": "GitHub git host for nerv deploy: creates the GitHub release of a deployed tag with the gh CLI"
+    },
+    {
+      "name": "deploy-ssh-compose",
+      "source": "./plugins/deploy-ssh-compose",
+      "description": "SSH and docker compose target for nerv deploy: pushes the artifact's images, updates the container with the host's compose script and verifies its health and version"
+    },
+    {
+      "name": "release",
+      "source": "./plugins/release",
+      "description": "NERV releases and versioning: computes the next version natively (no semantic-release), builds, tests and packages each project in a throwaway clone of origin, and leaves a local artifact for nerv deploy"
+    },
+    {
+      "name": "release-bash",
+      "source": "./plugins/release-bash",
+      "description": "Script build for nerv release: each pipeline stage runs the project's own command (bash, pwsh or node), and the images it builds are saved into the artifact"
+    },
+    {
+      "name": "release-conventional-commits",
+      "source": "./plugins/release-conventional-commits",
+      "description": "Conventional Commits version engine for nerv release: semantic-release 24 with the conventionalcommits preset, natively in Go (no node or npm); installed with release"
+    },
+    {
+      "name": "release-docker-compose",
+      "source": "./plugins/release-docker-compose",
+      "description": "Docker compose build for nerv release: docker compose build, the test service with docker compose run, and the images saved into the artifact"
+    },
+    {
+      "name": "task",
+      "source": "./plugins/task",
+      "description": "NERV task tracking: /task:* commands, local timers, and the event dispatcher that hands NERV pipeline events to the installed task providers"
+    },
+    {
+      "name": "task-teamwork",
+      "source": "./plugins/task-teamwork",
+      "description": "Teamwork provider for the NERV task extension: assigns, moves stages, logs time and creates tasks in Teamwork"
     }
   ]
 }

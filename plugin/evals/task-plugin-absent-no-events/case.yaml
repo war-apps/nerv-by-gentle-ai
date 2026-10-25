@@ -1,0 +1,36 @@
+schema_version: "1.1"
+name: task-plugin-absent-no-events
+description: >-
+  J5 "task extension absent" variant: with no task extension installed (no
+  task:dispatcher agent type) and git.worktree: never, the session emits
+  no task event, asks no task question, creates no task, starts no timer,
+  writes no task-events.yaml and never mentions a tracker, even though
+  the repository still carries a legacy tasks: block.
+tags: [nerv, tasks, j5]
+runs: 1
+expected_outcome: >-
+  The session runs the preflight without any task step, stays on the
+  current branch with no worktree, launches no agent and never mentions a
+  tracker task.
+
+execution:
+  prompt: |
+    Context you already have, so preflight stays silent: work in place on
+    the current branch `main` (no worktree); branch: main; base: main;
+    pace: fast-forward; artifact store: odd; PR strategy: single-pr.
+
+    Do not implement anything yet: run only the NERV preflight, then stop
+    and state what you resolved for task tracking, worktree and branch.
+    Ask nothing further.
+
+    Request: I want to start work on adding a `farewell(name)` function
+    to `src/greeter.py`. Follow the NERV orchestrator protocol injected
+    in this session.
+
+    Answer in English.
+  max_turns: 8
+  timeout_seconds: 120
+  allowed_tools: [Read, Glob, Grep, Skill, Agent]
+
+context:
+  scaffold_script: scaffold.sh

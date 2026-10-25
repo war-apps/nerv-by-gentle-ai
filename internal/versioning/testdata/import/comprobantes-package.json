@@ -1,0 +1,87 @@
+{
+  "name": "dim.comprobantes.api",
+  "private": true,
+  "release": {
+    "branches": [
+      "main",
+      {
+        "name": "release/rc",
+        "channel": "beta",
+        "prerelease": "rc"
+      },
+      {
+        "name": "develop",
+        "channel": "alpha",
+        "prerelease": "alpha"
+      },
+      {
+        "name": "hotfix/*",
+        "channel": "beta",
+        "prerelease": true
+      }
+    ],
+    "plugins": [
+      [
+        "@semantic-release/commit-analyzer",
+        {
+          "preset": "conventionalcommits",
+          "parserOpts": {
+            "noteKeywords": [
+              "BREAKING CHANGE",
+              "BREAKING CHANGES",
+              "BREAKING"
+            ]
+          }
+        }
+      ],
+      [
+        "@semantic-release/release-notes-generator",
+        {
+          "preset": "conventionalcommits",
+          "parserOpts": {
+            "noteKeywords": [
+              "BREAKING CHANGE",
+              "BREAKING CHANGES",
+              "BREAKING"
+            ]
+          }
+        }
+      ],
+      [
+        "@semantic-release/changelog",
+        {
+          "changelogFile": "src/Api/CHANGELOG.md"
+        }
+      ],
+      [
+        "@semantic-release/npm",
+        {
+          "npmPublish": false,
+          "pkgRoot": "."
+        }
+      ],
+      [
+        "@semantic-release/exec",
+        {
+          "verifyReleaseCmd": "bash scripts/set-release-outputs.sh \"${nextRelease.version}\" \"${nextRelease.channel || ''}\" \"${nextRelease.gitTag}\"",
+          "prepareCmd": "bash scripts/bump-csproj.sh \"${nextRelease.version}\""
+        }
+      ],
+      [
+        "@semantic-release/git",
+        {
+          "assets": [
+            "src/Api/CHANGELOG.md",
+            "package.json",
+            "src/Api/Dim.Comprobantes.Api.csproj"
+          ]
+        }
+      ],
+      "@semantic-release/github"
+    ]
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/dirm-s-a/dim.comprobantes.api.git"
+  }
+}

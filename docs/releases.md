@@ -1,15 +1,17 @@
 # Releases
 
 **Versioning.** The plugin follows [SemVer](https://semver.org/). The
-`version` in `plugin/.claude-plugin/plugin.json`, the git tag `vX.Y.Z`,
+`version` in `plugin/.claude-plugin/plugin.json` (and in every extension's and
+provider's `plugins/<name>/.claude-plugin/plugin.json`, which `nerv maintainer-release
+apply` bumps together), the git tag `vX.Y.Z`,
 the matching `## [X.Y.Z]` section in `CHANGELOG.md`, and the `nerv version`
 binary version (injected at build time from the tag by goreleaser) all
 agree. This is not cosmetic: Claude Code detects plugin updates by
 comparing `plugin.json`'s `version` string, so a release that does not
-bump it is invisible to every installed user; `nerv release guard` asserts
+bump it is invisible to every installed user; `nerv maintainer-release guard` asserts
 the binary and plugin versions agree before a release is allowed to ship.
 
-**How the version is computed.** `nerv release preview`/`apply` derives the
+**How the version is computed.** `nerv maintainer-release preview`/`apply` derives the
 next version from the [Conventional Commits](https://www.conventionalcommits.org/)
 reachable since the last `vX.Y.Z` tag: `feat` bumps minor, `fix`/`perf`
 bump patch, a `!` before the colon or a `BREAKING CHANGE:` footer bumps
@@ -28,14 +30,14 @@ nothing to run by hand:
 **Cutting a release (Gitflow).**
 
 1. `git checkout -b release/X.Y.Z develop`
-2. `go run ./cmd/nerv release preview` — review the computed version and
+2. `go run ./cmd/nerv maintainer-release preview` — review the computed version and
    changelog section.
-3. `go run ./cmd/nerv release apply` (or `--version X.Y.Z` to override the
+3. `go run ./cmd/nerv maintainer-release apply` (or `--version X.Y.Z` to override the
    computed bump) — writes `plugin.json` and inserts the section into
    `CHANGELOG.md`.
 4. Review `CHANGELOG.md`, then commit `chore(release): X.Y.Z`.
 5. Open the PR to `main`. On merge, the Release workflow runs the full
-   suite plus `nerv release guard`, creates the tag and the GitHub Release
+   suite plus `nerv maintainer-release guard`, creates the tag and the GitHub Release
    with that changelog section as its notes, runs goreleaser to publish
    the binaries/checksums/formula, and opens the back-merge PR to
    `develop` — merge that PR to close the loop.
@@ -49,10 +51,10 @@ publishes the GitHub pre-release when it sees the push — a `release/*`
 push runs the `rc` job and a `develop` push runs the `alpha` job, neither
 going through `main` nor through goreleaser (goreleaser only runs on the
 stable release, after the tag is created). There is nothing to run by hand
-and no tag to push yourself; `nerv release preview --pre-release
+and no tag to push yourself; `nerv maintainer-release preview --pre-release
 alpha|rc` is what the workflow calls internally.
 
-**What the guard refuses, and how to recover.** `nerv release guard` fails
+**What the guard refuses, and how to recover.** `nerv maintainer-release guard` fails
 the Release workflow before it tags or publishes anything when the version
 in `plugin.json` is already tagged, `CHANGELOG.md` has no matching
 `## [X.Y.Z]` section, or the binary version and the embedded plugin

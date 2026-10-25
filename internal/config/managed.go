@@ -2,7 +2,6 @@ package config
 
 import (
 	"fmt"
-	"regexp"
 	"strings"
 )
 
@@ -110,12 +109,6 @@ func ManagedValue(doc *Document, key string) (value string, ok bool) {
 		return "", false
 	}
 
-	if strings.HasPrefix(key, "tasks.providers.teamwork.stages.") {
-		stageName := strings.TrimPrefix(key, "tasks.providers.teamwork.stages.")
-		stagesRaw, _ := doc.Scalar("tasks.providers.teamwork.stages")
-		return stageDefault(stagesRaw, stageName, fallback), true
-	}
-
 	if strings.HasPrefix(key, "skills.") {
 		category := strings.TrimPrefix(key, "skills.")
 		return skillsCategoryDefault(doc, category, fallback), true
@@ -161,25 +154,6 @@ func SetManagedValue(doc *Document, key, value string) (changed bool, err error)
 // writeManagedValue writes key's new value into doc without validating —
 // callers must validate first. Mirrors Set-NervManagedConfigValue.
 func writeManagedValue(doc *Document, key, value string) {
-	if strings.HasPrefix(key, "tasks.providers.teamwork.stages.") {
-		stageName := strings.TrimPrefix(key, "tasks.providers.teamwork.stages.")
-		stagesRaw, _ := doc.Scalar("tasks.providers.teamwork.stages")
-		order := StageOrder()
-		parts := make([]string, 0, len(order))
-		for _, stage := range order {
-			var current string
-			if stage == stageName {
-				current = value
-			} else {
-				fallback, _ := DefaultValue("tasks.providers.teamwork.stages." + stage)
-				current = stageDefault(stagesRaw, stage, fallback)
-			}
-			parts = append(parts, stage+": "+current)
-		}
-		doc.SetScalar("tasks.providers.teamwork.stages", "{ "+strings.Join(parts, ", ")+" }", Raw())
-		return
-	}
-
 	if strings.HasPrefix(key, "skills.") {
 		category := strings.TrimPrefix(key, "skills.")
 
@@ -237,7 +211,7 @@ func writeManagedValue(doc *Document, key, value string) {
 
 // ---------------------------------------------------------------------------
 // Small helpers ported from Get-NervListDefaultFromScalar,
-// Get-NervStageDefault, Get-NervSkillsCategoryDefault.
+// Get-NervSkillsCategoryDefault.
 // ---------------------------------------------------------------------------
 
 // listDefaultFromScalar strips a scalar's optional "[ ... ]" bracket
@@ -251,23 +225,6 @@ func listDefaultFromScalar(raw string) string {
 		v = v[1 : len(v)-1]
 	}
 	return strings.TrimSpace(v)
-}
-
-var stageValueRe = regexp.MustCompile(`:\s*([^,}]+)`)
-
-// stageDefault reads one stage name's current value out of a raw
-// "{ inDev: ..., testing: ..., ... }" stages inline-map text, or fallback
-// when stagesRaw is empty or the stage isn't found. Mirrors
-// Get-NervStageDefault.
-func stageDefault(stagesRaw, stageKey, fallback string) string {
-	if stagesRaw == "" {
-		return fallback
-	}
-	pattern := regexp.MustCompile(regexp.QuoteMeta(stageKey) + stageValueRe.String())
-	if m := pattern.FindStringSubmatch(stagesRaw); m != nil {
-		return strings.TrimSpace(m[1])
-	}
-	return fallback
 }
 
 // skillsCategoryDefault reads one skills category's current

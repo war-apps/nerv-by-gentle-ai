@@ -1,17 +1,17 @@
 ---
 description: Configure Nerv by Gentle-AI (user config, models, skills, repository) through guided questions — no script invocation by hand
-argument-hint: [git | tasks | skills | models | repo | commands | all]
+argument-hint: [git | skills | models | repo | all]
 ---
 
 # /nerv:configure
 
 Configure Nerv by Gentle-AI through guided questions instead of hand-editing
-`nerv.yaml` or invoking `nerv configure` flags yourself. Reads the current
+the configuration files or invoking `nerv configure` flags yourself. Reads the current
 state first, asks only about the sections in scope, and writes exactly the
 changes confirmed — never more.
 
 1. **Resolve scope.** `$ARGUMENTS` names one or more sections —
-   `git`, `tasks`, `skills`, `models`, `repo`, `commands` — space- or
+   `git`, `skills`, `models`, `repo` — space- or
    comma-separated; default `all` when empty. An unrecognized section name
    stops here and lists the valid ones.
 
@@ -24,7 +24,7 @@ changes confirmed — never more.
    If `nerv` is not on PATH, tell the user to install it — `curl -fsSL
    https://raw.githubusercontent.com/war-apps/nerv-by-gentle-ai/main/scripts/install.sh
    | bash`, or `go install github.com/war-apps/nerv-by-gentle-ai/cmd/nerv@latest`
-   — and stop. Do not fall back to reading or writing `nerv.yaml` by hand.
+   — and stop. Do not fall back to reading or writing the configuration files by hand.
 
    From the returned JSON print a compact summary: `config_path` and
    whether it `exists`; `prerequisites` (`gentle_ai`, `engram`, `claude`);
@@ -63,27 +63,6 @@ changes confirmed — never more.
      2. `git.branch_pattern` (free text, e.g.
         `feature/{prefix}-{id}-{slug}`), `git.commit_ref_pattern` (free
         text, e.g. `({PREFIX}-{id})`).
-   - **tasks** (split across grouped questions, in this order — omit a
-     later one whose condition doesn't hold):
-     1. General: `tasks.provider` (`teamwork` | `none`), `tasks.ask_when_missing` (yes/no),
-        `tasks.subtasks_per_wave` (yes/no), `tasks.timer_store` (free
-        text path).
-     2. General, continued: `tasks.rounding_minutes` (free text, e.g.
-        `15`), and — only when the resolved provider is `teamwork` —
-        `tasks.providers.teamwork.task_ref_prefix` (free text, default
-        `tw`).
-     3. Teamwork ids (only when the resolved provider is `teamwork`):
-        `.assignee_id`, `.default_project_id`, `.default_tasklist_id`
-        (all free text ids). When the Teamwork MCP is reachable, offer to
-        list candidates first (`teamwork_list_projects`,
-        `teamwork_list_tasklists`) so the user picks rather than types raw
-        ids; fall back to free text otherwise.
-     4. Teamwork stages (only when the resolved provider is `teamwork`),
-        split across two grouped questions of at most 4 fields each:
-        `.stages.inDev`, `.stages.testing`, `.stages.implemented`,
-        `.stages.blocked`, then `.stages.canceled`, `.stages.pending`,
-        `.stages.analysis` — each free text, defaulting to the current
-        stage name.
    - **skills** (split across two grouped questions, 4 then 1):
      `skills.testing`, `skills.code`, `skills.best-practices`,
      `skills.architecture`, then `skills.audit` — each a free-text
@@ -120,22 +99,20 @@ changes confirmed — never more.
        id | `from:<gentle-ai-phase>` | `default` (clears the override);
      - effort: `low` | `medium` | `high` | `xhigh` | `max` (only offered
        alongside an explicit model, not with `from:` or `default`).
-   - **repo**: ask path (free text, default the current repo root), base
-     branch, task provider, and — only when the chosen provider is
-     `teamwork` — project id and tasklist id, as one grouped question (4
-     sub-questions; split the ids into a second question when the
-     provider is `teamwork` and both are unset). Before asking, run
+   - **repo**: ask path (free text, default the current repo root) and
+     base branch, as one grouped question. Before asking, run
      `git -C <path> rev-parse --is-inside-work-tree`; on failure, tell the
      user the path is not a git repository and skip this section instead
      of asking further.
-   - **commands**: one yes/no confirmation — install the Teamwork `/task:*`
-     procedures into `~/.claude/commands/task/` (never overwriting an
-     existing file there)?
+
+   Task settings are not a section of this command: when the task extension
+   is installed, `nerv configure` asks for its providers' settings, read
+   from each provider's `provider.yaml`.
 
 4. **Apply.** `--set` and `--set-model` are repeatable flags — pass every
    changed key of a batch as its own `--set`/`--set-model` occurrence on one
    invocation. For each section with at least one changed answer:
-   - **git / tasks / skills / critical_paths / artifacts**: collect every
+   - **git / skills / critical_paths / artifacts**: collect every
      changed key from steps above into one call —
      `nerv configure --set key=value --set key2=value2 --json`.
      An unknown key anywhere in the batch exits 1 with nothing written —
@@ -143,11 +120,10 @@ changes confirmed — never more.
      batch until fixed.
    - **models**: one call per confirmed batch —
      `nerv configure --set-model role=model[/effort] --set-model role2=from:jd-judge-a --json`.
-   - **repo**: `nerv configure --init-repo <path> --repo-base <base> --repo-provider <provider> [--repo-project-id <id> --repo-tasklist-id <id>] --json`.
-     This never overwrites an existing `.nerv/nerv.yaml`; if one is already
+   - **repo**: `nerv configure --init-repo <path> --repo-base <base> --json`.
+     This never overwrites an existing `.ai-workflow/config.yaml`; if one is already
      present, the result carries a `warnings` entry saying so — report it
      and move on without asking again.
-   - **commands** (only on a yes): `nerv configure --install-commands --json`.
 
    Read each call's JSON result (`changed`, `changes`, `written`,
    `warnings`, `backup`, `config_path`) and hold it for the final summary. A section with no
@@ -169,7 +145,7 @@ changes confirmed — never more.
      `backup` path, and the line: "Restart Claude Code for the change to
      take effect."
 
-   Never run `gentle-ai install`. Never edit `nerv.yaml` by hand. Never
+   Never run `gentle-ai install`. Never edit the configuration files by hand. Never
    write to any path other than the ones `nerv configure`, `nerv skills`,
    `nerv apply-models`, or `nerv install` themselves report writing.
 
@@ -177,7 +153,7 @@ changes confirmed — never more.
 
 Under `claude -p` this command cannot ask questions. In that mode, run only
 steps 1–2, print the `--print` summary as-is, and print the exact `--set` /
-`--set-model` / `--init-repo` / `--install-commands` syntax the user would
+`--set-model` / `--init-repo` syntax the user would
 need to run themselves to make the same changes — do not guess an answer
 for any question and do not apply anything. For `--set` and `--set-model`,
 print the repeated-flag form shown in step 4 above.

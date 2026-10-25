@@ -21,7 +21,7 @@ import (
 	"github.com/war-apps/nerv-by-gentle-ai/internal/wizard"
 )
 
-// fixtureLF mirrors the real nerv.yaml shape (every managed key at its
+// fixtureLF mirrors the real config.yml shape (every managed key at its
 // built-in default), LF line endings — port of tests/configure.test.ps1's
 // $fixtureLf, trimmed to the fields the Go wizard's User-config section
 // actually asks about (the exotic known_projects:/sources:/sources_howto:
@@ -105,10 +105,9 @@ func noRunner() *envtest.FakeRunner { return &envtest.FakeRunner{} }
 
 func testPaths(root, home string) configure.Paths {
 	return configure.Paths{
-		Config:      filepath.Join(root, "nerv.yaml"),
-		State:       filepath.Join(home, ".gentle-ai", "state.json"),
-		SkillsDir:   filepath.Join(home, ".claude", "skills"),
-		CommandsDir: filepath.Join(home, ".claude", "commands", "task"),
+		Config:    filepath.Join(root, "config.yml"),
+		State:     filepath.Join(home, ".gentle-ai", "state.json"),
+		SkillsDir: filepath.Join(home, ".claude", "skills"),
 	}
 }
 
@@ -120,12 +119,12 @@ func writeFixture(t *testing.T, path string) {
 }
 
 func skipAll() wizard.Options {
-	return wizard.Options{SkipSkills: true, SkipModels: true, SkipRepos: true, SkipCommands: true, NoRefresh: true}
+	return wizard.Options{SkipSkills: true, SkipModels: true, SkipRepos: true, NoRefresh: true}
 }
 
 func countBackups(t *testing.T, root string) int {
 	t.Helper()
-	matches, err := filepath.Glob(filepath.Join(root, "nerv.yaml.bak-configure-*"))
+	matches, err := filepath.Glob(filepath.Join(root, "config.yml.bak-configure-*"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -148,18 +147,17 @@ func countBackups(t *testing.T, root string) int {
 func TestRun_AllBlankAnswers_ByteIdenticalNoBackup(t *testing.T) {
 	root := t.TempDir()
 	home := t.TempDir()
-	writeFixture(t, filepath.Join(root, "nerv.yaml"))
+	writeFixture(t, filepath.Join(root, "config.yml"))
 	paths := testPaths(root, home)
 	deps := configure.Deps{Home: home, FS: nerv.PluginFS(), Runner: noRunner(), Now: fixedNow, LookPath: lookPathNone}
 
 	opts := skipAll()
 	opts.Paths = paths
 
-	// git(5) + tasks(5) + tasks.providers.teamwork(11, since the fixture's
-	// provider stays "teamwork" on a blank answer) + skills(5) +
-	// critical_paths(1) + artifacts.commit(1) = 28 prompts, every one a
-	// real blank line (not exhaustion).
-	in := strings.NewReader(strings.Repeat("\n", 28))
+	// git(5) + skills(5) + critical_paths(1) + artifacts.commit(1) = 12
+	// prompts, every one a real blank line (not exhaustion). The fixture's
+	// tasks: block is not core's: nothing asks about it.
+	in := strings.NewReader(strings.Repeat("\n", 12))
 
 	var out bytes.Buffer
 	summary, err := wizard.Run(deps, in, &out, opts)
@@ -196,7 +194,7 @@ func TestRun_AllBlankAnswers_ByteIdenticalNoBackup(t *testing.T) {
 func TestRun_ReaderEndsAtFirstPrompt_AbortsWithoutWriteOrRunnerCall(t *testing.T) {
 	root := t.TempDir()
 	home := t.TempDir()
-	writeFixture(t, filepath.Join(root, "nerv.yaml"))
+	writeFixture(t, filepath.Join(root, "config.yml"))
 	paths := testPaths(root, home)
 	runner := &envtest.FakeRunner{}
 	deps := configure.Deps{Home: home, FS: nerv.PluginFS(), Runner: runner, Now: fixedNow, LookPath: lookPathNone}
@@ -239,17 +237,17 @@ func TestRun_ReaderEndsAtFirstPrompt_AbortsWithoutWriteOrRunnerCall(t *testing.T
 func TestRun_ReaderEndsAtApplyAndRefreshPrompt_AbortsWithoutRunnerCall(t *testing.T) {
 	root := t.TempDir()
 	home := t.TempDir()
-	writeFixture(t, filepath.Join(root, "nerv.yaml"))
+	writeFixture(t, filepath.Join(root, "config.yml"))
 	paths := testPaths(root, home)
 	runner := &envtest.FakeRunner{}
 	deps := configure.Deps{Home: home, FS: nerv.PluginFS(), Runner: runner, Now: fixedNow, LookPath: lookPathNone}
 
-	opts := wizard.Options{Paths: paths, SkipSkills: true, SkipModels: true, SkipRepos: true, SkipCommands: true}
+	opts := wizard.Options{Paths: paths, SkipSkills: true, SkipModels: true, SkipRepos: true}
 
-	// The 28 user-config prompts, every one a real blank line (no
+	// The 12 user-config prompts, every one a real blank line (no
 	// change, no write-confirmation asked) — then nothing left for the
 	// "Apply models to the plugin cache and refresh it now?" gate.
-	in := strings.NewReader(strings.Repeat("\n", 28))
+	in := strings.NewReader(strings.Repeat("\n", 12))
 
 	var out bytes.Buffer
 	_, err := wizard.Run(deps, in, &out, opts)
@@ -284,12 +282,12 @@ func TestRun_ReaderEndsAtApplyAndRefreshPrompt_AbortsWithoutRunnerCall(t *testin
 func TestRun_ModelsSection_CustomModelID_EOFAfterPrompt_AbortsWithoutWriteOrRunnerCall(t *testing.T) {
 	root := t.TempDir()
 	home := t.TempDir()
-	writeFixture(t, filepath.Join(root, "nerv.yaml"))
+	writeFixture(t, filepath.Join(root, "config.yml"))
 	paths := testPaths(root, home)
 	runner := &envtest.FakeRunner{}
 	deps := configure.Deps{Home: home, FS: nerv.PluginFS(), Runner: runner, Now: fixedNow, LookPath: lookPathNone}
 
-	opts := wizard.Options{Paths: paths, SkipSkills: true, SkipRepos: true, SkipCommands: true, NoRefresh: true}
+	opts := wizard.Options{Paths: paths, SkipSkills: true, SkipRepos: true, NoRefresh: true}
 
 	var out bytes.Buffer
 	in := modelsInput(&out,
@@ -335,11 +333,11 @@ func TestRun_ModelsSection_CustomModelID_EOFAfterPrompt_AbortsWithoutWriteOrRunn
 func TestRun_ModelsSection_CustomModelID_InvalidThenValid_AppliesOverride(t *testing.T) {
 	root := t.TempDir()
 	home := t.TempDir()
-	writeFixture(t, filepath.Join(root, "nerv.yaml"))
+	writeFixture(t, filepath.Join(root, "config.yml"))
 	paths := testPaths(root, home)
 	deps := configure.Deps{Home: home, FS: nerv.PluginFS(), Runner: noRunner(), Now: fixedNow, LookPath: lookPathNone}
 
-	opts := wizard.Options{Paths: paths, SkipSkills: true, SkipRepos: true, SkipCommands: true, NoRefresh: true}
+	opts := wizard.Options{Paths: paths, SkipSkills: true, SkipRepos: true, NoRefresh: true}
 
 	var out bytes.Buffer
 	in := modelsInput(&out,
@@ -374,14 +372,14 @@ func TestRun_ModelsSection_CustomModelID_InvalidThenValid_AppliesOverride(t *tes
 
 // ---------------------------------------------------------------------------
 // Case group G (tests/configure.test.ps1's ~426-548): only git.base_branch
-// answered -> exactly one line differs, plus a repo init and a slash
-// commands install driven by the same answers file.
+// answered -> exactly one line differs, plus a repo init driven by the same
+// answers file. Without the task extension, the repo flow asks no provider key.
 // ---------------------------------------------------------------------------
 
-func TestRun_BaseBranchChange_RepoInitAndCommandsInstall(t *testing.T) {
+func TestRun_BaseBranchChange_RepoInit(t *testing.T) {
 	root := t.TempDir()
 	home := t.TempDir()
-	writeFixture(t, filepath.Join(root, "nerv.yaml"))
+	writeFixture(t, filepath.Join(root, "config.yml"))
 	paths := testPaths(root, home)
 
 	repoDir := filepath.Join(t.TempDir(), "repo")
@@ -393,23 +391,19 @@ func TestRun_BaseBranchChange_RepoInitAndCommandsInstall(t *testing.T) {
 			"git -C " + repoDir + " rev-parse --show-toplevel": {Stdout: repoDir + "\n", ExitCode: 0},
 		},
 	}
-	deps := configure.Deps{Home: home, FS: nerv.PluginFS(), Runner: runner, Now: fixedNow, LookPath: lookPathNone}
+	deps := configure.Deps{Home: home, FS: nerv.PluginFS(), ExtensionsFS: nerv.ExtensionsFS(), Runner: runner, Now: fixedNow, LookPath: lookPathNone}
 
 	opts := wizard.Options{Paths: paths, SkipSkills: true, SkipModels: true, NoRefresh: true}
 
 	lines := []string{"develop2"}
-	for i := 0; i < 27; i++ { // worktree..artifacts.commit: 27 more blanks
+	for i := 0; i < 11; i++ { // worktree..artifacts.commit: 11 more blanks
 		lines = append(lines, "")
 	}
 	lines = append(lines,
 		"",      // write confirm [Y/n] -> blank means yes
 		repoDir, // repo path
 		"",      // repo base branch (keep)
-		"",      // repo task provider (keep teamwork)
-		"111",   // repo project id
-		"222",   // repo tasklist id
 		"",      // repo path again -> skip
-		"y",     // install slash commands
 	)
 	in := strings.NewReader(strings.Join(lines, "\n"))
 
@@ -436,23 +430,17 @@ func TestRun_BaseBranchChange_RepoInitAndCommandsInstall(t *testing.T) {
 		t.Error("expected a backup to be written")
 	}
 
-	repoConfigPath := filepath.Join(repoDir, ".nerv", "nerv.yaml")
-	repoConfig, err := os.ReadFile(repoConfigPath)
+	repoConfig, err := os.ReadFile(filepath.Join(repoDir, ".ai-workflow/config.yaml"))
 	if err != nil {
 		t.Fatalf("repo config not written: %v", err)
 	}
-	for _, want := range []string{"enabled: true", "project_id: 111", "tasklist_id: 222"} {
-		if !strings.Contains(string(repoConfig), want) {
-			t.Errorf("repo config missing %q:\n%s", want, repoConfig)
+	if want := config.FormatProjectFile(config.ProjectValues{BaseBranch: "develop2"}); string(repoConfig) != want {
+		t.Errorf("repo config =\n%s\nwant\n%s", repoConfig, want)
+	}
+	for _, gone := range []string{"Task providers", "Task provider for this repo", "Slash commands", "/task:*"} {
+		if strings.Contains(out.String(), gone) {
+			t.Errorf("output mentions %q without the task extension:\n%s", gone, out.String())
 		}
-	}
-
-	copied, err := filepath.Glob(filepath.Join(paths.CommandsDir, "*.md"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(copied) == 0 {
-		t.Error("expected the Teamwork /task:* commands to be copied")
 	}
 }
 
@@ -464,7 +452,7 @@ func TestRun_BaseBranchChange_RepoInitAndCommandsInstall(t *testing.T) {
 func TestRun_DeclineWrite_LeavesFileUntouched(t *testing.T) {
 	root := t.TempDir()
 	home := t.TempDir()
-	writeFixture(t, filepath.Join(root, "nerv.yaml"))
+	writeFixture(t, filepath.Join(root, "config.yml"))
 	paths := testPaths(root, home)
 	deps := configure.Deps{Home: home, FS: nerv.PluginFS(), Runner: noRunner(), Now: fixedNow, LookPath: lookPathNone}
 
@@ -472,7 +460,7 @@ func TestRun_DeclineWrite_LeavesFileUntouched(t *testing.T) {
 	opts.Paths = paths
 
 	lines := []string{"develop2"}
-	for i := 0; i < 27; i++ {
+	for i := 0; i < 11; i++ {
 		lines = append(lines, "")
 	}
 	lines = append(lines, "n") // decline the write
@@ -498,75 +486,6 @@ func TestRun_DeclineWrite_LeavesFileUntouched(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// Changing tasks.provider away from "teamwork" must skip every
-// tasks.providers.teamwork.* prompt (11 fewer answer lines needed).
-// ---------------------------------------------------------------------------
-
-func TestRun_NonTeamworkProvider_SkipsTeamworkPrompts(t *testing.T) {
-	root := t.TempDir()
-	home := t.TempDir()
-	writeFixture(t, filepath.Join(root, "nerv.yaml"))
-	paths := testPaths(root, home)
-	deps := configure.Deps{Home: home, FS: nerv.PluginFS(), Runner: noRunner(), Now: fixedNow, LookPath: lookPathNone}
-
-	opts := skipAll()
-	opts.Paths = paths
-
-	lines := []string{
-		"",                           // git.base_branch
-		"",                           // git.worktree
-		"2",                          // git.worktree_pattern menu: custom (no herdr row: lookPathNone)
-		".claude/worktrees/{branch}", // git.worktree_pattern custom value (CHANGED)
-		"",                           // git.branch_pattern
-		"",                           // git.commit_ref_pattern
-		"none",                       // tasks.provider (CHANGED away from teamwork)
-		"",                           // tasks.ask_when_missing
-		"",                           // tasks.subtasks_per_wave
-		"",                           // tasks.timer_store
-		"",                           // tasks.rounding_minutes
-		// no teamwork.* lines here
-		"", "", "", "", "", // skills x5
-		"",  // critical_paths
-		"",  // artifacts.commit
-		"y", // write confirm
-	}
-
-	var out bytes.Buffer
-	summary, err := wizard.Run(deps, strings.NewReader(strings.Join(lines, "\n")), &out, opts)
-	if err != nil {
-		t.Fatalf("Run() error = %v; output:\n%s", err, out.String())
-	}
-	if !summary.Changed {
-		t.Fatalf("Changed = false, want true; output:\n%s", out.String())
-	}
-
-	got, err := os.ReadFile(paths.Config)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(string(got), "provider: none") {
-		t.Errorf("tasks.provider not updated:\n%s", got)
-	}
-	// Every skills category and critical_paths/artifacts must be unchanged
-	// (their blank answers were correctly consumed, not shifted by 11
-	// unexpectedly-asked teamwork lines).
-	for _, want := range []string{
-		"testing: [tdd, playwright-best-practices]",
-		"audit: [security-review, clean-code-guard]",
-		"critical_paths: [auth/, payments/, migrations/, infra/]",
-		"commit: at-close",
-	} {
-		if !strings.Contains(string(got), want) {
-			t.Errorf("expected %q preserved:\n%s", want, got)
-		}
-	}
-	// the new git.worktree_pattern key must land in the file when answered.
-	if !strings.Contains(string(got), `worktree_pattern: ".claude/worktrees/{branch}"`) {
-		t.Errorf("expected worktree_pattern to be updated:\n%s", got)
-	}
-}
-
-// ---------------------------------------------------------------------------
 // git.worktree_pattern menu: herdr detected renders default/herdr/custom
 // rows in that order, the resolved rows each with an "e.g." example, and
 // choosing herdr (row 2) writes its resolved pattern.
@@ -575,7 +494,7 @@ func TestRun_NonTeamworkProvider_SkipsTeamworkPrompts(t *testing.T) {
 func TestRun_WorktreePatternMenu_HerdrDetected_ChoosesHerdr(t *testing.T) {
 	root := t.TempDir()
 	home := t.TempDir()
-	writeFixture(t, filepath.Join(root, "nerv.yaml"))
+	writeFixture(t, filepath.Join(root, "config.yml"))
 	paths := testPaths(root, home)
 	appData := filepath.Join(home, "appdata")
 	writeHerdrConfig(t, home, appData, "[worktrees]\ndirectory = 'D:\\.worktrees'\n")
@@ -584,7 +503,7 @@ func TestRun_WorktreePatternMenu_HerdrDetected_ChoosesHerdr(t *testing.T) {
 	opts := skipAll()
 	opts.Paths = paths
 
-	lines := make([]string, 28)
+	lines := make([]string, 12)
 	lines[2] = "2" // git.worktree_pattern menu: herdr row (default=1, herdr=2, custom=3)
 	lines = append(lines, "y")
 
@@ -637,7 +556,7 @@ func TestRun_WorktreePatternMenu_HerdrDetected_ChoosesHerdr(t *testing.T) {
 func TestRun_WorktreePatternMenu_HerdrAbsent_ChoosesCustom(t *testing.T) {
 	root := t.TempDir()
 	home := t.TempDir()
-	writeFixture(t, filepath.Join(root, "nerv.yaml"))
+	writeFixture(t, filepath.Join(root, "config.yml"))
 	paths := testPaths(root, home)
 	deps := configure.Deps{Home: home, FS: nerv.PluginFS(), Runner: noRunner(), Now: fixedNow, LookPath: lookPathNone}
 
@@ -650,7 +569,7 @@ func TestRun_WorktreePatternMenu_HerdrAbsent_ChoosesCustom(t *testing.T) {
 		"2",                  // git.worktree_pattern menu: custom (no herdr row)
 		"~/wt/{repo}/{slug}", // git.worktree_pattern custom value (CHANGED)
 	}
-	for i := 0; i < 25; i++ { // branch_pattern..artifacts.commit
+	for i := 0; i < 9; i++ { // branch_pattern..artifacts.commit
 		lines = append(lines, "")
 	}
 	lines = append(lines, "y")
@@ -692,7 +611,7 @@ func TestRun_WorktreePatternMenu_HerdrAbsent_ChoosesCustom(t *testing.T) {
 func TestRun_WorktreePatternMenu_Blank_KeepsCurrent(t *testing.T) {
 	root := t.TempDir()
 	home := t.TempDir()
-	writeFixture(t, filepath.Join(root, "nerv.yaml"))
+	writeFixture(t, filepath.Join(root, "config.yml"))
 	paths := testPaths(root, home)
 	deps := configure.Deps{Home: home, FS: nerv.PluginFS(), Runner: noRunner(), Now: fixedNow, LookPath: lookPathNone}
 
@@ -700,7 +619,7 @@ func TestRun_WorktreePatternMenu_Blank_KeepsCurrent(t *testing.T) {
 	opts.Paths = paths
 
 	lines := []string{"develop2"} // git.base_branch (CHANGED, so the run still writes)
-	for i := 0; i < 27; i++ {     // git.worktree..artifacts.commit, all blank
+	for i := 0; i < 11; i++ {     // git.worktree..artifacts.commit, all blank
 		lines = append(lines, "")
 	}
 	lines = append(lines, "y")
@@ -737,7 +656,7 @@ func TestRun_WorktreePatternMenu_ChoosesDefault(t *testing.T) {
 	if customized == fixtureLF {
 		t.Fatal("fixture replacement did not match; fixtureLF's worktree_pattern line changed shape")
 	}
-	if err := os.WriteFile(filepath.Join(root, "nerv.yaml"), []byte(customized), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(root, "config.yml"), []byte(customized), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	paths := testPaths(root, home)
@@ -746,7 +665,7 @@ func TestRun_WorktreePatternMenu_ChoosesDefault(t *testing.T) {
 	opts := skipAll()
 	opts.Paths = paths
 
-	lines := make([]string, 28)
+	lines := make([]string, 12)
 	lines[2] = "1" // git.worktree_pattern menu: default row
 	lines = append(lines, "y")
 
@@ -776,11 +695,11 @@ func TestRun_WorktreePatternMenu_ChoosesDefault(t *testing.T) {
 func TestRun_ModelsSection_MagiGroup(t *testing.T) {
 	root := t.TempDir()
 	home := t.TempDir()
-	writeFixture(t, filepath.Join(root, "nerv.yaml"))
+	writeFixture(t, filepath.Join(root, "config.yml"))
 	paths := testPaths(root, home)
 	deps := configure.Deps{Home: home, FS: nerv.PluginFS(), Runner: noRunner(), Now: fixedNow, LookPath: lookPathNone}
 
-	opts := wizard.Options{Paths: paths, SkipSkills: true, SkipRepos: true, SkipCommands: true, NoRefresh: true}
+	opts := wizard.Options{Paths: paths, SkipSkills: true, SkipRepos: true, NoRefresh: true}
 
 	var out bytes.Buffer
 	in := modelsInput(&out,
@@ -926,10 +845,10 @@ func lineWith(out, needle string) string {
 func TestRun_ModelsSection_TableShowsPurposeEquivalentAndGroupLegend(t *testing.T) {
 	root := t.TempDir()
 	home := t.TempDir()
-	writeFixture(t, filepath.Join(root, "nerv.yaml"))
+	writeFixture(t, filepath.Join(root, "config.yml"))
 	paths := testPaths(root, home)
 	deps := configure.Deps{Home: home, FS: nerv.PluginFS(), Runner: noRunner(), Now: fixedNow, LookPath: lookPathNone}
-	opts := wizard.Options{Paths: paths, SkipSkills: true, SkipRepos: true, SkipCommands: true, NoRefresh: true}
+	opts := wizard.Options{Paths: paths, SkipSkills: true, SkipRepos: true, NoRefresh: true}
 
 	var out bytes.Buffer
 	if _, err := wizard.Run(deps, modelsInput(&out, "done"), &out, opts); err != nil {
@@ -1017,7 +936,7 @@ func TestRun_ModelsSection_TableShowsPurposeEquivalentAndGroupLegend(t *testing.
 func TestRun_ModelsSection_PhasePickerListsEquivalentFirst(t *testing.T) {
 	root := t.TempDir()
 	home := t.TempDir()
-	writeFixture(t, filepath.Join(root, "nerv.yaml"))
+	writeFixture(t, filepath.Join(root, "config.yml"))
 	paths := testPaths(root, home)
 	state := `{"claude_phase_assignments":{"jd-judge-a":{"model":"opus","effort":"high"},"jd-judge-b":{"model":"sonnet","effort":"medium"}}}`
 	if err := os.MkdirAll(filepath.Dir(paths.State), 0o755); err != nil {
@@ -1027,7 +946,7 @@ func TestRun_ModelsSection_PhasePickerListsEquivalentFirst(t *testing.T) {
 		t.Fatal(err)
 	}
 	deps := configure.Deps{Home: home, FS: nerv.PluginFS(), Runner: noRunner(), Now: fixedNow, LookPath: lookPathNone}
-	opts := wizard.Options{Paths: paths, SkipSkills: true, SkipRepos: true, SkipCommands: true, NoRefresh: true}
+	opts := wizard.Options{Paths: paths, SkipSkills: true, SkipRepos: true, NoRefresh: true}
 
 	var out bytes.Buffer
 	in := modelsInput(&out, "balthasar", "7", "1", "", "done", "y")
@@ -1062,7 +981,7 @@ func TestRun_ModelsSection_AcceptsLegacyNamesAndWritesNewIDs(t *testing.T) {
 		t.Fatal(err)
 	}
 	deps := configure.Deps{Home: home, FS: nerv.PluginFS(), Runner: noRunner(), Now: fixedNow, LookPath: lookPathNone}
-	opts := wizard.Options{Paths: paths, SkipSkills: true, SkipRepos: true, SkipCommands: true, NoRefresh: true}
+	opts := wizard.Options{Paths: paths, SkipSkills: true, SkipRepos: true, NoRefresh: true}
 
 	var out bytes.Buffer
 	in := modelsInput(&out, "reset kaji-passes", "melchor", "2", "3", "done", "y")
@@ -1097,7 +1016,7 @@ func TestRun_ModelsSection_AcceptsLegacyNamesAndWritesNewIDs(t *testing.T) {
 func TestRun_ModelsSection_PhasePickerMarksNothingForReviewAgentEquivalent(t *testing.T) {
 	root := t.TempDir()
 	home := t.TempDir()
-	writeFixture(t, filepath.Join(root, "nerv.yaml"))
+	writeFixture(t, filepath.Join(root, "config.yml"))
 	paths := testPaths(root, home)
 	// review-reliability is present as a key so that a hint driven by the
 	// equivalent (instead of FromPhase) would surface it first and marked.
@@ -1109,7 +1028,7 @@ func TestRun_ModelsSection_PhasePickerMarksNothingForReviewAgentEquivalent(t *te
 		t.Fatal(err)
 	}
 	deps := configure.Deps{Home: home, FS: nerv.PluginFS(), Runner: noRunner(), Now: fixedNow, LookPath: lookPathNone}
-	opts := wizard.Options{Paths: paths, SkipSkills: true, SkipRepos: true, SkipCommands: true, NoRefresh: true}
+	opts := wizard.Options{Paths: paths, SkipSkills: true, SkipRepos: true, NoRefresh: true}
 
 	var out bytes.Buffer
 	in := modelsInput(&out, "gendo", "7", "1", "", "done", "y")
@@ -1134,12 +1053,12 @@ func TestRun_ModelsSection_PhasePickerMarksNothingForReviewAgentEquivalent(t *te
 func TestRun_Prerequisites_UnsupportedMajorWarnsAndNamesSupportedMajors(t *testing.T) {
 	root := t.TempDir()
 	home := t.TempDir()
-	writeFixture(t, filepath.Join(root, "nerv.yaml"))
+	writeFixture(t, filepath.Join(root, "config.yml"))
 	runner := &envtest.FakeRunner{Responses: map[string]envtest.Response{
 		"gentle-ai --version": {Stdout: "gentle-ai version 2.9.0\n"},
 	}}
 	deps := configure.Deps{Home: home, FS: nerv.PluginFS(), Runner: runner, Now: fixedNow, LookPath: lookPathNone}
-	opts := wizard.Options{Paths: testPaths(root, home), SkipSkills: true, SkipRepos: true, SkipCommands: true, SkipModels: true, NoRefresh: true}
+	opts := wizard.Options{Paths: testPaths(root, home), SkipSkills: true, SkipRepos: true, SkipModels: true, NoRefresh: true}
 
 	var out bytes.Buffer
 	_, _ = wizard.Run(deps, strings.NewReader(""), &out, opts) // EOF aborts after the prerequisites block
@@ -1191,9 +1110,9 @@ func diffLineCount(a, b string) int {
 }
 
 // ---------------------------------------------------------------------------
-// Legacy provider settings (github-projects and jira sub-blocks in
-// tasks.providers, a tasks.provider: jira line), left by releases before their
-// removal, are stripped by a wizard save; every other byte stays as written.
+// S7: a tasks: block written by an earlier release (a removed provider's
+// sub-blocks included) is not core's: the user-config and models writes keep
+// every one of its bytes.
 // ---------------------------------------------------------------------------
 
 const legacyProviderLines = "" +
@@ -1201,103 +1120,63 @@ const legacyProviderLines = "" +
 	"    github-projects: { task_ref_prefix: gh, owner: \"\", project_number: 0 }    # later\n" +
 	"    jira: { task_ref_prefix: jira, site: \"\", project_key: \"\" }               # later\n"
 
-func legacyFixture(t *testing.T, provider string) string {
-	t.Helper()
+func legacyFixture() string {
 	const anchor = "artifacts:\n"
-	fixture := strings.Replace(fixtureLF, anchor, legacyProviderLines+anchor, 1)
-	if provider != "teamwork" {
-		old := "  provider: teamwork                #"
-		if !strings.Contains(fixture, old) {
-			t.Fatal("provider line not found in the fixture")
-		}
-		fixture = strings.Replace(fixture, old, "  provider: "+provider+strings.Repeat(" ", 20-len(provider))+"#", 1)
-	}
-	return fixture
+	return strings.Replace(fixtureLF, anchor, legacyProviderLines+anchor, 1)
 }
 
-func TestRun_LegacyProviderSettings_AreStrippedOnSave(t *testing.T) {
-	for _, provider := range []string{"teamwork", "jira"} {
-		t.Run(provider, func(t *testing.T) {
-			root := t.TempDir()
-			home := t.TempDir()
-			paths := testPaths(root, home)
-			fixture := legacyFixture(t, provider)
-			if err := os.WriteFile(paths.Config, []byte(fixture), 0o644); err != nil {
-				t.Fatal(err)
-			}
-			deps := configure.Deps{Home: home, FS: nerv.PluginFS(), Runner: noRunner(), Now: fixedNow, LookPath: lookPathNone}
-			opts := skipAll()
-			opts.Paths = paths
-
-			var out bytes.Buffer
-			in := promptInput(&out, []promptAnswer{
-				{prompt: "Base branch", answer: "develop2"},
-				{prompt: "Write to ", answer: "y"},
-			})
-			summary, err := wizard.Run(deps, in, &out, opts)
-			if err != nil {
-				t.Fatalf("Run() error = %v; output:\n%s", err, out.String())
-			}
-			if !summary.Changed {
-				t.Fatalf("Changed = false, want true; output:\n%s", out.String())
-			}
-
-			got, err := os.ReadFile(paths.Config)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if !strings.Contains(string(got), "base_branch: develop2") {
-				t.Errorf("base_branch not updated:\n%s", got)
-			}
-			if strings.Contains(string(got), "github-projects") || strings.Contains(string(got), "jira: {") {
-				t.Errorf("legacy provider blocks survived:\n%s", got)
-			}
-
-			// What the save must remove: the blocks, plus the provider line
-			// when it still holds the removed provider.
-			cleaned := strings.Replace(fixture, legacyProviderLines, "", 1)
-			wantLine := "Removed legacy task provider settings: tasks.providers.github-projects, tasks.providers.jira"
-			if provider == "jira" {
-				cleaned = removeLineWith(cleaned, "  provider: jira")
-				wantLine = "Removed legacy task provider settings: tasks.provider (jira), tasks.providers.github-projects, tasks.providers.jira"
-			}
-			if !strings.Contains(out.String(), wantLine) {
-				t.Errorf("output missing %q:\n%s", wantLine, out.String())
-			}
-			if diff := diffLineCount(cleaned, string(got)); diff != 1 {
-				t.Errorf("diff line count against the cleaned fixture = %d, want 1; got:\n%s", diff, got)
-			}
-			if provider == "jira" && strings.Contains(string(got), "  provider:") {
-				t.Errorf("tasks.provider survived:\n%s", got)
-			}
-		})
+func tasksBlockOf(t *testing.T, text string) string {
+	t.Helper()
+	block, found := config.Parse(text).Block("tasks")
+	if !found {
+		t.Fatalf("no tasks: block in:\n%s", text)
 	}
+	return block
 }
 
-// removeLineWith drops the one line of s that contains marker.
-func removeLineWith(s, marker string) string {
-	lines := strings.SplitAfter(s, "\n")
-	kept := lines[:0]
-	for _, l := range lines {
-		if !strings.Contains(l, marker) {
-			kept = append(kept, l)
-		}
-	}
-	return strings.Join(kept, "")
-}
-
-// The models section writes through the shared store too: saving an override
-// into a legacy file strips the removed provider settings and says so.
-func TestRun_ModelsSection_StripsLegacyProviderSettings(t *testing.T) {
+func TestRun_UserConfigWrite_KeepsTasksBlock(t *testing.T) {
 	root := t.TempDir()
 	home := t.TempDir()
 	paths := testPaths(root, home)
-	fixture := legacyFixture(t, "jira")
+	fixture := legacyFixture()
 	if err := os.WriteFile(paths.Config, []byte(fixture), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	deps := configure.Deps{Home: home, FS: nerv.PluginFS(), Runner: noRunner(), Now: fixedNow, LookPath: lookPathNone}
-	opts := wizard.Options{Paths: paths, SkipSkills: true, SkipRepos: true, SkipCommands: true, NoRefresh: true}
+	opts := skipAll()
+	opts.Paths = paths
+
+	var out bytes.Buffer
+	in := promptInput(&out, []promptAnswer{
+		{prompt: "Base branch", answer: "develop2"},
+		{prompt: "Write to ", answer: "y"},
+	})
+	if _, err := wizard.Run(deps, in, &out, opts); err != nil {
+		t.Fatalf("Run() error = %v; output:\n%s", err, out.String())
+	}
+
+	got, err := os.ReadFile(paths.Config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if diff := diffLineCount(fixture, string(got)); diff != 1 || !strings.Contains(string(got), "base_branch: develop2") {
+		t.Errorf("want only base_branch changed (diff %d):\n%s", diff, got)
+	}
+	if tasksBlockOf(t, string(got)) != tasksBlockOf(t, fixture) {
+		t.Errorf("tasks: block changed:\n%s", got)
+	}
+}
+
+func TestRun_ModelsSection_KeepsTasksBlock(t *testing.T) {
+	root := t.TempDir()
+	home := t.TempDir()
+	paths := testPaths(root, home)
+	fixture := legacyFixture()
+	if err := os.WriteFile(paths.Config, []byte(fixture), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	deps := configure.Deps{Home: home, FS: nerv.PluginFS(), Runner: noRunner(), Now: fixedNow, LookPath: lookPathNone}
+	opts := wizard.Options{Paths: paths, SkipSkills: true, SkipRepos: true, NoRefresh: true}
 
 	var out bytes.Buffer
 	in := modelsInput(&out, "magi", "2", "3", "done", "y")
@@ -1309,10 +1188,10 @@ func TestRun_ModelsSection_StripsLegacyProviderSettings(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(string(got), "github-projects") || strings.Contains(string(got), "provider: jira") {
-		t.Errorf("legacy settings survived the models write:\n%s", got)
+	if !strings.Contains(string(got), "models:") {
+		t.Fatalf("the models write did not happen:\n%s", got)
 	}
-	if !strings.Contains(out.String(), "Removed legacy task provider settings: tasks.provider (jira), tasks.providers.github-projects, tasks.providers.jira") {
-		t.Errorf("output does not report the removal:\n%s", out.String())
+	if tasksBlockOf(t, string(got)) != tasksBlockOf(t, fixture) {
+		t.Errorf("tasks: block changed by the models write:\n%s", got)
 	}
 }

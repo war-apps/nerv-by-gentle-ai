@@ -24,6 +24,12 @@ type PluginInstallInfo struct {
 // commit, so cache verification compares this recorded Version instead of
 // a gitCommitSha.
 func InstalledPlugins(path string) (PluginInstallInfo, bool, error) {
+	return InstalledPlugin(path, "nerv@nerv")
+}
+
+// InstalledPlugin is InstalledPlugins for any plugin id, such as an
+// extension's "task@nerv".
+func InstalledPlugin(path, id string) (PluginInstallInfo, bool, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
@@ -42,7 +48,7 @@ func InstalledPlugins(path string) (PluginInstallInfo, bool, error) {
 		return PluginInstallInfo{}, false, fmt.Errorf("parse %s: %w", path, err)
 	}
 
-	entries := doc.Plugins["nerv@nerv"]
+	entries := doc.Plugins[id]
 	if len(entries) == 0 {
 		return PluginInstallInfo{}, false, nil
 	}

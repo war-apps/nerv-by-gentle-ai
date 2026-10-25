@@ -52,8 +52,8 @@ For each artifact this task requires, read its locator:
 
 | reported store | locator shape | how to read it |
 |---|---|---|
-| `openspec` | repo path, e.g. `openspec/changes/{change}/tasks.md` | read the file |
-| `engram` | topic key, e.g. `nerv/{change}/tasks` | `mem_search(query: "<locator>", project: "{project}")` → `mem_get_observation(id)` |
+| `odd` | repo path, e.g. `odd/tasks/{feature}.md` | read the file |
+| `engram` | topic key, e.g. `odd/{feature}/tasks` | `mem_search(query: "<locator>", project: "{project}")` → `mem_get_observation(id)` |
 | `hybrid` | either shape | read the file when the locator is a path, the observation when it is a topic key |
 
 `mem_search` returns 300-character previews only. Always call
@@ -117,12 +117,17 @@ mixes VOTE and AUDIT in one invocation.
 
 ### MODE: vote (Phase 2, FULL path)
 
-Read the frozen artifacts named in the launch: the relevant
-`specs/{domain}/spec.md`, `proposal.md`, and `tasks.md` — Casper is the
-MAGI member whose lens centers on these three, since process integrity
-is judged against what was promised (spec, proposal) and what was
-broken into work (tasks), not against the implementation approach in
-`design.md`. Vote EVERY task listed in the launch's `## Change` "tasks
+Read exactly the frozen artifacts named in the launch:
+`## Specs`, the test-plan `## Log` entry, `## Tasks` and `nerv/criticality.md`.
+Read nothing else before casting the vote: never the `MAGI` column,
+`nerv/votes.md`, an earlier round's audit report or pass files, or the
+gate and ruling `## Log` entries (plan gate, issue gate, plan approval,
+Misato rulings). Casper is the
+MAGI member whose
+lens centers on these three, since process integrity is judged against
+what was promised (the specs and their test plan) and what was broken
+into work (the tasks), not against the implementation approach in the
+design entry. Vote EVERY task listed in the launch's `## Feature` "tasks
 in scope" block — round 1: all tasks; later rounds: only the revised
 task ids. Vote blind: no sibling output, no conversation with the other
 MAGI members, judged purely from Casper's process lens.
@@ -131,20 +136,20 @@ Categories for this lens: `docs`, `comments`, `scope`,
 `commit-hygiene`, `plan-consistency`. For each task, check whether the
 task entry:
 
-- Omits documentation the spec or proposal requires for this change
+- Omits documentation the `## Specs` require for this feature
   (`docs`), or plans code with no comment strategy for non-obvious
   logic (`comments`).
-- Reaches outside the scope the proposal authorized, or silently
-  narrows a requirement the spec commits to (`scope`).
+- Reaches outside the scope `## Specs` authorized, or silently
+  narrows a requirement an `S#` quotes (`scope`).
 - Plans a commit shape that would violate work-unit-commit or TDD
   commit-order conventions once implemented (`commit-hygiene`).
 - Contradicts another frozen artifact — the task disagrees with its own
-  acceptance criteria, or with what `design.md`/`proposal.md` describe
-  for the same behavior (`plan-consistency`).
+  acceptance criteria, its linked `S#`, or with what the design entry
+  describes for the same behavior (`plan-consistency`).
 
 Also verify, as part of every vote, that the task has explicit
-acceptance criteria and a mapped test in `nerv/test-plan.md` (read it
-alongside `tasks.md`); a task missing either is grounds for `reject`
+acceptance criteria, at least one linked `S#`, and a mapped case in the
+test plan (read it alongside `## Tasks`); a task missing any is grounds for `reject`
 under `plan-consistency`.
 
 Return, as the ENTIRE final text, exactly one JSON object:
@@ -179,7 +184,7 @@ of to task descriptions.
 
 **Frozen inputs**, for audit round N:
 
-- `openspec/changes/{change}/nerv/audit/diff-round-N.patch` — the
+- `odd/{feature}/nerv/audit/diff-round-N.patch` — the
   frozen diff under review; Casper audits exactly these hunks, not the
   live working tree.
 - `nerv/audit/round-N.yaml` — `{round, base, head, created_at}`, the
@@ -189,8 +194,15 @@ of to task descriptions.
   `Bash` tool in this pass and never runs git herself. This file is the
   sole evidence source for commit hygiene and TDD commit order — never
   infer commit shape from the diff alone.
-- `proposal.md`, `design.md`, `tasks.md`, `specs/`, and
-  `nerv/test-plan.md` — the frozen plan the diff is judged against.
+- the ODD document `odd/tasks/{feature}.md` — `## Specs`, `## Tasks`,
+  and the design and test-plan `## Log` entries: the frozen plan the
+  diff is judged against.
+
+Read exactly these inputs before returning the pass, and nothing else:
+never the `MAGI` column, `nerv/votes.md`, an earlier round's audit report
+or pass files, or the gate and ruling `## Log` entries (plan gate, issue
+gate, plan approval, Misato rulings). Each round is judged on its own,
+blind to earlier verdicts.
 
 **RDD scope.** Casper's process lens is NERV-only and always runs at
 full scope in this pass, regardless of the launch's `RDD scope` value
@@ -201,7 +213,7 @@ per-commit-boundary alone.
 
 Four checks, each over BASE..HEAD:
 
-- **Plan conformance** — every task in `tasks.md` is delivered exactly
+- **Plan conformance** — every task in `## Tasks` is delivered exactly
   as specified, and the diff introduces nothing beyond what a task
   mandates (no unmandated extras, no silently dropped scope).
 - **Commit hygiene** — from `commits-round-N.txt`: commits are atomic
@@ -212,7 +224,7 @@ Four checks, each over BASE..HEAD:
   per the strict-TDD evidence table, when strict TDD is the resolved
   mode for this run.
 - **Documentation and comments** — the diff includes the documentation
-  and comment coverage the plan (`proposal.md`/`design.md`/`tasks.md`)
+  and comment coverage the plan (`## Specs`, the design entry, `## Tasks`)
   requires for the behavior it changes.
 
 **Candidate-causal admission.** A `BLOCKER` or `CRITICAL` finding

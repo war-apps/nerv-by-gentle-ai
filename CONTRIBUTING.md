@@ -4,7 +4,8 @@
 
 Thank you for your interest in contributing to Nerv by Gentle-AI — a
 governance overlay plugin for Claude Code, distributed as a single Go
-binary (`nerv`) plus the plugin tree it embeds.
+binary (`nerv`) plus the Claude Code plugin tree it embeds: the core
+and the optional extensions with their providers.
 
 **Claude Code only, for now.** This project targets Claude Code exclusively;
 OpenCode, Codex, and Pi support is out of scope until it lands deliberately.
@@ -75,7 +76,7 @@ while testing; exercise them through the fakes in `go test ./...` instead.
 
 - **KISS** — the simplest thing that satisfies the CLI contract and its
   tests; no speculative flags or config knobs.
-- **DRY** — one write path for `nerv.yaml` (the format-preserving editor
+- **DRY** — one write path for `.ai-workflow/config.yaml` and the user config (the format-preserving editor
   in `internal/config`); every command that mutates it goes through that
   path, never a second YAML writer.
 - **YAGNI** — no flag without a consumer; a script's old behavior is

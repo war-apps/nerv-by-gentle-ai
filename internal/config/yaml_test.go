@@ -8,7 +8,7 @@ import (
 )
 
 // fixtureLf mirrors tests/configure.test.ps1's $fixtureLf: the real
-// nerv.yaml shape (models, skills, critical_paths, artifacts, git, tasks
+// configuration file shape (models, skills, critical_paths, artifacts, git, tasks
 // with providers.teamwork including known_projects/sources/sources_howto
 // the wizard has no field for), deliberately out of documented key order,
 // with trailing comments on several scalar lines.

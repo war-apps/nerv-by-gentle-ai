@@ -13,33 +13,45 @@ import (
 
 	nerv "github.com/war-apps/nerv-by-gentle-ai"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/env"
-	"github.com/war-apps/nerv-by-gentle-ai/internal/pipeline"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/extension"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/proc"
-	"github.com/war-apps/nerv-by-gentle-ai/internal/semrel"
-	"github.com/war-apps/nerv-by-gentle-ai/internal/shipplan"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/refusal"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/releaseclone"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/releaseplan"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/version"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/versioning"
 )
 
 const usage = `Usage: nerv <command> [flags]
 
 Commands:
   version [--json]     Print the binary and plugin versions
-  version next [flags] Compute the next release version with semantic-release
-                       (see "nerv version next --help")
-  ship [flags]         Release the repository from origin: pipeline,
-                       semantic-release, publish (see "nerv ship --help")
-  pipeline <step>      Run a step of the Docker pipeline: validate, test
-                       (see "nerv pipeline --help")
+  version next [flags] Compute the next release version with the native
+                       engine (see "nerv version next --help")
+  release [flags]      Build, test and package origin's code into a local
+                       artifact, no git writes (see "nerv release --help")
+  release setup --import [--dry-run]
+                       Import a semantic-release configuration into the
+                       release: section (see "nerv release setup --help")
+  deploy --artifact <dir> [flags]
+                       Release and deploy a release artifact: release commit,
+                       tag, push, targets, git host release
+                       (see "nerv deploy --help")
+  migrate [flags]      Move a repository (and, with --user, the user
+                       configuration) from nerv 4.2.0 or 5.0.0-alpha.1
+                       (see "nerv migrate --help")
+  doctor [flags]       Check that NERV is in order on this machine and in
+                       the repository, and list the steps to take
+                       (see "nerv doctor --help")
   configure [flags]    Configure NERV (non-interactive; see "nerv configure --help")
   install [flags]      Install NERV (see "nerv install --help")
   uninstall [flags]    Uninstall NERV (see "nerv uninstall --help")
   apply-models [flags] Apply model/effort assignments to the cached agents
   skills [flags]       Install or verify skills (see "nerv skills --help")
-  spec-compose [flags] Merge a delta spec into a canonical spec (see "nerv spec-compose --help")
 
 Maintainer commands:
-  release <preview|apply|guard> [flags]
-                       Release tooling for this repository (see "nerv release --help")
+  maintainer-release <preview|apply|guard> [flags]
+                       Release tooling for this repository (see "nerv maintainer-release --help")
 `
 
 // options bundles nerv's external effects (the embedded plugin tree, the
@@ -48,9 +60,12 @@ Maintainer commands:
 // scripted ones.
 type options struct {
 	PluginFS fs.FS
-	Runner   env.Runner
-	Now      func() time.Time
-	LookPath func(string) (string, error)
+	// ExtensionsFS holds the optional extension plugins (the task plugin
+	// and its providers). Nil ships none.
+	ExtensionsFS fs.FS
+	Runner       env.Runner
+	Now          func() time.Time
+	LookPath     func(string) (string, error)
 	// Getenv resolves an environment variable (the wizard's herdr
 	// detection, for %APPDATA% on Windows).
 	Getenv func(string) string
@@ -81,62 +96,45 @@ type options struct {
 	// real golang.org/x/term check, which a unit test cannot exercise
 	// directly (it depends on a real OS file descriptor/console).
 	IsTerminal func() bool
-	// ComputeVersions is the `nerv version next` engine (semrel.Compute);
-	// tests inject a recorded fake. Nil means semrel.Compute.
-	ComputeVersions func(context.Context, semrel.Options) ([]semrel.ProjectResult, error)
+	// ComputeVersions is the `nerv version next` engine (releaseclone.Compute);
+	// tests inject a recorded fake. Nil means releaseclone.Compute.
+	ComputeVersions func(context.Context, releaseclone.ComputeOptions) ([]versioning.Result, error)
 	// SignalContext derives the context a long-running command runs under,
 	// cancelled on SIGINT, SIGTERM and (on Unix) SIGHUP, with a stop function
 	// and the signal received (nil if none). Tests inject a controllable one.
 	// Nil means signalContext.
 	SignalContext func(context.Context) (context.Context, context.CancelFunc, func() os.Signal)
-	// OpenShipWorkspace creates nerv ship's release clone; tests inject a
-	// fake. Nil means semrel.NewWorkspace.
-	OpenShipWorkspace func(context.Context, semrel.WorkspaceOptions) (shipWorkspace, error)
-	// ShipSteps returns the runner of nerv ship's process steps for the
+	// OpenReleaseWorkspace creates the release clone of nerv release; tests inject
+	// a fake. Nil means releaseclone.New.
+	OpenReleaseWorkspace func(context.Context, releaseclone.Options) (releaseWorkspace, error)
+	// ReleaseSteps returns the runner of nerv release's process steps for the
 	// release clone at repoRoot, streaming to output; tests inject a
-	// recorder. Nil means a shiprun.Runner.
-	ShipSteps func(repoRoot string, output io.Writer) shipplan.StepRunner
-	// GitHubToken returns a token for semantic-release when the environment
-	// has no GH_TOKEN or GITHUB_TOKEN; tests inject a fixed one so no real
-	// credential is read. Nil means `gh auth token` through Runner.
-	GitHubToken func(context.Context) string
-	// PipelineSteps returns the runner of nerv pipeline's commands for the
-	// repository at repoRoot, streaming to output; tests inject a recorder.
-	// Nil means a shiprun.Runner.
-	PipelineSteps func(repoRoot string, output io.Writer) pipeline.StepRunner
-	// WriteReleaseOutputs writes nerv pipeline release's release.json; tests
-	// inject a failure. Nil means pipeline.WriteReleaseOutputs.
-	WriteReleaseOutputs func(repo string, o pipeline.ReleaseOutputs) (string, error)
-	// OpenDockerWorkspace, DockerProc and DockerArgs are nerv pipeline
-	// docker's build clone, docker runner and computed-argument runner;
-	// tests inject fakes. Nil means semrel.NewWorkspace, proc.ExecRunner and
-	// a shiprun.Runner.
-	OpenDockerWorkspace func(context.Context, semrel.WorkspaceOptions) (dockerWorkspace, error)
-	DockerProc          proc.Runner
-	DockerArgs          func(repoRoot string, output io.Writer) pipeline.ArgRunner
-	// OpenSyncWorkspace is nerv pipeline sync's clone; tests inject a fake.
-	// Nil means semrel.NewWorkspace.
-	OpenSyncWorkspace func(context.Context, semrel.WorkspaceOptions) (syncWorkspace, error)
-	// DeployProc runs nerv pipeline deploy's infisical, ssh and sshpass
-	// commands and DeploySleep waits between its health checks; tests
-	// inject fakes. Nil means proc.ExecRunner and a real wait.
+	// recorder. Nil means a releaserun.Runner.
+	ReleaseSteps func(repoRoot string, output io.Writer) releaseplan.StepRunner
+	// DeployProc runs nerv deploy's provider commands and the native
+	// deploy-ssh-compose operations' infisical, ssh and sshpass, and
+	// DeploySleep waits between the health checks; tests inject fakes. Nil
+	// means proc.ExecRunner and a real wait.
 	DeployProc  proc.Runner
 	DeploySleep func(context.Context, time.Duration) error
-	// PipelineStep runs one step for nerv pipeline run; tests inject a
-	// fake. Nil means the step's own command (runPipeline).
-	PipelineStep func(step string, args []string, stdout, stderr io.Writer, opts options) int
+	// ReleaseProc runs the release extension's provider steps (the
+	// version engine's and the build providers' `nerv provider
+	// release-<name> <operation>`); tests may inject a fake. Nil means
+	// proc.ExecRunner.
+	ReleaseProc proc.Runner
 }
 
 func defaultOptions() options {
 	return options{
 		PluginFS:        pluginFS(),
+		ExtensionsFS:    nerv.ExtensionsFS(),
 		Runner:          env.ExecRunner{},
 		Now:             time.Now,
 		LookPath:        env.LookPath,
 		Getenv:          os.Getenv,
 		Stdin:           os.Stdin,
 		IsTerminal:      stdinIsTerminal,
-		ComputeVersions: semrel.Compute,
+		ComputeVersions: releaseclone.Compute,
 		SignalContext:   signalContext,
 	}
 }
@@ -168,14 +166,24 @@ func run(args []string, stdout, stderr io.Writer, opts options) int {
 		return runApplyModels(args[1:], stdout, stderr, opts)
 	case "skills":
 		return runSkills(args[1:], stdout, stderr, opts)
-	case "spec-compose":
-		return runSpecCompose(args[1:], stdout, stderr)
-	case "ship":
-		return runShip(args[1:], stdout, stderr, opts)
-	case "pipeline":
-		return runPipeline(args[1:], stdout, stderr, opts)
 	case "release":
 		return runRelease(args[1:], stdout, stderr, opts)
+	case "deploy":
+		return runDeploy(args[1:], stdout, stderr, opts)
+	case "migrate":
+		return runMigrate(args[1:], stdout, stderr, opts)
+	case "doctor":
+		return runDoctor(args[1:], stdout, stderr, opts)
+	case "provider":
+		// Hidden: the operations of nerv's native providers, run by their
+		// extension (nerv deploy runs deploy-ssh-compose's, nerv release
+		// the release-* ones).
+		return runProvider(args[1:], stdout, stderr, opts)
+	case "pipeline":
+		fmt.Fprintln(stderr, pipelineRemoved)
+		return 2
+	case "maintainer-release":
+		return runMaintainerRelease(args[1:], stdout, stderr, opts)
 	default:
 		fmt.Fprint(stderr, usage)
 		return 2
@@ -220,6 +228,43 @@ func runVersion(args []string, stdout, stderr io.Writer, opts options) int {
 	return 0
 }
 
+// pipelineRemoved answers the removed nerv pipeline command with where each
+// of its steps went.
+const pipelineRemoved = `nerv pipeline was removed. Its steps moved:
+  validate and test: nerv release (stages of each project in the release: section)
+  docker and release: nerv release, then nerv deploy
+  deploy: the deploy-ssh-compose target of the deploy: section (nerv deploy)
+  sync: not ported yet
+Move the pipeline: section of .ai-workflow/config.yaml with nerv migrate, or by hand (/release:setup and /deploy:setup).`
+
 func pluginFS() fs.FS {
 	return nerv.PluginFS()
+}
+
+// releaseProviders calls the release extension's providers from the
+// extensions tree (the embedded one when opts has none: the release
+// extension always ships its own) merged with the project extensions and
+// providers of the repository at top, their stderr streamed to output. An
+// invalid project extension or provider is a refusal.
+func releaseProviders(opts options, top string, output io.Writer) (releaseplan.Providers, error) {
+	fsys := opts.ExtensionsFS
+	if fsys == nil {
+		fsys = nerv.ExtensionsFS()
+	}
+	fsys, err := projectTree(fsys, top)
+	if err != nil {
+		return releaseplan.Providers{}, err
+	}
+	return releaseplan.Providers{FS: fsys, Runner: opts.ReleaseProc, Output: output}, nil
+}
+
+// projectTree is fsys merged with the project extensions and providers of
+// the repository at top (extension.WithProject); an invalid one is a
+// refusal.
+func projectTree(fsys fs.FS, top string) (fs.FS, error) {
+	merged, err := extension.WithProject(fsys, top)
+	if err != nil {
+		return nil, &refusal.Error{Err: err}
+	}
+	return merged, nil
 }

@@ -50,25 +50,89 @@ type marketplacePlugin struct {
 
 // Materialize writes the whole tree from src under dest/plugin, byte-exact,
 // and writes dest/.claude-plugin/marketplace.json registering it as a
-// directory marketplace named "nerv". It is idempotent: a file whose bytes
-// already match the source is left untouched, and files under dest/plugin
-// that are no longer present in src are removed. Materialize never writes
-// or removes anything outside dest/plugin and dest/.claude-plugin.
+// directory marketplace named "nerv". It is MaterializeBundle with no
+// extensions and providers.
 func Materialize(src fs.FS, dest string) (Result, error) {
+	return MaterializeBundle(src, nil, dest)
+}
+
+// MaterializeBundle writes the core plugin tree from core under
+// dest/plugin and every extension and provider in extensions (one folder per
+// plugin, see Extensions) under dest/plugins/<name>, byte-exact, then
+// writes dest/.claude-plugin/marketplace.json listing the core plugin
+// first and the extensions in name order. It is idempotent: a file whose
+// bytes already match the source is left untouched, and files under
+// dest/plugin or dest/plugins that are no longer present in a source are
+// removed. It never writes or removes anything outside dest/plugin,
+// dest/plugins and dest/.claude-plugin. A nil extensions writes none.
+func MaterializeBundle(core, extensions fs.FS, dest string) (Result, error) {
 	var result Result
 
 	if err := ensureDestIsUsable(dest); err != nil {
 		return result, err
 	}
 
-	destPluginRoot := filepath.Join(dest, "plugin")
-	if err := os.MkdirAll(destPluginRoot, dirPerm); err != nil {
-		return result, fmt.Errorf("creating %s: %w", destPluginRoot, err)
+	exts, err := Extensions(extensions)
+	if err != nil {
+		return result, err
 	}
 
 	knownFiles := make(map[string]struct{})
+	destPluginRoot := filepath.Join(dest, "plugin")
+	if err := writeTree(core, destPluginRoot, "plugin/", knownFiles, &result); err != nil {
+		return result, err
+	}
+	destExtRoot := filepath.Join(dest, "plugins")
+	for _, ext := range exts {
+		sub, err := fs.Sub(extensions, ext.Name)
+		if err != nil {
+			return result, err
+		}
+		root := filepath.Join(destExtRoot, ext.Name)
+		if err := writeTree(sub, root, "plugins/"+ext.Name+"/", knownFiles, &result); err != nil {
+			return result, err
+		}
+	}
 
-	err := fs.WalkDir(src, ".", func(path string, d fs.DirEntry, walkErr error) error {
+	for _, root := range []string{destPluginRoot, destExtRoot} {
+		if _, err := os.Stat(root); os.IsNotExist(err) {
+			continue
+		}
+		removed, err := removeStaleFiles(root, knownFiles)
+		if err != nil {
+			return result, err
+		}
+		result.Removed = append(result.Removed, removed...)
+	}
+
+	description, err := readPluginDescription(core)
+	if err != nil {
+		return result, err
+	}
+	plugins := []marketplacePlugin{{Name: "nerv", Source: "./plugin", Description: description}}
+	for _, ext := range exts {
+		plugins = append(plugins, marketplacePlugin{Name: ext.Name, Source: "./plugins/" + ext.Name, Description: ext.Description})
+	}
+
+	if err := writeMarketplaceManifest(dest, plugins, &result); err != nil {
+		return result, err
+	}
+
+	sort.Strings(result.Written)
+	sort.Strings(result.Unchanged)
+	sort.Strings(result.Removed)
+
+	return result, nil
+}
+
+// writeTree copies every file of src under destRoot, recording each one in
+// knownFiles and result as relPrefix + its path.
+func writeTree(src fs.FS, destRoot, relPrefix string, knownFiles map[string]struct{}, result *Result) error {
+	if err := os.MkdirAll(destRoot, dirPerm); err != nil {
+		return fmt.Errorf("creating %s: %w", destRoot, err)
+	}
+
+	return fs.WalkDir(src, ".", func(path string, d fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return fmt.Errorf("walking source at %q: %w", path, walkErr)
 		}
@@ -79,8 +143,8 @@ func Materialize(src fs.FS, dest string) (Result, error) {
 			return err
 		}
 
-		destPath := filepath.Join(destPluginRoot, filepath.FromSlash(path))
-		if err := checkWithinRoot(destPluginRoot, destPath); err != nil {
+		destPath := filepath.Join(destRoot, filepath.FromSlash(path))
+		if err := checkWithinRoot(destRoot, destPath); err != nil {
 			return err
 		}
 
@@ -96,7 +160,7 @@ func Materialize(src fs.FS, dest string) (Result, error) {
 			return fmt.Errorf("reading %s: %w", path, err)
 		}
 
-		relDest := "plugin/" + path
+		relDest := relPrefix + path
 		knownFiles[relDest] = struct{}{}
 
 		changed, err := writeIfChanged(destPath, data)
@@ -110,30 +174,6 @@ func Materialize(src fs.FS, dest string) (Result, error) {
 		}
 		return nil
 	})
-	if err != nil {
-		return result, err
-	}
-
-	removed, err := removeStaleFiles(destPluginRoot, knownFiles)
-	if err != nil {
-		return result, err
-	}
-	result.Removed = removed
-
-	description, err := readPluginDescription(src)
-	if err != nil {
-		return result, err
-	}
-
-	if err := writeMarketplaceManifest(dest, description, &result); err != nil {
-		return result, err
-	}
-
-	sort.Strings(result.Written)
-	sort.Strings(result.Unchanged)
-	sort.Strings(result.Removed)
-
-	return result, nil
 }
 
 func ensureDestIsUsable(dest string) error {
@@ -200,8 +240,9 @@ func writeIfChanged(destPath string, data []byte) (bool, error) {
 }
 
 // removeStaleFiles deletes files under root that are not present in
-// knownFiles (keyed as "plugin/<relative path>"), then removes any
-// directories left empty by that cleanup.
+// knownFiles (keyed by their path relative to root's parent, such as
+// "plugin/<relative path>"), then removes any directories left empty by
+// that cleanup.
 func removeStaleFiles(root string, knownFiles map[string]struct{}) ([]string, error) {
 	var removed []string
 
@@ -287,17 +328,11 @@ func readPluginDescription(src fs.FS) (string, error) {
 	return manifest.Description, nil
 }
 
-func writeMarketplaceManifest(dest, description string, result *Result) error {
+func writeMarketplaceManifest(dest string, plugins []marketplacePlugin, result *Result) error {
 	manifest := marketplaceManifest{
-		Name:  "nerv",
-		Owner: marketplaceOwner{Name: "Walter Rodriguez"},
-		Plugins: []marketplacePlugin{
-			{
-				Name:        "nerv",
-				Source:      "./plugin",
-				Description: description,
-			},
-		},
+		Name:    "nerv",
+		Owner:   marketplaceOwner{Name: "Walter Rodriguez"},
+		Plugins: plugins,
 	}
 
 	encoded, err := json.MarshalIndent(manifest, "", "  ")

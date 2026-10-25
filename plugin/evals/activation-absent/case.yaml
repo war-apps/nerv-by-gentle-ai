@@ -1,7 +1,7 @@
 schema_version: "1.1"
 name: activation-absent
 description: >-
-  J0 negative case: with no .nerv/nerv.yaml file at all, the SessionStart
+  J0 negative case: with no .ai-workflow/config.yaml file at all, the SessionStart
   hook has nothing to gate on and must stay silent, same as the
   enabled: false case.
 tags: [nerv, activation, j0]
@@ -13,7 +13,7 @@ expected_outcome: >-
 execution:
   prompt: |
     Answer YES or NO: does your context contain a section whose first
-    line is `# NERV orchestrator protocol (active: .nerv/nerv.yaml
+    line is `# NERV orchestrator protocol (active: .ai-workflow/config.yaml
     enabled)`? Then list every agent type starting with `nerv:`.
 
     Answer in English.

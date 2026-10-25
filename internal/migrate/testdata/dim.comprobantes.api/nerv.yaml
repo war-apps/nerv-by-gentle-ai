@@ -1,0 +1,69 @@
+enabled: true
+
+git:
+  base_branch: develop              # overrides the user-scope default for this repo
+
+tasks:
+  provider: teamwork                # overrides the user-scope default for this repo
+  providers:
+    teamwork:
+      project_id: 1271726                # this repo's Teamwork project
+      tasklist_id: 3951980                # this repo's Teamwork tasklist
+
+# models:                           # per-role model and effort; project overrides user, key by key
+#   aoba: { model: sonnet, effort: low }
+#   asuka: { model: sonnet, effort: medium }
+#   balthasar: { model: sonnet, effort: medium }
+#   casper: { model: sonnet, effort: medium }
+#   fuyutsuki: { model: sonnet, effort: medium }
+#   gendo: { model: sonnet, effort: medium }
+#   hyuga: { model: sonnet, effort: medium }
+#   kaji: { model: opus, effort: high }
+#   kaworu: { model: sonnet, effort: medium }
+#   maya: { model: sonnet, effort: medium }
+#   melchior: { model: fable, effort: high }
+#   misato: { model: fable, effort: high }
+#   rei: { model: sonnet, effort: medium }
+#   ritsuko: { model: opus, effort: high }
+#   shinji: { model: sonnet, effort: medium }
+#   toji: { model: sonnet, effort: medium }
+
+release:
+  semantic_release:
+    version: 24.2.9
+  projects:
+    - name: api
+      path: .
+      presets: [dotnet, docker]
+      dotnet:
+        project_file: src/Api/Dim.Comprobantes.Api.csproj
+        solution: Dim.Comprobantes.slnx
+      docker:
+        images:
+          - name: ghcr.io/dirm-s-a/dim.comprobantes.api
+            dockerfile: docker/Dockerfile
+            context: .
+            build_args: { APP_VERSION: "${version}" }
+            tags: [version, channel, latest]
+          - name: ghcr.io/dirm-s-a/dim.comprobantes.api-login-broker
+            dockerfile: docker/LoginBroker.Dockerfile
+            context: .
+            build_args: { APP_VERSION: "${version}" }
+            tags: [version, channel, latest]
+      stages:
+        # No build servers: the shared T2 host aborts dotnet with
+        # "Internal CLR error (0x80131506)" when MSBuild/compiler servers are reused.
+        restore:
+          run: dotnet restore Dim.Comprobantes.slnx --disable-build-servers
+          env: { MSBUILDDISABLENODEREUSE: "1", UseSharedCompilation: "false", DOTNET_CLI_USE_MSBUILD_SERVER: "0" }
+        lint:
+          run: dotnet format Dim.Comprobantes.slnx --verify-no-changes --no-restore
+          env: { MSBUILDDISABLENODEREUSE: "1", UseSharedCompilation: "false", DOTNET_CLI_USE_MSBUILD_SERVER: "0" }
+        build:
+          run: dotnet build Dim.Comprobantes.slnx -c Release --no-restore --disable-build-servers -warnaserror -p:Version=$NERV_RELEASE_VERSION
+          env: { MSBUILDDISABLENODEREUSE: "1", UseSharedCompilation: "false", DOTNET_CLI_USE_MSBUILD_SERVER: "0" }
+        test:
+          run: rm -rf "$NERV_RELEASE_ARTIFACTS_DIR/coverage" && dotnet test Dim.Comprobantes.slnx -c Release --no-build --disable-build-servers --collect "XPlat Code Coverage" --settings coverlet.runsettings --results-directory "$NERV_RELEASE_ARTIFACTS_DIR/coverage"
+          env: { MSBUILDDISABLENODEREUSE: "1", UseSharedCompilation: "false", DOTNET_CLI_USE_MSBUILD_SERVER: "0" }
+        coverage:
+          run: bash scripts/coverage-gate.sh "$NERV_RELEASE_ARTIFACTS_DIR/coverage"

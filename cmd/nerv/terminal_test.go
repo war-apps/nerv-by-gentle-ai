@@ -53,7 +53,7 @@ func TestStdinIsTerminal_SeamTrue_ProceedsToWizard(t *testing.T) {
 
 	code := run([]string{
 		"configure",
-		"--skip-skills", "--skip-models", "--skip-repos", "--skip-commands", "--no-refresh",
+		"--skip-skills", "--skip-models", "--skip-repos", "--no-refresh",
 	}, &stdout, &stderr, opts)
 
 	if code != 0 {

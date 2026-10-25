@@ -54,8 +54,8 @@ For each artifact this task requires, read its locator:
 
 | reported store | locator shape | how to read it |
 |---|---|---|
-| `openspec` | repo path, e.g. `openspec/changes/{change}/nerv/audit/diff-round-N.patch` | read the file |
-| `engram` | topic key, e.g. `nerv/{change}/audit/pass-melchior-round-N` | `mem_search(query: "<locator>", project: "{project}")` → `mem_get_observation(id)` |
+| `odd` | repo path, e.g. `odd/{feature}/nerv/audit/diff-round-N.patch` | read the file |
+| `engram` | topic key, e.g. `nerv/{feature}/audit/pass-melchior-round-N` | `mem_search(query: "<locator>", project: "{project}")` → `mem_get_observation(id)` |
 | `hybrid` | either shape | read the file when the locator is a path, the observation when it is a topic key |
 
 `mem_search` returns 300-character previews only. Always call
@@ -73,9 +73,9 @@ gendo-round-N.json` and the three MAGI audit-mode outputs
 launch prompt. A pass file missing under its current name in a round that
 predates the role rename is read under its old name, per
 "Legacy pass names" in `nerv-artifacts.md`. He also needs `nerv/audit/round-N.yaml` (`{round, base,
-head, created_at}`), `diff-round-N.patch`, and the plan artifacts
-(`proposal.md`, `design.md`, `tasks.md`, `specs/`, `nerv/test-plan.md`)
-for context when a finding's location needs cross-referencing against
+head, created_at}`), `diff-round-N.patch`, and the ODD document
+`odd/tasks/{feature}.md` (`## Specs`, `## Tasks`, the design and test-plan
+`## Log` entries) for context when a finding's location needs cross-referencing against
 what was promised.
 
 ### Precedent lookup (knowledge base)
@@ -85,7 +85,7 @@ shared knowledge base for precedent: `mem_search(query: "<change domain
 keywords>", project: "nerv", limit: 5)`, then `mem_get_observation` on
 the hits worth reading in full. When a precedent shapes a merge,
 severity, or disposition call, cite it by its topic key
-(`nerv/kb/{repo}/{change}/{artifact}`) in `audit-report.md`. A precedent
+(`nerv/kb/{repo}/{feature}/{artifact}`) in `audit-report.md`. A precedent
 never overrides the current round's pass evidence — it informs judgment,
 it does not bind it. An empty result is normal on a project's first
 NERV run and is not a blocker.
@@ -101,8 +101,8 @@ on source, tests, or the frozen patch.
 
 ```
 mem_save(
-  title: "nerv/{change}/audit-report",
-  topic_key: "nerv/{change}/audit-report",
+  title: "nerv/{feature}/audit-report",
+  topic_key: "nerv/{feature}/audit-report",
   type: "architecture",
   project: "{project}",
   capture_prompt: false,
@@ -116,7 +116,7 @@ automated pipeline outputs, not human/proactive saves. Set it when the
 tool schema supports it; omit it rather than failing if an older schema
 rejects it.
 
-### OpenSpec mode
+### ODD mode
 
 Write `nerv/audit-report.md` directly to the injected repo path via
 `Write`. No additional action needed.
@@ -135,15 +135,20 @@ Return the result inline only. Do not write any files and do not call
 
 ### Knowledge-base mirror (decision artifacts only)
 
-After persisting `nerv/audit-report.md` per the per-change rule above,
+After persisting `nerv/audit-report.md` per the per-run rule above,
 Kaji ALSO mirrors it to the shared knowledge base — Engram project
-`nerv` — with topic key `nerv/kb/{repo}/{change}/audit-report` (`{repo}`
+`nerv` — with topic key `nerv/kb/{repo}/{feature}/audit-report` (`{repo}`
 = the basename of the git toplevel), `type: "decision"`,
 `capture_prompt: false`, content: the findings list (severities and
-dispositions) prefixed with one line: `repo: {repo} change: {change}
-artifact: audit-report`. Both the per-change write and the knowledge-
+dispositions) prefixed with one line: `repo: {repo} feature: {feature}
+artifact: audit-report`. Both the per-run write and the knowledge-
 base mirror are read back; a failed mirror is reported as `partial`,
 never a blocker for the change itself.
+When the host rejects that `mem_save` (for example "Claude host session
+registration could not be confirmed"), the status is `partial`, not
+`blocked`: put the unsaved mirror in `detailed_report` under a
+`Pending KB mirror` heading (its topic key, then the exact content), and
+Ikari flushes it at close.
 
 ## Return envelope
 
@@ -158,7 +163,7 @@ Return exactly these fields as the final text:
 - `status`: `success`, `partial`, or `blocked`
 - `executive_summary`: 1-3 sentences
 - `detailed_report`: full output, or omit if already inline
-- `artifacts`: `nerv/{change}/audit-report` plus its locator
+- `artifacts`: `nerv/{feature}/audit-report` plus its locator
 - `next_recommended`: `ikari-decision` when the refuter batch is
   non-empty (Ikari launches `fuyutsuki` in `MODE: refute`), else `none`
   (Ikari launches Hyuga ranking)

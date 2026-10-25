@@ -290,3 +290,168 @@ func TestRunInstall_SkillsStep_NotATerminal_NoPromptNoSync(t *testing.T) {
 		t.Errorf("stdout lacks the remedy:\n%s", stdout.String())
 	}
 }
+
+// seedExtensionsForCLI records task@nerv and task-teamwork@nerv as cached
+// at the embedded version, next to nerv@nerv.
+func seedExtensionsForCLI(t *testing.T, home string) {
+	t.Helper()
+	seedInstalledPluginsForCLI(t, home)
+	pv, err := version.PluginVersion(nerv.PluginFS())
+	if err != nil {
+		t.Fatal(err)
+	}
+	content := `{"plugins":{"nerv@nerv":[{"installPath":"/c/nerv","version":"` + pv + `"}],` +
+		`"task@nerv":[{"installPath":"/c/task","version":"` + pv + `"}],` +
+		`"task-teamwork@nerv":[{"installPath":"/c/tw","version":"` + pv + `"}]}}`
+	if err := os.WriteFile(filepath.Join(home, ".claude", "plugins", "installed_plugins.json"), []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// seedReleaseFamilyForCLI records every embedded extension as cached at the
+// embedded version, next to nerv@nerv.
+func seedReleaseFamilyForCLI(t *testing.T, home string) {
+	t.Helper()
+	seedInstalledPluginsForCLI(t, home)
+	pv, err := version.PluginVersion(nerv.PluginFS())
+	if err != nil {
+		t.Fatal(err)
+	}
+	content := `{"plugins":{"nerv@nerv":[{"installPath":"/c/nerv","version":"` + pv + `"}]`
+	for _, name := range []string{"task", "task-teamwork", "release", "release-conventional-commits", "release-docker-compose", "release-bash", "deploy", "deploy-bash", "deploy-github", "deploy-ssh-compose"} {
+		content += `,"` + name + `@nerv":[{"installPath":"/c/` + name + `","version":"` + pv + `"}]`
+	}
+	if err := os.WriteFile(filepath.Join(home, ".claude", "plugins", "installed_plugins.json"), []byte(content+"}}"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestRunInstall_WithFlag_InstallsTheNamedExtensions(t *testing.T) {
+	home := t.TempDir()
+	seedExtensionsForCLI(t, home)
+	var stdout, stderr bytes.Buffer
+	opts := testOptions(home)
+	opts.ExtensionsFS = nerv.ExtensionsFS()
+	runner := baseInstallRunner()
+	opts.Runner = runner
+
+	code := run([]string{"install", "--no-skills", "--no-configure", "--with", "task"}, &stdout, &stderr, opts)
+
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0; stdout:\n%s\nstderr:\n%s", code, stdout.String(), stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "-> claude plugin install task@nerv") {
+		t.Errorf("task@nerv not installed:\n%s", stdout.String())
+	}
+	if strings.Contains(stdout.String(), "task-teamwork@nerv") {
+		t.Errorf("a provider was installed without being named or confirmed:\n%s", stdout.String())
+	}
+}
+
+func TestRunInstall_Terminal_SuggestsExtensions(t *testing.T) {
+	home := t.TempDir()
+	seedExtensionsForCLI(t, home)
+	var stdout, stderr bytes.Buffer
+	opts := testOptions(home)
+	opts.ExtensionsFS = nerv.ExtensionsFS()
+	opts.IsTerminal = func() bool { return true }
+	opts.Runner = baseInstallRunner()
+	opts.Stdin = strings.NewReader("y\nn\n")
+
+	code := run([]string{"install", "--no-skills", "--no-configure"}, &stdout, &stderr, opts)
+
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0; stdout:\n%s\nstderr:\n%s", code, stdout.String(), stderr.String())
+	}
+	out := stdout.String()
+	if !strings.Contains(out, "Install task@nerv") || !strings.Contains(out, "Install task-teamwork@nerv") {
+		t.Errorf("expected both suggestions, got:\n%s", out)
+	}
+	if !strings.Contains(out, "-> claude plugin install task@nerv") || strings.Contains(out, "-> claude plugin install task-teamwork@nerv") {
+		t.Errorf("expected only task@nerv installed, got:\n%s", out)
+	}
+}
+
+func TestRunInstall_WithUnknownExtension_Exits1(t *testing.T) {
+	home := t.TempDir()
+	seedInstalledPluginsForCLI(t, home)
+	var stdout, stderr bytes.Buffer
+	opts := testOptions(home)
+	opts.ExtensionsFS = nerv.ExtensionsFS()
+	opts.Runner = baseInstallRunner()
+
+	code := run([]string{"install", "--no-skills", "--no-configure", "--with", "task-jira"}, &stdout, &stderr, opts)
+
+	if code != 1 {
+		t.Fatalf("exit code = %d, want 1; stdout:\n%s", code, stdout.String())
+	}
+	if !strings.Contains(stdout.String(), `"task-jira"`) {
+		t.Errorf("expected the unknown name reported, got:\n%s", stdout.String())
+	}
+}
+
+// S7: on a terminal, nerv install asks before deleting the old /task:*
+// copies and deletes them on yes; elsewhere it only reports them.
+func TestRunInstall_LegacyCommands_AskOnTerminalReportOtherwise(t *testing.T) {
+	for _, terminal := range []bool{true, false} {
+		home := t.TempDir()
+		seedInstalledPluginsForCLI(t, home)
+		dir := filepath.Join(home, ".claude", "commands", "task")
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		copyPath := filepath.Join(dir, "start.md")
+		if err := os.WriteFile(copyPath, []byte("old\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		opts := testOptions(home)
+		opts.Runner = baseInstallRunner()
+		opts.IsTerminal = func() bool { return terminal }
+		opts.Stdin = strings.NewReader("y\n")
+
+		var stdout, stderr bytes.Buffer
+		if code := run([]string{"install", "--no-skills", "--no-configure"}, &stdout, &stderr, opts); code != 0 {
+			t.Fatalf("terminal=%v: exit code = %d, want 0; stdout:\n%s", terminal, code, stdout.String())
+		}
+		_, statErr := os.Stat(copyPath)
+		asked := strings.Contains(stdout.String(), "Remove these 1 old copies? [y/N]")
+		if terminal && (!asked || !os.IsNotExist(statErr)) {
+			t.Errorf("terminal: asked=%v, copy still there=%v; stdout:\n%s", asked, statErr == nil, stdout.String())
+		}
+		if !terminal && (asked || statErr != nil || !strings.Contains(stdout.String(), "can be removed")) {
+			t.Errorf("not a terminal: asked=%v, stat=%v; stdout:\n%s", asked, statErr, stdout.String())
+		}
+	}
+}
+
+// L21, S8: nerv install --help describes the whole suggestion order, the
+// providers bundled with release and deploy, and the requirements.
+func TestInstall_HelpDescribesTheSuggestionOrderAndRequirements(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	run([]string{"install", "--help"}, &stdout, &stderr, testOptions(t.TempDir()))
+	help := stdout.String() + stderr.String()
+	order := []string{"task@nerv", "task-<name>@nerv", "release@nerv", "deploy@nerv", "providers: bundled",
+		"release-conventional-commits", "release-docker-compose", "release-bash", "deploy-bash", "deploy-github", "deploy-ssh-compose",
+		"task's\nproviders are suggested"}
+	at := 0
+	for _, want := range order {
+		i := strings.Index(help[at:], want)
+		if i < 0 {
+			t.Fatalf("help lacks %q after position %d (order %q):\n%s", want, at, order, help)
+		}
+		at += i + len(want)
+	}
+	for _, want := range []string{"deploy requires release", "a provider requires its\nextension", "the task extension (task@nerv",
+		"Comma-separated extensions and providers to install"} {
+		if !strings.Contains(help, want) {
+			t.Errorf("help lacks %q:\n%s", want, help)
+		}
+	}
+	// Add-ons are extensions and their implementations providers; "plugin"
+	// is only their Claude Code packaging.
+	for _, gone := range []string{"extension plugin", "task plugin", "release plugin", "deploy plugin", "A plugin named"} {
+		if strings.Contains(help, gone) {
+			t.Errorf("help still says %q:\n%s", gone, help)
+		}
+	}
+}

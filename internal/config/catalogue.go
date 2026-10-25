@@ -2,35 +2,17 @@ package config
 
 import "strings"
 
-// KeyDefault pairs one managed nerv.yaml key with its built-in default
+// KeyDefault pairs one managed configuration key with its built-in default
 // value, in the catalogue's canonical order.
 type KeyDefault struct {
 	Key   string
 	Value string
 }
 
-// StageOrder returns the Teamwork workflow stage names, in the canonical
-// order every stages: block and prompt list uses.
-func StageOrder() []string {
-	return []string{"inDev", "testing", "implemented", "blocked", "canceled", "pending", "analysis"}
-}
-
 // SkillsCategories returns the skills: block's consuming-role categories,
 // in the canonical order every skills prompt list and block uses.
 func SkillsCategories() []string {
 	return []string{"testing", "code", "best-practices", "architecture", "audit"}
-}
-
-// stageDefaults holds each Teamwork stage's built-in default value, keyed
-// by StageOrder's stage name.
-var stageDefaults = map[string]string{
-	"inDev":       "DESARROLLO",
-	"testing":     "TESTING",
-	"implemented": "IMPLEMENTA",
-	"blocked":     "BLOQUEA",
-	"canceled":    "CANCEL",
-	"pending":     "PENDIENTE",
-	"analysis":    "ANALISIS",
 }
 
 // skillsDefaults holds each skills category's built-in default stack,
@@ -43,7 +25,7 @@ var skillsDefaults = map[string]string{
 	"audit":          "security-review, clean-code-guard",
 }
 
-// Defaults returns the built-in default for every managed nerv.yaml key, in
+// Defaults returns the built-in default for every managed configuration key, in
 // catalogue order — the complete catalogue of keys SetManagedValue accepts.
 // Mirrors Get-NervConfigDefaults.
 func Defaults() []KeyDefault {
@@ -53,18 +35,6 @@ func Defaults() []KeyDefault {
 		{"git.worktree_pattern", ".claude/worktrees/{slug}"},
 		{"git.branch_pattern", "feature/{prefix}-{id}-{slug}"},
 		{"git.commit_ref_pattern", "({PREFIX}-{id})"},
-		{"tasks.provider", "teamwork"},
-		{"tasks.ask_when_missing", "true"},
-		{"tasks.subtasks_per_wave", "false"},
-		{"tasks.timer_store", "~/.claude/work/timers.json"},
-		{"tasks.rounding_minutes", "15"},
-		{"tasks.providers.teamwork.task_ref_prefix", "tw"},
-		{"tasks.providers.teamwork.assignee_id", ""},
-		{"tasks.providers.teamwork.default_project_id", ""},
-		{"tasks.providers.teamwork.default_tasklist_id", ""},
-	}
-	for _, stage := range StageOrder() {
-		defaults = append(defaults, KeyDefault{"tasks.providers.teamwork.stages." + stage, stageDefaults[stage]})
 	}
 	for _, cat := range SkillsCategories() {
 		defaults = append(defaults, KeyDefault{"skills." + cat, skillsDefaults[cat]})
@@ -97,12 +67,6 @@ func ManagedKeys() []string {
 	return keys
 }
 
-// RemovedTaskProviders lists the task providers that earlier releases wrote
-// into nerv.yaml and that no longer exist. StripRemovedTaskProviders removes
-// their settings from existing configs; a future removal only needs a new
-// entry here.
-var RemovedTaskProviders = []string{"github-projects", "jira"}
-
 // AllowedValues returns the closed set of valid values for a managed key
 // that has one, and whether key is enumerated at all. A managed key absent
 // from this catalogue (ok == false) accepts any value. Mirrors
@@ -111,12 +75,6 @@ func AllowedValues(key string) (values []string, ok bool) {
 	switch key {
 	case "git.worktree":
 		return []string{"ask", "always", "never"}, true
-	case "tasks.provider":
-		return []string{"teamwork", "none"}, true
-	case "tasks.ask_when_missing":
-		return []string{"true", "false"}, true
-	case "tasks.subtasks_per_wave":
-		return []string{"true", "false"}, true
 	case "artifacts.commit":
 		return []string{"with-change", "at-close", "never"}, true
 	default:
@@ -163,12 +121,9 @@ func FormatCriticalPathsLine(paths []string) string {
 // caller supplies; an empty field is omitted from the rendered file.
 type ProjectValues struct {
 	BaseBranch string
-	Provider   string
-	ProjectID  string
-	TasklistID string
 }
 
-// FormatProjectFile renders a project-scope .nerv/nerv.yaml text:
+// FormatProjectFile renders a project-scope .ai-workflow/config.yaml text:
 // enabled: true, then only the fields the caller set, each with a short
 // comment, plus a commented models: hint line. Mirrors
 // Format-NervProjectFile.
@@ -178,25 +133,6 @@ func FormatProjectFile(v ProjectValues) string {
 	if v.BaseBranch != "" {
 		lines = append(lines, "", "git:",
 			"  base_branch: "+v.BaseBranch+"              # overrides the user-scope default for this repo")
-	}
-
-	hasProvider := v.Provider != ""
-	hasProjectID := v.ProjectID != ""
-	hasTasklistID := v.TasklistID != ""
-	if hasProvider || hasProjectID || hasTasklistID {
-		lines = append(lines, "", "tasks:")
-		if hasProvider {
-			lines = append(lines, "  provider: "+v.Provider+"                # overrides the user-scope default for this repo")
-		}
-		if hasProjectID || hasTasklistID {
-			lines = append(lines, "  providers:", "    teamwork:")
-			if hasProjectID {
-				lines = append(lines, "      project_id: "+v.ProjectID+"                # this repo's Teamwork project")
-			}
-			if hasTasklistID {
-				lines = append(lines, "      tasklist_id: "+v.TasklistID+"                # this repo's Teamwork tasklist")
-			}
-		}
 	}
 
 	lines = append(lines, "", "# models:                           # optional: per-role model/effort overrides for this repo (see nerv configure --init-repo)")

@@ -1,10 +1,11 @@
-// Package config edits nerv.yaml documents in place while preserving their
+// Package config edits nerv's configuration documents (config.yaml and
+// .ai-workflow/config.yaml) in place while preserving their
 // exact formatting (comments, blank lines, indentation, key order, EOL
 // style), and holds the managed configuration-key catalogue and per-role
 // model catalogue used by "nerv configure". It never touches the
 // filesystem: callers read/write bytes and hand this package text.
 //
-// This package is a line-based, format-preserving editor over nerv.yaml —
+// This package is a line-based, format-preserving editor over those files —
 // never a general YAML parser/library.
 package config
 
@@ -24,7 +25,7 @@ var (
 	bareScalarRe      = regexp.MustCompile(`^[A-Za-z0-9_.\-/~]+$`)
 )
 
-// Document is a nerv.yaml text blob that can be inspected and edited in
+// Document is a .ai-workflow/config.yaml text blob that can be inspected and edited in
 // place while preserving every byte it does not touch.
 type Document struct {
 	text string
@@ -280,7 +281,7 @@ func isSpace(r rune) bool {
 // ---------------------------------------------------------------------------
 
 // Scalar reads one dotted-path scalar (e.g. "git.base_branch" or
-// "tasks.providers.teamwork.assignee_id"), returning its trailing scalar
+// "skills.code"), returning its trailing scalar
 // text (bare or quoted, trailing comment stripped, quotes trimmed) and
 // found=true, or found=false when any segment of the path is missing or
 // the leaf has no inline value. Mirrors Read-NervScalar.

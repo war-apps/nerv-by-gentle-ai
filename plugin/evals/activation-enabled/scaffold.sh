@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Seeds an empty workspace with a git repo and an activated .nerv/nerv.yaml
+# Seeds an empty workspace with a git repo and an activated .ai-workflow/config.yaml
 # (enabled: true), so the NERV SessionStart hook injects the orchestrator
 # protocol. Runs only under `claude plugin eval --scaffold`.
 set -euo pipefail
@@ -7,7 +7,7 @@ set -euo pipefail
 git init -q -b main
 
 mkdir -p .nerv
-cat > .nerv/nerv.yaml <<'EOF'
+mkdir -p .ai-workflow && cat > .ai-workflow/config.yaml <<'EOF'
 enabled: true
 git:
   worktree: never
