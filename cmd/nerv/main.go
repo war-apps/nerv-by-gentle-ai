@@ -40,6 +40,9 @@ Commands:
   migrate [flags]      Move a repository (and, with --user, the user
                        configuration) from nerv 4.2.0 or 5.0.0-alpha.1
                        (see "nerv migrate --help")
+  doctor [flags]       Check that NERV is in order on this machine and in
+                       the repository, and list the steps to take
+                       (see "nerv doctor --help")
   configure [flags]    Configure NERV (non-interactive; see "nerv configure --help")
   install [flags]      Install NERV (see "nerv install --help")
   uninstall [flags]    Uninstall NERV (see "nerv uninstall --help")
@@ -169,6 +172,8 @@ func run(args []string, stdout, stderr io.Writer, opts options) int {
 		return runDeploy(args[1:], stdout, stderr, opts)
 	case "migrate":
 		return runMigrate(args[1:], stdout, stderr, opts)
+	case "doctor":
+		return runDoctor(args[1:], stdout, stderr, opts)
 	case "provider":
 		// Hidden: the operations of nerv's native providers, run by their
 		// extension (nerv deploy runs deploy-ssh-compose's, nerv release

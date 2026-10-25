@@ -88,7 +88,7 @@ func selectExtensions(deps Deps, opts Options, settings *claude.Settings) ([]plu
 	}
 
 	for _, e := range exts {
-		if settings.PluginEnabled(e.Name + "@" + marketplaceName) {
+		if settings.PluginEnabled(e.Name + "@" + MarketplaceName) {
 			add(e)
 		}
 	}
