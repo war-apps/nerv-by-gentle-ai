@@ -1,8 +1,6 @@
 package deployprovider_test
 
 import (
-	"io/fs"
-	"strings"
 	"testing"
 
 	nerv "github.com/war-apps/nerv-by-gentle-ai"
@@ -10,33 +8,30 @@ import (
 	"github.com/war-apps/nerv-by-gentle-ai/internal/plugin"
 )
 
-// Every deploy provider nerv ships has a valid manifest, named after its
-// plugin (deploy-<name>); the GitHub host and the SSH compose target release.
+// Every deploy provider nerv ships has a valid provider.yaml, in a
+// deploy-<name> plugin requiring deploy; the GitHub host and the SSH
+// compose target release.
 func TestEmbeddedDeployProviders_AreValid(t *testing.T) {
 	exts, err := plugin.Extensions(nerv.ExtensionsFS())
 	if err != nil {
 		t.Fatal(err)
 	}
-	kinds := map[string]string{}
+	slots := map[string]string{}
 	for _, ext := range exts {
-		data, err := fs.ReadFile(nerv.ExtensionsFS(), ext.Name+"/"+deployprovider.ManifestFile)
-		if err != nil {
+		if ext.Owner != plugin.DeployPlugin {
 			continue
 		}
-		m, err := deployprovider.Parse(data)
+		m, err := deployprovider.Load(nerv.ExtensionsFS(), ext.Name)
 		if err != nil {
 			t.Errorf("%s: %v", ext.Name, err)
 			continue
 		}
-		if "deploy-"+m.Name != ext.Name {
-			t.Errorf("%s: manifest name %q, want the plugin named deploy-<name>", ext.Name, m.Name)
+		if "deploy-"+m.Name != ext.Name || len(ext.Requires) != 1 || ext.Requires[0] != plugin.DeployPlugin || ext.Slot != m.Slot {
+			t.Errorf("%s: a deploy provider must be a deploy-<name> plugin requiring %s: %+v", ext.Name, plugin.DeployPlugin, ext)
 		}
-		if !strings.HasPrefix(ext.Name, "deploy-") || ext.ProviderKind != plugin.DeployPlugin || len(ext.Requires) != 1 || ext.Requires[0] != plugin.DeployPlugin {
-			t.Errorf("%s: a deploy provider must be a deploy-<name> plugin without a task provider.yaml, requiring %s: %+v", ext.Name, plugin.DeployPlugin, ext)
-		}
-		kinds[m.Name] = m.Kind
+		slots[m.Name] = m.Slot
 	}
-	if kinds["github"] != deployprovider.KindGitHost || kinds["ssh-compose"] != deployprovider.KindTarget {
-		t.Errorf("embedded deploy providers %v, want github (git-host) and ssh-compose (target)", kinds)
+	if slots["github"] != deployprovider.SlotHost || slots["ssh-compose"] != deployprovider.SlotTarget {
+		t.Errorf("embedded deploy providers %v, want github (host) and ssh-compose (target)", slots)
 	}
 }

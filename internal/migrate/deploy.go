@@ -57,11 +57,7 @@ var oldDeploySource = []struct{ from, to string }{
 
 // sshComposeManifest is the deploy-ssh-compose provider's manifest.
 func sshComposeManifest(fsys fs.FS) (*deployprovider.Manifest, error) {
-	data, err := fs.ReadFile(fsys, "deploy-"+sshComposeProvider+"/"+deployprovider.ManifestFile)
-	if err != nil {
-		return nil, err
-	}
-	return deployprovider.Parse(data)
+	return deployprovider.Load(fsys, deployprovider.Extension+"-"+sshComposeProvider)
 }
 
 // translatePipeline turns the 4.2.0 pipeline: section into deploy targets:

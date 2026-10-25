@@ -1,10 +1,15 @@
 # deploy-ssh-compose
 
 The SSH and docker compose target for `nerv deploy` (plugin
-`deploy-ssh-compose@nerv`, provider name `ssh-compose`). It has no commands
-of its own: `nerv deploy` runs its operations from `deploy-provider.yaml`,
-the contract the `deploy` plugin's skill describes.
+`deploy-ssh-compose@nerv`, provider name `ssh-compose`, slot `target`). It
+has no commands of its own: `nerv deploy` runs its operations from
+`provider.yaml`, the provider contract (`docs/extensions.md`) that the
+`deploy` plugin's skill details. It is a native provider: `preflight`,
+`deploy` and `verify` run nerv's hidden `nerv provider deploy-ssh-compose
+<operation>`.
 
+- `preflight` checks the configuration and answers the tools it needs,
+  before `nerv deploy` writes anything.
 - `publish` runs `docker load -i` for each image tar of the artifact, then
   `docker push` for each image. Log in to the registry first.
 - `deploy` reads the environment's deploy data (the
@@ -19,7 +24,7 @@ An environment whose `DOCKER_DEPLOY_ENABLED` is off, or whose
 `DOCKER_IMAGE_VERSION` is refused. It needs `docker` and `ssh`, plus `sshpass`
 with `ssh_auth: password` and the `infisical` CLI with `source: infisical`;
 `nerv deploy` checks them before any push. The configuration keys and their
-scopes are in `deploy-provider.yaml` and in `docs/deploy.md`.
+scopes are in `provider.yaml` and in `docs/deploy.md`.
 
 ## Install
 

@@ -19,10 +19,10 @@ Order: T4 first (it touches every other surface), then T1, T2, T3, T5, T6, T7, T
 
 | ID | Specs | Task | Route | Status | Commit |
 |---|---|---|---|---|---|
-| T1 | S6 | Shared contract package: manifest loader, config schema, request/response envelope, statuses | inline | pending | |
-| T2 | S6, S2 | `extension.yaml` for task, release, deploy; discovery and requirements read from it instead of hard-coded maps | inline | pending | |
-| T3 | S6, S3, S5 | One `provider.yaml` shape for all providers; port task-teamwork, deploy-github, deploy-ssh-compose | inline | pending | |
-| T4 | S1 | Rename ship to release (code, CLI, config, extension, artifact schema, docs) | delegated (context backstop: ~95 files, keeps the parent thin for T1-T9) | in progress | |
+| T1 | S6 | Shared contract package: manifest loader, config schema, request/response envelope, statuses | delegated with T2-T3 (context backstop) | done | see L9 |
+| T2 | S6, S2 | `extension.yaml` for task, release, deploy; discovery and requirements read from it instead of hard-coded maps | delegated with T1 | done | see L9 |
+| T3 | S6, S3, S5 | One `provider.yaml` shape for all providers; port task-teamwork, deploy-github, deploy-ssh-compose | delegated with T1 | done | see L9 |
+| T4 | S1 | Rename ship to release (code, CLI, config, extension, artifact schema, docs) | delegated (context backstop: ~95 files, keeps the parent thin for T1-T9) | done; verifier PASS | 277d5df |
 | T5 | S4 | Release slots: version (conventional-commits, preinstalled default) and build (docker-compose, bash) as providers | inline | pending | |
 | T6 | S5 | Deploy bash target provider | inline | pending | |
 | T7 | S7 | Uniform `.ai-workflow.yml` keys for every extension and provider | inline | pending | |
@@ -72,3 +72,21 @@ Order: T4 first (it touches every other surface), then T1, T2, T3, T5, T6, T7, T
     - It is validated against the slot's operations from the owning `extension.yaml`.
     - It replaces both today's `provider.yaml` (task) and `deploy-provider.yaml`.
   - **Native providers** are exec providers whose argv calls a hidden `nerv provider <extension>-<name> <operation>`. This removes the `ssh-compose` special case.
+- **L7 (T4 evidence):**
+  - The writer reported gofmt, vet, build and `go test ./...` clean, and the parent re-ran build and test as a spot check.
+  - `tests/install-sh.test.sh` fails with exit 127 at the base too, so it is environmental.
+  - Commit 277d5df is 127 files and about 4.8k changed lines, almost all a mechanical rename. This slice is `size:exception`.
+  - `gentle-ai review assess` returned high, review due, escalated on item 5.
+  - The independent verifier was launched before the native review.
+- **L8 (T4 verifier):**
+  - PASS, with no blockers. S1, the item 3 maintainer command (byte-identical output) and the item 5 workflow all hold.
+  - Advisory 1: an alpha.1 `ship:` section is silently ignored by `version next` and `migrate`. Taken into T8, which refuses `ship:` with a `nerv migrate` hint and migrates it.
+  - Advisory 2 (out of domain): a 4.2.0 `release:` that uses only `stages` or `hooks` is not detected as legacy.
+- **L9 (T1-T3 evidence):**
+  - The writer reported gofmt, vet, build, `go test ./...` and both hook tests clean, and the parent re-ran the suite.
+  - Differential against 277d5df: install order, `install --help`, the usage text, 4 `deploy --dry-run` cases and 9 configure paths are identical. `deploy --help` changed only for the new preflight.
+  - Design additions accepted by the parent:
+    - an optional `preflight` operation on the deploy `target` slot replaces the ssh-compose special case;
+    - `provider_fields` in extension.yaml lets an extension add its own fields (task: `task_ref_prefix`, `stages`, `events`);
+    - the hidden `nerv provider <extension>-<name> <op>` replaces `nerv deploy-ssh-compose`.
+  - Risk: item 3 (provider manifest, deploy step JSON shape) and item 5 (install discovery refuses invalid trees).

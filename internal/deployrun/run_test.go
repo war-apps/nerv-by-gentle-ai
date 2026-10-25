@@ -56,10 +56,11 @@ func TestRun_ReleasesAndDeploysTheArtifact(t *testing.T) {
 	calls := e.log()
 	tar := filepath.Join(e.dir, "outputs", "app.tar")
 	want := []string{
+		preflightCall,
 		"docker [load] [-i] [" + tar + "]",
 		"docker [push] [reg.example/app:1.0.0-alpha.1]",
-		"nerv [deploy-ssh-compose] [deploy]",
-		"nerv [deploy-ssh-compose] [verify]",
+		"nerv [provider] [deploy-ssh-compose] [deploy]",
+		"nerv [provider] [deploy-ssh-compose] [verify]",
 		"gh [release] [view] [" + tag + "]",
 		"gh [release] [create] [" + tag + "] [--title] [" + tag + "] [--notes-file] [" + filepath.Join(e.dir, "notes.md") + "] [--prerelease] [--verify-tag]",
 	}
@@ -67,7 +68,8 @@ func TestRun_ReleasesAndDeploysTheArtifact(t *testing.T) {
 		t.Errorf("provider calls:\n%s\nwant:\n%s", strings.Join(calls, "\n"), strings.Join(want, "\n"))
 	}
 	stdin, _ := os.ReadFile(filepath.Join(e.fake, "nerv.stdin"))
-	for _, s := range []string{`"operation":"verify"`, `"target":"staging"`, `"environment":"staging"`, `"ssh_port":"22"`, `"version":"1.0.0-alpha.1"`} {
+	for _, s := range []string{`"contract":1`, `"extension":"deploy"`, `"slot":"target"`, `"provider":"ssh-compose"`, `"operation":"verify"`,
+		`"payload":{"target":"staging"`, `"environment":"staging"`, `"ssh_port":"22"`, `"version":"1.0.0-alpha.1"`} {
 		if !strings.Contains(string(stdin), s) {
 			t.Errorf("verify request lacks %s: %s", s, stdin)
 		}
@@ -161,7 +163,7 @@ func TestRun_OriginMovedNeedsRebase(t *testing.T) {
 	if !refusal.Is(err) || !strings.Contains(err.Error(), "--rebase") {
 		t.Fatalf("Run: %v, want a refusal naming --rebase", err)
 	}
-	if e.originRefs() != moved || len(e.log()) > 1 || e.log()[0] != "" {
+	if e.originRefs() != moved || e.effects()[0] != "" {
 		t.Errorf("a refused deploy touched origin or ran a provider: %v", e.log())
 	}
 
@@ -212,8 +214,8 @@ func TestRun_DryRunWritesNothing(t *testing.T) {
 	wantStatuses(t, rep, map[string]string{
 		"commit": StatusDone, "push": StatusDryRun, "publish:staging": StatusDryRun, "release": StatusDryRun,
 	})
-	if e.originRefs() != refs || e.log()[0] != "" {
-		t.Errorf("a dry run touched origin or ran a provider: %v", e.log())
+	if e.originRefs() != refs || e.effects()[0] != "" || e.log()[0] != preflightCall {
+		t.Errorf("a dry run touched origin or ran a provider (only the preflight): %v", e.log())
 	}
 }
 

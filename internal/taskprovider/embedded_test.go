@@ -18,7 +18,7 @@ func TestEmbeddedProviders_AreValid(t *testing.T) {
 	}
 	providers := 0
 	for _, ext := range exts {
-		if ext.ProviderKind != plugin.TaskPlugin {
+		if ext.Owner != plugin.TaskPlugin {
 			continue
 		}
 		providers++
@@ -26,11 +26,7 @@ func TestEmbeddedProviders_AreValid(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		data, err := fs.ReadFile(root, taskprovider.ManifestFile)
-		if err != nil {
-			t.Fatal(err)
-		}
-		m, err := taskprovider.Parse(data)
+		m, err := taskprovider.Load(nerv.ExtensionsFS(), ext.Name)
 		if err != nil {
 			t.Errorf("%s: %v", ext.Name, err)
 			continue

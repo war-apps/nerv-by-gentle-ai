@@ -11,6 +11,8 @@ import (
 	"testing"
 	"testing/fstest"
 
+	"github.com/war-apps/nerv-by-gentle-ai/internal/extension/extensiontest"
+
 	nerv "github.com/war-apps/nerv-by-gentle-ai"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/plugin"
 )
@@ -278,7 +280,8 @@ func sampleExtensions() fstest.MapFS {
 		"task-acme/.claude-plugin/plugin.json": &fstest.MapFile{
 			Data: []byte(`{"name":"task-acme","version":"1.2.3","description":"Acme provider"}`),
 		},
-		"task-acme/provider.yaml": &fstest.MapFile{Data: []byte("name: acme\n")},
+		"task/extension.yaml":     &fstest.MapFile{Data: extensiontest.Extension("task", 1)},
+		"task-acme/provider.yaml": &fstest.MapFile{Data: extensiontest.Provider("task", "acme")},
 	}
 }
 
@@ -395,7 +398,9 @@ func TestEmbeddedExtensions_ShareTheCorePluginVersion(t *testing.T) {
 func TestExtensions_DeployProvidersRequireTheDeployPlugin(t *testing.T) {
 	ext := sampleExtensions()
 	ext["deploy-acme/.claude-plugin/plugin.json"] = &fstest.MapFile{Data: []byte(`{"name":"deploy-acme","version":"1.2.3","description":"Acme host"}`)}
-	ext["deploy-acme/deploy-provider.yaml"] = &fstest.MapFile{Data: []byte("name: acme\n")}
+	ext["deploy/.claude-plugin/plugin.json"] = &fstest.MapFile{Data: []byte(`{"name":"deploy","version":"1.2.3","description":"Deploy"}`)}
+	ext["deploy/extension.yaml"] = &fstest.MapFile{Data: extensiontest.Extension("deploy", 3)}
+	ext["deploy-acme/provider.yaml"] = &fstest.MapFile{Data: extensiontest.Provider("deploy", "acme")}
 	exts, err := plugin.Extensions(ext)
 	if err != nil {
 		t.Fatal(err)

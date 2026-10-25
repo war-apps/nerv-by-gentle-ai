@@ -1,15 +1,16 @@
 package deployprovider
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"regexp"
+	"slices"
 	"strings"
 
+	"github.com/war-apps/nerv-by-gentle-ai/internal/extension"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/proc"
 )
 
@@ -23,9 +24,11 @@ type Env struct {
 	Values map[string]string
 	// Lists are the for_each lists (ForEach).
 	Lists map[string][]string
-	// Request is the base of every step's stdin; Operation, ContractVersion
-	// and Item are filled per step.
-	Request Request
+	// Config is the provider's resolved config, sent in every request.
+	Config map[string]string
+	// Payload is the base of every request's payload; Item is filled per
+	// step.
+	Payload Payload
 	// Dir is the steps' working directory; ProcEnv their environment (nil
 	// inherits nerv's).
 	Dir     string
@@ -113,8 +116,8 @@ func renderArgv(args []Arg, values map[string]string, item string) ([]string, er
 }
 
 // Run runs op's commands in order, stopping at the first failure: a
-// non-zero exit or a response with status failed. A skipped response
-// makes the outcome skipped.
+// non-zero exit or a response with status failed, blocked or needs_input.
+// A skipped response makes the outcome skipped.
 func (m *Manifest) Run(ctx context.Context, runner proc.Runner, op string, env Env) (Outcome, error) {
 	cmds, err := m.render(op, env)
 	if err != nil {
@@ -160,23 +163,76 @@ func (m *Manifest) ReleaseExists(ctx context.Context, runner proc.Runner, env En
 		}
 		return false, err
 	}
-	if resp.Exists != nil {
-		return *resp.Exists, nil
+	var data ExistsData
+	if err := resp.DecodeData(&data); err != nil {
+		return false, fmt.Errorf("provider %s: %s: data: %w", m.Name, OpReleaseExists, err)
+	}
+	if data.Exists != nil {
+		return *data.Exists, nil
 	}
 	return true, nil
 }
 
+// Preflight runs a target's preflight, before anything is written, and
+// returns the executables its config needs besides requires (the
+// response's data.requires). A provider that does not implement it needs
+// none. A refused config is an error carrying the provider's message.
+func (m *Manifest) Preflight(ctx context.Context, runner proc.Runner, env Env) ([]string, error) {
+	if !m.Implements(OpPreflight) {
+		return nil, nil
+	}
+	cmds, err := m.render(OpPreflight, env)
+	if err != nil {
+		return nil, err
+	}
+	var requires []string
+	for _, c := range cmds {
+		quiet := env
+		quiet.Output = nil
+		resp, _, err := m.exec(ctx, runner, OpPreflight, quiet, c)
+		if err != nil {
+			if resp.Failure() && resp.Message != "" {
+				return nil, errors.New(resp.Message)
+			}
+			return nil, err
+		}
+		var data PreflightData
+		if err := resp.DecodeData(&data); err != nil {
+			return nil, fmt.Errorf("provider %s: %s: data: %w", m.Name, OpPreflight, err)
+		}
+		for _, tool := range data.Requires {
+			if !toolRe.MatchString(tool) {
+				return nil, fmt.Errorf("provider %s: %s: %q is not an executable name", m.Name, OpPreflight, tool)
+			}
+			if !slices.Contains(requires, tool) {
+				requires = append(requires, tool)
+			}
+		}
+	}
+	return requires, nil
+}
+
+var toolRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._+-]*$`)
+
 // exec runs one command with its request on stdin and reads its response.
-func (m *Manifest) exec(ctx context.Context, runner proc.Runner, op string, env Env, c command) (Response, proc.Result, error) {
-	req := env.Request
-	req.ContractVersion, req.Operation, req.Item = ContractVersion, op, c.item
+func (m *Manifest) exec(ctx context.Context, runner proc.Runner, op string, env Env, c command) (extension.Response, proc.Result, error) {
+	payload := env.Payload
+	payload.Item = c.item
+	config := make(map[string]any, len(env.Config))
+	for k, v := range env.Config {
+		config[k] = v
+	}
+	req := extension.Request{
+		Contract: ContractVersion, Extension: Extension, Slot: m.Slot, Provider: m.Name, Operation: op,
+		Config: config, Payload: payload,
+	}
 	stdin, err := json.Marshal(req)
 	if err != nil {
-		return Response{}, proc.Result{}, err
+		return extension.Response{}, proc.Result{}, err
 	}
 	pc := proc.Command{Name: c.argv[0], Args: c.argv[1:], Dir: env.Dir, Env: env.ProcEnv, Stdin: stdin, Stderr: env.Output}
 	res, err := runner.Run(ctx, pc)
-	resp := parseResponse(res.Stdout)
+	resp, _ := extension.ParseResponse(res.Stdout)
 	where := fmt.Sprintf("provider %s: %s: %s", m.Name, op, strings.Join(c.argv, " "))
 	if err != nil {
 		detail := lastLine(res.Stderr)
@@ -188,21 +244,10 @@ func (m *Manifest) exec(ctx context.Context, runner proc.Runner, op string, env 
 		}
 		return resp, res, fmt.Errorf("%s: %w", where, err)
 	}
-	if resp.Status == StatusFailed {
-		return resp, res, fmt.Errorf("%s: failed: %s", where, resp.Message)
+	if resp.Failure() {
+		return resp, res, fmt.Errorf("%s: %s: %s", where, resp.Status, resp.Message)
 	}
 	return resp, res, nil
-}
-
-// parseResponse reads a JSON object response; anything else is no
-// response.
-func parseResponse(stdout []byte) Response {
-	trimmed := bytes.TrimSpace(stdout)
-	var r Response
-	if len(trimmed) == 0 || trimmed[0] != '{' || json.Unmarshal(trimmed, &r) != nil {
-		return Response{}
-	}
-	return r
 }
 
 func exitCode(err error) int {

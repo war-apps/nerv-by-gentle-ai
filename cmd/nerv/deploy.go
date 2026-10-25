@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/war-apps/nerv-by-gentle-ai/internal/configure"
@@ -37,9 +38,9 @@ origin) in a temporary directory at the artifact's base commit and:
   5. creates the git host's release (deploy.host), a prerelease for a
      release on a channel, unless it exists.
 
-Before anything is cloned or pushed, every target's config and the tools
-its provider needs are checked (deploy-ssh-compose: sshpass for password
-authentication, infisical for source infisical).
+Before anything is cloned or pushed, every target's preflight checks its
+config and the tools its provider needs are checked (deploy-ssh-compose:
+sshpass for password authentication, infisical for source infisical).
 
 Your repository is never modified. When origin's branch moved past the
 artifact's base commit the deploy is refused, unless --rebase re-applies the
@@ -52,7 +53,8 @@ Flags:
   --artifact <dir>   The artifact directory (required)
   --target <name>    Only this target of deploy.targets (repeatable)
   --dry-run          Prepare the release in the clone and show the steps;
-                     push nothing and run no provider
+                     push nothing and run no provider operation but the
+                     targets' preflight
   --rebase           Re-apply the release on origin's moved branch (the
                      tagged code was never built: prefer releasing again)
   --yes              Deploy without asking for confirmation
@@ -247,17 +249,40 @@ func writeDeployReport(w io.Writer, asJSON bool, rep deployrun.Report, runErr er
 	return nil
 }
 
-// runDeploySSHCompose is the hidden `nerv deploy-ssh-compose <deploy|verify>`,
-// the deploy and verify operations of the deploy-ssh-compose provider: the
-// request on stdin, the JSON response on stdout.
-func runDeploySSHCompose(args []string, stdout, stderr io.Writer, opts options) int {
-	if len(args) != 1 {
-		fmt.Fprintln(stderr, "usage: nerv deploy-ssh-compose <deploy|verify> (run by nerv deploy, request on stdin)")
+// nativeProviders are the providers nerv implements itself, by their
+// plugin name (<extension>-<provider>): each is an exec provider whose
+// provider.yaml steps run the hidden `nerv provider <plugin> <operation>`
+// with the common request on stdin and the response on stdout.
+var nativeProviders = map[string]func(op string, stdout, stderr io.Writer, opts options) int{
+	"deploy-ssh-compose": runDeploySSHCompose,
+}
+
+// runProvider is the hidden `nerv provider <extension>-<name> <operation>`.
+func runProvider(args []string, stdout, stderr io.Writer, opts options) int {
+	if len(args) != 2 {
+		fmt.Fprintln(stderr, "usage: nerv provider <extension>-<provider> <operation> (run by the extension, request on stdin)")
 		return 2
 	}
+	run, ok := nativeProviders[args[0]]
+	if !ok {
+		names := make([]string, 0, len(nativeProviders))
+		for name := range nativeProviders {
+			names = append(names, name)
+		}
+		slices.Sort(names)
+		fmt.Fprintf(stderr, "nerv provider: %q is not a native provider (%s)\n", args[0], strings.Join(names, ", "))
+		return 2
+	}
+	return run(args[1], stdout, stderr, opts)
+}
+
+// runDeploySSHCompose runs one operation of the deploy-ssh-compose provider
+// (preflight, deploy or verify): the request on stdin, the JSON response on
+// stdout.
+func runDeploySSHCompose(op string, stdout, stderr io.Writer, opts options) int {
 	home, err := configure.ResolveHome(opts.Home)
 	if err != nil {
-		fmt.Fprintf(stderr, "nerv deploy-ssh-compose: %v\n", err)
+		fmt.Fprintf(stderr, "nerv provider deploy-ssh-compose: %v\n", err)
 		return 2
 	}
 	var runner proc.Runner = proc.ExecRunner{}
@@ -278,7 +303,7 @@ func runDeploySSHCompose(args []string, stdout, stderr io.Writer, opts options) 
 	}
 	ctx, stop, _ := signalCtx(context.Background())
 	defer stop()
-	return deploy.RunComposeOp(ctx, args[0], stdin, stdout, deploy.ComposeDeps{
+	return deploy.RunComposeOp(ctx, op, stdin, stdout, deploy.ComposeDeps{
 		Proc: runner, Getenv: getenv, Home: home, Output: stderr, Sleep: opts.DeploySleep,
 	})
 }

@@ -489,11 +489,7 @@ func TestDeploy_PipelineBecomesTargetsAndHost(t *testing.T) {
 	if d.Host != "github" {
 		t.Errorf("host = %q, want github", d.Host)
 	}
-	data, err := fs.ReadFile(nerv.ExtensionsFS(), "deploy-ssh-compose/deploy-provider.yaml")
-	if err != nil {
-		t.Fatal(err)
-	}
-	m, err := deployprovider.Parse(data)
+	m, err := deployprovider.Load(nerv.ExtensionsFS(), "deploy-ssh-compose")
 	if err != nil {
 		t.Fatal(err)
 	}

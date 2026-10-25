@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/war-apps/nerv-by-gentle-ai/internal/extension"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/proc"
 )
 
@@ -31,46 +32,59 @@ type ComposeDeps struct {
 	Sleep func(context.Context, time.Duration) error
 }
 
-// composeRequest is the part of the deploy-provider request the
-// operations read.
+// composeRequest is the part of the provider request (the common
+// envelope, extension.Request, with deploy's payload) the operations read.
 type composeRequest struct {
 	Operation string            `json:"operation"`
-	Target    string            `json:"target"`
 	Config    map[string]string `json:"config"`
-	Artifact  struct {
-		Version string `json:"version"`
-		Branch  string `json:"branch"`
-		Tag     string `json:"tag"`
-	} `json:"artifact"`
+	Payload   struct {
+		Target   string `json:"target"`
+		Artifact struct {
+			Version string `json:"version"`
+			Branch  string `json:"branch"`
+			Tag     string `json:"tag"`
+		} `json:"artifact"`
+	} `json:"payload"`
 }
 
-type composeResponse struct {
-	Status  string `json:"status"`
-	Message string `json:"message,omitempty"`
-}
+// The operations of the deploy-ssh-compose provider.
+const (
+	opPreflight = "preflight"
+	opDeploy    = "deploy"
+	opVerify    = "verify"
+)
 
-// RunComposeOp is `nerv deploy-ssh-compose <op>`, the deploy and verify
+// RunComposeOp is `nerv provider deploy-ssh-compose <op>`, the native
 // operations of the deploy-ssh-compose provider: it reads the request on
-// stdin, the environment's deploy data from its source, and then deploy
-// runs the host's compose script (pull, up) and verify waits for the
-// container's health and checks its version label. It prints one JSON
-// response and returns 0 (ok or skipped) or 1 (failed). An environment
-// whose DOCKER_DEPLOY_ENABLED is off, or whose DOCKER_IMAGE_VERSION points
-// at other releases, is skipped.
+// stdin and prints one JSON response (the common envelope). preflight
+// checks the config before nerv deploy writes anything and answers, in
+// data.requires, the tools it needs on PATH besides the provider's
+// requires: sshpass for password authentication, infisical for source
+// infisical. deploy and verify read the environment's deploy data from its
+// source, then deploy runs the host's compose script (pull, up) and verify
+// waits for the container's health and checks its version label. It
+// returns 0 (ok or skipped) or 1 (failed). An environment whose
+// DOCKER_DEPLOY_ENABLED is off, or whose DOCKER_IMAGE_VERSION points at
+// other releases, is skipped.
 func RunComposeOp(ctx context.Context, op string, stdin io.Reader, stdout io.Writer, deps ComposeDeps) int {
-	status, msg := composeOp(ctx, op, stdin, deps)
-	data, _ := json.Marshal(composeResponse{Status: status, Message: msg})
+	resp := composeOp(ctx, op, stdin, deps)
+	data, _ := json.Marshal(resp)
 	fmt.Fprintf(stdout, "%s\n", data)
-	if status == "failed" {
+	if resp.Failure() {
 		return 1
 	}
 	return 0
 }
 
-func composeOp(ctx context.Context, op string, stdin io.Reader, deps ComposeDeps) (string, string) {
-	fail := func(format string, args ...any) (string, string) { return "failed", fmt.Sprintf(format, args...) }
-	if op != "deploy" && op != "verify" {
-		return fail("unknown operation %q (want deploy or verify)", op)
+func composeOp(ctx context.Context, op string, stdin io.Reader, deps ComposeDeps) extension.Response {
+	answer := func(status, format string, args ...any) extension.Response {
+		return extension.Response{Status: status, Message: fmt.Sprintf(format, args...)}
+	}
+	fail := func(format string, args ...any) extension.Response {
+		return answer(extension.StatusFailed, format, args...)
+	}
+	if op != opPreflight && op != opDeploy && op != opVerify {
+		return fail("unknown operation %q (want preflight, deploy or verify)", op)
 	}
 	var req composeRequest
 	if err := json.NewDecoder(stdin).Decode(&req); err != nil {
@@ -78,6 +92,18 @@ func composeOp(ctx context.Context, op string, stdin io.Reader, deps ComposeDeps
 	}
 	if req.Operation != op {
 		return fail("the request is for operation %q, not %s", req.Operation, op)
+	}
+	if op == opPreflight {
+		// The ~/ of the key and known_hosts files is not expanded: the
+		// preflight checks the config, it reads no file.
+		cfg, err := composeConfig(req.Config, "")
+		if err != nil {
+			return fail("%v", err)
+		}
+		data, _ := json.Marshal(struct {
+			Requires []string `json:"requires"`
+		}{cfg.tools()})
+		return extension.Response{Status: extension.StatusOK, Data: data}
 	}
 	cfg, err := composeConfig(req.Config, deps.Home)
 	if err != nil {
@@ -97,9 +123,10 @@ func composeOp(ctx context.Context, op string, stdin io.Reader, deps ComposeDeps
 	}
 	t, err := NewTarget(cfg.environment, data, cfg.ssh.Auth)
 	if !t.Enabled {
-		return "skipped", fmt.Sprintf("%s: DOCKER_DEPLOY_ENABLED is off", cfg.environment)
+		return answer(extension.StatusSkipped, "%s: DOCKER_DEPLOY_ENABLED is off", cfg.environment)
 	}
-	rel := Release{Version: req.Artifact.Version, GitTag: req.Artifact.Tag, Branch: req.Artifact.Branch}
+	a := req.Payload.Artifact
+	rel := Release{Version: a.Version, GitTag: a.Tag, Branch: a.Branch}
 	if err != nil {
 		return fail("%v", err)
 	}
@@ -110,22 +137,22 @@ func composeOp(ctx context.Context, op string, stdin io.Reader, deps ComposeDeps
 		return fail("%v", serr)
 	}
 	if !d.Deploy {
-		return "skipped", fmt.Sprintf("%s: %s", cfg.environment, d.Reason)
+		return answer(extension.StatusSkipped, "%s: %s", cfg.environment, d.Reason)
 	}
 	ssh := SSH{Proc: deps.Proc, Auth: cfg.ssh.Auth, KeyFile: cfg.ssh.KeyFile, KnownHosts: cfg.ssh.KnownHosts, Port: cfg.ssh.Port,
 		ConnectTimeout: cfg.ssh.ConnectTimeout, Env: env}
 	r := Runner{SSH: ssh, Verify: cfg.verify, Release: rel, Output: deps.Output, Sleep: deps.Sleep, UpdateTimeout: cfg.updateTimeout}
-	if op == "deploy" {
+	if op == opDeploy {
 		if err := r.Update(ctx, t); err != nil {
 			return fail("%s: %v", cfg.environment, err)
 		}
-		return "ok", fmt.Sprintf("%s: %s updated on %s", cfg.environment, t.Container, t.Host)
+		return answer(extension.StatusOK, "%s: %s updated on %s", cfg.environment, t.Container, t.Host)
 	}
 	res := r.Check(ctx, t)
 	if res.Status != StatusDeployed {
 		return fail("%s: %s", cfg.environment, res.Error)
 	}
-	return "ok", fmt.Sprintf("%s: %s %s, version %s", cfg.environment, t.Container, res.Health, res.Running)
+	return answer(extension.StatusOK, "%s: %s %s, version %s", cfg.environment, t.Container, res.Health, res.Running)
 }
 
 type composeSettings struct {
@@ -148,18 +175,6 @@ func (s composeSettings) tools() []string {
 		tools = append(tools, "infisical")
 	}
 	return tools
-}
-
-// Preflight checks a deploy-ssh-compose target's config (its defaults
-// applied) before nerv deploy writes anything, and returns the tools it
-// needs on PATH besides the provider's requires: sshpass for password
-// authentication, infisical for source infisical.
-func Preflight(config map[string]string) ([]string, error) {
-	s, err := composeConfig(config, "")
-	if err != nil {
-		return nil, err
-	}
-	return s.tools(), nil
 }
 
 // composeConfig reads and checks the provider's config keys (their

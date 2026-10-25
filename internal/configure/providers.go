@@ -30,9 +30,9 @@ func (p Provider) Key(key string) (taskprovider.ConfigKey, bool) {
 	return p.Manifest.Config[i], true
 }
 
-// EmbeddedProviders parses the provider.yaml of every provider plugin in
-// fsys (typically nerv.ExtensionsFS()), in plugin name order. A nil fsys
-// has none.
+// EmbeddedProviders loads the provider.yaml of every task provider plugin
+// in fsys (typically nerv.ExtensionsFS()), in plugin name order. A nil
+// fsys has none.
 func EmbeddedProviders(fsys fs.FS) ([]Provider, error) {
 	exts, err := plugin.Extensions(fsys)
 	if err != nil {
@@ -40,16 +40,12 @@ func EmbeddedProviders(fsys fs.FS) ([]Provider, error) {
 	}
 	var providers []Provider
 	for _, ext := range exts {
-		if ext.ProviderKind != plugin.TaskPlugin {
+		if ext.Owner != plugin.TaskPlugin {
 			continue
 		}
-		data, err := fs.ReadFile(fsys, ext.Name+"/"+taskprovider.ManifestFile)
+		m, err := taskprovider.Load(fsys, ext.Name)
 		if err != nil {
 			return nil, err
-		}
-		m, err := taskprovider.Parse(data)
-		if err != nil {
-			return nil, fmt.Errorf("%s: %w", ext.Name, err)
 		}
 		providers = append(providers, Provider{Plugin: ext.Name, Manifest: m})
 	}

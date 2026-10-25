@@ -70,7 +70,7 @@ The marketplace ships seven plugins:
 | `task-teamwork@nerv` | no | A task provider for Teamwork, shipped as its own plugin with a `provider.yaml` manifest. |
 | `release@nerv` | no | The release plugin: `/release:version`, `/release:setup`, `/release:build`, the `release:versioner` and `release:builder` agents. A native version engine (no semantic-release) and a build in `compose` or `script` mode that leaves a local artifact; it never writes to git. |
 | `deploy@nerv` | no | The deploy plugin (requires `release`): `/deploy:run`, `/deploy:setup` and the `deploy:deployer` agent. It turns an artifact into a release: release commit, tag, push, targets, git host release. |
-| `deploy-github@nerv` | no | A deploy git host for GitHub releases (`gh`), with a `deploy-provider.yaml` manifest. |
+| `deploy-github@nerv` | no | A deploy git host for GitHub releases (`gh`), with a `provider.yaml` manifest. |
 | `deploy-ssh-compose@nerv` | no | A deploy target: pushes the artifact's images and updates the containers over SSH with the host's compose script. |
 
 When the task plugin is installed, the orchestrator emits pipeline events
@@ -373,6 +373,10 @@ example YAML, and how to configure per-role models and effort (wizard,
   `/deploy:run` (release commit, tag, push, targets, git host release from
   an artifact), the `deploy:` section (`/deploy:setup`) and the provider
   contract (`deploy-github`, `deploy-ssh-compose`).
+- [docs/extensions.md](docs/extensions.md) — the two contracts every
+  optional plugin speaks: `extension.yaml` (an extension and the core) and
+  `provider.yaml` (a provider and its extension), with the common
+  request/response envelope.
 - [docs/pipeline.md](docs/pipeline.md) — migrating from the removed `nerv
   pipeline` and its `pipeline:` section to release and deploy (`nerv migrate`).
 - [docs/migration.md](docs/migration.md) — `nerv migrate`: moving a

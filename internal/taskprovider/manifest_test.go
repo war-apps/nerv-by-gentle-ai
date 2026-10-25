@@ -1,17 +1,23 @@
 package taskprovider_test
 
 import (
+	"slices"
 	"strings"
 	"testing"
 	"testing/fstest"
 
+	nerv "github.com/war-apps/nerv-by-gentle-ai"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/extension"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/taskprovider"
 )
 
 // valid is the smallest manifest the contract accepts: every operation the
 // subscribed events need is implemented, the rest declared not_implemented.
 const valid = `name: acme
+extension: task
+slot: provider
 contract_version: 1
+runtime: agent
 task_ref_prefix: AC
 mcp:
   server: acme
@@ -46,9 +52,19 @@ operations:
 events: [run.started, verification.started]
 `
 
+// taskExtension is the task extension's manifest nerv ships.
+func taskExtension(t *testing.T) *extension.Manifest {
+	t.Helper()
+	m, err := extension.LoadManifest(nerv.ExtensionsFS(), taskprovider.Extension)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return m
+}
+
 func mustParse(t *testing.T, text string) *taskprovider.Manifest {
 	t.Helper()
-	m, err := taskprovider.Parse([]byte(text))
+	m, err := taskprovider.Parse(taskExtension(t), []byte(text))
 	if err != nil {
 		t.Fatalf("Parse: unexpected error: %v", err)
 	}
@@ -58,7 +74,7 @@ func mustParse(t *testing.T, text string) *taskprovider.Manifest {
 // wantProblem asserts Parse rejects text with an error naming want.
 func wantProblem(t *testing.T, text, want string) {
 	t.Helper()
-	_, err := taskprovider.Parse([]byte(text))
+	_, err := taskprovider.Parse(taskExtension(t), []byte(text))
 	if err == nil {
 		t.Fatalf("Parse: expected an error containing %q, got none", want)
 	}
@@ -128,6 +144,39 @@ func TestParse_Operations(t *testing.T) {
 	wantProblem(t, strings.Replace(valid, "procedures/assign.md", "../assign.md", 1), "operations.assign")
 	wantProblem(t, strings.Replace(valid, "procedures/assign.md", "/abs/assign.md", 1), "operations.assign")
 	wantProblem(t, strings.Replace(valid, "procedures/assign.md", "procedures/assign.txt", 1), "operations.assign")
+}
+
+// S6: a task provider is an agent provider of the task extension's
+// provider slot, carrying the task fields that extension declares.
+func TestParse_CommonContract(t *testing.T) {
+	wantProblem(t, strings.Replace(valid, "slot: provider", "slot: tracker", 1), `slot "tracker" is not a slot of extension task`)
+	wantProblem(t, strings.Replace(valid, "extension: task", "extension: deploy", 1), `extension "deploy" is not task`)
+	wantProblem(t, strings.Replace(valid, "task_ref_prefix: AC\n", "", 1), "task_ref_prefix is required by extension task")
+	wantProblem(t, strings.Replace(valid, "stages:\n  inDev: DEV\n  testing: TEST\n", "stages: [DEV]\n", 1), "stages must be a map")
+}
+
+// The provider slot of plugins/task/extension.yaml lists exactly the
+// operations this package knows, all optional.
+func TestTaskExtension_SlotMatchesTheOperations(t *testing.T) {
+	slot, ok := taskExtension(t).Slot(taskprovider.Slot)
+	if !ok {
+		t.Fatal("no provider slot")
+	}
+	got := slot.OperationNames()
+	want := slices.Sorted(slices.Values(taskprovider.Operations))
+	if !slices.Equal(got, want) {
+		t.Errorf("slot operations %v, want %v", got, want)
+	}
+	for op, level := range slot.Operations {
+		if level != extension.Optional {
+			t.Errorf("%s is %s: every task operation is optional, events decide what a provider needs", op, level)
+		}
+	}
+	for event := range taskprovider.Events {
+		if !taskExtension(t).Subscribes(event) {
+			t.Errorf("the task extension does not subscribe to %s", event)
+		}
+	}
 }
 
 func TestParse_EventsNeedTheirOperations(t *testing.T) {

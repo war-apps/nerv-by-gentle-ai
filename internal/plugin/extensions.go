@@ -5,58 +5,53 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/fs"
+	"math"
 	"slices"
 	"sort"
 	"strings"
 
-	"github.com/war-apps/nerv-by-gentle-ai/internal/taskprovider"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/extension"
 )
 
-// TaskPlugin is the extension every task provider needs installed.
-const TaskPlugin = "task"
-
-// DeployPlugin is the extension every deploy provider needs installed.
-const DeployPlugin = "deploy"
-
-// ReleasePlugin is the extension DeployPlugin needs installed: deploy consumes
-// the artifacts release leaves.
-const ReleasePlugin = "release"
-
-// pluginRequires are the requirements of the extension plugins that are not
-// providers (a provider requires its kind's plugin): a fixed map, because a
-// plugin.json cannot carry its own key for them.
-var pluginRequires = map[string][]string{
-	DeployPlugin: {ReleasePlugin},
-}
-
-// suggestionOrder is the order nerv install suggests the plugin families
-// in: each plugin, then its providers. A plugin outside it comes after, in
-// name order.
-var suggestionOrder = []string{TaskPlugin, ReleasePlugin, DeployPlugin}
-
-// deployProviderManifest marks a deploy provider plugin (see
-// internal/deployprovider.ManifestFile; not imported, to keep this package
-// free of the deploy contract).
-const deployProviderManifest = "deploy-provider.yaml"
+// The extensions nerv ships, by name. Their requirements, providers and
+// suggestion order come from their extension.yaml manifests.
+const (
+	// TaskPlugin is the task extension, whose providers are task trackers.
+	TaskPlugin = "task"
+	// ReleasePlugin is the release extension.
+	ReleasePlugin = "release"
+	// DeployPlugin is the deploy extension, which requires release.
+	DeployPlugin = "deploy"
+)
 
 // Extension is an optional plugin shipped next to the core nerv plugin in
-// the same marketplace, installed as <Name>@nerv.
+// the same marketplace, installed as <Name>@nerv: an extension (an
+// extension.yaml at its root) or one of an extension's providers (a
+// provider.yaml).
 type Extension struct {
 	Name        string
 	Version     string
 	Description string
-	// Provider is true for a task provider (a plugin with a provider.yaml
-	// at its root) or a deploy provider (a deploy-provider.yaml).
+	// Provider is true for a provider plugin.
 	Provider bool
-	// ProviderKind is "task" or "deploy" for a provider, empty otherwise.
-	ProviderKind string
-	// Requires lists the extensions that must be installed with this one.
+	// Owner is the extension a provider belongs to (its provider.yaml
+	// extension), and Slot the slot it fills; both empty for an extension.
+	Owner string
+	Slot  string
+	// Requires lists the extensions that must be installed with this one:
+	// an extension's extension.yaml requires, a provider's own extension.
 	Requires []string
+	// Order is the extension's suggest_order (its owner's for a provider);
+	// 0 is unset.
+	Order int
 }
 
 // Extensions lists the extension plugins of fsys, one per top-level
 // folder holding a .claude-plugin/plugin.json whose name is the folder's
-// name, in name order. A nil fsys has none.
+// name, in name order. Each folder holds exactly one manifest, checked
+// whole: an extension.yaml, or a provider.yaml in a folder named
+// <extension>-<provider> whose extension fsys also ships and whose slot it
+// fits. A nil fsys has none.
 func Extensions(fsys fs.FS) ([]Extension, error) {
 	if fsys == nil {
 		return nil, nil
@@ -87,15 +82,9 @@ func Extensions(fsys fs.FS) ([]Extension, error) {
 		if manifest.Name != e.Name() {
 			return nil, fmt.Errorf("%s: name %q must match its folder %q", manifestPath, manifest.Name, e.Name())
 		}
-
-		ext := Extension{Name: manifest.Name, Version: manifest.Version, Description: manifest.Description,
-			Requires: append([]string(nil), pluginRequires[manifest.Name]...)}
-		if _, err := fs.Stat(fsys, e.Name()+"/"+taskprovider.ManifestFile); err == nil {
-			ext.Provider, ext.ProviderKind = true, TaskPlugin
-			ext.Requires = []string{TaskPlugin}
-		} else if _, err := fs.Stat(fsys, e.Name()+"/"+deployProviderManifest); err == nil {
-			ext.Provider, ext.ProviderKind = true, DeployPlugin
-			ext.Requires = []string{DeployPlugin}
+		ext := Extension{Name: manifest.Name, Version: manifest.Version, Description: manifest.Description}
+		if err := describe(fsys, &ext); err != nil {
+			return nil, err
 		}
 		exts = append(exts, ext)
 	}
@@ -103,37 +92,67 @@ func Extensions(fsys fs.FS) ([]Extension, error) {
 	return exts, nil
 }
 
+// describe fills ext from the manifest in its folder.
+func describe(fsys fs.FS, ext *Extension) error {
+	has := func(file string) bool {
+		_, err := fs.Stat(fsys, ext.Name+"/"+file)
+		return err == nil
+	}
+	isExt, isProvider := has(extension.ManifestFile), has(extension.ProviderFile)
+	switch {
+	case isExt && isProvider:
+		return fmt.Errorf("%s: both %s and %s: a plugin is an extension or a provider (docs/extensions.md)", ext.Name, extension.ManifestFile, extension.ProviderFile)
+	case isExt:
+		m, err := extension.LoadManifest(fsys, ext.Name)
+		if err != nil {
+			return err
+		}
+		ext.Requires, ext.Order = slices.Clone(m.Requires), m.SuggestOrder
+	case isProvider:
+		p, owner, err := extension.LoadProvider(fsys, ext.Name)
+		if err != nil {
+			return err
+		}
+		ext.Provider, ext.Owner, ext.Slot = true, owner.Name, p.Slot
+		ext.Requires, ext.Order = []string{owner.Name}, owner.SuggestOrder
+	default:
+		return fmt.Errorf("%s: neither %s nor %s: every extension plugin speaks the extension contract (docs/extensions.md)", ext.Name, extension.ManifestFile, extension.ProviderFile)
+	}
+	return nil
+}
+
 // SuggestionOrder returns exts in the order nerv install suggests them:
-// task, then the task providers, then release, then deploy, then the deploy
-// providers (each family's plugin before its providers); any other
-// extension after them, in name order. Asking only for an extension whose
-// requirements are selected then skips deploy when release is declined and the
-// providers of a declined plugin.
+// by their extension's suggest_order (task, release, deploy), each
+// extension followed by its providers in name order; extensions without a
+// suggest_order come after them, by name. Asking only for an extension
+// whose requirements are selected then skips deploy when release is
+// declined and the providers of a declined extension.
 func SuggestionOrder(exts []Extension) []Extension {
-	rank := func(e Extension) (int, int) {
-		family := e.Name
+	family := func(e Extension) string {
 		if e.Provider {
-			family = e.ProviderKind
+			return e.Owner
 		}
-		i := slices.Index(suggestionOrder, family)
-		if i < 0 {
-			i = len(suggestionOrder)
+		return e.Name
+	}
+	order := func(e Extension) int {
+		if e.Order <= 0 {
+			return math.MaxInt
 		}
-		provider := 0
-		if e.Provider {
-			provider = 1
-		}
-		return i, provider
+		return e.Order
 	}
 	out := slices.Clone(exts)
 	slices.SortStableFunc(out, func(a, b Extension) int {
-		fa, pa := rank(a)
-		fb, pb := rank(b)
-		if c := cmp.Compare(fa, fb); c != 0 {
+		if c := cmp.Compare(order(a), order(b)); c != 0 {
 			return c
 		}
-		if c := cmp.Compare(pa, pb); c != 0 {
+		if c := strings.Compare(family(a), family(b)); c != 0 {
 			return c
+		}
+		if a.Provider != b.Provider {
+			if a.Provider {
+				return 1
+			}
+			return -1
 		}
 		return strings.Compare(a.Name, b.Name)
 	})

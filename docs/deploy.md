@@ -36,12 +36,13 @@ and asks before it pushes anything.
 ### Preflight
 
 Before any push, `nerv deploy` checks every selected target and the host:
-the tools their manifests `require` (`gh`, `docker`, `ssh`), the tools
-their configuration implies (`sshpass` with `ssh_auth: password`, the
-`infisical` CLI with `source: infisical`), and the data they need (each
-environment's deploy data). A missing tool or value is a refusal (exit 1)
-with nothing written, so a deploy never stops half-way for a missing
-binary after the tag is on origin.
+the tools their manifests `require` (`gh`, `docker`, `ssh`), and each
+target's `preflight` operation, which refuses a bad configuration and
+answers the tools that configuration implies (`sshpass` with
+`ssh_auth: password`, the `infisical` CLI with `source: infisical`). A
+missing tool or a refused configuration is a refusal (exit 1) with nothing
+written, so a deploy never stops half-way for a missing binary after the
+tag is on origin. The preflight also runs in a dry run.
 
 ## What it does
 
@@ -125,12 +126,16 @@ manifest's default applies.
 ## Providers
 
 Git hosts and targets are provider plugins named `deploy-<name>`. Each one
-ships a `deploy-provider.yaml` manifest:
+ships a `provider.yaml` manifest, the shape every provider shares
+([extensions.md](extensions.md)), checked against the `host` and `target`
+slots of the deploy extension's `extension.yaml`:
 
 ```yaml
 name: github
+extension: deploy
+slot: host                  # host (deploy.host) or target (deploy.targets[])
 contract_version: 1
-kind: git-host              # git-host or target
+runtime: exec               # nerv deploy runs exec providers
 requires: [gh]              # executables that must be on PATH
 config:                     # key, scope (user or repo), type (string, int, bool), default, prompt
   - key: repo
@@ -138,15 +143,15 @@ config:                     # key, scope (user or repo), type (string, int, bool
     type: string
     prompt: The repository
 operations:
-  releaseExists:            # git-host: releaseExists, createRelease
+  releaseExists:            # host: releaseExists, createRelease
     - argv: [gh, release, view, "{tag}"]
       absent_stderr: "release not found"
   createRelease:
     - argv: [gh, release, create, "{tag}", --notes-file, "{notes_file}", {arg: --prerelease, when: prerelease}]
 ```
 
-- A target implements `publish`, `deploy` and `verify`. `publish` and
-  `verify` may be declared `not_implemented`.
+- A target implements `deploy`, and `preflight`, `publish` and `verify` or
+  declares them `not_implemented`. Every operation of the slot is declared.
 - An operation is a list of steps. Go runs each step's `argv` directly,
   without a shell.
 - An element is either a literal or one whole `{variable}`, and the variable
@@ -158,20 +163,29 @@ operations:
   `item` in a step with `for_each` (`images`, `image_tars` or `outputs`).
 - `when: prerelease` keeps a step or an argument only for a release on a
   channel.
-- Each step reads a JSON request on stdin: `contract_version`, `operation`,
-  `target`, `artifact` (the manifest), `artifact_dir`, `config` and `item`.
-- A step may print a JSON response on stdout:
-  `{"status": "ok" | "skipped" | "failed", "message": "...", "exists": true | false}`.
-  A step that prints no JSON succeeds or fails by its exit code.
-- `releaseExists` has one step. An `exists` answer decides. Otherwise exit 0
-  means the release exists, and a non-zero exit whose stderr matches
+- Each step reads the common JSON request on stdin: `contract` (1),
+  `extension` (`deploy`), `slot`, `provider`, `operation`, `config` and
+  `payload` (`target`, `artifact`: the manifest, `artifact_dir` and `item`).
+- A step may print the common JSON response on stdout:
+  `{"status": "ok" | "skipped" | "blocked" | "failed" | "needs_input", "message": "...", "data": {...}}`.
+  nerv deploy cannot ask you anything, so `blocked` and `needs_input` fail
+  the operation like `failed`, with the message. A step that prints no JSON
+  succeeds or fails by its exit code.
+- `releaseExists` has one step. A `data.exists` answer decides. Otherwise
+  exit 0 means the release exists, and a non-zero exit whose stderr matches
   `absent_stderr` means it does not. Any other failure is an error.
+- A target's `preflight` runs before anything is cloned or pushed, also in a
+  dry run. It refuses a bad config with `failed` and its message, and
+  answers in `data.requires` the executables that config needs besides
+  `requires`.
+- A native provider, such as `deploy-ssh-compose`, is an exec provider
+  whose steps run nerv's hidden `{nerv} provider deploy-<name> <operation>`.
 - Provider steps run in the temporary clone. The `gh` CLI therefore works on
   origin's repository, with your `gh auth login` session.
 
 ### deploy-github
 
-Kind `git-host`, requires `gh`. `releaseExists` runs `gh release view <tag>`.
+Slot `host`, requires `gh`. `releaseExists` runs `gh release view <tag>`.
 `createRelease` runs:
 
 ```sh
@@ -180,11 +194,14 @@ gh release create <tag> --title <tag> --notes-file <notes> [--prerelease] --veri
 
 ### deploy-ssh-compose
 
-Kind `target`, requires `docker` and `ssh`.
+Slot `target`, requires `docker` and `ssh`.
 
+- `preflight` runs `nerv provider deploy-ssh-compose preflight`: it checks
+  the config and answers `sshpass` for `ssh_auth: password` and `infisical`
+  for `source: infisical`.
 - `publish` runs `docker load -i` for each image tar of the artifact, then
   `docker push` for each image. Log in to the registry first.
-- `deploy` and `verify` run `nerv deploy-ssh-compose deploy|verify`, the
+- `deploy` and `verify` run `nerv provider deploy-ssh-compose deploy|verify`, the
   update-deploy flow of the removed `nerv pipeline deploy`.
   - It reads the environment's deploy data, either from the
     `NERV_DEPLOY_<ENVIRONMENT>_<KEY>` variables (`source: env`) or from

@@ -2,8 +2,12 @@
 
 Loaded by the core's `## Task events` when the task plugin is installed.
 
-Core never talks to a task tracker. When the task plugin is installed
-(`task:dispatcher` is available), Ikari **emits events** to it by launching
+Core never talks to a task tracker. Ikari **emits each event** to every
+installed extension whose `extension.yaml` lists it under `events` (the
+extension contract, `docs/extensions.md`): an extension with
+`runtime: agent` is reached by launching its `agent` entry. Today only the
+task extension subscribes, through `task:dispatcher`. When the task plugin
+is installed (`task:dispatcher` is available), Ikari launches
 `task:dispatcher` with `EVENT: <event>` and this payload, plus the merged
 `tasks` and `git` blocks:
 
