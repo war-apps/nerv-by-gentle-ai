@@ -8,7 +8,7 @@ import (
 )
 
 // ConfigScopes are where a config key lives: the user's
-// ~/.config/ai-workflow/config.yml or the repository's .ai-workflow.yml.
+// ~/.config/ai-workflow/config.yaml or the repository's .ai-workflow/config.yaml.
 var ConfigScopes = []string{"user", "repo"}
 
 // ConfigTypes are the value types a config key may hold. Only the scalar

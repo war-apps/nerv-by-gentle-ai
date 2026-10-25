@@ -1,13 +1,13 @@
 ---
 name: deploy
-description: NERV deploy plugin contract. Covers the deploy section of .ai-workflow/config.yaml (git host, targets, git), how deploy providers are found (provider.yaml), the operations a git host and a target implement, the step variables and the JSON request and response, the steps of nerv deploy with their statuses, preflight, re-runs and the dry-run-then-yes rule. Loaded by the /deploy:* commands and by the deploy:deployer agent.
+description: NERV deploy extension contract. Covers the deploy section of .ai-workflow/config.yaml (git host, targets, git), how deploy providers are found (provider.yaml), the operations a git host and a target implement, the step variables and the JSON request and response, the steps of nerv deploy with their statuses, preflight, re-runs and the dry-run-then-yes rule. Loaded by the /deploy:* commands and by the deploy:deployer agent.
 ---
 
-# NERV Deploy Plugin — Contract
+# NERV Deploy Extension — Contract
 
-The deploy plugin turns a local artifact that `nerv release` left (`release:release` skill, §4) into a release. It writes the release to git (release commit, tag, channel note, push), publishes and deploys the artifact to its **targets**, and creates the release on the **git host**. Every git write happens here, so an artifact that is never deployed leaves no trace in the repository. The plugin requires `release`.
+The deploy extension turns a local artifact that `nerv release` left (`release:release` skill, §4) into a release. It writes the release to git (release commit, tag, channel note, push), publishes and deploys the artifact to its **targets**, and creates the release on the **git host**. Every git write happens here, so an artifact that is never deployed leaves no trace in the repository. The extension requires `release`.
 
-Hosts and targets are **provider plugins** named `deploy-<name>`, each with a `provider.yaml` manifest: the shape every provider of every extension shares, checked against the `host` and `target` slots of `plugins/deploy/extension.yaml` (`docs/extensions.md`). The deploy plugin talks to no host or target itself: `nerv deploy` runs the provider's operations.
+Hosts and targets are **providers** named `deploy-<name>`, each with a `provider.yaml` manifest: the shape every provider of every extension shares, checked against the `host` and `target` slots of `plugins/deploy/extension.yaml` (`docs/extensions.md`). The deploy extension talks to no host or target itself: `nerv deploy` runs the provider's operations.
 
 If `nerv` is not on PATH, tell the user to install it — `curl -fsSL https://raw.githubusercontent.com/war-apps/nerv-by-gentle-ai/main/scripts/install.sh | bash`, or `go install github.com/war-apps/nerv-by-gentle-ai/cmd/nerv@latest` — and stop.
 
@@ -24,10 +24,10 @@ The `deploy:` section of `<repo>/.ai-workflow/config.yaml`. Unknown keys are ref
 
 ```yaml
 deploy:
-  host: github                    # git host provider: plugin deploy-github
+  host: github                    # git host provider: deploy-github
   targets:                        # deployed in this order
     - name: staging
-      provider: ssh-compose       # target provider: plugin deploy-ssh-compose
+      provider: ssh-compose       # target provider: deploy-ssh-compose
       config:
         environment: staging
   git:
@@ -48,7 +48,7 @@ A provider key's value comes from the target's `config`; when unset, from `deplo
 
 ## 3. Finding providers
 
-`nerv deploy` resolves a provider by name, `deploy-<name>`, from the providers this nerv build ships (today `deploy-github` and `deploy-ssh-compose`). A `host` or `provider` it does not know is refused before anything runs. Install the matching plugin with `nerv install --with deploy-<name>` so the configuration prompts and its description are available in Claude Code.
+`nerv deploy` resolves a provider by name, `deploy-<name>`, from the providers this nerv build ships (today `deploy-github`, `deploy-ssh-compose` and `deploy-bash`). A `host` or `provider` it does not know is refused before anything runs. Install the matching provider with `nerv install --with deploy-<name>` so the configuration prompts and its description are available in Claude Code.
 
 The manifest declares:
 
@@ -68,7 +68,7 @@ The manifest declares:
 - `preflight` runs once per target before anything is cloned or pushed (also in a dry run). It refuses a bad config with `failed` and its message, and answers in `data.requires` the executables that config needs besides `requires`.
 - A **native** provider, such as `deploy-ssh-compose`, is an exec provider whose steps run the hidden `{nerv} provider deploy-<name> <operation>`.
 
-Adding a host or a target, such as GitLab or Gitea, is another `deploy-<name>` plugin with its manifest, with no change to `deploy`.
+Adding a host or a target, such as GitLab or Gitea, is another `deploy-<name>` provider with its manifest, with no change to `deploy`.
 
 ## 5. `nerv deploy`
 

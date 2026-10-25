@@ -1,6 +1,6 @@
 # release-docker-compose
 
-The docker compose build of `nerv release` (plugin
+The docker compose build of `nerv release` (Claude Code plugin
 `release-docker-compose@nerv`, provider name `docker-compose`, slot
 `build`). It has no commands of its own: the release extension calls its
 operations from `provider.yaml`, the provider contract

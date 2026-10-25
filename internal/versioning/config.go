@@ -54,8 +54,9 @@ func DefaultBranches() []Branch {
 }
 
 // Config is the version engine's configuration: what semantic-release reads
-// from its own configuration, for the behaviours nerv relies on. The release
-// plugin's section of .ai-workflow.yml embeds it.
+// from its own configuration, for the behaviours nerv relies on. The
+// conventional-commits version provider reads it from
+// release.providers.conventional-commits in .ai-workflow/config.yaml.
 type Config struct {
 	// Branches are the release branches, in semantic-release's order: a
 	// branch matches the first entry whose name (or glob) matches it.

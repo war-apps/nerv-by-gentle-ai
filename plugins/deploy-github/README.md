@@ -1,9 +1,9 @@
 # deploy-github
 
-The GitHub git host for `nerv deploy` (plugin `deploy-github@nerv`, provider
+The GitHub git host for `nerv deploy` (Claude Code plugin `deploy-github@nerv`, provider
 name `github`, slot `host`). It has no commands of its own: `nerv deploy`
 runs its operations from `provider.yaml`, the provider contract
-(`docs/extensions.md`) that the `deploy` plugin's skill details.
+(`docs/extensions.md`) that the `deploy` extension's skill details.
 
 - `releaseExists` runs `gh release view <tag>`.
 - `createRelease` runs `gh release create <tag> --title <tag> --notes-file

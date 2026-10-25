@@ -1,13 +1,13 @@
 ---
 name: release
-description: NERV release plugin contract. Covers the release section of .ai-workflow/config.yaml (projects, branches, release rules, tag_format, changelog, build modes, stages, hooks, coverage), the native version engine behind nerv version next, the local artifact nerv release leaves, the dry-run-then-yes rule and the migration from the 4.2.0 release:, pipeline: and semantic-release. Loaded by the /release:* commands and by the release:versioner and release:builder agents.
+description: NERV release extension contract. Covers the release section of .ai-workflow/config.yaml (projects, branches, release rules, tag_format, changelog, build modes, stages, hooks, coverage), the native version engine behind nerv version next, the local artifact nerv release leaves, the dry-run-then-yes rule and the migration from the 4.2.0 release:, pipeline: and semantic-release. Loaded by the /release:* commands and by the release:versioner and release:builder agents.
 ---
 
-# NERV Release Plugin — Contract
+# NERV Release Extension — Contract
 
-The release plugin computes the next version of a repository (or of each project of a monorepo), and builds, tests and packages what is on origin into a **local artifact**. It never writes to git and never publishes: the release commit, the tag, the push, the images and the git host release belong to the `deploy` plugin (`deploy:deploy` skill).
+The release extension computes the next version of a repository (or of each project of a monorepo), and builds, tests and packages what is on origin into a **local artifact**. It never writes to git and never publishes: the release commit, the tag, the push, the images and the git host release belong to the `deploy` extension (`deploy:deploy` skill).
 
-The plugin drives two `nerv` subcommands and nothing else:
+The extension drives two `nerv` subcommands and nothing else:
 
 | Command | Does |
 |---|---|
@@ -20,7 +20,7 @@ If `nerv` is not on PATH, tell the user to install it — `curl -fsSL https://ra
 ## 1. Rules
 
 - **Never run semantic-release**, node or npm to get a version: the engine is native Go. The only contact with semantic-release is reading an existing config through `nerv release setup --import`.
-- **Never write to git**: no commit, no tag, no push, from this plugin. Never run `git tag`, `git push`, `docker push`, `dotnet nuget push` or `npm publish`.
+- **Never write to git**: no commit, no tag, no push, from this extension. Never run `git tag`, `git push`, `docker push`, `dotnet nuget push` or `npm publish`.
 - **Dry run first, always.** A real `nerv release` runs only after the user's explicit yes to the exact versions the dry run printed, bound with `--expect` (§5).
 - Agents never ask the user anything. A question goes back to the session that launched them.
 

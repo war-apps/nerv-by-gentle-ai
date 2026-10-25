@@ -7,10 +7,10 @@
   during the corner-case interview is a recorded decision, not a missing
   case, and will not surface as a finding.
 - **Teamwork is the only task provider shipped today.** Task tracking is the
-  optional `task@nerv` plugin, and `task-teamwork@nerv` is its only provider
-  plugin. Another provider is a new plugin with a valid `provider.yaml`; see
-  "Adding a provider" in [integration.md](integration.md#task-plugin).
-- **No task question, no timer, no task event.** The task plugin is not
+  optional task extension (`task@nerv`), and `task-teamwork@nerv` is its only
+  provider. Another provider is a new `task-<name>` provider with a valid `provider.yaml`; see
+  "Adding a provider" in [integration.md](integration.md#task-extension).
+- **No task question, no timer, no task event.** The task extension is not
   installed: the orchestrator emits task events only when the agent type
   `task:dispatcher` is available. Install it with `nerv install --with task`
   (or `--with task-teamwork`) and restart Claude Code. A `tasks:` block in
@@ -101,10 +101,10 @@
 - **`issue.deferred` or `/task:start` blocks with "tasklist not found."** A
   stale `tasks.providers.teamwork.tasklist_id` (or `project_id`) in
   the configuration. Fix the config (project or user scope), then replay the
-  pending envelope with `/task:replay {feature}`; the task plugin never
+  pending envelope with `/task:replay {feature}`; the task extension never
   silently creates the task elsewhere.
 - **Old `/task:*` copies in `~/.claude/commands/task/`.** An older release
-  copied the commands there. The `task` plugin now serves them itself;
+  copied the commands there. The `task` extension now serves them itself;
   `nerv install` reports the old copies and removes them only after you
   confirm.
 - **Extra reviewer sessions appear on every tool use.** That's the

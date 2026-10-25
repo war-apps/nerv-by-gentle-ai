@@ -1,6 +1,6 @@
 # release-conventional-commits
 
-The version engine of `nerv release` and `nerv version next` (plugin
+The version engine of `nerv release` and `nerv version next` (Claude Code plugin
 `release-conventional-commits@nerv`, provider name `conventional-commits`,
 slot `version`, the slot's default). It has no commands of its own: the
 release extension calls its operations from `provider.yaml`, the provider
@@ -21,7 +21,7 @@ tag, release notes and CHANGELOG section that semantic-release 24 with the
 
 ## Configuration
 
-Under `release.providers.conventional-commits` in `.ai-workflow.yml`:
+Under `release.providers.conventional-commits` in `.ai-workflow/config.yaml`:
 `branches`, `release_rules`, `note_keywords`, `tag_format` (default
 `v${version}`), `repository_url` and `changelog` (`file`, `title`). See
 `docs/release-commands.md#version-engine-keys`. Select it with

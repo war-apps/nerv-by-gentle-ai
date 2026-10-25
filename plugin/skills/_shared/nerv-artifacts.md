@@ -32,8 +32,8 @@ run id. Engram topic key for every run-folder artifact:
   mode and runner (FULL keeps them in the document's `L1` and header).
   Resume and a ratchet to FULL read them from here.
 - `task_ref` holds `{PREFIX}-{id}`, e.g. `TW-49132010`, taken from the
-  `run.started` envelope the task plugin returns at Preflight, or `null`
-  when the change has no task (the task plugin is not installed, or its
+  `run.started` envelope the task extension returns at Preflight, or `null`
+  when the change has no task (the task extension is not installed, or its
   envelopes carry no `task_ref`).
 - `closed_at` is `null` until the feature closes, then set once by Ikari at
   Close (DIRECT's or LIGHT's Close step, or FULL's step 19), the same
@@ -219,16 +219,16 @@ is `n/a (no transcript)`.
 unsaved: one line per mirror (topic key, error); else omit}
 
 ## Task events pending
-{only when the task plugin is installed and some envelope in
+{only when the task extension is installed and some envelope in
 nerv/task-events.yaml is pending: one line per envelope (event, provider,
 error), then: replay them with `/task:replay {feature}`}
 ```
 
 ## task-events.yaml (Ikari, append-only)
 
-- Purpose: every envelope the task plugin's `task:dispatcher` returned for
+- Purpose: every envelope the task extension's `task:dispatcher` returned for
   this run, so undelivered events can be replayed.
-- Author: Ikari, after every dispatch. Never created when the task plugin
+- Author: Ikari, after every dispatch. Never created when the task extension
   is not installed (`task:dispatcher` unavailable).
 - Location: `nerv/task-events.yaml` (`odd/{feature}/nerv/task-events.yaml`
   in FULL, `.nerv/runs/{run-id}/task-events.yaml` in DIRECT and LIGHT).
@@ -801,9 +801,9 @@ The audit-and-closure stage adds these event types to
 - `log_curated` — Fuyutsuki appended the `## Summary` block to
   `nerv/deliberation-log.md` (MODE: curate).
 
-### Task plugin event types
+### Task extension event types
 
-When the task plugin is installed, it adds one event type to the same
+When the task extension is installed, it adds one event type to the same
 append-only log, same shape (`{ts, phase, actor, event_type, payload_ref}`):
 
 - `task_event` — one envelope returned by `task:dispatcher` (payload:
@@ -812,7 +812,7 @@ append-only log, same shape (`{ts, phase, actor, event_type, payload_ref}`):
   after every dispatch: `run.started` at Preflight,
   `verification.started`, `wave.started`, `audit.ranked` and
   `issue.deferred` at the issue gate, and `run.closed` or `run.halted` at
-  Close. Never logged when the task plugin is not installed.
+  Close. Never logged when the task extension is not installed.
 
 ### Phase 5 event types
 

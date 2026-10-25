@@ -23,7 +23,7 @@ REBASE: yes                               # optional, only when the user approve
 ## Steps
 
 1. **Rehearse.** Run `nerv deploy --artifact <ARTIFACT> --dry-run --json`, plus `--target <name>` per `TARGETS` entry.
-2. **On a refusal or failure** (exit 1 or 2), return `error` and the steps as they are. For origin moved, say `--rebase` exists and that it tags code that was never built from the new head; never add it on your own. For a missing provider plugin, name `nerv install --with deploy-<name>`.
+2. **On a refusal or failure** (exit 1 or 2), return `error` and the steps as they are. For origin moved, say `--rebase` exists and that it tags code that was never built from the new head; never add it on your own. For a missing provider, name `nerv install --with deploy-<name>`.
 3. **`MODE: rehearse`** stops here and returns the report (Output).
 4. **`MODE: deploy`** needs `APPROVED` matching the dry run's `project`, `version` and `tag`. When it is missing or differs, return the report and say the user must approve it; run nothing else. Otherwise run the same command without `--dry-run`, with `--yes`, and with `--rebase` only when `REBASE: yes`.
 

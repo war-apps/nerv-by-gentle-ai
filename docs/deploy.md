@@ -1,8 +1,8 @@
-# Deploy plugin: `nerv deploy`
+# Deploy extension: `nerv deploy`
 
-The deploy plugin (`deploy@nerv`) releases what the [release plugin](release-commands.md)
-packaged. It requires `release`, and its git hosts and targets are provider
-plugins (`deploy-github`, `deploy-ssh-compose`, `deploy-bash`). Install them with:
+The deploy extension (`deploy@nerv`) releases what the [release extension](release-commands.md)
+packaged. It requires `release`, and its git hosts and targets are providers
+(`deploy-github`, `deploy-ssh-compose`, `deploy-bash`), installed with it. Install them with:
 
 ```sh
 nerv install --with release,deploy,deploy-github
@@ -12,9 +12,9 @@ nerv install --with deploy-ssh-compose   # the SSH and compose target
 | Slash command | What it does |
 |---|---|
 | `/deploy:run` | Picks the latest local artifact, or the one you name (`api`, `api@1.4.0`, a directory), runs `nerv deploy --dry-run`, and deploys only after your explicit yes. It reports every step and the pending ones. |
-| `/deploy:setup` | Writes the `deploy:` section (host, targets with their provider config, git), asks only what it cannot detect, and suggests the provider plugins to install. |
+| `/deploy:setup` | Writes the `deploy:` section (host, targets with their provider config, git), asks only what it cannot detect, and suggests the providers to install. |
 
-The plugin's agent, `deploy:deployer`, runs the same dry run and, with your
+The extension's agent, `deploy:deployer`, runs the same dry run and, with your
 approved project, version and tag, the real deploy. Its skill, `deploy`, is
 the contract below.
 
@@ -93,14 +93,14 @@ resumes after the steps that were done.
 
 ## Configuration
 
-The `deploy:` section of `.ai-workflow.yml`. Unknown keys are refused.
+The `deploy:` section of `.ai-workflow/config.yaml`. Unknown keys are refused.
 
 ```yaml
 deploy:
-  host: github                    # git host provider: plugin deploy-github
+  host: github                    # git host provider: deploy-github
   targets:                        # deployed in this order
     - name: staging
-      provider: ssh-compose       # target provider: plugin deploy-ssh-compose
+      provider: ssh-compose       # target provider: deploy-ssh-compose
       config:
         environment: staging
     - name: production
@@ -126,12 +126,12 @@ deploy:
 
 A provider key's value comes from the target's `config`. If the target does
 not set it, nerv reads `deploy.providers.<provider>.<key>` in the user
-configuration (`~/.config/ai-workflow/config.yml`). If neither sets it, the
+configuration (`~/.config/ai-workflow/config.yaml`). If neither sets it, the
 manifest's default applies.
 
 ## Providers
 
-Git hosts and targets are provider plugins named `deploy-<name>`. Each one
+Git hosts and targets are providers named `deploy-<name>`. Each one
 ships a `provider.yaml` manifest, the shape every provider shares
 ([extensions.md](extensions.md)), checked against the `host` and `target`
 slots of the deploy extension's `extension.yaml`:
@@ -327,7 +327,7 @@ name upper-cased with `-` turned into `_`; the prefix is `NERV_DEPLOY`. For
 ```bash
 NERV_DEPLOY_PRODUCTION_BLUE_DOCKER_SSH_HOST=10.0.0.10
 NERV_DEPLOY_PRODUCTION_BLUE_DOCKER_SSH_USER=deploy
-NERV_DEPLOY_PRODUCTION_BLUE_DOCKER_SSH_PASS=...          # never in .ai-workflow.yml
+NERV_DEPLOY_PRODUCTION_BLUE_DOCKER_SSH_PASS=...          # never in .ai-workflow/config.yaml
 NERV_DEPLOY_PRODUCTION_BLUE_DOCKER_COMPOSE_PATH=/srv/apps
 NERV_DEPLOY_PRODUCTION_BLUE_DOCKER_COMPOSE_SCRIPT=./manage.sh
 NERV_DEPLOY_PRODUCTION_BLUE_DOCKER_CONTAINER_NAME=comprobantes-api
@@ -356,7 +356,7 @@ overrides):
 ## Migrating from `nerv pipeline`
 
 The `pipeline:` section's `docker` push and `deploy` steps are this
-plugin's `deploy-ssh-compose` target, and its `release` step is `nerv release`
+extension's `deploy-ssh-compose` target, and its `release` step is `nerv release`
 then `nerv deploy` with `deploy-github`. The key-by-key translation is in
 [pipeline.md](pipeline.md); `nerv migrate --dry-run` shows it for your
 repository.

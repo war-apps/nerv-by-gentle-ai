@@ -45,7 +45,7 @@ other byte stays as it is.
 ## 2. Providers
 
 Read `~/.claude/plugins/installed_plugins.json` for `deploy-*@nerv`
-plugins. Suggest what is missing, without installing it:
+providers. Suggest what is missing, without installing it:
 
 - **Git host.** `origin` on GitHub (`git remote get-url origin`): suggest
   `deploy-github` (needs the `gh` CLI and `gh auth login`). Another host:

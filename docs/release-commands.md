@@ -1,6 +1,6 @@
-# Release plugin: `nerv version next` and `nerv release`
+# Release extension: `nerv version next` and `nerv release`
 
-The release plugin (`release@nerv`) versions and packages your own repositories
+The release extension (`release@nerv`) versions and packages your own repositories
 (any language, single repository or monorepo) from your machine. Its
 version engine is native: it gives the version, the tag, the release notes
 and the CHANGELOG section that semantic-release with the
@@ -27,9 +27,9 @@ by `release.projects[].build`: `docker-compose` or `bash`). Each provider's
 keys live under `release.providers.<provider>`, and a project overrides a
 build provider's keys under `release.projects[].providers.<provider>`.
 nerv calls them through the common provider contract, and installs all
-three with the release plugin.
+three with the release extension.
 
-The plugin ships two agents, `release:versioner` (computes and explains the
+The extension ships two agents, `release:versioner` (computes and explains the
 next version) and `release:builder` (runs the dry run, and the real build only
 with your approved versions), and the `release` skill, its contract. Install
 it with:
@@ -496,7 +496,7 @@ The 4.2.0 section had the same key, `release:`. It is told apart by its
 `dotnet`, `node`, `docker`, `nuget`, `npm`): both commands refuse a section
 with one, naming each key and `nerv migrate`. `nerv migrate --dry-run` shows the
 whole migration of a repository (the configuration files, the `release:`
-and `pipeline:` sections, the semantic-release import and the plugins to
+and `pipeline:` sections, the semantic-release import and the extensions to
 install), and `nerv migrate` applies it with backups. By hand:
 
 1. Drop `semantic_release:` (its `version`, `24.2.3` by default, and

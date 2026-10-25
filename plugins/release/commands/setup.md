@@ -36,7 +36,7 @@ comments) is in English.
      default) or **start over**. Stop and wait. Never overwrite it silently.
    - It has a 4.2.0 `release:` section (one of those keys) or a `pipeline:`
      key: they are no longer read. Say so, and that `nerv migrate --dry-run`
-     shows the whole migration of the file (config, sections, plugins).
+     shows the whole migration of the file (config, sections, extensions to install).
      Offer to rebuild only the release part here, from the 4.2.0 `release:`
      block (§2 of this command, the skill's §6), and leave `pipeline:` for
      `nerv migrate` or for the user to delete. One question; stop and wait.
@@ -167,7 +167,7 @@ Tell the user, without doing any of it:
    committed or not. Committing it is recommended so the team shares it.
 2. Run `/release:build`: it always rehearses first and packages the artifact
    only after an explicit yes; it never commits, tags or pushes.
-3. To release the artifact, install the deploy plugin (`nerv install --with
+3. To release the artifact, install the deploy extension (`nerv install --with
    deploy,deploy-github`) and run `/deploy:setup`.
 
 Never commit, push, run `nerv release` or edit any file other than
