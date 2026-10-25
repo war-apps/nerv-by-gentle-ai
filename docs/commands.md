@@ -273,11 +273,17 @@ Moves a repository from nerv 4.2.0 or 5.0.0-alpha.1 to this version, once:
 - the 4.2.0 `release:` section becomes today's `release:` section, with the semantic-release config imported;
 - `pipeline:` becomes `deploy:`;
 - the in-flight `openspec/changes` become ODD feature documents;
+- a project file without `tasks.provider` gets the user's
+  (`defaults.tasks.provider`, or the older user `tasks.provider`), since
+  `tasks:` is read from the project only;
 - `.nerv/.gitignore` is created.
 
 `--user` also moves `~/.claude/nerv/nerv.yaml`, or the user `config.yml`,
 to the user `config.yaml`,
-with the personal keys of the project file. `--dry-run` lists the steps
+with the personal keys of the project file, and moves the user file's
+run-time `tasks:`, `release:` and `deploy:` keys under
+`defaults.<section>`, keeping the personal ones in place (see
+[configuration.md](configuration.md#extension-sections-tasks-release-deploy)). `--dry-run` lists the steps
 it would take and writes nothing. `--install` installs the extensions and
 providers the repository used. Every changed or removed file is backed up first, and a
 second run changes nothing. See [migration.md](migration.md).
@@ -293,11 +299,13 @@ Checks that everything NERV needs is in order and changes nothing:
 
 - on this machine: gentle-ai 4.x, Claude Code and engram on the PATH, the
   NERV plugin installed, enabled and at this binary's version, its skills,
-  and the user configuration;
+  and the user configuration (a warning names its `tasks:`, `release:` and
+  `deploy:` keys that no longer apply, with `nerv migrate --user` as the
+  step);
 - in the repository: `.ai-workflow/config.yaml` with `enabled: true`, a
   pending `nerv migrate`, the project extensions and providers, the
-  `release:`, `deploy:` and `tasks:` sections with the extensions they need,
-  the origin remote and the base branch.
+  `release:`, `deploy:` and `tasks:` sections (read from the project file
+  only) with the extensions they need, the origin remote and the base branch.
 
 Each check prints `[ok]`, `[!!]` (should be changed), `[xx]` (NERV cannot
 work until it is fixed) or `[--]` (optional, not set up). Then come the

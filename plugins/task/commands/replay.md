@@ -3,7 +3,7 @@ description: Re-dispatch the task events a NERV run could not deliver (blocked o
 argument-hint: <feature or run id>
 ---
 
-Load the `task` skill first: it is the contract every step below refers to (§ numbers). Read the merged configuration (§1). When `tasks.provider` is `none`, say that task tracking is off in this scope and stop.
+Load the `task` skill first: it is the contract every step below refers to (§ numbers). Read the configuration (§1: the project file, plus the personal keys of the user file). When `tasks.provider` is `none`, say that task tracking is off in this scope and stop.
 
 Arguments: `$ARGUMENTS`.
 

@@ -26,7 +26,8 @@ mcp:
     - teamwork_list_projects
     - teamwork_list_tasklists
 
-# Read from tasks.providers.teamwork.<key> in the merged configuration (.ai-workflow/config.yaml over config.yaml).
+# Read from tasks.providers.teamwork.<key>: the scope: repo keys from .ai-workflow/config.yaml only,
+# the scope: user keys from the user config.yaml (the project file still wins when it sets one).
 config:
   - key: assignee_id
     scope: user

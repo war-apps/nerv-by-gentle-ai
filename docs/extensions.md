@@ -196,7 +196,11 @@ events: [run.started]          # the core events it handles, checked against its
   `release.providers.<name>.<key>` (and
   `release.projects[].providers.<name>.<key>` for a build provider) for
   release providers, `deploy.targets[].config.<key>` or
-  `deploy.providers.<name>.<key>` for deploy providers.
+  `deploy.providers.<name>.<key>` for deploy providers. A `scope: repo` key
+  is read from the project's `.ai-workflow/config.yaml` only; a
+  `scope: user` key is personal and is also read from the user
+  `config.yaml` (see
+  [configuration.md](configuration.md#extension-sections-tasks-release-deploy)).
 - **`events`** (optional): the core events the provider handles. Each must
   be an event of its slot's `events`, and none may need an operation the
   provider declares `not_implemented`.

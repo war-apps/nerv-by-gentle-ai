@@ -182,17 +182,29 @@ func (d deployCmd) run(ctx context.Context) (deployrun.Report, error) {
 	o := deployrun.Options{
 		RepoRoot: top, ArtifactDir: dir, Config: cfg, Targets: d.targets, DryRun: d.dryRun, Rebase: d.rebase,
 		Providers: providers, Proc: runner, Output: d.stderr,
-		UserValue: func(provider, key string) (string, bool) {
-			if wc.User == nil {
-				return "", false
-			}
-			return wc.User.Scalar("deploy.providers." + provider + "." + key)
-		},
 	}
+	if wc.Personal, err = workflowconfig.LoadPersonal(providers); err != nil {
+		return deployrun.Report{}, err
+	}
+	o.UserValue = userProviderValue(wc)
 	if !d.dryRun {
 		o.Confirm = d.confirm
 	}
 	return deployrun.Run(ctx, o)
+}
+
+// userProviderValue reads a deploy provider's config key from the user
+// file, at deploy.providers.<provider>.<key>, only when the key is
+// personal (scope: user in its manifest, wc.Personal): every other deploy
+// key comes from the project file.
+func userProviderValue(wc workflowconfig.Config) func(provider, key string) (string, bool) {
+	return func(provider, key string) (string, bool) {
+		path := "deploy.providers." + provider + "." + key
+		if wc.User == nil || !wc.Personal.Has(path) {
+			return "", false
+		}
+		return wc.User.Scalar(path)
+	}
 }
 
 // confirm shows the prepared release and asks before pushing on an

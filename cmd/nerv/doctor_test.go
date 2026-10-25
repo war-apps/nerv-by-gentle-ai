@@ -126,6 +126,61 @@ func TestDoctor_ListsTheStepsFailuresFirst(t *testing.T) {
 	}
 }
 
+// The user file's tasks:, release: and deploy: keys no longer apply at run
+// time, except the personal ones: a user tasks.provider is not the
+// repository's provider, and the user config check warns with the step
+// that moves it under defaults:.
+func TestDoctor_UserRunTimeKeysNoLongerApply(t *testing.T) {
+	w := newDoctorWorld(t)
+	user := paths.Resolve(w.home).UserConfig
+	w.write(user, "tasks:\n  provider: teamwork\n  providers:\n    teamwork:\n      assignee_id: 7\n      project_id: 1\n")
+	before := treeHash(t, w.home)
+
+	code, out, _ := w.doctor()
+	if code != 0 {
+		t.Fatalf("exit %d, want 0 (a warning)\n%s", code, out)
+	}
+	contains(t, "the report", out,
+		"  [!!]  user config  tasks.provider, tasks.providers.teamwork.project_id no longer apply: tasks, release and deploy are read from each project's .ai-workflow/config.yaml\n",
+		"  [--]  tasks        no task provider (tasks.provider)\n",
+		// nerv migrate copies the user's tasks.provider into the project.
+		"  [!!]  migration    nerv migrate has 2 step(s) to take\n",
+		"Next steps:\n  1. Run nerv migrate --user --dry-run to see the steps, then nerv migrate --user\n  2. Run nerv migrate --dry-run to see the steps, then nerv migrate\n")
+	if treeHash(t, w.home) != before {
+		t.Error("nerv doctor changed the home")
+	}
+}
+
+// Personal keys (scope: user provider keys, the timer store) and defaults:
+// are where they belong: no warning, and a default never applies.
+func TestDoctor_UserPersonalKeysAndDefaultsAreFine(t *testing.T) {
+	w := newDoctorWorld(t)
+	user := paths.Resolve(w.home).UserConfig
+	w.write(user, "tasks:\n  timer_store: ~/t.json\n  providers:\n    teamwork:\n      assignee_id: 7\ndeploy:\n  providers:\n    ssh-compose:\n      ssh_auth: key\ndefaults:\n  tasks:\n    provider: teamwork\n")
+
+	code, out, _ := w.doctor()
+	if code != 0 {
+		t.Fatalf("exit %d\n%s", code, out)
+	}
+	contains(t, "the report", out,
+		"  [ok]  user config  "+user+"\n",
+		"  [--]  tasks        no task provider (tasks.provider)\n")
+	lacks(t, "the report", out, "nerv migrate --user")
+}
+
+// The project's tasks.provider is the one checked, as before.
+func TestDoctor_ProjectTasksProviderStillChecked(t *testing.T) {
+	w := newDoctorWorld(t)
+	w.write(paths.Resolve(w.home).Settings, `{"enabledPlugins":{"nerv@nerv":true,"release@nerv":true,"task@nerv":true,"task-teamwork@nerv":true}}`)
+	w.write(paths.Resolve(w.home).UserConfig, "defaults:\n  tasks:\n    provider: other\n")
+	w.write(filepath.Join(w.top, ".ai-workflow", "config.yaml"), "enabled: true\nrelease:\n  projects:\n    - name: api\n      path: .\n      build: bash\ntasks:\n  provider: teamwork\n")
+	code, out, _ := w.doctor()
+	if code != 0 {
+		t.Fatalf("exit %d\n%s", code, out)
+	}
+	contains(t, "the report", out, "  [ok]  tasks        teamwork\n")
+}
+
 // A 4.2.0 repository: nerv migrate is the step, listed once although two
 // checks name it, and the checks that read the configuration are skipped.
 func TestDoctor_OldConfigurationPointsToMigrate(t *testing.T) {
