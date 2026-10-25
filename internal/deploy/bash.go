@@ -110,11 +110,29 @@ func bashOp(ctx context.Context, op string, stdin io.Reader, deps BashDeps) exte
 		}
 	}
 	if op == opPreflight {
+		var payload bashPayload
+		if err := req.DecodePayload(&payload); err != nil {
+			return fail("payload: %v", err)
+		}
+		git := bashGit(ctx, dir, deps)
+		base := payload.Artifact.BaseCommit
+		res, err := git(nil, "rev-parse", "--verify", "--quiet", base+"^{commit}")
+		// A base commit the repository lacks leaves the commit check to
+		// deploy, which runs it on the release commit in the clone.
+		haveBase := base != "" && err == nil && strings.TrimSpace(string(res.Stdout)) != ""
+		label := "the base commit " + shortCommit(base)
 		for _, key := range []string{"script", "publish_script", "verify_script"} {
 			if cfg[key] == "" && key != "script" {
 				continue
 			}
 			if err := checkWorkingScript(dir, key, cfg[key]); err != nil {
+				return fail("%v", err)
+			}
+			if !haveBase {
+				continue
+			}
+			clean, _ := scriptPath(key, cfg[key])
+			if err := checkCommitScript(git, base, label, key, cfg[key], clean); err != nil {
 				return fail("%v", err)
 			}
 		}
@@ -184,6 +202,48 @@ func checkWorkingScript(root, key, raw string) error {
 	return nil
 }
 
+// bashGit runs git in dir, with pathspecs taken literally.
+func bashGit(ctx context.Context, dir string, deps BashDeps) func(io.Writer, ...string) (proc.Result, error) {
+	runner := deps.Proc
+	if runner == nil {
+		runner = proc.ExecRunner{}
+	}
+	env := deps.Env
+	if env == nil {
+		env = os.Environ()
+	}
+	return func(stdout io.Writer, args ...string) (proc.Result, error) {
+		return runner.Run(ctx, proc.Command{Name: "git", Args: append([]string{"-C", dir, "--literal-pathspecs"}, args...), Env: env, Stdout: stdout})
+	}
+}
+
+// checkCommitScript checks that the configured script clean is a regular
+// file (not a symlink) in commit, named by label in the refusal.
+func checkCommitScript(git func(io.Writer, ...string) (proc.Result, error), commit, label, key, raw, clean string) error {
+	res, err := git(nil, "ls-tree", "-z", commit, "--", clean)
+	if err != nil {
+		return fmt.Errorf("git ls-tree %s: %v: %s", label, err, extension.LastLine(res.Stderr))
+	}
+	mode, kind, ok := treeEntry(res.Stdout, clean)
+	switch {
+	case !ok:
+		return fmt.Errorf("config.%s %q is not in %s (commit it before releasing)", key, raw, label)
+	case mode == "120000":
+		return fmt.Errorf("config.%s %q is a symlink in %s: name the file itself", key, raw, label)
+	case kind != "blob":
+		return fmt.Errorf("config.%s %q is not a regular file in %s", key, raw, label)
+	}
+	return nil
+}
+
+// shortCommit is the first 12 characters of commit.
+func shortCommit(commit string) string {
+	if len(commit) > 12 {
+		return commit[:12]
+	}
+	return commit
+}
+
 // runBashScript runs the release commit's script in a copy of that
 // commit's tree.
 func runBashScript(ctx context.Context, req extension.Request, p bashPayload, key, raw, dir string, deps BashDeps) extension.Response {
@@ -203,26 +263,14 @@ func runBashScript(ctx context.Context, req extension.Request, p bashPayload, ke
 		return fail("%v", err)
 	}
 	tag := p.Artifact.Tag
-	git := func(stdout io.Writer, args ...string) (proc.Result, error) {
-		return runner.Run(ctx, proc.Command{Name: "git", Args: append([]string{"-C", dir, "--literal-pathspecs"}, args...), Env: env, Stdout: stdout})
-	}
+	git := bashGit(ctx, dir, deps)
 	res, err := git(nil, "rev-parse", "--verify", "--quiet", "refs/tags/"+tag+"^{commit}")
 	commit := strings.TrimSpace(string(res.Stdout))
 	if tag == "" || err != nil || commit == "" {
 		return fail("the release tag %s is not in %s: deploy-bash runs in nerv deploy's clone of the release", orDash(tag), dir)
 	}
-	res, err = git(nil, "ls-tree", "-z", commit, "--", clean)
-	if err != nil {
-		return fail("git ls-tree %s: %v: %s", tag, err, extension.LastLine(res.Stderr))
-	}
-	mode, kind, ok := treeEntry(res.Stdout, clean)
-	switch {
-	case !ok:
-		return fail("config.%s %q is not in the release commit %s (commit it before releasing)", key, raw, tag)
-	case mode == "120000":
-		return fail("config.%s %q is a symlink in the release commit %s: name the file itself", key, raw, tag)
-	case kind != "blob":
-		return fail("config.%s %q is not a regular file in the release commit %s", key, raw, tag)
+	if err := checkCommitScript(git, commit, "the release commit "+tag, key, raw, clean); err != nil {
+		return fail("%v", err)
 	}
 
 	tmp, err := os.MkdirTemp(deps.TempDir, "nerv-deploy-bash-")
