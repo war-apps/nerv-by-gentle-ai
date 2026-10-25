@@ -18,6 +18,9 @@ import (
 type bashRepo struct {
 	t        *testing.T
 	dir, out string
+	// base is the artifact's base_commit the requests carry (abc when
+	// empty: a commit the repository does not have).
+	base string
 }
 
 func newBashRepo(t *testing.T, files map[string]string) *bashRepo {
@@ -67,13 +70,16 @@ func (r *bashRepo) write(name, content string) {
 }
 
 // request is the request nerv deploy sends a deploy-bash operation.
-func bashRequest(op string, config map[string]any) []byte {
+func bashRequest(op string, config map[string]any, base string) []byte {
+	if base == "" {
+		base = "abc"
+	}
 	req := extension.Request{
 		Contract: extension.ContractVersion, Extension: "deploy", Slot: "target", Provider: "bash", Operation: op, Config: config,
 		Payload: map[string]any{
 			"target": "staging", "artifact_dir": "/art",
 			"artifact": map[string]any{
-				"project": "api", "version": "1.2.0", "channel": "", "tag": "v1.2.0", "base_commit": "abc", "branch": "main",
+				"project": "api", "version": "1.2.0", "channel": "", "tag": "v1.2.0", "base_commit": base, "branch": "main",
 				"build_provider": "bash", "images": []string{"r/api:1.2.0", "r/web:1.2.0"},
 			},
 		},
@@ -86,7 +92,7 @@ func bashRequest(op string, config map[string]any) []byte {
 func (r *bashRepo) run(op, dir string, config map[string]any) (int, extension.Response, string) {
 	r.t.Helper()
 	var stdout, stderr bytes.Buffer
-	code := RunBashOp(context.Background(), op, bytes.NewReader(bashRequest(op, config)), &stdout, BashDeps{
+	code := RunBashOp(context.Background(), op, bytes.NewReader(bashRequest(op, config, r.base)), &stdout, BashDeps{
 		Dir: dir, Env: append(os.Environ(), "OUT="+r.out), Output: &stderr, TempDir: r.t.TempDir(),
 	})
 	resp, ok := extension.ParseResponse(stdout.Bytes())
@@ -268,7 +274,7 @@ func TestRunBashOp_RefusesUnknownOperationsAndRequests(t *testing.T) {
 		t.Errorf("unknown op: %d %s", code, out.String())
 	}
 	out.Reset()
-	if code := RunBashOp(context.Background(), "deploy", bytes.NewReader(bashRequest("verify", nil)), &out, BashDeps{}); code != 1 || !strings.Contains(out.String(), "not deploy") {
+	if code := RunBashOp(context.Background(), "deploy", bytes.NewReader(bashRequest("verify", nil, "")), &out, BashDeps{}); code != 1 || !strings.Contains(out.String(), "not deploy") {
 		t.Errorf("op mismatch: %d %s", code, out.String())
 	}
 }
@@ -276,4 +282,39 @@ func TestRunBashOp_RefusesUnknownOperationsAndRequests(t *testing.T) {
 func fileExists(path string) bool {
 	_, err := os.Stat(path)
 	return err == nil
+}
+
+// preflight also checks each script in the artifact's base commit, when
+// the repository has it, so a script the release commit cannot run (a
+// symlink, or a file never committed) is refused before nerv deploy pushes
+// the tag; a base commit the repository lacks leaves that check to deploy.
+func TestRunBashOp_PreflightChecksTheScriptInTheBaseCommit(t *testing.T) {
+	r := newBashRepo(t, map[string]string{"deploy/run.sh": "touch \"$OUT/ran\"\n"})
+	if err := os.Symlink("run.sh", filepath.Join(r.dir, "deploy", "link.sh")); err != nil {
+		t.Fatal(err)
+	}
+	r.git("-C", r.dir, "add", "-A")
+	r.git("-C", r.dir, "commit", "-q", "-m", "link")
+	out, err := exec.Command("git", "-C", r.dir, "rev-parse", "HEAD").Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	r.write("deploy/new.sh", "touch \"$OUT/ran\"\n")
+	r.base = strings.TrimSpace(string(out))
+	for script, want := range map[string]string{
+		"deploy/new.sh":  `config.script "deploy/new.sh" is not in the base commit ` + r.base[:12],
+		"deploy/link.sh": `config.script "deploy/link.sh" is a symlink in the base commit ` + r.base[:12],
+	} {
+		code, resp, _ := r.run("preflight", r.dir, map[string]any{"script": script})
+		if code != 1 || resp.Status != extension.StatusFailed || !strings.Contains(resp.Message, want) {
+			t.Errorf("%s: preflight = %d %+v, want %q", script, code, resp, want)
+		}
+	}
+	if code, resp, _ := r.run("preflight", r.dir, map[string]any{"script": "deploy/run.sh"}); code != 0 || resp.Status != extension.StatusOK {
+		t.Errorf("committed script: preflight = %d %+v", code, resp)
+	}
+	r.base = ""
+	if code, resp, _ := r.run("preflight", r.dir, map[string]any{"script": "deploy/new.sh"}); code != 0 || resp.Status != extension.StatusOK {
+		t.Errorf("unknown base commit: preflight = %d %+v, want ok (deploy checks the release commit)", code, resp)
+	}
 }

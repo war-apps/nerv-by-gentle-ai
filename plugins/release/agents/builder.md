@@ -35,7 +35,7 @@ APPROVED: <project>=<version> ...      # package only: what the user said yes to
 
 ## Output
 
-- `rehearse`: one row per project (project and branch, version, channel, tag, last version), then each releasing project's build mode, stages with their steps and hooks, condensed from stderr. End with the exact `APPROVED` line the user would be approving.
+- `rehearse`: one row per project (project and branch, version, channel, tag, last version), then each releasing project's build provider, stages with their steps and hooks, condensed from stderr. End with the exact `APPROVED` line the user would be approving.
 - `package`: the document's `status` and `error`, then one row per project with `status`, `version`, `tag` and `artifact`; a failed project's `error` and `action` quoted as they are. The next step for a packaged artifact is `/deploy:run`.
 
 ## Boundaries

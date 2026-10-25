@@ -406,6 +406,36 @@ func (s *releaseRun) execute(ctx context.Context) ([]releaseOutcome, error) {
 // provider's validate), --version with several projects and no --project,
 // or a .nerv/artifacts that leads outside the repository (before any stage
 // runs).
+// checkBuilds makes and validates the build provider of every project of
+// rel, keyed by project name, with every refusal in one ValidationError.
+// With required false (nerv version next) a project that names no build
+// provider is skipped, since only nerv release needs one.
+func checkBuilds(ctx context.Context, providers releaseplan.Providers, rel *releaseconfig.Release, required bool) (map[string]*releaseplan.BuildProvider, error) {
+	builds := map[string]*releaseplan.BuildProvider{}
+	var problems []string
+	for i, p := range rel.Projects {
+		if !required && rel.BuildProvider(p) == "" {
+			continue
+		}
+		b, err := releaseplan.NewBuildProvider(providers, rel, i)
+		if err == nil {
+			err = b.Validate(ctx)
+			builds[p.Name] = b
+		}
+		var invalid *releaseconfig.ValidationError
+		switch {
+		case errors.As(err, &invalid):
+			problems = append(problems, invalid.Problems...)
+		case err != nil:
+			return nil, err
+		}
+	}
+	if len(problems) > 0 {
+		return builds, &releaseconfig.ValidationError{Problems: problems}
+	}
+	return builds, nil
+}
+
 func (s *releaseRun) checkReleaseConfig(ctx context.Context, top string) error {
 	rel, err := releaseconfig.Load(top)
 	if errors.Is(err, releaseconfig.ErrNotConfigured) {
@@ -433,17 +463,11 @@ func (s *releaseRun) checkReleaseConfig(ctx context.Context, top string) error {
 	if err := collect(engine.Validate(ctx)); err != nil {
 		return err
 	}
-	s.builds = map[string]*releaseplan.BuildProvider{}
-	for i, p := range rel.Projects {
-		b, err := releaseplan.NewBuildProvider(s.providers, rel, i)
-		if err == nil {
-			err = b.Validate(ctx)
-			s.builds[p.Name] = b
-		}
-		if err := collect(err); err != nil {
-			return err
-		}
+	builds, err := checkBuilds(ctx, s.providers, rel, true)
+	if err := collect(err); err != nil {
+		return err
 	}
+	s.builds = builds
 	if len(problems) > 0 {
 		return &releaseconfig.ValidationError{Problems: problems}
 	}

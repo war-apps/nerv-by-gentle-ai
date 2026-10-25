@@ -43,7 +43,7 @@ which part is not accepted, that `/release:build` takes only `--branch`,
 3. **Present the plan.** In the user's language, one short table, one row
    per project: project (`branch`), version (blank for `no-release`),
    channel, tag (the tag `/deploy:run` will create) and last version. Under
-   it, for each releasing project, its build mode and its stages in order
+   it, for each releasing project, its build provider and its stages in order
    with their steps, condensed from stderr (e.g. `build: compose:build`,
    `test: compose:test`, `package: compose:save ghcr.io/org/api:1.4.0`), and
    its hooks. Say that the pipeline passed in the clone, that the real run

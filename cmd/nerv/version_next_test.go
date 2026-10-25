@@ -919,3 +919,24 @@ func TestVersionNext_RefusesAnInvalidVersionEngine(t *testing.T) {
 		})
 	}
 }
+
+// version next checks the build part of release: as it did before the
+// build providers: an unknown build provider, a build provider's own
+// validate refusing, and a key the provider does not declare are refused
+// (exit 1) before the engine computes anything, so /release:setup's check
+// with version next catches them.
+func TestVersionNext_RefusesAnInvalidBuildProvider(t *testing.T) {
+	for _, tt := range []struct{ name, yaml, want string }{
+		{"unknown provider", "release:\n  build: maven\n  projects:\n    - { name: app, path: . }\n", `unknown build provider "maven"`},
+		{"provider refusal", "release:\n  build: docker-compose\n  projects:\n    - { name: app, path: . }\n", "release.projects[0]"},
+		{"unknown key", "release:\n  build: bash\n  providers:\n    bash: { bogus: x }\n  projects:\n    - { name: app, path: . }\n", "release.providers.bash.bogus: unknown key"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			f := newNextFixture(t, tt.yaml)
+			code, stdout, stderr := f.run(t)
+			if code != 1 || stdout != "" || !strings.Contains(stderr, tt.want) || len(f.calls) != 0 {
+				t.Errorf("exit %d, calls %d, stdout %q\nstderr %s\nwant %q", code, len(f.calls), stdout, stderr, tt.want)
+			}
+		})
+	}
+}

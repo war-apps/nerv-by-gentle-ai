@@ -424,13 +424,15 @@ func TestRunInstall_LegacyCommands_AskOnTerminalReportOtherwise(t *testing.T) {
 	}
 }
 
-// L21: nerv install --help describes the whole suggestion order and the
-// requirements.
+// L21, S8: nerv install --help describes the whole suggestion order, the
+// providers bundled with release and deploy, and the requirements.
 func TestInstall_HelpDescribesTheSuggestionOrderAndRequirements(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	run([]string{"install", "--help"}, &stdout, &stderr, testOptions(t.TempDir()))
 	help := stdout.String() + stderr.String()
-	order := []string{"task@nerv", "task-<name>@nerv", "release@nerv", "deploy@nerv", "deploy-<name>@nerv"}
+	order := []string{"task@nerv", "task-<name>@nerv", "release@nerv", "deploy@nerv", "providers: bundled",
+		"release-conventional-commits", "release-docker-compose", "release-bash", "deploy-bash", "deploy-github", "deploy-ssh-compose",
+		"task's\nproviders are suggested"}
 	at := 0
 	for _, want := range order {
 		i := strings.Index(help[at:], want)
@@ -439,7 +441,7 @@ func TestInstall_HelpDescribesTheSuggestionOrderAndRequirements(t *testing.T) {
 		}
 		at += i + len(want)
 	}
-	for _, want := range []string{"deploy requires release", "a task provider requires task", "a deploy provider requires deploy"} {
+	for _, want := range []string{"deploy requires release", "a provider requires its\nextension"} {
 		if !strings.Contains(help, want) {
 			t.Errorf("help lacks %q:\n%s", want, help)
 		}
