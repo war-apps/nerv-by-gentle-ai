@@ -140,7 +140,7 @@ with `odd/tasks/`.
 ## Extensions
 
 The run ends with the exact install line for the extensions and providers
-the old configuration used (each installs as its `<name>@nerv` Claude Code
+the old configuration used (each installs as its own Claude Code
 plugin):
 
 - the `task` extension and its `task-teamwork` provider when `tasks.provider` was `teamwork` (also the 4.2.0 default when nothing set it);

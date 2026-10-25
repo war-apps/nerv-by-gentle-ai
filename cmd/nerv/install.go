@@ -22,11 +22,10 @@ applies model/effort assignments to the cached agents, ensures the Engram
 "nerv" knowledge base, and installs skills. It also installs the optional
 extensions and providers named by --with, keeps the ones already enabled up
 to date, and, when stdin is a terminal, offers the others, in this order:
-  1. the task extension (task@nerv, the /task:* commands);
-  2. its providers (task-<name>@nerv), only once task is installed;
-  3. the release extension (release@nerv: nerv release, the version engine);
-  4. the deploy extension (deploy@nerv: nerv deploy), only once release is
-     installed.
+  1. the task extension (the /task:* commands);
+  2. its providers (task-<name>), only once task is installed;
+  3. the release extension (nerv release, the version engine);
+  4. the deploy extension (nerv deploy), only once release is installed.
 An extension whose extension.yaml says providers: bundled (release and
 deploy) installs all its providers with it, without asking: release brings
 release-conventional-commits, release-docker-compose and release-bash, and

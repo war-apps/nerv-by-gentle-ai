@@ -1,7 +1,7 @@
 # Extensions and providers
 
 NERV's optional add-ons come in two kinds, and each kind speaks one
-contract. Each one ships as its own Claude Code plugin (`<name>@nerv`):
+contract. Each one ships as its own Claude Code plugin:
 
 - An **extension** (`task`, `release`, `deploy`) adds a capability to the
   core. It talks to the core through its `extension.yaml`.

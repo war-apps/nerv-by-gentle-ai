@@ -1,6 +1,6 @@
 # Release extension: `nerv version next` and `nerv release`
 
-The release extension (`release@nerv`) versions and packages your own repositories
+The release extension (`release`) versions and packages your own repositories
 (any language, single repository or monorepo) from your machine. Its
 version engine is native: it gives the version, the tag, the release notes
 and the CHANGELOG section that semantic-release with the

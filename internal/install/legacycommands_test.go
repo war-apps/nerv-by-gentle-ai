@@ -67,7 +67,7 @@ func TestInstall_LegacyCommands_ReportedWithRemedyWhenNotConfirmable(t *testing.
 	for _, want := range []string{
 		filepath.Join(dir, "start.md"),
 		filepath.Join(dir, "stopAll.md"),
-		"shadow the task@nerv plugin's /task:* commands and can be removed",
+		"shadow the task extension's /task:* commands and can be removed",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("output missing %q:\n%s", want, out)

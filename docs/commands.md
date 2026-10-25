@@ -14,7 +14,7 @@ Nerv by Gentle-AI has two command surfaces: Claude Code slash commands
 
 ### Task extension commands (`/task:*`)
 
-The `/task:*` commands belong to the optional task extension (`task@nerv`),
+The `/task:*` commands belong to the optional task extension (`task`),
 not to core. Claude Code serves them from the extension's installed plugin, so nothing
 is copied to `~/.claude/commands/task/`. Each one runs the task extension's
 contract against the configured providers.
@@ -41,7 +41,7 @@ contract against the configured providers.
 
 ### Release extension commands (`/release:*`)
 
-The optional release extension (`release@nerv`) versions, builds and packages; its
+The optional release extension (`release`) versions, builds and packages; its
 agents are `release:versioner` and `release:builder`. Reference:
 [release-commands.md](release-commands.md).
 
@@ -53,7 +53,7 @@ agents are `release:versioner` and `release:builder`. Reference:
 
 ### Deploy extension commands (`/deploy:*`)
 
-The optional deploy extension (`deploy@nerv`, which requires `release`) releases
+The optional deploy extension (`deploy`, which requires `release`) releases
 an artifact; its agent is `deploy:deployer`, and its git hosts and targets
 are providers (`deploy-github`, `deploy-ssh-compose`, `deploy-bash`). Reference:
 [deploy.md](deploy.md).
@@ -184,7 +184,7 @@ nerv configure --set-model aoba=opus/high
 nerv configure --init-repo . --repo-base develop --repo-provider-config teamwork.project_id=1271726 --repo-provider-config teamwork.tasklist_id=3951970
 ```
 
-When `task@nerv` is enabled, the wizard's "Task providers" section prompts
+When the `task` extension is enabled, the wizard's "Task providers" section prompts
 each enabled provider's scalar config keys, read from its `provider.yaml`,
 plus `tasks.provider` when more than one provider is enabled. It replaces
 the former tasks, Teamwork and commands sections, and the flags
@@ -326,15 +326,15 @@ skills. It also installs the optional extensions and providers named by `--with`
 keeps the ones already enabled up to date, and, when stdin is a terminal,
 offers the others, in this order:
 
-1. the task extension (`task@nerv`, the `/task:*` commands);
-2. its providers (`task-<name>@nerv`, such as `task-teamwork@nerv`), only
+1. the task extension (`task`, the `/task:*` commands);
+2. its providers (`task-<name>`, such as `task-teamwork`), only
    once task is installed;
-3. the release extension (`release@nerv`: `nerv release`), which brings its
-   providers with it, unasked (`release-conventional-commits@nerv`, the
-   version engine, `release-docker-compose@nerv` and `release-bash@nerv`);
-4. the deploy extension (`deploy@nerv`: `nerv deploy`), only once release is
+3. the release extension (`release`: `nerv release`), which brings its
+   providers with it, unasked (`release-conventional-commits`, the
+   version engine, `release-docker-compose` and `release-bash`);
+4. the deploy extension (`deploy`: `nerv deploy`), only once release is
    installed, which brings its providers with it, unasked
-   (`deploy-bash@nerv`, `deploy-github@nerv`, `deploy-ssh-compose@nerv`).
+   (`deploy-bash`, `deploy-github`, `deploy-ssh-compose`).
 
 An extension whose `extension.yaml` says `providers: bundled` (release,
 deploy) installs every provider it ships with it, each listed as `Adding
