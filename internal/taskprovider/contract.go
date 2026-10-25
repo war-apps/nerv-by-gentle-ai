@@ -27,7 +27,7 @@ const (
 // Operations are the remote primitives a provider implements, the
 // operations of the task extension's provider slot. Timers, timelog
 // consolidation and the composite operations (block, cancel, close, done,
-// stopAll) belong to the task plugin and are built from these.
+// stopAll) belong to the task extension and are built from these.
 var Operations = []string{
 	"getTask",
 	"assign",

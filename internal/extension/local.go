@@ -14,10 +14,11 @@ import (
 )
 
 // ProviderDir is the step variable of a project provider's own folder: an
-// argv element "{provider_dir}" is that folder, and "{provider_dir}/<path>"
-// a file inside it (a script the provider ships). LoadProvider resolves it
-// to an absolute path, refusing a path that leaves the folder (through ".."
-// or a symlink); a provider nerv ships cannot use it.
+// argv element "{provider_dir}/<path>" is a file inside it (a script the
+// provider ships). LoadProvider resolves it to an absolute path, refusing a
+// path that leaves the folder (through ".." or a symlink), a missing file
+// and a bare "{provider_dir}" (the folder itself, which no step can run);
+// a provider nerv ships cannot use it.
 const ProviderDir = "{provider_dir}"
 
 // The project folders, under the repository's .ai-workflow/: one folder
@@ -278,8 +279,8 @@ func within(path, dir string) bool {
 	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) && !filepath.IsAbs(rel)
 }
 
-// resolveProjectPaths replaces every {provider_dir} argv element of a
-// project provider's steps with the absolute path it names, and checks its
+// resolveProjectPaths replaces every {provider_dir}/<path> argv element of
+// a project provider's steps with the absolute path it names, and checks its
 // procedure files: each must stay inside the provider folder once its
 // symlinks are resolved. A provider nerv ships (dir "") cannot use
 // {provider_dir}.
@@ -306,7 +307,7 @@ func (p *Provider) resolveProjectPaths(f *projectFolder) error {
 				case f == nil:
 					add("%s: %s is for project providers (%s/)", where, ProviderDir, ProjectProvidersDir)
 				case rest == "":
-					a.Value = f.dir
+					add("%s: %s alone is the provider folder, not a file: name a file inside it (%s/<file>)", where, ProviderDir, ProviderDir)
 				case !isPath || !strings.HasPrefix(rest, "/"):
 					add("%s: %s is a whole element or the start of a path inside the provider folder (%s/<file>)", where, ProviderDir, ProviderDir)
 				default:

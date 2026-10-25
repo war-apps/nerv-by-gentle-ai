@@ -373,7 +373,7 @@ func TestRun_ModelsSection_CustomModelID_InvalidThenValid_AppliesOverride(t *tes
 // ---------------------------------------------------------------------------
 // Case group G (tests/configure.test.ps1's ~426-548): only git.base_branch
 // answered -> exactly one line differs, plus a repo init driven by the same
-// answers file. Without the task plugin, the repo flow asks no provider key.
+// answers file. Without the task extension, the repo flow asks no provider key.
 // ---------------------------------------------------------------------------
 
 func TestRun_BaseBranchChange_RepoInit(t *testing.T) {
@@ -439,7 +439,7 @@ func TestRun_BaseBranchChange_RepoInit(t *testing.T) {
 	}
 	for _, gone := range []string{"Task providers", "Task provider for this repo", "Slash commands", "/task:*"} {
 		if strings.Contains(out.String(), gone) {
-			t.Errorf("output mentions %q without the task plugin:\n%s", gone, out.String())
+			t.Errorf("output mentions %q without the task extension:\n%s", gone, out.String())
 		}
 	}
 }

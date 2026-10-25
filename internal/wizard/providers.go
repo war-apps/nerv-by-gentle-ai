@@ -14,11 +14,12 @@ import (
 	"github.com/war-apps/nerv-by-gentle-ai/internal/taskprovider"
 )
 
-// marketplace is the marketplace every nerv extension plugin installs from.
+// marketplace is the marketplace every nerv extension and provider
+// installs from.
 const marketplace = "nerv"
 
-// taskPlugins reports whether settings.json enables the task plugin and,
-// when it does, the embedded providers it also enables, in plugin name
+// taskPlugins reports whether settings.json enables the task extension
+// and, when it does, the embedded providers it also enables, in plugin name
 // order. Core names no provider: they come from the manifests in
 // deps.ExtensionsFS. A missing settings.json enables nothing; an unreadable
 // one is reported and treated the same way.
@@ -93,7 +94,7 @@ func scalarKeys(m *taskprovider.Manifest, scope string) []taskprovider.ConfigKey
 }
 
 // runTaskProvidersSection is the Task providers section, shown only when
-// the task plugin is enabled: tasks.provider when more than one provider is
+// the task extension is enabled: tasks.provider when more than one provider is
 // enabled, then every user-scope scalar key of each enabled provider's
 // manifest, shown with its current value or its Default. The changed
 // answers are written to the user config.yaml in one
@@ -102,7 +103,7 @@ func runTaskProvidersSection(deps Deps, cfg configure.Paths, providers []configu
 	fmt.Fprintln(out)
 	fmt.Fprintln(out, "--- Task providers ---")
 	if len(providers) == 0 {
-		fmt.Fprintln(out, "No task provider plugin is enabled; install one with nerv install.")
+		fmt.Fprintln(out, "No task provider is enabled; install one with nerv install.")
 		return false, nil
 	}
 

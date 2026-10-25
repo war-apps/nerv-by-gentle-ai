@@ -118,7 +118,7 @@ isn't taking effect.
 | `nerv release` | Build, test and package origin's code into a local artifact; no git writes (release extension) |
 | `nerv release setup --import` | Import an existing semantic-release config into the `release:` section |
 | `nerv deploy` | Release and deploy a release artifact: release commit, tag, push, targets, git host release (deploy extension) |
-| `nerv migrate` | Move a repository (and, with `--user`, the user configuration) from nerv 4.2.0 to this version |
+| `nerv migrate` | Move a repository (and, with `--user`, the user configuration) from nerv 4.2.0 or 5.0.0-alpha.1 |
 | `nerv configure` | Configure NERV non-interactively (or run the wizard) |
 | `nerv install` | Install NERV (plugin, cache, skills, Engram KB) |
 | `nerv uninstall` | Uninstall NERV |
@@ -156,7 +156,8 @@ With --init-repo:
   --repo-provider-config <provider>.<key>=<value>
                             Write tasks.providers.<provider>.<key> into the
                             repository's .ai-workflow/config.yaml (repeatable; repo-scope
-                            keys of the provider's provider.yaml only)
+                            keys of the provider's provider.yaml only, shipped
+                            or the project's in .ai-workflow/providers/)
 
 If `.ai-workflow/config.yaml` already exists it is not recreated, and an existing
 `tasks:` block in it is left untouched.
@@ -261,7 +262,7 @@ nerv deploy --artifact .nerv/artifacts/api/1.4.0 --yes
 ```
 
 `nerv pipeline` was removed: its steps moved to release and deploy
-([pipeline.md](pipeline.md)).
+([deploy.md](deploy.md#migrating-from-nerv-pipeline)).
 
 ### nerv migrate
 

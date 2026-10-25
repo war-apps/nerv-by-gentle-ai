@@ -1,7 +1,7 @@
 package deploy
 
 import (
-	"archive/tar"
+	"bufio"
 	"bytes"
 	"context"
 	"errors"
@@ -12,7 +12,9 @@ import (
 	"path"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/war-apps/nerv-by-gentle-ai/internal/artifact"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/extension"
@@ -76,11 +78,16 @@ type bashPayload struct {
 //   - publish, deploy and verify run in nerv deploy's clone: the script
 //     (publish_script, script, verify_script) must be a regular file of the
 //     release commit (the artifact's tag), never a symlink; that commit's
-//     tree is extracted into a temporary directory and the script runs
-//     there with bash, the request on its stdin and the deploy variables
-//     (BashVariables) in its environment. The script's JSON response, when
-//     it prints one, is the operation's; otherwise its exit code answers.
-//     publish and verify without their script are skipped.
+//     whole tree (export-ignore attributes do not apply) is extracted into
+//     a temporary directory and the script runs there with bash, the
+//     request on its stdin and the deploy variables (BashVariables) in its
+//     environment. The script's JSON response, when it prints one, is the
+//     operation's; otherwise its exit code answers. publish and verify
+//     without their script are skipped.
+//   - config.timeout, when set, is a duration (10m) bounding each script
+//     run: past it the script's process group is killed and the operation
+//     fails. Every operation refuses a value that is not a positive
+//     duration.
 func RunBashOp(ctx context.Context, op string, stdin io.Reader, stdout io.Writer, deps BashDeps) int {
 	return extension.Answer(stdout, bashOp(ctx, op, stdin, deps))
 }
@@ -103,6 +110,10 @@ func bashOp(ctx context.Context, op string, stdin io.Reader, deps BashDeps) exte
 	if err := req.DecodeConfig(&cfg); err != nil {
 		return fail("config: %v", err)
 	}
+	timeout, err := scriptTimeout(cfg["timeout"])
+	if err != nil {
+		return fail("%v", err)
+	}
 	dir := deps.Dir
 	if dir == "" {
 		if dir, err = os.Getwd(); err != nil {
@@ -116,7 +127,7 @@ func bashOp(ctx context.Context, op string, stdin io.Reader, deps BashDeps) exte
 		}
 		git := bashGit(ctx, dir, deps)
 		base := payload.Artifact.BaseCommit
-		res, err := git(nil, "rev-parse", "--verify", "--quiet", base+"^{commit}")
+		res, err := git(nil, nil, "rev-parse", "--verify", "--quiet", base+"^{commit}")
 		// A base commit the repository lacks leaves the commit check to
 		// deploy, which runs it on the release commit in the clone.
 		haveBase := base != "" && err == nil && strings.TrimSpace(string(res.Stdout)) != ""
@@ -149,7 +160,20 @@ func bashOp(ctx context.Context, op string, stdin io.Reader, deps BashDeps) exte
 	if err := req.DecodePayload(&payload); err != nil {
 		return fail("payload: %v", err)
 	}
-	return runBashScript(ctx, req, payload, key, cfg[key], dir, deps)
+	return runBashScript(ctx, req, payload, key, cfg[key], timeout, dir, deps)
+}
+
+// scriptTimeout reads config.timeout, the bound on each script run: empty
+// means none.
+func scriptTimeout(raw string) (time.Duration, error) {
+	if raw == "" {
+		return 0, nil
+	}
+	d, err := time.ParseDuration(raw)
+	if err != nil || d <= 0 {
+		return 0, fmt.Errorf("config.timeout %q must be a positive duration such as 10m, 90s or 1h30m", raw)
+	}
+	return d, nil
 }
 
 // scriptPath returns the clean slash-separated form of a configured script
@@ -202,8 +226,12 @@ func checkWorkingScript(root, key, raw string) error {
 	return nil
 }
 
+// bashGitFunc runs one git command: stdin (nil for none) on its input,
+// its output on stdout when set.
+type bashGitFunc func(stdin []byte, stdout io.Writer, args ...string) (proc.Result, error)
+
 // bashGit runs git in dir, with pathspecs taken literally.
-func bashGit(ctx context.Context, dir string, deps BashDeps) func(io.Writer, ...string) (proc.Result, error) {
+func bashGit(ctx context.Context, dir string, deps BashDeps) bashGitFunc {
 	runner := deps.Proc
 	if runner == nil {
 		runner = proc.ExecRunner{}
@@ -212,15 +240,15 @@ func bashGit(ctx context.Context, dir string, deps BashDeps) func(io.Writer, ...
 	if env == nil {
 		env = os.Environ()
 	}
-	return func(stdout io.Writer, args ...string) (proc.Result, error) {
-		return runner.Run(ctx, proc.Command{Name: "git", Args: append([]string{"-C", dir, "--literal-pathspecs"}, args...), Env: env, Stdout: stdout})
+	return func(stdin []byte, stdout io.Writer, args ...string) (proc.Result, error) {
+		return runner.Run(ctx, proc.Command{Name: "git", Args: append([]string{"-C", dir, "--literal-pathspecs"}, args...), Env: env, Stdin: stdin, Stdout: stdout})
 	}
 }
 
 // checkCommitScript checks that the configured script clean is a regular
 // file (not a symlink) in commit, named by label in the refusal.
-func checkCommitScript(git func(io.Writer, ...string) (proc.Result, error), commit, label, key, raw, clean string) error {
-	res, err := git(nil, "ls-tree", "-z", commit, "--", clean)
+func checkCommitScript(git bashGitFunc, commit, label, key, raw, clean string) error {
+	res, err := git(nil, nil, "ls-tree", "-z", commit, "--", clean)
 	if err != nil {
 		return fmt.Errorf("git ls-tree %s: %v: %s", label, err, extension.LastLine(res.Stderr))
 	}
@@ -245,8 +273,9 @@ func shortCommit(commit string) string {
 }
 
 // runBashScript runs the release commit's script in a copy of that
-// commit's tree.
-func runBashScript(ctx context.Context, req extension.Request, p bashPayload, key, raw, dir string, deps BashDeps) extension.Response {
+// commit's tree, killing its process group once timeout (when not 0) has
+// passed.
+func runBashScript(ctx context.Context, req extension.Request, p bashPayload, key, raw string, timeout time.Duration, dir string, deps BashDeps) extension.Response {
 	fail := func(format string, args ...any) extension.Response {
 		return extension.Response{Status: extension.StatusFailed, Message: fmt.Sprintf(format, args...)}
 	}
@@ -264,7 +293,7 @@ func runBashScript(ctx context.Context, req extension.Request, p bashPayload, ke
 	}
 	tag := p.Artifact.Tag
 	git := bashGit(ctx, dir, deps)
-	res, err := git(nil, "rev-parse", "--verify", "--quiet", "refs/tags/"+tag+"^{commit}")
+	res, err := git(nil, nil, "rev-parse", "--verify", "--quiet", "refs/tags/"+tag+"^{commit}")
 	commit := strings.TrimSpace(string(res.Stdout))
 	if tag == "" || err != nil || commit == "" {
 		return fail("the release tag %s is not in %s: deploy-bash runs in nerv deploy's clone of the release", orDash(tag), dir)
@@ -284,8 +313,16 @@ func runBashScript(ctx context.Context, req extension.Request, p bashPayload, ke
 	}
 
 	call := extension.Call{Argv: []string{"bash", clean}, Dir: tree, Env: withVariables(env, bashVariables(req.Operation, p, commit)), Stderr: deps.Output}
-	resp, _, err := extension.Exec(ctx, runner, "script "+clean, call, req)
+	runCtx := ctx
+	if timeout > 0 {
+		var cancel context.CancelFunc
+		runCtx, cancel = context.WithTimeout(ctx, timeout)
+		defer cancel()
+	}
+	resp, _, err := extension.Exec(runCtx, runner, "script "+clean, call, req)
 	switch {
+	case err != nil && ctx.Err() == nil && errors.Is(runCtx.Err(), context.DeadlineExceeded):
+		return fail("%s timed out after %s (config.timeout): its process group was killed", clean, timeout)
 	case err != nil && resp.Failure():
 		return extension.Response{Status: resp.Status, Message: clean + ": " + resp.Message, Data: resp.Data}
 	case err != nil:
@@ -312,60 +349,95 @@ func treeEntry(out []byte, name string) (mode, kind string, ok bool) {
 	return "", "", false
 }
 
-// extractCommit writes commit's tree into tree, through git archive. A
-// symlink is made after every file, so no file is written through one,
+// extractCommit writes commit's tree into tree, read from the object
+// database (git ls-tree and git cat-file) rather than git archive, so
+// export-ignore and export-subst attributes do not change what the script
+// finds. Executable modes are kept, a submodule is an empty folder, a
+// symlink is made after every file (so no file is written through one),
 // and an entry leaving tree is refused.
-func extractCommit(git func(io.Writer, ...string) (proc.Result, error), commit, tmp, tree string) error {
-	archive := filepath.Join(tmp, "tree.tar")
-	f, err := os.Create(archive)
+func extractCommit(git bashGitFunc, commit, tmp, tree string) error {
+	res, err := git(nil, nil, "ls-tree", "-r", "-z", "--full-tree", commit)
+	if err != nil {
+		return fmt.Errorf("git ls-tree: %v: %s", err, extension.LastLine(res.Stderr))
+	}
+	type entry struct{ mode, kind, object, name string }
+	var entries []entry
+	var batch bytes.Buffer
+	for _, raw := range bytes.Split(res.Stdout, []byte{0}) {
+		if len(raw) == 0 {
+			continue
+		}
+		meta, name, found := strings.Cut(string(raw), "\t")
+		fields := strings.Fields(meta)
+		if !found || len(fields) != 3 {
+			return fmt.Errorf("git ls-tree: unexpected entry %q", raw)
+		}
+		if clean := path.Clean(name); clean != name || !filepath.IsLocal(filepath.FromSlash(name)) {
+			return fmt.Errorf("tree entry %q leaves the tree", name)
+		}
+		e := entry{fields[0], fields[1], fields[2], name}
+		entries = append(entries, e)
+		if e.kind == "blob" {
+			batch.WriteString(e.object + "\n")
+		}
+	}
+	objects := filepath.Join(tmp, "objects")
+	f, err := os.Create(objects)
 	if err != nil {
 		return err
 	}
-	res, err := git(f, "archive", "--format=tar", commit)
+	res, err = git(batch.Bytes(), f, "cat-file", "--batch")
 	if cerr := f.Close(); err == nil {
 		err = cerr
 	}
 	if err != nil {
-		return fmt.Errorf("git archive: %v: %s", err, extension.LastLine(res.Stderr))
+		return fmt.Errorf("git cat-file: %v: %s", err, extension.LastLine(res.Stderr))
 	}
-	f, err = os.Open(archive)
+	f, err = os.Open(objects)
 	if err != nil {
 		return err
 	}
 	defer f.Close()
+	objs := bufio.NewReader(f)
 	if err := os.Mkdir(tree, 0o700); err != nil {
 		return err
 	}
 	type link struct{ name, target string }
 	var links []link
-	tr := tar.NewReader(f)
-	for {
-		h, err := tr.Next()
-		if err == io.EOF {
-			break
+	for _, e := range entries {
+		dest := filepath.Join(tree, filepath.FromSlash(e.name))
+		if e.kind != "blob" {
+			// A submodule (a commit entry): an empty folder, as git
+			// archive leaves it.
+			if err := os.MkdirAll(dest, 0o755); err != nil {
+				return err
+			}
+			continue
+		}
+		body, err := nextObject(objs, e.object)
+		if err != nil {
+			return err
+		}
+		switch e.mode {
+		case "120000":
+			target, err := io.ReadAll(body)
+			if err != nil {
+				return err
+			}
+			links = append(links, link{dest, string(target)})
+		case "100755":
+			err = writeTreeFile(dest, body, 0o755)
+		default:
+			err = writeTreeFile(dest, body, 0o644)
 		}
 		if err != nil {
 			return err
 		}
-		if h.Typeflag == tar.TypeXGlobalHeader {
-			continue
+		if _, err := io.Copy(io.Discard, body); err != nil {
+			return err
 		}
-		name := path.Clean(h.Name)
-		if !filepath.IsLocal(filepath.FromSlash(name)) {
-			return fmt.Errorf("archive entry %q leaves the tree", h.Name)
-		}
-		dest := filepath.Join(tree, filepath.FromSlash(name))
-		switch h.Typeflag {
-		case tar.TypeDir:
-			if err := os.MkdirAll(dest, 0o755); err != nil {
-				return err
-			}
-		case tar.TypeReg:
-			if err := writeTreeFile(dest, tr, os.FileMode(h.Mode)&0o755|0o600); err != nil {
-				return err
-			}
-		case tar.TypeSymlink:
-			links = append(links, link{dest, h.Linkname})
+		if b, err := objs.ReadByte(); err != nil || b != '\n' {
+			return fmt.Errorf("git cat-file: object %s is not terminated", e.object)
 		}
 	}
 	for _, l := range links {
@@ -377,6 +449,24 @@ func extractCommit(git func(io.Writer, ...string) (proc.Result, error), commit, 
 		}
 	}
 	return nil
+}
+
+// nextObject reads the next git cat-file --batch header from r, which
+// must be the blob object, and returns a reader of its content.
+func nextObject(r *bufio.Reader, object string) (io.Reader, error) {
+	header, err := r.ReadString('\n')
+	if err != nil {
+		return nil, fmt.Errorf("git cat-file: reading object %s: %v", object, err)
+	}
+	fields := strings.Fields(header)
+	if len(fields) != 3 || fields[0] != object || fields[1] != "blob" {
+		return nil, fmt.Errorf("git cat-file: object %s: unexpected header %q", object, strings.TrimSpace(header))
+	}
+	size, err := strconv.ParseInt(fields[2], 10, 64)
+	if err != nil || size < 0 {
+		return nil, fmt.Errorf("git cat-file: object %s: bad size %q", object, fields[2])
+	}
+	return io.LimitReader(r, size), nil
 }
 
 func writeTreeFile(dest string, r io.Reader, mode os.FileMode) error {

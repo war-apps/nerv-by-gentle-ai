@@ -60,7 +60,7 @@ type Options struct {
 	// Confirm is asked after the release is prepared, before anything is
 	// pushed or run; an error stops the deploy. Nil proceeds.
 	Confirm func(Report) error
-	// Providers holds the extension plugins: deploy/extension.yaml and the
+	// Providers holds the extensions and providers: deploy/extension.yaml and the
 	// providers' deploy-<name>/provider.yaml.
 	Providers fs.FS
 	// UserValue returns a provider config key's user-scope value

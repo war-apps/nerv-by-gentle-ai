@@ -1,7 +1,7 @@
 schema_version: "1.1"
 name: task-plugin-absent-no-events
 description: >-
-  J5 "task plugin absent" variant: with no task plugin installed (no
+  J5 "task extension absent" variant: with no task extension installed (no
   task:dispatcher agent type) and git.worktree: never, the session emits
   no task event, asks no task question, creates no task, starts no timer,
   writes no task-events.yaml and never mentions a tracker, even though

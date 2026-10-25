@@ -20,12 +20,12 @@ Materializes the embedded NERV plugin under <home>/.nerv/marketplace,
 registers it in Claude Code's settings.json, refreshes the plugin cache,
 applies model/effort assignments to the cached agents, ensures the Engram
 "nerv" knowledge base, and installs skills. It also installs the optional
-extension plugins named by --with, keeps the ones already enabled up to
-date, and, when stdin is a terminal, offers the others, in this order:
-  1. the task plugin (task@nerv, the /task:* commands);
+extensions and providers named by --with, keeps the ones already enabled up
+to date, and, when stdin is a terminal, offers the others, in this order:
+  1. the task extension (task@nerv, the /task:* commands);
   2. its providers (task-<name>@nerv), only once task is installed;
-  3. the release plugin (release@nerv: nerv release, the version engine);
-  4. the deploy plugin (deploy@nerv: nerv deploy), only once release is
+  3. the release extension (release@nerv: nerv release, the version engine);
+  4. the deploy extension (deploy@nerv: nerv deploy), only once release is
      installed.
 An extension whose extension.yaml says providers: bundled (release and
 deploy) installs all its providers with it, without asking: release brings
@@ -34,10 +34,10 @@ deploy brings deploy-bash, deploy-github and deploy-ssh-compose. task's
 providers are suggested: each is offered after task.
 Requirements: deploy requires release, and a provider requires its
 extension; each is offered only once what it requires is installed or
-chosen. A plugin named in --with brings what it requires with it; a
-requirement this nerv does not ship is refused.
+chosen. An extension or provider named in --with brings what it requires
+with it; a requirement this nerv does not ship is refused.
 Old /task:* copies in <home>/.claude/commands/task, which shadow the task
-plugin's commands, are reported, and removed when you confirm on a terminal.
+extension's commands, are reported, and removed when you confirm on a terminal.
 Unless --no-configure is given,
 it then runs the interactive setup wizard when stdin is a terminal, or
 prints the "run nerv configure" hint otherwise.
@@ -46,7 +46,7 @@ Flags:
   --require-gentle-ai   Fail (exit 1) when gentle-ai is missing or not 4.x
   --no-skills           Skip installing skills
   --no-configure        Skip the closing wizard/hint entirely
-  --with <names>        Comma-separated extension plugins to install, such as
+  --with <names>        Comma-separated extensions and providers to install, such as
                         task,task-<provider>,release,deploy,deploy-<provider>
                         (each brings what it requires)
 `
@@ -54,7 +54,7 @@ Flags:
 const uninstallUsage = `Usage: nerv uninstall [flags]
 
 Removes NERV's settings.json registration, uninstalls the cached plugin and
-every enabled extension plugin,
+every enabled extension and provider,
 and removes the materialized marketplace directory.
 `
 

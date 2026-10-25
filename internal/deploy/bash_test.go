@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/war-apps/nerv-by-gentle-ai/internal/extension"
 )
@@ -316,5 +317,74 @@ func TestRunBashOp_PreflightChecksTheScriptInTheBaseCommit(t *testing.T) {
 	r.base = ""
 	if code, resp, _ := r.run("preflight", r.dir, map[string]any{"script": "deploy/new.sh"}); code != 0 || resp.Status != extension.StatusOK {
 		t.Errorf("unknown base commit: preflight = %d %+v, want ok (deploy checks the release commit)", code, resp)
+	}
+}
+
+// The release commit's tree is extracted whole: export-ignore attributes
+// (which git archive honours) do not drop the script or the files it
+// needs, executable modes are kept, and symlinks inside the tree are made.
+func TestRunBashOp_DeployIgnoresExportIgnoreAttributes(t *testing.T) {
+	r := newBashRepo(t, map[string]string{
+		".gitattributes": "deploy/** export-ignore\nlib/** export-ignore\n",
+		"deploy/run.sh": `cat lib/data.txt > "$OUT/data"
+test -x deploy/tool.sh && echo yes > "$OUT/exec"
+cat lib/link.txt > "$OUT/link"
+`,
+		"deploy/tool.sh": "true\n",
+		"lib/data.txt":   "released\n",
+	})
+	if err := os.Chmod(filepath.Join(r.dir, "deploy", "tool.sh"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink("data.txt", filepath.Join(r.dir, "lib", "link.txt")); err != nil {
+		t.Fatal(err)
+	}
+	r.git("-C", r.dir, "add", "-A")
+	r.git("-C", r.dir, "commit", "-q", "-m", "modes")
+	r.git("-C", r.dir, "tag", "-f", "v1.2.0")
+	code, resp, stderr := r.run("deploy", r.dir, map[string]any{"script": "deploy/run.sh"})
+	if code != 0 || resp.Status != extension.StatusOK {
+		t.Fatalf("deploy = %d %+v (stderr %q)", code, resp, stderr)
+	}
+	if got := r.read("data"); got != "released\n" {
+		t.Errorf("lib/data.txt in the tree = %q, want the release commit's", got)
+	}
+	if got := r.read("exec"); got != "yes\n" {
+		t.Errorf("deploy/tool.sh lost its executable mode (%q)", got)
+	}
+	if got := r.read("link"); got != "released\n" {
+		t.Errorf("lib/link.txt symlink not made in the tree (%q)", got)
+	}
+}
+
+// config.timeout bounds each script run: past it the script's process
+// group is killed and the operation fails saying so; a value that is not
+// a positive duration is refused, at preflight too.
+func TestRunBashOp_TimeoutKillsTheScript(t *testing.T) {
+	r := newBashRepo(t, map[string]string{"deploy/run.sh": "sleep 30\ntouch \"$OUT/after\"\n"})
+	start := time.Now()
+	code, resp, _ := r.run("deploy", r.dir, map[string]any{"script": "deploy/run.sh", "timeout": "300ms"})
+	if took := time.Since(start); took > 10*time.Second {
+		t.Errorf("the timed-out script ran for %v", took)
+	}
+	want := "deploy/run.sh timed out after 300ms (config.timeout)"
+	if code != 1 || resp.Status != extension.StatusFailed || !strings.Contains(resp.Message, want) {
+		t.Errorf("deploy = %d %+v, want failed %q", code, resp, want)
+	}
+	if fileExists(filepath.Join(r.out, "after")) {
+		t.Error("the script went on after its timeout")
+	}
+	ok := newBashRepo(t, map[string]string{"deploy/run.sh": "true\n"})
+	if code, resp, _ := ok.run("deploy", ok.dir, map[string]any{"script": "deploy/run.sh", "timeout": "1m"}); code != 0 || resp.Status != extension.StatusOK {
+		t.Errorf("script within its timeout = %d %+v", code, resp)
+	}
+	for _, op := range []string{"preflight", "deploy"} {
+		for _, bad := range []string{"soon", "0s", "-1m"} {
+			code, resp, _ := ok.run(op, ok.dir, map[string]any{"script": "deploy/run.sh", "timeout": bad})
+			want := `config.timeout "` + bad + `" must be a positive duration such as 10m`
+			if code != 1 || resp.Status != extension.StatusFailed || !strings.Contains(resp.Message, want) {
+				t.Errorf("%s with timeout %q = %d %+v, want %q", op, bad, code, resp, want)
+			}
+		}
 	}
 }

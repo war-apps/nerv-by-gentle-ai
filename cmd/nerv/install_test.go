@@ -441,9 +441,17 @@ func TestInstall_HelpDescribesTheSuggestionOrderAndRequirements(t *testing.T) {
 		}
 		at += i + len(want)
 	}
-	for _, want := range []string{"deploy requires release", "a provider requires its\nextension"} {
+	for _, want := range []string{"deploy requires release", "a provider requires its\nextension", "the task extension (task@nerv",
+		"Comma-separated extensions and providers to install"} {
 		if !strings.Contains(help, want) {
 			t.Errorf("help lacks %q:\n%s", want, help)
+		}
+	}
+	// Add-ons are extensions and their implementations providers; "plugin"
+	// is only their Claude Code packaging.
+	for _, gone := range []string{"extension plugin", "task plugin", "release plugin", "deploy plugin", "A plugin named"} {
+		if strings.Contains(help, gone) {
+			t.Errorf("help still says %q:\n%s", gone, help)
 		}
 	}
 }

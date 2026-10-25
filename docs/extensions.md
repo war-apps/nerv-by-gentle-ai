@@ -240,9 +240,9 @@ ships, in its committed `.ai-workflow/` folder:
   --init-repo --repo-provider-config` and the wizard's repository step take
   the keys of its task providers; the `task:dispatcher` reads its task
   providers from `.ai-workflow/providers/task-*/provider.yaml`.
-- An exec provider runs its own files through `{provider_dir}`: the element
-  `{provider_dir}` is the provider's folder, and `{provider_dir}/<path>` a
-  file inside it. nerv resolves it to an absolute path when it loads the
+- An exec provider runs its own files through `{provider_dir}/<path>`, a
+  file inside the provider's folder; a bare `{provider_dir}` element (the
+  folder itself) is refused. nerv resolves it to an absolute path when it loads the
   provider, and refuses a path that leaves the folder (`..`, or a symlink
   out of it) or does not exist. The command is still `{nerv}` or an
   executable named in `requires`, so a script runs through its interpreter.

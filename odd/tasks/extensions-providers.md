@@ -230,3 +230,28 @@ Order: T4 first (it touches every other surface), then T1, T2, T3, T5, T6, T7, T
     - project-level `tag_format` and `changelog` stay on the project, because they are project keys today;
     - an old-shape `release:` is also converted.
   - Risk: item 1 (rewrites stored config) and item 3.
+- **L27 (stop-hook candidate):**
+  - The stop hook raised the whole branch against main (03d4401; 556 files, 88335 lines) as an unreviewed candidate.
+  - The user granted review. The native START stopped with `lens_context_budget_exceeded`, which is terminal: the candidate has to be reduced.
+  - The per-commit reviews (L10, L11, L20, L22, and the remaining tail commits) are that reduction.
+- **L28 (final follow-ups):**
+  - deploy-bash extracts the release tree with `ls-tree` and `cat-file --batch`, so `export-ignore` no longer applies (RED: exit 127).
+  - deploy-bash gains an optional `timeout` key; when it expires the process group is killed (RED: the script ran the full 30s).
+  - The `configure --help` text names shipped and project provider.yaml.
+  - A bare `{provider_dir}` element is refused at load (RED, then GREEN); the parent updated docs/extensions.md.
+  - Terminology leftovers are fixed in the install help, the wizard line, the evals and the code comments.
+  - `go test ./...` and the hook tests pass.
+  - Risk: item 3 (a bare `{provider_dir}` is now refused, printed text changed) and item 5 (deploy-time tree extraction rewritten).
+- **L29:** the stop hook raised the whole-branch candidate again (88566 lines) and the user granted review. The native START stopped with `lens_context_budget_exceeded` again (terminal).
+- **L30 (final verifier, 9766737..235c863): PASS, no blockers.** Items 1, 3 and 5 hold, and so does every commit.
+  - Advisories 1-3 were fixed inline:
+    - the broken `#build-modes` anchors now point to `#build-providers`;
+    - the importer's printed "deploy plugin" wording now says "deploy extension";
+    - the top-level migrate usage names 5.0.0-alpha.1.
+  - Advisory 4 (export-subst is also dropped) follows from L23 by design.
+  - Advisory 5 (`release setup --import` ignores a leftover `.ai-workflow.yml`) was already the behaviour at the baseline.
+- **L31 (native reviews of the tail):** 9766737, 805eb07, 964fef2, 67c85f2 and 0a06cd5 were each assessed under budget, so they were reviewed as one slice from c045ed3 to 0a06cd5. 235c863 was assessed high and reviewed alone.
+  - **Slice:** the user granted it, and START stopped with `lens_context_budget_exceeded` (2.4k lines). The final verifier's PASS (L30) stands.
+  - **235c863:** the user granted it; approved and acknowledged. Its advisories are suggestions only: the extraction failure paths and timeout coverage for operations other than deploy.
+  - 9637627 (docs/usage text) was under budget and is left pending as passive-scale.
+  - **Feature status:** all tasks are done; delivery is pending the user's decision.
