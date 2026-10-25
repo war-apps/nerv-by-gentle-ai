@@ -30,12 +30,15 @@ test (passive docs, a comment, no runner), step 3 is skipped and the
 reason is logged in the route declaration; never invent RED evidence.
 
 **Verification.** DIRECT is inline, so Ikari's own step-5 report is the
-verification of record. RDD on: the native review at step 7 is the
-independent check. RDD off or unknown: Ikari runs `gentle-ai review assess
---cwd <repo> --json` over the uncommitted diff — `passive` and `medium`
-keep the focused check; `high`, a failed assessment or an unrecognized
-verb launches `nerv:maya` (`MODE: reduced`) as the independent verifier
-before step 6. A failed assessment never lowers the tier.
+verification of record, whether RDD is on or off. `nerv:maya` (`MODE:
+reduced`) runs as the independent verifier before step 6 only when the
+change touches one of gentle-ai's Task Size high-risk items, which Ikari
+names by adding `--escalate-item <1-6> --escalate-reason "<one line>"` to
+`gentle-ai review assess --cwd <repo> --agent claude-code --json` over the
+uncommitted diff (see `pipeline-light.md`, Verification gate). A native
+`high` alone, a failed assessment or an unrecognized verb never launches
+her. RDD on: the native review at step 7 is an additional outside view and
+never replaces this check.
 
 **Ratchet to LIGHT.** The moment DIRECT needs more than the inline evidence
 budget, research, a design decision or a second non-trivial file — or the

@@ -200,9 +200,9 @@ hygiene and TDD commit order for Casper; test-plan coverage, reliability,
 correctness, resilience and performance for gendo), regardless of
 the RDD switch. Native evidence cannot replace gendo: an
 `already_reviewed` range only proves that some native review covered it,
-and the native plan picks its lenses by risk (a medium candidate gets a
-single consolidated lens), so the native reliability and resilience
-lenses may never have run on it; `gendo.md` carries the full
+and since gentle-ai 4.2.0 a review is due only for a `high` candidate,
+with the lenses pertinent to what changed, so the native reliability and
+resilience lenses may never have run on it; `gendo.md` carries the full
 rationale.
 
 ### Ratchet handling

@@ -79,9 +79,9 @@ Expected, in order:
    verification command in its envelope; `next_recommended: ikari-commit`.
 5. Verification gate: Ikari re-runs one reported command (spot check).
    `nerv:maya` (`MODE: reduced`) runs only when the gate requires an
-   independent verifier (RDD off/unknown with a `high` or unassessable
-   tier, or a small-model pilot on `medium`); with RDD on, the native
-   review after the commit is the independent check.
+   independent verifier (a gentle-ai high-risk item Ikari names with
+   `--escalate-item`, RDD on or off); the native review after the commit
+   is an extra outside view, never the independent check.
 6. Ikari commits the work unit itself (`feat:`, test and implementation
    together) after the pre-validation; no AI attribution trailer.
 7. Ikari writes `nerv/run-summary.md` with an agents table filled from the

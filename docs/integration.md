@@ -241,10 +241,11 @@ LIGHT is gentle-ai's delegated-direct route with the fewest agents: an
 optional Ritsuko explorer (at most ~2k tokens), one domain-matched pilot in
 `MODE: solo` that writes and observes its own failing test before making it
 pass and reports the named verification commands, then gentle-ai's
-Delegated Verification Gate — with RDD on, the pilot's report is of record
-and the native review is the independent check; with RDD off or unknown,
-the native risk tier decides (passive: readback; medium: self-verification,
-plus Maya for a small-model pilot; high: Maya as independent verifier).
+Delegated Verification Gate, the same with RDD on or off: passive is a
+readback, otherwise the pilot's report is of record, and Maya runs as the
+independent verifier only for a named gentle-ai high-risk item
+(`--escalate-item`); the native review is an extra outside view that never
+replaces it.
 Ikari always re-runs one reported command, then commits once the user
 validates. Ikari writes the run summary and makes the close commit; Aoba
 is launched only for PR preparation or slicing.
