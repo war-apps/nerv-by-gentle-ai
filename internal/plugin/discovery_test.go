@@ -77,6 +77,20 @@ func TestExtensions_RefusesAnInvalidTree(t *testing.T) {
 		{"extension name is not its folder", func(f fstest.MapFS) {
 			f["zeta/extension.yaml"] = &fstest.MapFile{Data: extensiontest.Extension("zed", 1)}
 		}, `name "zed" must match its folder "zeta"`},
+		// A shipped manifest that breaks a rule is a build defect: the error
+		// names the manifest by its path in the tree and the rule.
+		{"invalid shipped extension", func(f fstest.MapFS) {
+			f["zeta/extension.yaml"] = &fstest.MapFile{Data: []byte(strings.Replace(string(extensiontest.Extension("zeta", 1)), "cardinality: many", "cardinality: few", 1))}
+		}, `zeta/extension.yaml: slots[0].cardinality "few" must be one of one, many, per-target`},
+		{"requires an extension not shipped", func(f fstest.MapFS) {
+			f["alpha/extension.yaml"] = &fstest.MapFile{Data: extensiontest.Extension("alpha", 2, "zeta", "omega")}
+		}, "alpha/extension.yaml: requires: omega is not an extension of this tree"},
+		{"requires a provider", func(f fstest.MapFS) {
+			f["alpha/extension.yaml"] = &fstest.MapFile{Data: extensiontest.Extension("alpha", 2, "zeta-two")}
+		}, "alpha/extension.yaml: requires: zeta-two is not an extension of this tree"},
+		{"requires cycle", func(f fstest.MapFS) {
+			f["zeta/extension.yaml"] = &fstest.MapFile{Data: extensiontest.Extension("zeta", 1, "alpha")}
+		}, "alpha/extension.yaml: requires cycle: alpha -> zeta -> alpha"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

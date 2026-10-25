@@ -1,6 +1,7 @@
 package extension_test
 
 import (
+	"slices"
 	"strings"
 	"testing"
 	"testing/fstest"
@@ -283,5 +284,152 @@ func TestResponse_FailureAndData(t *testing.T) {
 	}
 	if _, ok := extension.ParseResponse([]byte("plain text")); ok {
 		t.Error("plain text parsed as a response")
+	}
+}
+
+// A response whose status is not one of the contract's is refused, by the
+// same check Exec applies; a response without a status answers by exit
+// code alone.
+func TestParseResponse_RefusesAnUnknownStatus(t *testing.T) {
+	r, ok, err := extension.DecodeResponse([]byte(`{"status":"done","message":"shipped"}`))
+	if !ok || err == nil || !strings.Contains(err.Error(), `unknown status "done" (want ok, skipped, blocked, failed or needs_input)`) {
+		t.Errorf("unknown status: %+v, %v, %v", r, ok, err)
+	}
+	if r.Message != "shipped" {
+		t.Errorf("the response is still returned: %+v", r)
+	}
+	if r, ok := extension.ParseResponse([]byte(`{"status":"done"}`)); ok {
+		t.Errorf("ParseResponse accepted an unknown status: %+v", r)
+	}
+	if r, ok, err := extension.DecodeResponse([]byte(`{"message":"no status"}`)); !ok || err != nil || r.Status != "" || r.Message != "no status" {
+		t.Errorf("no status: %+v, %v, %v", r, ok, err)
+	}
+	if r, ok := extension.ParseResponse([]byte(`{"message":"no status"}`)); !ok || r.Message != "no status" {
+		t.Errorf("ParseResponse, no status: %+v, %v", r, ok)
+	}
+	for _, s := range extension.Statuses {
+		if _, ok, err := extension.DecodeResponse([]byte(`{"status":"` + s + `"}`)); !ok || err != nil {
+			t.Errorf("%s: %v, %v", s, ok, err)
+		}
+		if _, ok := extension.ParseResponse([]byte(`{"status":"` + s + `"}`)); !ok {
+			t.Errorf("ParseResponse refused %s", s)
+		}
+	}
+	if _, ok, err := extension.DecodeResponse([]byte("plain text")); ok || err != nil {
+		t.Errorf("plain text: %v, %v", ok, err)
+	}
+}
+
+// Steps and their argv mappings are decoded strictly too.
+func TestParseProvider_RefusesUnknownStepFields(t *testing.T) {
+	for _, tc := range []struct{ name, from, to, want string }{
+		{"step", `    - argv: [tin, ship, "{version}"]`, "    - argv: [tin, ship, \"{version}\"]\n      shell: true", "field shell not found"},
+		{"argv mapping", `[tin, ship, "{version}"]`, `[tin, {arg: ship, unless: dry}, "{version}"]`, "field unless not found"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := extension.ParseProvider([]byte(replace(t, tinProvider, tc.from, tc.to)))
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Errorf("ParseProvider: %v, want %q", err, tc.want)
+			}
+		})
+	}
+}
+
+// eventExtension hands two core events to its box providers, each needing
+// the operations it lists.
+var eventExtension = strings.Replace(strings.Replace(acmeExtension, "events: [run.started]", "events: [run.started, run.closed]", 1),
+	"    operations:\n", "    events:\n      run.started: [check]\n      run.closed: [ship, check]\n    operations:\n", 1)
+
+// S6: the operations an event needs are declared in extension.yaml and
+// checked by the shared validator, for every extension alike.
+func TestProvider_EventsNeedTheirOperations(t *testing.T) {
+	ext, err := extension.ParseManifest([]byte(eventExtension))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if slot, _ := ext.Slot("box"); !slices.Equal(slot.Events["run.closed"], []string{"ship", "check"}) {
+		t.Fatalf("slot events = %v", slot.Events)
+	}
+	ok := replace(t, replace(t, tinProvider, "  check: not_implemented", "  check:\n    - argv: [tin, check]"), "label: Tin box", "label: Tin box\nevents: [run.started, run.closed]")
+	p, err := extension.ParseProvider([]byte(ok))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := p.CheckAgainst(ext); err != nil {
+		t.Fatalf("CheckAgainst: %v", err)
+	}
+	if !slices.Equal(p.Events, []string{"run.started", "run.closed"}) {
+		t.Errorf("Events = %v", p.Events)
+	}
+	tests := []struct {
+		name, provider string
+		ext            *extension.Manifest
+		want           string
+	}{
+		{"needs a not_implemented operation", replace(t, tinProvider, "label: Tin box", "label: Tin box\nevents: [run.started]"), ext,
+			"events: run.started needs check, declared not_implemented"},
+		{"not an event of the slot", replace(t, ok, "events: [run.started, run.closed]", "events: [run.halted]"), ext,
+			"events: run.halted is not an event slot acme.box hands its providers (run.closed, run.started)"},
+		{"duplicated", replace(t, ok, "events: [run.started, run.closed]", "events: [run.started, run.started]"), ext,
+			"events: run.started: duplicated"},
+		{"slot hands no events", ok, mustManifest(t, acmeExtension),
+			"events: slot acme.box hands its providers no events"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			p, err := extension.ParseProvider([]byte(tt.provider))
+			if err == nil {
+				err = p.CheckAgainst(tt.ext)
+			}
+			if err == nil || !strings.Contains(err.Error(), tt.want) {
+				t.Errorf("provider: %v, want %q", err, tt.want)
+			}
+		})
+	}
+}
+
+func TestParseManifest_RefusesInvalidSlotEvents(t *testing.T) {
+	for _, tc := range []struct{ name, from, to, want string }{
+		{"event not subscribed", "      run.closed: [ship, check]", "      run.halted: [ship]", "slots[0].events.run.halted: the extension does not subscribe to it"},
+		{"unknown operation", "      run.started: [check]", "      run.started: [burn]", "slots[0].events.run.started: burn is not an operation of the slot"},
+		{"no operation", "      run.started: [check]", "      run.started: []", "slots[0].events.run.started: an event needs at least one operation"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := extension.ParseManifest([]byte(replace(t, eventExtension, tc.from, tc.to)))
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Errorf("ParseManifest: %v, want %q", err, tc.want)
+			}
+		})
+	}
+}
+
+func mustManifest(t *testing.T, text string) *extension.Manifest {
+	t.Helper()
+	m, err := extension.ParseManifest([]byte(text))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return m
+}
+
+// S6: requires are checked across the tree: each names an extension of
+// it, and no chain of requires comes back to where it started.
+func TestRequiresProblems(t *testing.T) {
+	known := func(name string) bool { return slices.Contains([]string{"a", "b", "c", "release"}, name) }
+	got := extension.RequiresProblems(map[string][]string{
+		"a": {"b"},
+		"b": {"c", "omega"},
+		"c": {"a"},
+		"d": {"release"},
+	}, known)
+	want := []string{
+		"b/extension.yaml: requires: omega is not an extension of this tree",
+		"a/extension.yaml: requires cycle: a -> b -> c -> a",
+	}
+	if !slices.Equal(got, want) {
+		t.Errorf("RequiresProblems =\n%q\nwant\n%q", got, want)
+	}
+	if got := extension.RequiresProblems(map[string][]string{"deploy": {"release"}, "release": nil}, known); len(got) != 0 {
+		t.Errorf("a valid tree: %q", got)
 	}
 }

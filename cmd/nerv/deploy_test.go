@@ -23,6 +23,19 @@ func TestRunDeploy_RequiresTheArtifact(t *testing.T) {
 	}
 }
 
+// The help says plainly what a target's preflight checks.
+func TestRunDeploy_HelpExplainsThePreflight(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	if code := run([]string{"deploy", "--help"}, &stdout, &stderr, testOptions(t.TempDir())); code != 0 {
+		t.Fatalf("help: exit %d", code)
+	}
+	help := strings.Join(strings.Fields(stdout.String()), " ")
+	want := "Before anything is cloned or pushed, each target's preflight checks the target's config and that the tools its provider needs are installed (deploy-ssh-compose: sshpass for password authentication, infisical for source infisical)."
+	if !strings.Contains(help, want) {
+		t.Errorf("help lacks %q:\n%s", want, stdout.String())
+	}
+}
+
 // A repository without a deploy: section is refused (exit 1) before
 // anything runs.
 func TestRunDeploy_RefusesAnUnconfiguredRepository(t *testing.T) {

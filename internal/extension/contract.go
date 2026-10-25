@@ -19,7 +19,10 @@ package extension
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"regexp"
+	"slices"
+	"strings"
 )
 
 // ContractVersion is the only contract_version this build understands, in
@@ -143,14 +146,35 @@ func (r Response) DecodeData(v any) error {
 }
 
 // ParseResponse reads a JSON object response from an exec runtime's
-// stdout; anything else is no response (ok false).
+// stdout; anything else, a response with a status CheckStatus refuses
+// included, is no response (ok false).
 func ParseResponse(stdout []byte) (Response, bool) {
-	trimmed := bytes.TrimSpace(stdout)
-	var r Response
-	if len(trimmed) == 0 || trimmed[0] != '{' || json.Unmarshal(trimmed, &r) != nil {
+	r, ok, err := DecodeResponse(stdout)
+	if err != nil {
 		return Response{}, false
 	}
-	return r, true
+	return r, ok
+}
+
+// DecodeResponse is ParseResponse, telling an unknown status apart: a JSON
+// object response whose status CheckStatus refuses comes back, ok, with
+// that error.
+func DecodeResponse(stdout []byte) (r Response, ok bool, err error) {
+	trimmed := bytes.TrimSpace(stdout)
+	if len(trimmed) == 0 || trimmed[0] != '{' || json.Unmarshal(trimmed, &r) != nil {
+		return Response{}, false, nil
+	}
+	return r, true, CheckStatus(r.Status)
+}
+
+// CheckStatus refuses a response status that is not one of Statuses. An
+// empty status is accepted: that response answers by exit code alone.
+func CheckStatus(status string) error {
+	if status == "" || slices.Contains(Statuses, status) {
+		return nil
+	}
+	last := len(Statuses) - 1
+	return fmt.Errorf("unknown status %q (want %s or %s)", status, strings.Join(Statuses[:last], ", "), Statuses[last])
 }
 
 var (

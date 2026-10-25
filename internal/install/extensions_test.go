@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"slices"
@@ -282,14 +283,18 @@ func TestInstall_RequirementNotShippedIsRefused(t *testing.T) {
 	}
 
 	// An extension whose extension.yaml requires an extension this nerv
-	// does not ship is refused when it is requested.
+	// does not ship is a defect of the tree, found when it is read, before
+	// anything is requested or installed.
 	ext = fakeExtensions()
 	ext["deploy/.claude-plugin/plugin.json"] = &fstest.MapFile{Data: []byte(`{"name":"deploy","version":"` + v + `"}`)}
 	ext["deploy/extension.yaml"] = &fstest.MapFile{Data: extensiontest.Extension("deploy", 3, "release")}
 	deps.ExtensionsFS = ext
-	err = install.Install(context.Background(), deps, install.Options{NoSkills: true, Extensions: []string{"deploy"}})
-	if !errors.As(err, new(*install.RefusalError)) || !strings.Contains(err.Error(), `extension plugin "deploy" requires "release", which this nerv does not ship`) {
-		t.Fatalf("Install() error = %v, want a refusal naming the missing release extension", err)
+	for _, requested := range [][]string{{"deploy"}, {"task"}} {
+		stdout.Reset()
+		err = install.Install(context.Background(), deps, install.Options{NoSkills: true, Extensions: requested})
+		if err == nil || !strings.Contains(err.Error(), "deploy/extension.yaml: requires: release is not an extension of this tree") {
+			t.Fatalf("Install(%v) error = %v, want the tree refused naming the missing release extension", requested, err)
+		}
 	}
 }
 
@@ -376,5 +381,54 @@ func TestInstall_BundledProvidersComeWithTheirExtension(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// The shipped tree passes discovery's requires checks, and nerv install
+// suggests and adds its extensions in the same order and with the same
+// output as before them: task and its providers, release with its bundled
+// providers, deploy with its own.
+func TestInstall_ShippedTreeSelectionOrder(t *testing.T) {
+	home := t.TempDir()
+	entries, err := fs.ReadDir(nerv.ExtensionsFS(), ".")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var ids []string
+	for _, e := range entries {
+		ids = append(ids, e.Name()+"@nerv")
+	}
+	seedInstalledIDs(t, home, pluginVersion(t), ids...)
+	var asked []string
+	var stdout bytes.Buffer
+	deps := install.Deps{
+		Home: home, FS: nerv.PluginFS(), ExtensionsFS: nerv.ExtensionsFS(), Runner: baseRunner(), Now: fixedNow, LookPath: lookPathAll, Stdout: &stdout,
+		ConfirmExtension: func(name, _ string) bool {
+			asked = append(asked, name)
+			return true
+		},
+	}
+	if err := install.Install(context.Background(), deps, install.Options{NoSkills: true}); err != nil {
+		t.Fatalf("Install() error = %v; output:\n%s", err, stdout.String())
+	}
+	var adding []string
+	for _, line := range strings.Split(stdout.String(), "\n") {
+		if strings.HasPrefix(line, "Adding ") {
+			adding = append(adding, line)
+		}
+	}
+	if want := []string{"task", "task-teamwork", "release", "deploy"}; !slices.Equal(asked, want) {
+		t.Errorf("asked %v, want %v", asked, want)
+	}
+	want := []string{
+		"Adding release-bash (bundled with release)",
+		"Adding release-conventional-commits (bundled with release)",
+		"Adding release-docker-compose (bundled with release)",
+		"Adding deploy-bash (bundled with deploy)",
+		"Adding deploy-github (bundled with deploy)",
+		"Adding deploy-ssh-compose (bundled with deploy)",
+	}
+	if !slices.Equal(adding, want) {
+		t.Errorf("added %q\nwant %q", adding, want)
 	}
 }

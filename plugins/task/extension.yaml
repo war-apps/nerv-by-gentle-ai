@@ -25,15 +25,22 @@ provider_fields:
     required: true
   - name: stages            # canonical stage key -> default board stage substring
     type: map
-  - name: events            # the pipeline events the provider handles
-    type: list
 
 # Task providers, several active at once. Every operation is optional: a
 # provider declares not_implemented for what its tracker lacks, and an event
-# it subscribes to must not need one of those.
+# it handles (its provider.yaml events) must not need one of those.
 slots:
   - name: provider
     cardinality: many
+    # Each pipeline event a provider may handle -> the operations it needs.
+    events:
+      run.started: [getTask, assign, moveStage]
+      verification.started: [moveStage]
+      audit.ranked: [comment]
+      issue.deferred: [createTask]
+      wave.started: [createSubtask]
+      run.closed: [moveStage, logTime]
+      run.halted: [comment, moveStage, logTime]
     operations:
       getTask: optional
       assign: optional

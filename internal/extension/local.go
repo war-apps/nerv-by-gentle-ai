@@ -91,10 +91,24 @@ func WithProject(shipped fs.FS, repoRoot string) (fs.FS, error) {
 		}
 		return shipped, nil
 	}
+	requires := map[string][]string{}
 	for _, name := range extensions {
-		if _, err := LoadManifest(t, name); err != nil {
+		m, err := LoadManifest(t, name)
+		if err != nil {
 			return nil, projectError(ProjectExtensionsDir, name, err)
 		}
+		requires[name] = m.Requires
+	}
+	isExtension := func(name string) bool {
+		_, err := fs.Stat(t, name+"/"+ManifestFile)
+		return ValidName(name) && err == nil
+	}
+	if problems := RequiresProblems(requires, isExtension); len(problems) > 0 {
+		// Every problem is "<project extension>/extension.yaml: ...".
+		for i := range problems {
+			problems[i] = ProjectExtensionsDir + "/" + problems[i]
+		}
+		return nil, errors.New(strings.Join(problems, "; "))
 	}
 	for _, name := range providers {
 		if _, _, err := LoadProvider(t, name); err != nil {

@@ -10,7 +10,7 @@ import (
 )
 
 // Uninstall tolerantly runs "claude plugin uninstall" for every enabled
-// extension plugin of the nerv marketplace, then removes NERV's
+// extension and provider of the nerv marketplace, then removes NERV's
 // settings.json registration (backed up and written atomically, like
 // Install's own registration step) including every other "*@nerv" id,
 // runs "claude plugin uninstall nerv@nerv" and "claude plugin marketplace

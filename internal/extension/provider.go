@@ -29,6 +29,9 @@ type Provider struct {
 	Config []ConfigKey `yaml:"config"`
 	// Operations maps every slot operation to its implementation.
 	Operations map[string]Operation `yaml:"operations"`
+	// Events are the events of its slot's events the provider handles;
+	// each needs the operations the slot lists for it.
+	Events []string `yaml:"events"`
 	// Fields are the extension-specific top-level fields, by name, as the
 	// owning extension's provider_fields declare them; DecodeField reads
 	// one.
@@ -40,7 +43,7 @@ type Provider struct {
 // provider_fields.
 var commonProviderFields = map[string]bool{
 	"name": true, "extension": true, "slot": true, "contract_version": true, "runtime": true,
-	"requires": true, "mcp": true, "config": true, "operations": true,
+	"requires": true, "mcp": true, "config": true, "operations": true, "events": true,
 }
 
 // MCP names the server and the exact tools an agent provider calls, so its
@@ -243,6 +246,12 @@ func (p *Provider) problems() []string {
 
 	out = append(out, configProblems(p.Config)...)
 
+	for i, event := range p.Events {
+		if slices.Contains(p.Events[:i], event) {
+			add("events: %s: duplicated", event)
+		}
+	}
+
 	for _, op := range p.operationNames() {
 		o := p.Operations[op]
 		at := "operations." + op
@@ -322,6 +331,7 @@ func (p *Provider) CheckAgainst(ext *Manifest) error {
 				add("operations.%s: required by slot %s.%s, it cannot be %s", op, ext.Name, slot.Name, NotImplemented)
 			}
 		}
+		out = append(out, p.eventProblems(ext.Name, slot)...)
 	}
 
 	for _, name := range sortedNames(p.Fields) {
@@ -343,6 +353,32 @@ func (p *Provider) CheckAgainst(ext *Manifest) error {
 		return errors.New(ProviderFile + ": " + strings.Join(out, "; "))
 	}
 	return nil
+}
+
+// eventProblems checks the provider's events against its slot: each is
+// one the slot hands its providers, and none needs an operation the
+// provider declares NotImplemented.
+func (p *Provider) eventProblems(ext string, slot Slot) []string {
+	if len(p.Events) == 0 {
+		return nil
+	}
+	if len(slot.Events) == 0 {
+		return []string{fmt.Sprintf("events: slot %s.%s hands its providers no events", ext, slot.Name)}
+	}
+	var out []string
+	for _, event := range p.Events {
+		needs, ok := slot.Events[event]
+		if !ok {
+			out = append(out, fmt.Sprintf("events: %s is not an event slot %s.%s hands its providers (%s)", event, ext, slot.Name, strings.Join(slot.EventNames(), ", ")))
+			continue
+		}
+		for _, op := range needs {
+			if o, declared := p.Operations[op]; declared && o.NotImplemented {
+				out = append(out, fmt.Sprintf("events: %s needs %s, declared %s", event, op, NotImplemented))
+			}
+		}
+	}
+	return out
 }
 
 // CheckFiles reports every procedure file the provider names that fsys

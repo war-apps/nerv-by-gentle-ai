@@ -9,13 +9,13 @@ import (
 	"github.com/war-apps/nerv-by-gentle-ai/internal/plugin"
 )
 
-// selectExtensions decides which extension plugins Install enables, in
+// selectExtensions decides which extensions and providers Install enables, in
 // order: the requested ones (each after its requirements), then those
 // settings already enables, then the ones the user accepts when
 // deps.ConfirmExtension is set, asked in plugin.SuggestionOrder (task, its
 // providers, release, deploy, the deploy providers) and only when every
 // requirement is already selected: deploy only once release is, a provider
-// only once its plugin is. An extension whose providers are bundled brings
+// only once its extension is. An extension whose providers are bundled brings
 // them all with it (plugin.Extension.Bundle), never asked.
 func selectExtensions(deps Deps, opts Options, settings *claude.Settings) ([]plugin.Extension, error) {
 	exts, err := plugin.Extensions(deps.ExtensionsFS)
@@ -61,7 +61,7 @@ func selectExtensions(deps Deps, opts Options, settings *claude.Settings) ([]plu
 			}
 			r, shipped := byName[req]
 			if !shipped {
-				return &RefusalError{Err: fmt.Errorf("extension plugin %q requires %q, which this nerv does not ship", e.Name, req)}
+				return &RefusalError{Err: fmt.Errorf("%s requires the extension %q, which this nerv does not ship", e.Name, req)}
 			}
 			if err := require(r, e.Name); err != nil {
 				return err
@@ -80,7 +80,7 @@ func selectExtensions(deps Deps, opts Options, settings *claude.Settings) ([]plu
 			if len(names) > 0 {
 				available = strings.Join(names, ", ")
 			}
-			return nil, &RefusalError{Err: fmt.Errorf("unknown extension plugin %q (available: %s)", name, available)}
+			return nil, &RefusalError{Err: fmt.Errorf("unknown extension or provider %q (available: %s)", name, available)}
 		}
 		if err := require(e, ""); err != nil {
 			return nil, err

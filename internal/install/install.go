@@ -182,7 +182,7 @@ func registerSettings(deps Deps, opts Options, marketplaceDir string) ([]plugin.
 // RefreshCache re-registers nerv@nerv in the Claude Code plugin cache
 // ("claude plugin marketplace add", then "uninstall/install") and verifies
 // the cached version matches the embedded plugin version, then does the
-// same for every extension plugin of deps.ExtensionsFS that settings.json
+// same for every extension and provider of deps.ExtensionsFS that settings.json
 // enables, at that extension's embedded version. Exported for
 // internal/wizard's closing "apply and refresh" step, wrapping the same tail
 // Install itself runs after registering settings.json.
