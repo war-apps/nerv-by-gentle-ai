@@ -115,7 +115,7 @@ a command that finds one refuses and points to `nerv migrate` (or
 `nerv migrate` translates them, and `nerv release setup --import` imports a
 semantic-release config; see
 [release-commands.md](release-commands.md#migrating-from-the-420-release-section-and-semantic-release)
-and [pipeline.md](pipeline.md).
+and [deploy.md](deploy.md#migrating-from-nerv-pipeline).
 
 `models:` assigns a per-role `model` and `effort` override, with project
 overriding user key by key like every other section — each entry is an

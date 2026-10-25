@@ -511,7 +511,7 @@ install), and `nerv migrate` applies it with backups. By hand:
    docker push, NuGet, npm) to the `deploy:` section ([deploy.md](deploy.md)).
 
 The `pipeline:` section and `nerv pipeline` were removed too: see
-[pipeline.md](pipeline.md).
+[deploy.md](deploy.md#migrating-from-nerv-pipeline).
 
 ## `nerv version next`
 

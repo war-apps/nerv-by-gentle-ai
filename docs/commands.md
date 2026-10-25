@@ -262,7 +262,7 @@ nerv deploy --artifact .nerv/artifacts/api/1.4.0 --yes
 ```
 
 `nerv pipeline` was removed: its steps moved to release and deploy
-([pipeline.md](pipeline.md)).
+([deploy.md](deploy.md#migrating-from-nerv-pipeline)).
 
 ### nerv migrate
 

@@ -389,8 +389,6 @@ example YAML, and how to configure per-role models and effort (wizard,
   extensions and their providers: `extension.yaml` (an extension and the core) and
   `provider.yaml` (a provider and its extension), with the common
   request/response envelope.
-- [docs/pipeline.md](docs/pipeline.md) — migrating from the removed `nerv
-  pipeline` and its `pipeline:` section to release and deploy (`nerv migrate`).
 - [docs/migration.md](docs/migration.md) — `nerv migrate`: moving a
   repository and the user configuration from nerv 4.2.0 or 5.0.0-alpha.1 (configuration
   files, `release:` and `deploy:`, the semantic-release import, openspec to
