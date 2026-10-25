@@ -23,6 +23,9 @@ func setupRepo(t *testing.T, files map[string]string) string {
 		t.Fatalf("git init: %v %s", err, out)
 	}
 	for name, content := range files {
+		if err := os.MkdirAll(filepath.Dir(filepath.Join(repo, name)), 0o755); err != nil {
+			t.Fatal(err)
+		}
 		if err := os.WriteFile(filepath.Join(repo, name), []byte(content), 0o644); err != nil {
 			t.Fatal(err)
 		}
@@ -59,14 +62,14 @@ const dimPackageJSON = `{
 // and prints what it could not translate.
 func TestReleaseSetup_ImportWritesTheReleaseSectionAndPrintsTheWarnings(t *testing.T) {
 	repo := setupRepo(t, map[string]string{
-		"package.json":     dimPackageJSON,
-		".ai-workflow.yml": "# team settings\nenabled: true\nrelease:\n  projects:\n    - name: api\n      path: .\n      build: bash\ntasks:\n  provider: none\n",
+		"package.json":             dimPackageJSON,
+		".ai-workflow/config.yaml": "# team settings\nenabled: true\nrelease:\n  projects:\n    - name: api\n      path: .\n      build: bash\ntasks:\n  provider: none\n",
 	})
 	code, stdout, stderr := runSetup(t, repo, "--import")
 	if code != 0 {
 		t.Fatalf("exit %d\nstdout %s\nstderr %s", code, stdout, stderr)
 	}
-	data, _ := os.ReadFile(filepath.Join(repo, ".ai-workflow.yml"))
+	data, _ := os.ReadFile(filepath.Join(repo, ".ai-workflow/config.yaml"))
 	text := string(data)
 	for _, want := range []string{"# team settings\nenabled: true\n", "tasks:\n  provider: none\n", "- name: api"} {
 		if !strings.Contains(text, want) {
@@ -100,7 +103,7 @@ func TestReleaseSetup_DryRunWritesNothing(t *testing.T) {
 	if code != 0 || !strings.Contains(stdout, "release:\n") || !strings.Contains(stdout, "name: develop") {
 		t.Fatalf("exit %d\nstdout %s\nstderr %s", code, stdout, stderr)
 	}
-	if _, err := os.Stat(filepath.Join(repo, ".ai-workflow.yml")); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(repo, ".ai-workflow/config.yaml")); !os.IsNotExist(err) {
 		t.Errorf("a dry run wrote the file: %v", err)
 	}
 }
@@ -123,13 +126,13 @@ func TestReleaseSetup_RefusesAJavaScriptConfigAndNoConfig(t *testing.T) {
 // refused, naming nerv migrate, and the file is left as it was.
 func TestReleaseSetup_RefusesALegacyReleaseSection(t *testing.T) {
 	legacy := "release:\n  semantic_release: { version: 24.2.3 }\n  projects:\n    - name: api\n      path: .\n      presets: [dotnet]\n"
-	repo := setupRepo(t, map[string]string{"package.json": dimPackageJSON, ".ai-workflow.yml": legacy})
+	repo := setupRepo(t, map[string]string{"package.json": dimPackageJSON, ".ai-workflow/config.yaml": legacy})
 	code, stdout, stderr := runSetup(t, repo, "--import")
 	if code != 1 || !strings.Contains(stderr, "4.2.0 release: section") || !strings.Contains(stderr, "run nerv migrate") {
 		t.Errorf("exit %d\nstdout %s\nstderr %s", code, stdout, stderr)
 	}
-	if got := mustReadFile(t, filepath.Join(repo, ".ai-workflow.yml")); got != legacy {
-		t.Errorf(".ai-workflow.yml changed:\n%s", got)
+	if got := mustReadFile(t, filepath.Join(repo, ".ai-workflow/config.yaml")); got != legacy {
+		t.Errorf(".ai-workflow/config.yaml changed:\n%s", got)
 	}
 }
 
@@ -145,11 +148,11 @@ func TestReleaseSetup_UsageErrors(t *testing.T) {
 func TestReleaseSetup_ExistingEngineKeysAreNotClobberedSilently(t *testing.T) {
 	const before = "release:\n  providers:\n    conventional-commits:\n      # hand-tuned\n      tag_format: custom-${version}\n      branches:\n        - main\n        - {name: next, prerelease: beta, channel: next}\n  projects:\n    - name: api\n      path: .\n      build: bash\n"
 	repo := setupRepo(t, map[string]string{
-		".releaserc.json":  `{"branches":["main",{"name":"develop","prerelease":"alpha","channel":"alpha"}],"tagFormat":"v${version}","plugins":[["@semantic-release/commit-analyzer",{"preset":"conventionalcommits"}],["@semantic-release/release-notes-generator",{"preset":"conventionalcommits"}]]}`,
-		".ai-workflow.yml": before,
+		".releaserc.json":          `{"branches":["main",{"name":"develop","prerelease":"alpha","channel":"alpha"}],"tagFormat":"v${version}","plugins":[["@semantic-release/commit-analyzer",{"preset":"conventionalcommits"}],["@semantic-release/release-notes-generator",{"preset":"conventionalcommits"}]]}`,
+		".ai-workflow/config.yaml": before,
 	})
 	code, stdout, stderr := runSetup(t, repo, "--import")
-	data, _ := os.ReadFile(filepath.Join(repo, ".ai-workflow.yml"))
+	data, _ := os.ReadFile(filepath.Join(repo, ".ai-workflow/config.yaml"))
 	if code == 0 && string(data) != before && !strings.Contains(stdout+stderr, "tag_format") {
 		t.Fatalf("existing tag_format/branches replaced with exit 0 and no notice\nstdout %s\nstderr %s\nfile:\n%s", stdout, stderr, data)
 	}
@@ -165,12 +168,12 @@ const handTunedRelease = "release:\n  providers:\n    conventional-commits:\n   
 // B1: without --force the import refuses (exit 1), writes nothing and lists
 // every conflicting key with its current and imported values.
 func TestReleaseSetup_ConflictingEngineKeysRefuseAndListBothValues(t *testing.T) {
-	repo := setupRepo(t, map[string]string{".releaserc.json": conflictingReleaserc, ".ai-workflow.yml": handTunedRelease})
+	repo := setupRepo(t, map[string]string{".releaserc.json": conflictingReleaserc, ".ai-workflow/config.yaml": handTunedRelease})
 	code, stdout, stderr := runSetup(t, repo, "--import")
 	if code != 1 {
 		t.Fatalf("exit %d, want 1\nstdout %s\nstderr %s", code, stdout, stderr)
 	}
-	data, _ := os.ReadFile(filepath.Join(repo, ".ai-workflow.yml"))
+	data, _ := os.ReadFile(filepath.Join(repo, ".ai-workflow/config.yaml"))
 	if string(data) != handTunedRelease {
 		t.Errorf("a refused import wrote the file:\n%s", data)
 	}
@@ -184,12 +187,12 @@ func TestReleaseSetup_ConflictingEngineKeysRefuseAndListBothValues(t *testing.T)
 // B1: --force replaces them, prints each replaced value, and keeps the
 // comments; an equal value is no conflict.
 func TestReleaseSetup_ForceReplacesAndPrintsTheReplacedValues(t *testing.T) {
-	repo := setupRepo(t, map[string]string{".releaserc.json": conflictingReleaserc, ".ai-workflow.yml": handTunedRelease})
+	repo := setupRepo(t, map[string]string{".releaserc.json": conflictingReleaserc, ".ai-workflow/config.yaml": handTunedRelease})
 	code, stdout, stderr := runSetup(t, repo, "--import", "--force")
 	if code != 0 {
 		t.Fatalf("exit %d\nstdout %s\nstderr %s", code, stdout, stderr)
 	}
-	data, _ := os.ReadFile(filepath.Join(repo, ".ai-workflow.yml"))
+	data, _ := os.ReadFile(filepath.Join(repo, ".ai-workflow/config.yaml"))
 	text := string(data)
 	if !strings.Contains(text, "# hand-tuned") || !strings.Contains(text, "tag_format: v${version}") || strings.Contains(text, "name: next") {
 		t.Errorf("forced import result:\n%s", text)
@@ -209,21 +212,21 @@ func TestReleaseSetup_ForceReplacesAndPrintsTheReplacedValues(t *testing.T) {
 // whatever the release: section holds, and nothing is written.
 func TestReleaseSetup_ReleaseSectionWithoutSemanticReleaseConfigIsRefused(t *testing.T) {
 	section := "enabled: true\nrelease:\n  projects:\n    - name: api\n      path: .\n      build: bash\n"
-	repo := setupRepo(t, map[string]string{".ai-workflow.yml": section})
+	repo := setupRepo(t, map[string]string{".ai-workflow/config.yaml": section})
 	code, stdout, stderr := runSetup(t, repo, "--import")
 	if code != 1 || !strings.Contains(stderr, "nothing to import") {
 		t.Errorf("exit %d\nstdout %s\nstderr %s", code, stdout, stderr)
 	}
-	if got := mustReadFile(t, filepath.Join(repo, ".ai-workflow.yml")); got != section {
-		t.Errorf(".ai-workflow.yml changed:\n%s", got)
+	if got := mustReadFile(t, filepath.Join(repo, ".ai-workflow/config.yaml")); got != section {
+		t.Errorf(".ai-workflow/config.yaml changed:\n%s", got)
 	}
 }
 
 // L21 advisory: errors name the section that is really in the file.
 func TestReleaseSetup_ErrorsNameTheReleaseSection(t *testing.T) {
 	repo := setupRepo(t, map[string]string{
-		"package.json":     dimPackageJSON,
-		".ai-workflow.yml": "release: [not, a, mapping]\n",
+		"package.json":             dimPackageJSON,
+		".ai-workflow/config.yaml": "release: [not, a, mapping]\n",
 	})
 	code, stdout, stderr := runSetup(t, repo, "--import")
 	if code != 1 || !strings.Contains(stderr, "release: must be a mapping") {

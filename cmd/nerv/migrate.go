@@ -16,19 +16,22 @@ import (
 const migrateUsage = `Usage: nerv migrate [--user] [--dry-run] [--install] [--force] [--cwd <dir>]
 
 Moves a repository (and, with --user, your user configuration) from nerv
-4.2.0 to this version, once:
+4.2.0 or 5.0.0-alpha.1 to this version, once:
 
-  - .nerv/nerv.yaml becomes .ai-workflow.yml, and ~/.claude/nerv/nerv.yaml
-    (with --user) becomes the user config.yml; comments and key order are
-    kept, and each old file stays as <file>.migrated so an older nerv does
-    not read stale configuration;
+  - .nerv/nerv.yaml (4.2.0) or .ai-workflow.yml (5.0.0-alpha.1) becomes
+    .ai-workflow/config.yaml, and ~/.claude/nerv/nerv.yaml or the user
+    config.yml (with --user) becomes the user config.yaml; comments and key
+    order are kept; .ai-workflow.yml is removed after its backup, and every
+    other old file stays as <file>.migrated so an older nerv does not read
+    stale configuration;
   - personal settings in the project file (models, and every provider key
     of user scope) move to the user config with --user, and are reported
     otherwise;
   - tasks.rounding_minutes moves to tasks.providers.teamwork, and the
     removed jira and github-projects providers are dropped;
   - the 4.2.0 release: section becomes today's release: section (in
-    .ai-workflow.yml too, told apart by its 4.2.0 keys), each project's
+    .ai-workflow.yml or .ai-workflow/config.yaml too, told apart by its
+    4.2.0 keys), each project's
     presets become build: bash with the commands 4.2.0 ran (a TODO(nerv migrate) comment marks
     what has no exact equivalent), and the semantic-release configuration
     is imported into release.providers.conventional-commits (as nerv

@@ -88,7 +88,7 @@ type BranchData struct {
 }
 
 // ProblemsData answers a failed validate: every problem, each prefixed by
-// its path in .ai-workflow.yml (release.providers.<provider>.<key>,
+// its path in .ai-workflow/config.yaml (release.providers.<provider>.<key>,
 // release.projects[i].<key>).
 type ProblemsData struct {
 	Problems []string `json:"problems"`
@@ -112,7 +112,7 @@ type ImportData struct {
 
 // BuildPayload is the payload of the build operations.
 type BuildPayload struct {
-	// Project is the project's name, and At its path in .ai-workflow.yml
+	// Project is the project's name, and At its path in .ai-workflow/config.yaml
 	// (release.projects[0]), for messages.
 	Project string `json:"project"`
 	At      string `json:"at"`

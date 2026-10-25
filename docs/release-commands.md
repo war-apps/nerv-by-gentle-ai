@@ -12,10 +12,10 @@ exactly what CI would.
 |---|---|---|---|
 | `nerv version next` | `/release:version` | The next semantic version of the repository, or of each project of a monorepo, with the outputs of `cycjimmy/semantic-release-action`. | No. |
 | `nerv release` | `/release:build` | Builds, tests and packages what is on origin, in a throwaway clone, with each project's build provider (`docker-compose` or `bash`), per project in dependency order, and leaves a local artifact (`.nerv/artifacts/<project>/<version>/`) for [`nerv deploy`](deploy.md). | Only `.nerv/artifacts/` in your repository; never git (no commit, tag or push) and never a registry. |
-| `nerv release setup --import [--force] [--dry-run]` | `/release:setup` | Imports an existing semantic-release config into the version engine's keys (`release.providers.conventional-commits`), once. | Only `.ai-workflow.yml` (nothing with `--dry-run`). |
+| `nerv release setup --import [--force] [--dry-run]` | `/release:setup` | Imports an existing semantic-release config into the version engine's keys (`release.providers.conventional-commits`), once. | Only `.ai-workflow/config.yaml` (nothing with `--dry-run`). |
 
 Both commands read the `release:` section of the project-scope
-`<repo>/.ai-workflow.yml`. Without it a repository is one project with the
+`<repo>/.ai-workflow/config.yaml`. Without it a repository is one project with the
 default branches; `nerv release` needs the section, with a build provider
 for each project.
 
@@ -86,12 +86,12 @@ In Claude Code, `/release:setup` writes the `release:` section for you:
    `bash`), and then the compose file, test service and images, or the
    command of each stage. There are no presets. It asks one question at a time, only what it
    cannot detect.
-4. It writes the section into `.ai-workflow.yml` (the rest of the file is
+4. It writes the section into `.ai-workflow/config.yaml` (the rest of the file is
    kept as it is) and validates it with `nerv version next --offline`,
    showing each project's next version.
 
 It never commits, pushes, ships or deploys. `nerv version next` and `nerv
-release` read your local `.ai-workflow.yml` as it is, committed or not (commit
+release` read your local `.ai-workflow/config.yaml` as it is, committed or not (commit
 it for your team's sake; it is not required). Then run `/release:build`.
 `/release:setup --project <name>` adds or edits one project of an existing
 section. The examples below show the shapes it produces.
@@ -102,7 +102,7 @@ A repository shaped like `dim.comprobantes.api`: the API's `.csproj`
 receives the version, the tests collect coverage with a line floor, and
 the package stage leaves the NuGet package and the image archive in the
 outputs. The default branches (main, develop as `alpha`, `release/*` as
-`rc` on `beta`, `hotfix/*` as `beta`) apply. Add to `.ai-workflow.yml`:
+`rc` on `beta`, `hotfix/*` as `beta`) apply. Add to `.ai-workflow/config.yaml`:
 
 ```yaml
 release:
@@ -209,11 +209,11 @@ format, changelog), which projects a monorepo holds, how they depend on each
 other, and how each one is built, tested and packaged. No semantic-release
 configuration is read.
 
-Both commands read the `release:` section from your local `.ai-workflow.yml`
+Both commands read the `release:` section from your local `.ai-workflow/config.yaml`
 (the working-tree file, committed or not), never origin's copy. For `nerv
 release` that is the only thing taken from your machine: the code and the
 branch content are origin's, in the release clone, whose own
-`.ai-workflow.yml` is ignored. The paths the section names are resolved
+`.ai-workflow/config.yaml` is ignored. The paths the section names are resolved
 inside the release clone; a path that is not on origin's branch (a project
 folder that exists only locally) is refused before any stage.
 
@@ -456,7 +456,7 @@ stage command).
 
 ### YAML notes
 
-- Only the `release:` block is parsed: it is cut out of `.ai-workflow.yml` by
+- Only the `release:` block is parsed: it is cut out of `.ai-workflow/config.yaml` by
   indentation, so a YAML error elsewhere in the file never affects the
   release commands. When the file's layout does not allow the cut
   (`---` between documents, an indented or flow top level), the whole file
@@ -690,7 +690,7 @@ yes, so the versions you approved are the only ones that can be packaged.
 ### Flow
 
 1. Resolve the repository and the branch (default: the current one), load
-   the `release:` section from your local `.ai-workflow.yml` (committed or
+   the `release:` section from your local `.ai-workflow/config.yaml` (committed or
    not) and refuse, before anything else, a repository without the
    section, an invalid section, a project without a build provider, an
    unknown provider or provider key, what the version engine's or a build

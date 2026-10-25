@@ -123,7 +123,7 @@ type ProjectValues struct {
 	BaseBranch string
 }
 
-// FormatProjectFile renders a project-scope .ai-workflow.yml text:
+// FormatProjectFile renders a project-scope .ai-workflow/config.yaml text:
 // enabled: true, then only the fields the caller set, each with a short
 // comment, plus a commented models: hint line. Mirrors
 // Format-NervProjectFile.

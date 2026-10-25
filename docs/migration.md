@@ -1,7 +1,7 @@
-# Migrating from nerv 4.2.0
+# Migrating from nerv 4.2.0 or 5.0.0-alpha.1
 
 `nerv migrate` moves a repository, and your user configuration, from nerv
-4.2.0 to this version. You run it once per repository, plus once for the
+4.2.0 or 5.0.0-alpha.1 to this version. You run it once per repository, plus once for the
 user configuration. It is written in Go and works the same way on Linux,
 macOS and Windows.
 
@@ -13,23 +13,31 @@ nerv migrate --install          # then install the plugins the repository used
 nerv migrate --force            # also move a change whose lock is still held
 ```
 
+Until it runs, nerv reads neither old file: every command refuses while a
+5.0.0-alpha.1 `.ai-workflow.yml` (or user `config.yml`) is still there,
+with `run "nerv migrate" to move it` (`nerv migrate --user` for the user
+file), and the SessionStart hook does not activate NERV. A 4.2.0 file is
+reported the same way, and the repository is treated as unconfigured.
+
 ## What it changes
 
 | 4.2.0 | Now |
 |---|---|
-| `<repo>/.nerv/nerv.yaml` | `<repo>/.ai-workflow.yml`. The old file is kept as `.nerv/nerv.yaml.migrated`. |
-| `~/.claude/nerv/nerv.yaml` (with `--user`) | the user `config.yml`: `~/.config/ai-workflow/config.yml` on Linux, `%AppData%\ai-workflow\config.yml` on Windows. The old file is kept as `nerv.yaml.migrated`. |
+| `<repo>/.nerv/nerv.yaml` | `<repo>/.ai-workflow/config.yaml`. The old file is kept as `.nerv/nerv.yaml.migrated`. |
+| `<repo>/.ai-workflow.yml` (5.0.0-alpha.1) | `<repo>/.ai-workflow/config.yaml`, with the same content (its header comment names the new file). The old file is removed after its backup under `.nerv/backups/`. |
+| `~/.claude/nerv/nerv.yaml` (with `--user`) | the user `config.yaml`: `~/.config/ai-workflow/config.yaml` on Linux, `%AppData%\ai-workflow\config.yaml` on Windows. The old file is kept as `nerv.yaml.migrated`. |
+| the user `config.yml` (5.0.0-alpha.1, with `--user`) | the user `config.yaml` in the same folder. The old file is kept as `config.yml.migrated`. |
 | `models:` and the provider keys of user scope in the project file, such as `tasks.providers.teamwork.assignee_id` | Moved to the user config when `--user` runs in the same repository. Otherwise they stay where they are and are reported. |
 | `tasks.rounding_minutes` | `tasks.providers.teamwork.rounding_minutes` |
 | `tasks.provider: jira` or `github-projects`, `tasks.providers.jira` / `.github-projects` | Dropped and reported: those providers were removed. |
 | `tasks.providers.teamwork.task_ref_prefix` | Dropped: the provider's manifest fixes the prefix. |
-| `release:` (4.2.0) | `release:`, today's section (see [Release](#release)). A 4.2.0 `release:` already in `.ai-workflow.yml` is told apart by its 4.2.0 keys (`semantic_release:`, the presets) and converted in place. |
+| `release:` (4.2.0) | `release:`, today's section (see [Release](#release)). A 4.2.0 `release:` already in `.ai-workflow.yml` or `.ai-workflow/config.yaml` is told apart by its 4.2.0 keys (`semantic_release:`, the presets) and converted in place. |
 | the semantic-release configuration (`package.json` `release`, `.releaserc*`) | Imported into `release:` by the same code as `nerv release setup --import`. Its warnings are printed. |
 | `pipeline:` | `deploy:` (see [Deploy](#deploy)) |
 | `openspec/changes/<change>/`, in flight, FULL | `odd/tasks/<change>.md`, with its run files in `odd/<change>/nerv/` and its lock in `.nerv/locks/<change>.lock` (see [ODD](#odd)) |
 | `openspec/changes/<change>/`, in flight, DIRECT or LIGHT | `.nerv/runs/<change>/`, with no ODD document, and its lock in `.nerv/locks/<change>.lock` (see [ODD](#odd)) |
 | `openspec/changes/archive/`, `openspec/specs/` | They stay where they are, read-only. |
-| `openspec/config.yaml` `strict_tdd`, `testing.runner` | `odd.tdd: strict` or `standard`, and `odd.test_runner`, in `.ai-workflow.yml`. |
+| `openspec/config.yaml` `strict_tdd`, `testing.runner` | `odd.tdd: strict` or `standard`, and `odd.test_runner`, in `.ai-workflow/config.yaml`. |
 | — | `.nerv/.gitignore` (`*`): `.nerv/` now holds runtime files only. |
 
 Comments and key order are kept where possible. Untouched lines are copied
@@ -153,13 +161,13 @@ wizard). The install step reports old `/task:*` copies in
 - **Backups.** Every file the migration changes, moves or removes is copied first. The repository's copies go to `.nerv/backups/migrate-<yyyyMMdd-HHmmss>/`, at the same relative path and with the file's permission bits; that folder is git-ignored. The user config's copies go next to the file, as `<file>.bak-migrate-<yyyyMMdd-HHmmss>`.
 - **Atomic writes.** Each file is written to a temporary file and renamed into place.
 - **One transaction.** When any step fails, every step already done is undone in reverse order, and the backups and `.nerv/.gitignore` that run created are removed; the error ends with `every change was rolled back`. Fix the cause and run it again.
-- **An interrupted run** (killed before it could roll back) is finished by the next one: it keeps the ODD document that carries its own marker and a `.ai-workflow.yml` equal to the one it would write, and moves what is left.
+- **An interrupted run** (killed before it could roll back) is finished by the next one: it keeps the ODD document that carries its own marker and a `.ai-workflow/config.yaml` equal to the one it would write, and moves what is left.
 - **A second run** changes nothing and prints `nerv migrate: nothing to migrate`.
 - **Refusals.** Nothing is written when:
   - the old file and its replacement both exist with different content (nerv migrate does not merge them);
   - an ODD document of the same name already exists, and `nerv migrate` did not write it;
   - a change's lock is still held on this machine, without `--force`;
-  - the migrated `.ai-workflow.yml` does not load with today's `release:` and `deploy:` readers.
+  - the migrated `.ai-workflow/config.yaml` does not load with today's `release:` and `deploy:` readers.
 
 Exit codes: 0 for migrated, nothing to migrate, or a dry run; 1 for a
 refusal (including running outside a git repository without `--user`); 2

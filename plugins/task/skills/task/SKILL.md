@@ -11,7 +11,7 @@ The task plugin connects NERV to task trackers (Teamwork today). It does not tal
 
 ## 1. Configuration
 
-The configuration merges the user config (the path `nerv configure --print --json` reports as `config_path`: `~/.config/ai-workflow/config.yml` on Linux, `%AppData%\ai-workflow\config.yml` on Windows) with the repository's `<repo>/.ai-workflow.yml`, key by key, and the repository wins. Everything lives under `tasks:`.
+The configuration merges the user config (the path `nerv configure --print --json` reports as `config_path`: `~/.config/ai-workflow/config.yaml` on Linux, `%AppData%\ai-workflow\config.yaml` on Windows) with the repository's `<repo>/.ai-workflow/config.yaml`, key by key, and the repository wins. Everything lives under `tasks:`.
 
 | Key | Default | Meaning |
 |---|---|---|
@@ -29,9 +29,14 @@ The `git.*` keys `branch_pattern`, `commit_ref_pattern`, `worktree`, `worktree_p
 
 ## 2. Finding providers
 
-A provider is installed when its plugin `task-<name>@nerv` appears in `~/.claude/plugins/installed_plugins.json`. Read the provider's root from that entry's `installPath`. Then read `<installPath>/provider.yaml` and `<installPath>/<operation file>`.
+A provider comes from one of two places, and its **root** is where its `provider.yaml` lives:
 
-Never read a copied procedure from another place, such as `~/.claude/commands/task/` or a repository checkout. The installed plugin is the only source, from any repository or worktree (S11).
+- **Installed:** its plugin `task-<name>@nerv` appears in `~/.claude/plugins/installed_plugins.json`. The root is that entry's `installPath`.
+- **Project:** the repository ships it as `.ai-workflow/providers/task-<name>/provider.yaml`, in the **main checkout** (`git rev-parse --path-format=absolute --git-common-dir`, then its parent), committed with the repository and never installed. The root is that folder. A project provider whose `task-<name>` is also an installed plugin's name is skipped and reported (`nerv` refuses that name collision), and so is one whose folder resolves outside the repository.
+
+Then read `<root>/provider.yaml` and `<root>/<operation file>`; an operation file must stay inside the root.
+
+Never read a copied procedure from another place, such as `~/.claude/commands/task/` or another folder of a repository checkout. The installed plugins and the repository's `.ai-workflow/providers/task-*/` folders are the only sources, from any repository or worktree (S11).
 
 The manifest declares the common provider fields:
 

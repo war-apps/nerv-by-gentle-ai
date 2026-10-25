@@ -24,7 +24,7 @@ import (
 const deployUsage = `Usage: nerv deploy --artifact <dir> [flags]
 
 Releases and deploys an artifact nerv release left (.nerv/artifacts/<project>/
-<version>/), as the deploy: section of .ai-workflow.yml says. It verifies
+<version>/), as the deploy: section of .ai-workflow/config.yaml says. It verifies
 the artifact's digests, clones the remote (deploy.git.remote, default
 origin) in a temporary directory at the artifact's base commit and:
 
@@ -148,7 +148,7 @@ func (d deployCmd) run(ctx context.Context) (deployrun.Report, error) {
 	cfg, err := deployconfig.Load(top)
 	switch {
 	case errors.Is(err, deployconfig.ErrNotConfigured):
-		return deployrun.Report{}, refuse("the repository has no deploy: section in .ai-workflow.yml; see docs/deploy.md")
+		return deployrun.Report{}, refuse("the repository has no deploy: section in .ai-workflow/config.yaml; see docs/deploy.md")
 	case err != nil:
 		return deployrun.Report{}, &refusal.Error{Err: err}
 	}
@@ -170,13 +170,17 @@ func (d deployCmd) run(ctx context.Context) (deployrun.Report, error) {
 		}
 		dir = filepath.Join(cwd, dir)
 	}
+	providers, err := projectTree(d.opts.ExtensionsFS, top)
+	if err != nil {
+		return deployrun.Report{}, err
+	}
 	var runner proc.Runner = proc.ExecRunner{}
 	if d.opts.DeployProc != nil {
 		runner = d.opts.DeployProc
 	}
 	o := deployrun.Options{
 		RepoRoot: top, ArtifactDir: dir, Config: cfg, Targets: d.targets, DryRun: d.dryRun, Rebase: d.rebase,
-		Providers: d.opts.ExtensionsFS, Proc: runner, Output: d.stderr,
+		Providers: providers, Proc: runner, Output: d.stderr,
 		UserValue: func(provider, key string) (string, bool) {
 			if wc.User == nil {
 				return "", false

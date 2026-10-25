@@ -368,7 +368,9 @@ func (p *Provider) CheckFiles(fsys fs.FS) error {
 // per extension and provider) and checks it whole: the folder is
 // <extension>-<name>, the owning extension's folder holds a valid
 // extension.yaml, the provider fits its slot and its procedure files
-// exist. It returns the provider and its extension's manifest.
+// exist. A project provider's {provider_dir} paths (see WithProject) are
+// resolved to absolute paths inside its folder. It returns the provider
+// and its extension's manifest.
 func LoadProvider(fsys fs.FS, dir string) (*Provider, *Manifest, error) {
 	data, err := fs.ReadFile(fsys, dir+"/"+ProviderFile)
 	if err != nil {
@@ -397,6 +399,15 @@ func LoadProvider(fsys fs.FS, dir string) (*Provider, *Manifest, error) {
 	}
 	if err := p.CheckFiles(root); err != nil {
 		return nil, nil, fmt.Errorf("%s: %w", dir, err)
+	}
+	var folder *projectFolder
+	if t, ok := fsys.(*projectTree); ok {
+		if f, ok := t.local[dir]; ok {
+			folder = &f
+		}
+	}
+	if err := p.resolveProjectPaths(folder); err != nil {
+		return nil, nil, fmt.Errorf("%s/%w", dir, err)
 	}
 	return p, ext, nil
 }

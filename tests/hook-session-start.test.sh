@@ -80,7 +80,7 @@ assert_active() {
   first_line="$(head -n 1 "$out_file")"
   byte_count="$(wc -c <"$out_file" | tr -d ' ')"
   if [ "$exit_code" -eq 0 ] \
-    && [ "$first_line" = "# NERV orchestrator protocol (active: .ai-workflow.yml enabled)" ] \
+    && [ "$first_line" = "# NERV orchestrator protocol (active: .ai-workflow/config.yaml enabled)" ] \
     && [ "$byte_count" -lt 10000 ] \
     && grep -q 'nerv:nerv-orchestrator' "$out_file" \
     && ! grep -q 'name: nerv-orchestrator' "$out_file"; then
@@ -103,16 +103,22 @@ assert_empty_stdout_with_stderr() {
   fi
 }
 
-# --- Case 1: no .ai-workflow.yml at all -> empty stdout ---
+# cfg DIR: creates DIR/.ai-workflow/ and prints the project config path.
+cfg() {
+  mkdir -p "$1/.ai-workflow"
+  printf '%s' "$1/.ai-workflow/config.yaml"
+}
+
+# --- Case 1: no .ai-workflow/config.yaml at all -> empty stdout ---
 tmp1="$(mktemp -d)"
 out1="$(mktemp)"; err1="$(mktemp)"
 run_hook "$tmp1" "$out1" "$err1"; exit1=$?
 assert_empty "no-nerv-dir" "$out1" "$exit1"
 rm -rf "$tmp1"; rm -f "$out1" "$err1"
 
-# --- Case 2: .ai-workflow.yml with enabled: false -> empty stdout ---
+# --- Case 2: .ai-workflow/config.yaml with enabled: false -> empty stdout ---
 tmp2="$(mktemp -d)"
-printf 'enabled: false\n' > "$tmp2/.ai-workflow.yml"
+printf 'enabled: false\n' > "$(cfg "$tmp2")"
 out2="$(mktemp)"; err2="$(mktemp)"
 run_hook "$tmp2" "$out2" "$err2"; exit2=$?
 assert_empty "enabled-false" "$out2" "$exit2"
@@ -120,7 +126,7 @@ rm -rf "$tmp2"; rm -f "$out2" "$err2"
 
 # --- Case 3: enabled: true (LF) -> active ---
 tmp3="$(mktemp -d)"
-printf 'enabled: true\n' > "$tmp3/.ai-workflow.yml"
+printf 'enabled: true\n' > "$(cfg "$tmp3")"
 out3="$(mktemp)"; err3="$(mktemp)"
 run_hook "$tmp3" "$out3" "$err3"; exit3=$?
 assert_active "enabled-true-lf" "$out3" "$exit3"
@@ -128,7 +134,7 @@ rm -rf "$tmp3"; rm -f "$out3" "$err3"
 
 # --- Case 4: enabled: true   # comment -> active ---
 tmp4="$(mktemp -d)"
-printf 'enabled: true   # comment\n' > "$tmp4/.ai-workflow.yml"
+printf 'enabled: true   # comment\n' > "$(cfg "$tmp4")"
 out4="$(mktemp)"; err4="$(mktemp)"
 run_hook "$tmp4" "$out4" "$err4"; exit4=$?
 assert_active "enabled-true-inline-comment" "$out4" "$exit4"
@@ -136,7 +142,7 @@ rm -rf "$tmp4"; rm -f "$out4" "$err4"
 
 # --- Case 5: enabled: true\r\n (CRLF) -> active ---
 tmp5="$(mktemp -d)"
-printf 'enabled: true\r\n' > "$tmp5/.ai-workflow.yml"
+printf 'enabled: true\r\n' > "$(cfg "$tmp5")"
 out5="$(mktemp)"; err5="$(mktemp)"
 run_hook "$tmp5" "$out5" "$err5"; exit5=$?
 assert_active "enabled-true-crlf" "$out5" "$exit5"
@@ -144,7 +150,7 @@ rm -rf "$tmp5"; rm -f "$out5" "$err5"
 
 # --- Case 6: enabled: truex -> empty stdout ---
 tmp6="$(mktemp -d)"
-printf 'enabled: truex\n' > "$tmp6/.ai-workflow.yml"
+printf 'enabled: truex\n' > "$(cfg "$tmp6")"
 out6="$(mktemp)"; err6="$(mktemp)"
 run_hook "$tmp6" "$out6" "$err6"; exit6=$?
 assert_empty "enabled-truex-rejected" "$out6" "$exit6"
@@ -154,7 +160,7 @@ rm -rf "$tmp6"; rm -f "$out6" "$err6"
 # Only the top-level enabled key activates NERV: a nested one (a plugin's
 # own enabled flag, say) does not, so the hook prints nothing.
 tmp7="$(mktemp -d)"
-printf 'other_key:\n  enabled: true\n' > "$tmp7/.ai-workflow.yml"
+printf 'other_key:\n  enabled: true\n' > "$(cfg "$tmp7")"
 out7="$(mktemp)"; err7="$(mktemp)"
 run_hook "$tmp7" "$out7" "$err7"; exit7=$?
 assert_empty "enabled-true-nested-ignored" "$out7" "$exit7"
@@ -162,7 +168,7 @@ rm -rf "$tmp7"; rm -f "$out7" "$err7"
 
 # --- Case 7b: a top-level enabled: true after a nested enabled: false ---
 tmp7b="$(mktemp -d)"
-printf 'release:\n  enabled: false\nenabled: true\n' > "$tmp7b/.ai-workflow.yml"
+printf 'release:\n  enabled: false\nenabled: true\n' > "$(cfg "$tmp7b")"
 out7b="$(mktemp)"; err7b="$(mktemp)"
 run_hook "$tmp7b" "$out7b" "$err7b"; exit7b=$?
 assert_active "enabled-true-top-level-after-nested" "$out7b" "$exit7b"
@@ -170,7 +176,7 @@ rm -rf "$tmp7b"; rm -f "$out7b" "$err7b"
 
 # --- Case 8: CLAUDE_PROJECT_DIR unset -> falls back to $PWD ---
 tmp8="$(mktemp -d)"
-printf 'enabled: true\n' > "$tmp8/.ai-workflow.yml"
+printf 'enabled: true\n' > "$(cfg "$tmp8")"
 out8="$(mktemp)"; err8="$(mktemp)"
 (cd "$tmp8" && run_capture "$out8" "$err8" env -u CLAUDE_PROJECT_DIR CLAUDE_PLUGIN_ROOT="$plugin_root" bash "$hook_script")
 exit8=$?
@@ -180,7 +186,7 @@ rm -rf "$tmp8"; rm -f "$out8" "$err8"
 # --- Case 9: CLAUDE_PLUGIN_ROOT unset -> defaults to the script's own
 # plugin directory (derived from its own location) -> active ---
 tmp9="$(mktemp -d)"
-printf 'enabled: true\n' > "$tmp9/.ai-workflow.yml"
+printf 'enabled: true\n' > "$(cfg "$tmp9")"
 out9="$(mktemp)"; err9="$(mktemp)"
 run_capture "$out9" "$err9" env -u CLAUDE_PLUGIN_ROOT CLAUDE_PROJECT_DIR="$tmp9" bash "$hook_script"
 exit9=$?
@@ -190,7 +196,7 @@ rm -rf "$tmp9"; rm -f "$out9" "$err9"
 # --- Case 10: CLAUDE_PLUGIN_ROOT points at an empty directory (skill file
 # missing) -> NO header, no partial injection; one diagnostic on stderr ---
 tmp10="$(mktemp -d)"
-printf 'enabled: true\n' > "$tmp10/.ai-workflow.yml"
+printf 'enabled: true\n' > "$(cfg "$tmp10")"
 empty_plugin_root="$(mktemp -d)"
 out10="$(mktemp)"; err10="$(mktemp)"
 run_capture "$out10" "$err10" env CLAUDE_PLUGIN_ROOT="$empty_plugin_root" CLAUDE_PROJECT_DIR="$tmp10" bash "$hook_script"
@@ -198,10 +204,10 @@ exit10=$?
 assert_empty_stdout_with_stderr "plugin-root-points-to-empty-dir" "$out10" "$err10" "$exit10" "protocol skill not found"
 rm -rf "$tmp10" "$empty_plugin_root"; rm -f "$out10" "$err10"
 
-# --- Case 11: .ai-workflow.yml exists as a DIRECTORY, not a file -> the
+# --- Case 11: .ai-workflow/config.yaml exists as a DIRECTORY, not a file -> the
 # "-f" guard fails closed, empty stdout, exit 0 ---
 tmp11="$(mktemp -d)"
-mkdir -p "$tmp11/.ai-workflow.yml"
+mkdir -p "$tmp11/.ai-workflow/config.yaml"
 out11="$(mktemp)"; err11="$(mktemp)"
 run_hook "$tmp11" "$out11" "$err11"; exit11=$?
 assert_empty "config-path-is-a-directory" "$out11" "$exit11"
@@ -211,9 +217,9 @@ rm -rf "$tmp11"; rm -f "$out11" "$err11"
 # empty stdout, exit 0. Skipped where chmod 000 does not actually block
 # reads for the current user (e.g. root, or Windows/Git Bash). ---
 tmp12="$(mktemp -d)"
-printf 'enabled: true\n' > "$tmp12/.ai-workflow.yml"
-chmod 000 "$tmp12/.ai-workflow.yml" 2>/dev/null || true
-if [ -r "$tmp12/.ai-workflow.yml" ]; then
+printf 'enabled: true\n' > "$(cfg "$tmp12")"
+chmod 000 "$tmp12/.ai-workflow/config.yaml" 2>/dev/null || true
+if [ -r "$tmp12/.ai-workflow/config.yaml" ]; then
   skip "config-unreadable" "chmod 000 does not block reads on this platform"
 else
   out12="$(mktemp)"; err12="$(mktemp)"
@@ -221,7 +227,7 @@ else
   assert_empty "config-unreadable" "$out12" "$exit12"
   rm -f "$out12" "$err12"
 fi
-chmod 600 "$tmp12/.ai-workflow.yml" 2>/dev/null || true
+chmod 600 "$tmp12/.ai-workflow/config.yaml" 2>/dev/null || true
 rm -rf "$tmp12"
 
 # --- Case 13: only the old .nerv/nerv.yaml, enabled: true -> NOT active;
@@ -231,7 +237,7 @@ mkdir -p "$tmp13/.nerv"
 printf 'enabled: true\n' > "$tmp13/.nerv/nerv.yaml"
 out13="$(mktemp)"; err13="$(mktemp)"
 run_hook "$tmp13" "$out13" "$err13"; exit13=$?
-want13='NERV: .nerv/nerv.yaml is no longer read (configuration now lives in .ai-workflow.yml); run "nerv migrate" to move it. NERV is not active in this session.'
+want13='NERV: .nerv/nerv.yaml is no longer read (configuration now lives in .ai-workflow/config.yaml); run "nerv migrate" to move it. NERV is not active in this session.'
 if [ "$exit13" -eq 0 ] && [ "$(cat "$out13")" = "$want13" ]; then
   report "old-config-only-hints-migrate" 0
 else
@@ -253,11 +259,48 @@ rm -rf "$tmp14"; rm -f "$out14" "$err14"
 tmp15="$(mktemp -d)"
 mkdir -p "$tmp15/.nerv"
 printf 'enabled: true\n' > "$tmp15/.nerv/nerv.yaml"
-printf 'enabled: false\n' > "$tmp15/.ai-workflow.yml"
+printf 'enabled: false\n' > "$(cfg "$tmp15")"
 out15="$(mktemp)"; err15="$(mktemp)"
 run_hook "$tmp15" "$out15" "$err15"; exit15=$?
 assert_empty "new-config-wins-over-old" "$out15" "$exit15"
 rm -rf "$tmp15"; rm -f "$out15" "$err15"
+
+# --- Case 16 (S9): only the previous .ai-workflow.yml, enabled: true ->
+# NOT active; stdout is exactly the one-line "nerv migrate" notice ---
+want_prev='NERV: .ai-workflow.yml is no longer read (configuration now lives in .ai-workflow/config.yaml); run "nerv migrate" to move it. NERV is not active in this session.'
+tmp16="$(mktemp -d)"
+printf 'enabled: true\n' > "$tmp16/.ai-workflow.yml"
+out16="$(mktemp)"; err16="$(mktemp)"
+run_hook "$tmp16" "$out16" "$err16"; exit16=$?
+if [ "$exit16" -eq 0 ] && [ "$(cat "$out16")" = "$want_prev" ]; then
+  report "previous-config-hints-migrate" 0
+else
+  report "previous-config-hints-migrate" 1 "expected exactly [${want_prev}], got exit=${exit16} stdout=[$(cat "$out16")]"
+fi
+rm -rf "$tmp16"; rm -f "$out16" "$err16"
+
+# --- Case 17 (S9): a leftover .ai-workflow.yml next to an enabling
+# .ai-workflow/config.yaml -> NOT active (never read silently); the notice ---
+tmp17="$(mktemp -d)"
+printf 'enabled: false\n' > "$tmp17/.ai-workflow.yml"
+printf 'enabled: true\n' > "$(cfg "$tmp17")"
+out17="$(mktemp)"; err17="$(mktemp)"
+run_hook "$tmp17" "$out17" "$err17"; exit17=$?
+if [ "$exit17" -eq 0 ] && [ "$(cat "$out17")" = "$want_prev" ]; then
+  report "leftover-previous-config-blocks-activation" 0
+else
+  report "leftover-previous-config-blocks-activation" 1 "expected exactly [${want_prev}], got exit=${exit17} stdout=[$(cat "$out17")]"
+fi
+rm -rf "$tmp17"; rm -f "$out17" "$err17"
+
+# --- Case 18 (S9): only a previous .ai-workflow.yml, enabled: false ->
+# empty stdout (NERV stays invisible in a repository that never opted in) ---
+tmp18="$(mktemp -d)"
+printf 'enabled: false\n' > "$tmp18/.ai-workflow.yml"
+out18="$(mktemp)"; err18="$(mktemp)"
+run_hook "$tmp18" "$out18" "$err18"; exit18=$?
+assert_empty "previous-config-disabled-silent" "$out18" "$exit18"
+rm -rf "$tmp18"; rm -f "$out18" "$err18"
 
 echo ""
 echo "Results: ${pass_count} passed, ${fail_count} failed, ${skip_count} skipped"

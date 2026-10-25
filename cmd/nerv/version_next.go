@@ -30,7 +30,7 @@ import (
 const versionNextUsage = `Usage: nerv version next [flags]
 
 Computes the next semantic version of the repository (or of each project of
-the release: section of .ai-workflow.yml) with nerv's native version engine,
+the release: section of .ai-workflow/config.yaml) with nerv's native version engine,
 the release: section's version engine (release.version, by default
 conventional-commits: semantic-release with the conventionalcommits
 preset), as release.providers.<engine> configures it (branches,
@@ -175,8 +175,12 @@ func runVersionNext(args []string, stdout, stderr io.Writer, opts options) int {
 	if err == nil {
 		shape, err = requestShape(top, *project)
 	}
+	var providers releaseplan.Providers
 	if err == nil {
-		shape.Engine, err = releaseplan.NewVersionEngine(releaseProviders(opts, stderr), shape.Release)
+		providers, err = releaseProviders(opts, top, stderr)
+	}
+	if err == nil {
+		shape.Engine, err = releaseplan.NewVersionEngine(providers, shape.Release)
 	}
 	if err == nil {
 		err = shape.Engine.Validate(ctx)
@@ -256,7 +260,7 @@ type outputShape struct {
 // semantic_release_config output, named as before the native engine).
 const (
 	// configRepository: the release: section of the repository's
-	// .ai-workflow.yml.
+	// .ai-workflow/config.yaml.
 	configRepository = "repository"
 	// configBuiltIn: the engine's defaults (dim.comprobantes.api's
 	// branches), for a repository without a release: section.
@@ -299,7 +303,7 @@ func newVersionResult(r versioning.Result, builtIn bool) versionResult {
 		NewReleaseMajorVersion: r.NewReleaseMajorVersion, NewReleaseMinorVersion: r.NewReleaseMinorVersion, NewReleasePatchVersion: r.NewReleasePatchVersion,
 		NewReleaseChannel: r.NewReleaseChannel, NewReleaseNotes: r.NewReleaseNotes, NewReleaseGitHead: r.NewReleaseGitHead, NewReleaseGitTag: r.NewReleaseGitTag,
 		LastReleaseVersion: r.LastReleaseVersion, LastReleaseGitHead: r.LastReleaseGitHead, LastReleaseGitTag: r.LastReleaseGitTag,
-		SemanticReleaseConfig: configRepository, SemanticReleaseConfigFile: ".ai-workflow.yml",
+		SemanticReleaseConfig: configRepository, SemanticReleaseConfigFile: ".ai-workflow/config.yaml",
 		outputs: r.Outputs(),
 	}
 	if builtIn {
@@ -424,7 +428,7 @@ func requestShape(top, name string) (outputShape, error) {
 	rel, err := releaseconfig.Load(top)
 	if errors.Is(err, releaseconfig.ErrNotConfigured) {
 		if name != "" {
-			return outputShape{}, &refusal.Error{Err: errors.New(withLegacyHint(fmt.Sprintf("--project %q: the repository has no release: section in .ai-workflow.yml, so it is a single project; drop --project", name), top))}
+			return outputShape{}, &refusal.Error{Err: errors.New(withLegacyHint(fmt.Sprintf("--project %q: the repository has no release: section in .ai-workflow/config.yaml, so it is a single project; drop --project", name), top))}
 		}
 		return outputShape{Whole: true, BuiltIn: true}, nil
 	}

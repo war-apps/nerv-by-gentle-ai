@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-// S11 / L8: the user config is os.UserConfigDir()/ai-workflow/config.yml.
+// S11 / L8: the user config is os.UserConfigDir()/ai-workflow/config.yaml.
 // Prose that tells an agent to read it must name the real resolution.
 func TestS11_ProseResolvesUserConfigPerPlatform(t *testing.T) {
 	for name, fsys := range map[string]fs.FS{"plugin": PluginFS(), "plugins": ExtensionsFS()} {
@@ -16,11 +16,11 @@ func TestS11_ProseResolvesUserConfigPerPlatform(t *testing.T) {
 			}
 			data, _ := fs.ReadFile(fsys, path)
 			text := string(data)
-			if !strings.Contains(text, "~/.config/ai-workflow/config.yml") {
+			if !strings.Contains(text, "~/.config/ai-workflow/config.yaml") {
 				return nil
 			}
 			if !strings.Contains(text, "config_path") && !strings.Contains(text, "%AppData%") {
-				t.Errorf("%s/%s hard-wires ~/.config/ai-workflow/config.yml: on Windows, macOS or with XDG_CONFIG_HOME, nerv configure writes elsewhere", name, path)
+				t.Errorf("%s/%s hard-wires ~/.config/ai-workflow/config.yaml: on Windows, macOS or with XDG_CONFIG_HOME, nerv configure writes elsewhere", name, path)
 			}
 			return nil
 		})

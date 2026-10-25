@@ -56,7 +56,7 @@ func TestInterrupted_ApplyRollsBackEverything(t *testing.T) {
 }
 
 // A run killed after it wrote its new files (no rollback could run)
-// leaves its own ODD document and .ai-workflow.yml; the next run
+// leaves its own ODD document and .ai-workflow/config.yaml; the next run
 // recognises them and finishes the moves.
 func TestInterrupted_RerunFinishesItsOwnHalfWrittenOutput(t *testing.T) {
 	w := newWorld(t, comprobantes)

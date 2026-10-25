@@ -13,7 +13,9 @@ import (
 
 	nerv "github.com/war-apps/nerv-by-gentle-ai"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/env"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/extension"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/proc"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/refusal"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/releaseclone"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/releaseplan"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/version"
@@ -228,7 +230,7 @@ const pipelineRemoved = `nerv pipeline was removed. Its steps moved:
   docker and release: nerv release, then nerv deploy
   deploy: the deploy-ssh-compose target of the deploy: section (nerv deploy)
   sync: not ported yet
-Move the pipeline: section of .ai-workflow.yml with nerv migrate, or by hand (/release:setup and /deploy:setup).`
+Move the pipeline: section of .ai-workflow/config.yaml with nerv migrate, or by hand (/release:setup and /deploy:setup).`
 
 func pluginFS() fs.FS {
 	return nerv.PluginFS()
@@ -236,11 +238,28 @@ func pluginFS() fs.FS {
 
 // releaseProviders calls the release extension's providers from the
 // extensions tree (the embedded one when opts has none: the release
-// extension always ships its own), their stderr streamed to output.
-func releaseProviders(opts options, output io.Writer) releaseplan.Providers {
+// extension always ships its own) merged with the project extensions and
+// providers of the repository at top, their stderr streamed to output. An
+// invalid project extension or provider is a refusal.
+func releaseProviders(opts options, top string, output io.Writer) (releaseplan.Providers, error) {
 	fsys := opts.ExtensionsFS
 	if fsys == nil {
 		fsys = nerv.ExtensionsFS()
 	}
-	return releaseplan.Providers{FS: fsys, Runner: opts.ReleaseProc, Output: output}
+	fsys, err := projectTree(fsys, top)
+	if err != nil {
+		return releaseplan.Providers{}, err
+	}
+	return releaseplan.Providers{FS: fsys, Runner: opts.ReleaseProc, Output: output}, nil
+}
+
+// projectTree is fsys merged with the project extensions and providers of
+// the repository at top (extension.WithProject); an invalid one is a
+// refusal.
+func projectTree(fsys fs.FS, top string) (fs.FS, error) {
+	merged, err := extension.WithProject(fsys, top)
+	if err != nil {
+		return nil, &refusal.Error{Err: err}
+	}
+	return merged, nil
 }

@@ -21,7 +21,7 @@ flowchart TB
     end
 
     subgraph Repo["repo"]
-        NConfig[".ai-workflow.yml"]
+        NConfig[".ai-workflow/config.yaml"]
         NDoc["odd/tasks/{feature}.md (ODD document)"]
         NRun["odd/{feature}/nerv/ (run folder)"]
     end
@@ -40,7 +40,7 @@ governs: Claude Code loads gentle-ai first (`CLAUDE.md`, its hooks, the
 `gentle-ai` binary, and the agents/skills it writes under `~/.claude`),
 Nerv by Gentle-AI's plugin cache layers its own hook, agents, skills, and
 commands on top, and the repo carries only the configuration
-(`.ai-workflow.yml`), each FULL feature's ODD document
+(`.ai-workflow/config.yaml`), each FULL feature's ODD document
 (`odd/tasks/{feature}.md`) and its NERV run folder (`odd/{feature}/nerv/`),
 plus the git-ignored runtime folder `.nerv/` (DIRECT and LIGHT run folders
 in `.nerv/runs/`, the locks in `.nerv/locks/`). `gentle-ai
@@ -56,7 +56,7 @@ sequenceDiagram
     participant Hook as SessionStart hook
     participant GA as gentle-ai review stop-hook
     participant NS as nerv-session-start.sh
-    participant Cfg as .ai-workflow.yml
+    participant Cfg as .ai-workflow/config.yaml
     participant Sess as Session
     participant Skill as nerv:nerv-orchestrator skill
 
@@ -77,7 +77,7 @@ sequenceDiagram
 
 Every session start runs gentle-ai's own `review stop-hook` first, then
 Nerv by Gentle-AI's `nerv-session-start.sh`. The Nerv by Gentle-AI hook checks
-`.ai-workflow.yml` for `enabled: true`; only then does it print a short
+`.ai-workflow/config.yaml` for `enabled: true`; only then does it print a short
 activation header — Claude Code caps hook stdout at 10,000 characters,
 well under the full protocol's size, so the hook cannot inject the
 protocol body itself. The header instructs the session to invoke the
@@ -121,7 +121,7 @@ judgment agents, the delivery and skill-resolution skills listed in
 `plugin/skills-manifest.json`, and the persistence and lossless-prompt
 contracts. It supersedes exactly one thing — gentle-ai's ODD
 Implementation Routing — with its own DIRECT/LIGHT/FULL classification and
-pipelines, only in repos carrying the `.ai-workflow.yml` marker. It keeps
+pipelines, only in repos carrying the `.ai-workflow/config.yaml` marker. It keeps
 gentle-ai's ODD feature document as the tracking surface, and its own roles
 (Misato, Ritsuko, the MAGI, the pilots) write it; see "NERV on ODD" below.
 
@@ -402,7 +402,7 @@ per commit" above.
 
 ## Operations
 
-**Activation.** A repo opts in by creating `.ai-workflow.yml` with
+**Activation.** A repo opts in by creating `.ai-workflow/config.yaml` with
 `enabled: true` — `/nerv:init` writes it interactively (base branch,
 worktree policy, worktree location, skill stacks),
 and `/nerv:configure`
@@ -437,8 +437,8 @@ ask before taking over, however long the gate stays open.
 Maya reports, audit rounds, run summary, and `task-events.yaml` when the
 task plugin is installed), the run folder `.nerv/runs/{run-id}/` of each
 DIRECT or LIGHT run, plus the lock under `.nerv/locks/`; see "NERV on ODD"
-above. `.ai-workflow.yml` (project scope) and
-`~/.config/ai-workflow/config.yml` (user scope) hold configuration; nothing is
+above. `.ai-workflow/config.yaml` (project scope) and
+`~/.config/ai-workflow/config.yaml` (user scope) hold configuration; nothing is
 ever written under `~/.claude/agents` or `~/.claude/skills`.
 
 **Artifacts commit policy.** `artifacts.commit` controls when a FULL run's
@@ -459,7 +459,7 @@ the orchestrator lock state (`.nerv/locks/{run-id}.lock`: holder, step,
 It also prints whether the task plugin is installed (`task:dispatcher`
 available); timers are shown by `/task:timers`.
 
-**`/nerv:configure`.** Configures `config.yml` (user scope) and `.ai-workflow.yml` (project scope),
+**`/nerv:configure`.** Configures `config.yaml` (user scope) and `.ai-workflow/config.yaml` (project scope),
 per-role models, skills, and repository registration through grouped
 guided questions instead of hand-editing YAML or the terminal wizard — see
 "Setup" in [README.md](../README.md). Read-only in `claude -p`, where it
@@ -551,13 +551,13 @@ tools, when the session lacks any MCP tool the manifest declares.
 
 **Commands.** The `/task:*` commands are served by the `task` plugin, so
 nothing is copied to `~/.claude/commands/task/` any more. They read the
-same configuration files (user `config.yml` and project `.ai-workflow.yml`) as the rest of NERV.
+same configuration files (user `config.yaml` and project `.ai-workflow/config.yaml`) as the rest of NERV.
 
 ### Engram project detection
 
 A second SessionStart hook, `plugin/hooks/nerv-engram-project.sh`, runs in
 **every** session — unlike the Nerv by Gentle-AI activation hook above, it is
-not gated behind `.ai-workflow.yml` — to tell the session which Engram
+not gated behind `.ai-workflow/config.yaml` — to tell the session which Engram
 project to pass
 on every memory write. It detects the project in this order:
 
@@ -573,7 +573,7 @@ on every memory write. It detects the project in this order:
    nested subfolder).
 3. Otherwise, undetermined.
 
-Inside a NERV-enabled repo (`.ai-workflow.yml` with `enabled: true`), the
+Inside a NERV-enabled repo (`.ai-workflow/config.yaml` with `enabled: true`), the
 hook also prints a reminder that Nerv by Gentle-AI keeps a shared knowledge
 base in the Engram project named `nerv` — precedents (Misato rulings,
 Fuyutsuki vetoes,

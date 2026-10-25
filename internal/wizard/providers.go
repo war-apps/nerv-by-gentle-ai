@@ -96,7 +96,7 @@ func scalarKeys(m *taskprovider.Manifest, scope string) []taskprovider.ConfigKey
 // the task plugin is enabled: tasks.provider when more than one provider is
 // enabled, then every user-scope scalar key of each enabled provider's
 // manifest, shown with its current value or its Default. The changed
-// answers are written to the user config.yml in one
+// answers are written to the user config.yaml in one
 // configure.SetProviderSettings batch, after a summary and a confirmation.
 func runTaskProvidersSection(deps Deps, cfg configure.Paths, providers []configure.Provider, s *session, out io.Writer) (bool, error) {
 	fmt.Fprintln(out)

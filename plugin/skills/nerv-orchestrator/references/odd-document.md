@@ -131,7 +131,7 @@ columns stay writable (`Criticality`, `MAGI` and `Status` by Ikari,
 Resolved once per run, before the first launch; in FULL it is written
 into the header (`Test runner: <command> (strict TDD)`), in DIRECT and
 LIGHT into `state.yaml` (`tdd`, `test_runner`). An explicit user choice
-wins. Next comes the repository's default in `.ai-workflow.yml`: `odd.tdd`
+wins. Next comes the repository's default in `.ai-workflow/config.yaml`: `odd.tdd`
 (`strict` or `standard`) and `odd.test_runner` (a command, or `none`), which
 `nerv migrate` writes from the old configuration; the merged configuration
 reads them like any other key. Without them, discover every project root from the repo root (the explicit

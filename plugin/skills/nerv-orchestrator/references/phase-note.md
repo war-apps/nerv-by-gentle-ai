@@ -10,7 +10,7 @@ five pilots (`rei`, `shinji`, `asuka`, `toji`, `kaworu`),
 and the full audit-and-closure stage (Kaji, `gendo`, Fuyutsuki's
 read-only refute mode, the ranked issue gate, fix routing, the
 bounded re-audit loop). The configuration
-(`config.yml` and `.ai-workflow.yml`: two scopes, one schema, project overrides user)
+(`config.yaml` and `.ai-workflow/config.yaml`: two scopes, one schema, project overrides user)
 is resolved at Preflight. Task tracking later moved out of core into the
 optional task plugin (`task@nerv`): core only emits the events of
 SKILL.md `## Task events` through `task:dispatcher`, and only when that

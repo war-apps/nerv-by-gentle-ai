@@ -430,7 +430,7 @@ func TestRun_BaseBranchChange_RepoInit(t *testing.T) {
 		t.Error("expected a backup to be written")
 	}
 
-	repoConfig, err := os.ReadFile(filepath.Join(repoDir, ".ai-workflow.yml"))
+	repoConfig, err := os.ReadFile(filepath.Join(repoDir, ".ai-workflow/config.yaml"))
 	if err != nil {
 		t.Fatalf("repo config not written: %v", err)
 	}

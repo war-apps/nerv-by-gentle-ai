@@ -242,7 +242,7 @@ func problemsOf(t *testing.T, resp extension.Response) string {
 }
 
 // The conventional-commits engine checks its keys and the projects, each
-// problem named by its path in .ai-workflow.yml.
+// problem named by its path in .ai-workflow/config.yaml.
 func TestConventionalCommits_ValidateNamesTheKeys(t *testing.T) {
 	got := problemsOf(t, nativeCall(t, ConventionalCommits, OpValidate,
 		map[string]any{"release_rules": []any{map[string]any{"type": "docs", "release": "huge"}}, "tag_format": "v1"},

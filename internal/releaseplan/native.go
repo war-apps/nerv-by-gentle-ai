@@ -128,7 +128,7 @@ func conventionalCommits(ctx context.Context, op string, req extension.Request, 
 
 // engineConfig decodes the engine's keys (the request's config) and the
 // projects into a defaulted, validated versioning.Config; every problem is
-// named by its path in .ai-workflow.yml.
+// named by its path in .ai-workflow/config.yaml.
 func engineConfig(req extension.Request, projects []VersionProject) (versioning.Config, []string) {
 	data, err := json.Marshal(req.Config)
 	if err != nil {

@@ -28,7 +28,7 @@ is no longer read, and the commands point to `/release:setup` and
    ```
 
 2. **See the whole migration** with `nerv migrate --dry-run`: it shows
-   every change to the configuration files (the move to `.ai-workflow.yml`,
+   every change to the configuration files (the move to `.ai-workflow/config.yaml`,
    the translation of the 4.2.0 `release:` and `pipeline:` into today's
    `release:` and `deploy:`, the semantic-release import, the plugins to install) before
    writing anything. `nerv migrate` applies it, with backups.

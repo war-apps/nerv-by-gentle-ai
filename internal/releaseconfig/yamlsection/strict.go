@@ -18,7 +18,7 @@ const MaxWalkNodes = 10000
 // UnknownFields walks a section node against the yaml tags of struct type t
 // and reports every mapping key that no struct field declares, as
 // "<root>.<path>: unknown field (line N)". yaml.v3 offers KnownFields only on
-// a Decoder over a whole document, and the rest of .ai-workflow.yml must stay
+// a Decoder over a whole document, and the rest of .ai-workflow/config.yaml must stay
 // free-form, so the section is checked here instead. Merge keys (<<: *anchor,
 // <<: [*a, *b]) are followed into the merged mappings. Kind mismatches are
 // left to yaml's own decoding. It fails when the walk exceeds MaxWalkNodes.

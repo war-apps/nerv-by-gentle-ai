@@ -16,7 +16,7 @@ import (
 const MigrateHint = "nerv migrate rewrites it; by hand, see /release:setup and /deploy:setup"
 
 // RemovedSections reports the removed top-level sections of a
-// .ai-workflow.yml text, each with what replaced it: pipeline: (nerv
+// .ai-workflow/config.yaml text, each with what replaced it: pipeline: (nerv
 // pipeline was removed), naming where each of its parts went. Nil when the
 // text has none. Every reader of the release: and deploy: sections refuses
 // a file with one, so the old configuration is never silently ignored. A
@@ -34,7 +34,7 @@ func RemovedSections(data []byte) []string {
 const LegacyHint = "run nerv migrate to convert it into the current release: section"
 
 // LegacyKeys returns the 4.2.0 keys of the release: section of a
-// .ai-workflow.yml text, each with its path (release.semantic_release,
+// .ai-workflow/config.yaml text, each with its path (release.semantic_release,
 // release.projects[0].presets): the keys only the 4.2.0 section had, which
 // tell it apart from today's. Nil when the section has none or cannot be
 // read.

@@ -68,7 +68,7 @@ func TestMigrate_DryRunPrintsEveryChangeAndWritesNothing(t *testing.T) {
 		t.Fatalf("exit %d\n%s\n%s", code, out, errOut)
 	}
 	for _, want := range []string{
-		"--- /dev/null\n+++ b/.ai-workflow.yml\n", "+release:", "+deploy:\n+  host: github",
+		"--- /dev/null\n+++ b/.ai-workflow/config.yaml\n", "+release:", "+deploy:\n+  host: github",
 		"move .nerv/nerv.yaml -> .nerv/nerv.yaml.migrated",
 		"warning: semantic-release package.json: @semantic-release/exec",
 		"plugins: nerv install --with task,task-teamwork,release,deploy,deploy-github",
@@ -78,8 +78,8 @@ func TestMigrate_DryRunPrintsEveryChangeAndWritesNothing(t *testing.T) {
 			t.Errorf("stdout lacks %q:\n%s", want, out)
 		}
 	}
-	if _, err := os.Stat(filepath.Join(top, ".ai-workflow.yml")); err == nil {
-		t.Error("--dry-run wrote .ai-workflow.yml")
+	if _, err := os.Stat(filepath.Join(top, ".ai-workflow/config.yaml")); err == nil {
+		t.Error("--dry-run wrote .ai-workflow/config.yaml")
 	}
 	if _, err := os.Stat(filepath.Join(top, ".nerv", "nerv.yaml")); err != nil {
 		t.Errorf("--dry-run moved .nerv/nerv.yaml: %v", err)
@@ -217,7 +217,7 @@ func TestMigrate_ReleaseDryRunPlansThe420Commands(t *testing.T) {
 	}
 	var migrated string
 	for _, c := range plan.Changes {
-		if filepath.Base(c.Path) == ".ai-workflow.yml" {
+		if c.Path == filepath.Join(top, ".ai-workflow", "config.yaml") {
 			migrated = string(c.New)
 		}
 	}

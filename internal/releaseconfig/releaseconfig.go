@@ -1,12 +1,12 @@
 // Package releaseconfig reads the release: section of a repository's
-// project-scope .ai-workflow.yml: the typed, validated configuration behind
+// project-scope .ai-workflow/config.yaml: the typed, validated configuration behind
 // `nerv version next` and `nerv release`. The section selects the providers
 // of the release extension's slots (version: the version engine; build: a
 // project's build), holds their keys under providers: (each provider
 // checks its own when it is called, internal/releaseplan) and the one
 // project list the engine and the build use.
 //
-// The rest of .ai-workflow.yml is owned by internal/config, a line-based editor
+// The rest of .ai-workflow/config.yaml is owned by internal/config, a line-based editor
 // that cannot hold lists of maps. This package cuts the top-level release:
 // block out of the file and parses only that block with gopkg.in/yaml.v3,
 // so a YAML error elsewhere in the file does not matter (and anchors defined
@@ -30,12 +30,12 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// SectionKey is the top-level key of the section in .ai-workflow.yml.
+// SectionKey is the top-level key of the section in .ai-workflow/config.yaml.
 const SectionKey = "release"
 
 // ErrNotConfigured is returned by Load when the repository has no
-// .ai-workflow.yml or the file has no release: key.
-var ErrNotConfigured = errors.New("release: not configured in .ai-workflow.yml")
+// .ai-workflow/config.yaml or the file has no release: key.
+var ErrNotConfigured = errors.New("release: not configured in .ai-workflow/config.yaml")
 
 // Release is the release: section: the providers of the release
 // extension's two slots, their config, and the projects.
@@ -188,7 +188,7 @@ func (r *Release) Project(name string) (Project, bool) {
 	return Project{}, false
 }
 
-// Load reads the release: section of <repoRoot>/.ai-workflow.yml, applies
+// Load reads the release: section of <repoRoot>/.ai-workflow/config.yaml, applies
 // defaults and validates it. It returns ErrNotConfigured when the file or
 // the key is absent, and an error listing every problem, each prefixed by
 // its path in the section (e.g. release.projects[1].depends_on[0].project),
@@ -197,6 +197,9 @@ func (r *Release) Project(name string) (Project, bool) {
 // so is a key that moved (an engine key under release:, a build: mapping),
 // naming its new place.
 func Load(repoRoot string) (*Release, error) {
+	if err := paths.RefusePreviousProject(repoRoot); err != nil {
+		return nil, err
+	}
 	path := paths.ProjectConfig(repoRoot)
 	data, err := os.ReadFile(path)
 	if errors.Is(err, os.ErrNotExist) {
@@ -215,7 +218,7 @@ func Load(repoRoot string) (*Release, error) {
 	return rel, nil
 }
 
-// parse decodes the release: key of a .ai-workflow.yml text. Unknown keys and
+// parse decodes the release: key of a .ai-workflow/config.yaml text. Unknown keys and
 // semantic problems are reported together; only a section that cannot be
 // decoded at all (or that expands past the alias budget) stops early.
 func parse(data []byte) (*Release, error) {

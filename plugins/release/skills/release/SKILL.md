@@ -1,6 +1,6 @@
 ---
 name: release
-description: NERV release plugin contract. Covers the release section of .ai-workflow.yml (projects, branches, release rules, tag_format, changelog, build modes, stages, hooks, coverage), the native version engine behind nerv version next, the local artifact nerv release leaves, the dry-run-then-yes rule and the migration from the 4.2.0 release:, pipeline: and semantic-release. Loaded by the /release:* commands and by the release:versioner and release:builder agents.
+description: NERV release plugin contract. Covers the release section of .ai-workflow/config.yaml (projects, branches, release rules, tag_format, changelog, build modes, stages, hooks, coverage), the native version engine behind nerv version next, the local artifact nerv release leaves, the dry-run-then-yes rule and the migration from the 4.2.0 release:, pipeline: and semantic-release. Loaded by the /release:* commands and by the release:versioner and release:builder agents.
 ---
 
 # NERV Release Plugin — Contract
@@ -26,7 +26,7 @@ If `nerv` is not on PATH, tell the user to install it — `curl -fsSL https://ra
 
 ## 2. Configuration
 
-The configuration is the `release:` section of `<repo>/.ai-workflow.yml`. Unknown keys are refused, with a path-qualified message per problem.
+The configuration is the `release:` section of `<repo>/.ai-workflow/config.yaml`. Unknown keys are refused, with a path-qualified message per problem.
 
 The release extension has two provider slots (docs/extensions.md): the **version engine** (`release.version`, default `conventional-commits`) and the **build** (`release.build` for every project, overridden by `projects[].build`: `docker-compose` or `bash`). All three providers are installed with release. A provider's keys live under `release.providers.<provider>`; a project overrides a build provider's keys under `projects[].providers.<provider>`. A key a provider does not declare is refused, and so are the alpha keys that moved (an engine key directly under `release:`, a `build:` mapping), each naming its new place.
 
@@ -150,7 +150,7 @@ It reads origin's tags and channel notes into a throwaway copy (never the reposi
 nerv release [--branch <name>] [--project <name>] [--version <semver>] [--dry-run] [--yes] [--expect <project>=<version> ...] [--force] [--json]
 ```
 
-- It builds **what is on origin**: the local branch must equal origin's. The `release:` section is the local `.ai-workflow.yml`, committed or not.
+- It builds **what is on origin**: the local branch must equal origin's. The `release:` section is the local `.ai-workflow/config.yaml`, committed or not.
 - `--version <semver>` uses that version instead of computing it. It must be newer than the project's last tag, needs `--project` in a monorepo, and takes its channel from the `branches` entry of the branch.
 - The dry run is real work in the clone (every stage and the `prepare` hooks) and writes no artifact. The real run needs `--yes` (its own `[y/N]` prompt cannot be answered from an agent's shell) and one `--expect <project>=<version>` per project the dry run would package: when origin moved and the versions differ, it refuses before any stage.
 - An existing artifact of the same version is refused with `pass --force to replace it`. Never add `--force` on your own.

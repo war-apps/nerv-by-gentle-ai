@@ -86,7 +86,7 @@ func TestLegacyConfig_ReleaseRefusesAsUnconfiguredWithTheHint(t *testing.T) {
 	writeLegacy(t, old, releaseMonorepoYAML)
 
 	code, _, stderr := f.run(t, "--yes")
-	if code != 1 || !strings.Contains(stderr, "no release: section in .ai-workflow.yml") {
+	if code != 1 || !strings.Contains(stderr, "no release: section in .ai-workflow/config.yaml") {
 		t.Fatalf("exit %d, stderr %q: want the not-configured refusal", code, stderr)
 	}
 	got := hintLines(stderr, old)
@@ -105,7 +105,7 @@ func TestLegacyConfig_VersionNextIsTheWholeRepositoryWithTheHint(t *testing.T) {
 	writeLegacy(t, old, "release:\n  projects:\n    - name: api\n      path: api\n")
 
 	code, _, stderr := f.run(t, "--project", "api")
-	if code != 1 || !strings.Contains(stderr, "no release: section in .ai-workflow.yml") {
+	if code != 1 || !strings.Contains(stderr, "no release: section in .ai-workflow/config.yaml") {
 		t.Fatalf("exit %d, stderr %q: want the single-project refusal", code, stderr)
 	}
 	if got := hintLines(stderr, old); len(got) != 1 {

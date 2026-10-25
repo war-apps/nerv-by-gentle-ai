@@ -9,7 +9,7 @@ Nerv by Gentle-AI has two command surfaces: Claude Code slash commands
 | Command | What it does |
 |---|---|
 | `/nerv:configure` | Configure NERV through guided questions (git, skills, models, repo) |
-| `/nerv:init` | Bootstrap NERV for the current repository (writes `.ai-workflow.yml`) |
+| `/nerv:init` | Bootstrap NERV for the current repository (writes `.ai-workflow/config.yaml`) |
 | `/nerv:status` | Show NERV activation, config resolution, and change status (read-only) |
 
 ### Task plugin commands (`/task:*`)
@@ -48,7 +48,7 @@ agents are `release:versioner` and `release:builder`. Reference:
 | Command | What it does |
 |---|---|
 | `/release:version` | Show the next release version of the repository (or of each project), computed by the native engine |
-| `/release:setup` | Write the `release:` section of `.ai-workflow.yml`: import an existing semantic-release config (`nerv release setup --import`), ask each project's build provider (`docker-compose` or `bash`) and its stage commands or compose file |
+| `/release:setup` | Write the `release:` section of `.ai-workflow/config.yaml`: import an existing semantic-release config (`nerv release setup --import`), ask each project's build provider (`docker-compose` or `bash`) and its stage commands or compose file |
 | `/release:build` | Build, test and package origin's code into a local artifact: dry run first, the real run only after your explicit yes; never writes to git |
 
 ### Deploy plugin commands (`/deploy:*`)
@@ -68,7 +68,7 @@ are provider plugins (`deploy-github`, `deploy-ssh-compose`). Reference:
 Walks through the sections you name — `git`, `skills`, `models`, `repo`,
 or `all` — reading the current state first and writing
 only the changes you confirm. Use it any time you want to change
-`config.yml` and `.ai-workflow.yml` without hand-editing YAML.
+`config.yaml` and `.ai-workflow/config.yaml` without hand-editing YAML.
 
 ```
 /nerv:configure git
@@ -85,7 +85,7 @@ only the changes you confirm. Use it any time you want to change
 ### /nerv:init
 
 Sets up NERV in a repository that doesn't have it yet: asks only for the
-keys that aren't already resolved (the base branch), writes `.ai-workflow.yml`
+keys that aren't already resolved (the base branch), writes `.ai-workflow/config.yaml`
 and `.nerv/.gitignore`, and refreshes the skill registry with `gentle-ai
 skill-registry refresh`. It creates no `odd/` file: the orchestrator
 creates each feature's ODD document and run folder when a run starts, and
@@ -155,15 +155,15 @@ With --init-repo:
   --repo-base <branch>      Base branch override
   --repo-provider-config <provider>.<key>=<value>
                             Write tasks.providers.<provider>.<key> into the
-                            repository's .ai-workflow.yml (repeatable; repo-scope
+                            repository's .ai-workflow/config.yaml (repeatable; repo-scope
                             keys of the provider's provider.yaml only)
 
-If `.ai-workflow.yml` already exists it is not recreated, and an existing
+If `.ai-workflow/config.yaml` already exists it is not recreated, and an existing
 `tasks:` block in it is left untouched.
 
 Other flags:
   --json                    Print the result as JSON (ignored by --print, which always does)
-  --config <path>           Override the user-scope config.yml path
+  --config <path>           Override the user-scope config.yaml path
 ```
 
 ```
@@ -265,15 +265,16 @@ nerv deploy --artifact .nerv/artifacts/api/1.4.0 --yes
 
 ### nerv migrate
 
-Moves a repository from nerv 4.2.0 to this version, once:
+Moves a repository from nerv 4.2.0 or 5.0.0-alpha.1 to this version, once:
 
-- `.nerv/nerv.yaml` becomes `.ai-workflow.yml`;
+- `.nerv/nerv.yaml` (4.2.0) or `.ai-workflow.yml` (5.0.0-alpha.1) becomes `.ai-workflow/config.yaml`;
 - the 4.2.0 `release:` section becomes today's `release:` section, with the semantic-release config imported;
 - `pipeline:` becomes `deploy:`;
 - the in-flight `openspec/changes` become ODD feature documents;
 - `.nerv/.gitignore` is created.
 
-`--user` also moves `~/.claude/nerv/nerv.yaml` to the user `config.yml`,
+`--user` also moves `~/.claude/nerv/nerv.yaml`, or the user `config.yml`,
+to the user `config.yaml`,
 with the personal keys of the project file. `--dry-run` prints every change
 as a unified diff and writes nothing. `--install` installs the plugins the
 repository used. Every changed or removed file is backed up first, and a
@@ -361,7 +362,7 @@ nerv uninstall
 
 ### nerv apply-models
 
-Applies the `models:` overrides from the user-scope `config.yml` (merged
+Applies the `models:` overrides from the user-scope `config.yaml` (merged
 over the plugin's own committed defaults) to the cached agent frontmatter.
 Run this after hand-editing `models:`, or after `nerv configure --set-model`
 if you skipped the automatic apply step.

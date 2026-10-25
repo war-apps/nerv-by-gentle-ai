@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/war-apps/nerv-by-gentle-ai/internal/config"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/extension"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/plugin"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/taskprovider"
 )
@@ -52,6 +53,45 @@ func EmbeddedProviders(fsys fs.FS) ([]Provider, error) {
 	return providers, nil
 }
 
+// RepoProviders is EmbeddedProviders followed by ProjectProviders.
+func RepoProviders(fsys fs.FS, repoRoot string) ([]Provider, error) {
+	providers, err := EmbeddedProviders(fsys)
+	if err != nil {
+		return nil, err
+	}
+	project, err := ProjectProviders(fsys, repoRoot)
+	if err != nil {
+		return nil, err
+	}
+	return append(providers, project...), nil
+}
+
+// ProjectProviders loads the repository's own task providers
+// (.ai-workflow/providers/task-<name>/, checked against fsys as
+// extension.WithProject does), in plugin name order; none when repoRoot is
+// empty. An invalid project extension or provider is a refusal.
+func ProjectProviders(fsys fs.FS, repoRoot string) ([]Provider, error) {
+	if repoRoot == "" {
+		return nil, nil
+	}
+	tree, err := extension.WithProject(fsys, repoRoot)
+	if err != nil {
+		return nil, &RefusalError{Err: err}
+	}
+	var providers []Provider
+	for _, folder := range extension.ProjectFolders(tree) {
+		if !strings.HasPrefix(folder, plugin.TaskPlugin+"-") {
+			continue
+		}
+		m, err := taskprovider.Load(tree, folder)
+		if err != nil {
+			return nil, &RefusalError{Err: fmt.Errorf("%s/%w", extension.ProjectProvidersDir, err)}
+		}
+		providers = append(providers, Provider{Plugin: folder, Manifest: m})
+	}
+	return providers, nil
+}
+
 // ProviderKeyPath is where the configuration holds a provider's config key.
 func ProviderKeyPath(provider, key string) string {
 	return "tasks.providers." + provider + "." + key
@@ -87,13 +127,14 @@ type ProviderSetting struct {
 }
 
 // ParseProviderConfig parses and validates --repo-provider-config entries,
-// each "<provider>.<key>=<value>", against the manifests embedded in fsys.
-// The first bad entry refuses them all.
-func ParseProviderConfig(fsys fs.FS, args []string) ([]ProviderSetting, error) {
+// each "<provider>.<key>=<value>", against the manifests embedded in fsys
+// and, when repoRoot is not empty, the repository's own task providers
+// (RepoProviders). The first bad entry refuses them all.
+func ParseProviderConfig(fsys fs.FS, repoRoot string, args []string) ([]ProviderSetting, error) {
 	if len(args) == 0 {
 		return nil, nil
 	}
-	providers, err := EmbeddedProviders(fsys)
+	providers, err := RepoProviders(fsys, repoRoot)
 	if err != nil {
 		return nil, err
 	}
