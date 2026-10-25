@@ -36,6 +36,9 @@
 
 ## Troubleshooting
 
+Start with `nerv doctor`: it checks the machine and the repository and
+lists the steps to take ([commands.md](commands.md#nerv-doctor)).
+
 - **Plugin cache still shows old files after an edit.** `nerv install`
   materializes the plugin tree from the binary's embedded snapshot, taken
   at `go build` time, into `~/.nerv/marketplace`, then refreshes the

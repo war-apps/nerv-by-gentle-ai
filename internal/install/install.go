@@ -16,8 +16,13 @@ import (
 	"github.com/war-apps/nerv-by-gentle-ai/internal/version"
 )
 
-const pluginID = "nerv@nerv"
-const marketplaceName = "nerv"
+const (
+	// PluginID is the NERV plugin's id in Claude Code.
+	PluginID = "nerv@nerv"
+	// MarketplaceName is the marketplace NERV and its extensions install
+	// from.
+	MarketplaceName = "nerv"
+)
 
 // Install runs the whole "nerv install" use case: the gentle-ai preflight,
 // materializing the embedded plugin under <home>/.nerv/marketplace,
@@ -56,7 +61,7 @@ func Install(ctx context.Context, deps Deps, opts Options) error {
 		return err
 	}
 	for _, ext := range selected {
-		if err := refreshPlugin(ctx, deps, ext.Name+"@"+marketplaceName, ext.Version); err != nil {
+		if err := refreshPlugin(ctx, deps, ext.Name+"@"+MarketplaceName, ext.Version); err != nil {
 			return err
 		}
 	}
@@ -151,12 +156,12 @@ func registerSettings(deps Deps, opts Options, marketplaceDir string) ([]plugin.
 		return nil, err
 	}
 
-	changed := settings.RegisterMarketplace(marketplaceName, marketplaceDir)
-	if settings.EnablePlugin(pluginID) {
+	changed := settings.RegisterMarketplace(MarketplaceName, marketplaceDir)
+	if settings.EnablePlugin(PluginID) {
 		changed = true
 	}
 	for _, ext := range selected {
-		if settings.EnablePlugin(ext.Name + "@" + marketplaceName) {
+		if settings.EnablePlugin(ext.Name + "@" + MarketplaceName) {
 			changed = true
 		}
 	}
@@ -204,7 +209,7 @@ func RefreshCache(ctx context.Context, deps Deps) error {
 		return err
 	}
 	for _, ext := range exts {
-		id := ext.Name + "@" + marketplaceName
+		id := ext.Name + "@" + MarketplaceName
 		if !settings.PluginEnabled(id) {
 			continue
 		}
@@ -224,7 +229,7 @@ func refreshCache(ctx context.Context, deps Deps, pluginVersion string) error {
 	if _, err := cli.AddMarketplace(ctx, marketplaceDir); err != nil {
 		return fmt.Errorf("cache not refreshed: %w", err)
 	}
-	return refreshPlugin(ctx, deps, pluginID, pluginVersion)
+	return refreshPlugin(ctx, deps, PluginID, pluginVersion)
 }
 
 // refreshPlugin reinstalls id from the already registered marketplace and

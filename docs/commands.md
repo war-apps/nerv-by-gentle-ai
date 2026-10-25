@@ -119,6 +119,7 @@ isn't taking effect.
 | `nerv release setup --import` | Import an existing semantic-release config into the `release:` section |
 | `nerv deploy` | Release and deploy a release artifact: release commit, tag, push, targets, git host release (deploy extension) |
 | `nerv migrate` | Move a repository (and, with `--user`, the user configuration) from nerv 4.2.0 or 5.0.0-alpha.1 |
+| `nerv doctor` | Check that NERV is in order on this machine and in the repository, and list the steps to take |
 | `nerv configure` | Configure NERV non-interactively (or run the wizard) |
 | `nerv install` | Install NERV (plugin, cache, skills, Engram KB) |
 | `nerv uninstall` | Uninstall NERV |
@@ -276,8 +277,8 @@ Moves a repository from nerv 4.2.0 or 5.0.0-alpha.1 to this version, once:
 
 `--user` also moves `~/.claude/nerv/nerv.yaml`, or the user `config.yml`,
 to the user `config.yaml`,
-with the personal keys of the project file. `--dry-run` prints every change
-as a unified diff and writes nothing. `--install` installs the extensions and
+with the personal keys of the project file. `--dry-run` lists the steps
+it would take and writes nothing. `--install` installs the extensions and
 providers the repository used. Every changed or removed file is backed up first, and a
 second run changes nothing. See [migration.md](migration.md).
 
@@ -285,6 +286,36 @@ second run changes nothing. See [migration.md](migration.md).
 nerv migrate --dry-run
 nerv migrate --user --install
 ```
+
+### nerv doctor
+
+Checks that everything NERV needs is in order and changes nothing:
+
+- on this machine: gentle-ai 4.x, Claude Code and engram on the PATH, the
+  NERV plugin installed, enabled and at this binary's version, its skills,
+  and the user configuration;
+- in the repository: `.ai-workflow/config.yaml` with `enabled: true`, a
+  pending `nerv migrate`, the project extensions and providers, the
+  `release:`, `deploy:` and `tasks:` sections with the extensions they need,
+  the origin remote and the base branch.
+
+Each check prints `[ok]`, `[!!]` (should be changed), `[xx]` (NERV cannot
+work until it is fixed) or `[--]` (optional, not set up). Then come the
+steps to take, failures first, and the optional ones:
+
+```
+This repository (/home/me/widgets):
+  [!!]  config       .nerv/nerv.yaml is the nerv 4.2.0 configuration
+  [!!]  migration    nerv migrate has 3 step(s) to take
+
+Summary: 6 ok, 2 warning(s), 0 failed: needs attention
+
+Next steps:
+  1. Run nerv migrate --dry-run to see the steps, then nerv migrate
+```
+
+`--json` prints the same results. The exit code is 1 when a check failed,
+0 otherwise.
 
 ### nerv install
 
