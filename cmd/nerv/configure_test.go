@@ -345,7 +345,7 @@ func TestRunConfigure_RoundTrip_PreservesTasksBlock(t *testing.T) {
 	}
 
 	repo := t.TempDir()
-	projectPath := filepath.Join(repo, ".ai-workflow.yml")
+	projectPath := filepath.Join(repo, ".ai-workflow/config.yaml")
 	if err := os.MkdirAll(filepath.Dir(projectPath), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -419,7 +419,7 @@ func TestRunConfigure_InitRepo_ProviderConfig_WritesProviderKeys(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("exit code = %d, want 0 (stdout=%q stderr=%q)", code, stdout.String(), stderr.String())
 	}
-	data, err := os.ReadFile(filepath.Join(repo, ".ai-workflow.yml"))
+	data, err := os.ReadFile(filepath.Join(repo, ".ai-workflow/config.yaml"))
 	if err != nil {
 		t.Fatal(err)
 	}

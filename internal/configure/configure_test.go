@@ -36,7 +36,7 @@ func TestResolvePaths_Defaults(t *testing.T) {
 	home := `C:\Users\walter`
 	resolved := configure.ResolvePaths(home, "")
 
-	wantConfig := filepath.Join(paths.DefaultConfigDir(home, runtime.GOOS), "ai-workflow", "config.yml")
+	wantConfig := filepath.Join(paths.DefaultConfigDir(home, runtime.GOOS), "ai-workflow", "config.yaml")
 	if resolved.Config != wantConfig {
 		t.Errorf("Config = %q, want %q", resolved.Config, wantConfig)
 	}

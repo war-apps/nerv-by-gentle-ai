@@ -10,7 +10,7 @@ set -euo pipefail
 git init -q -b main
 
 mkdir -p .nerv src
-cat > .ai-workflow.yml <<'EOF'
+mkdir -p .ai-workflow && cat > .ai-workflow/config.yaml <<'EOF'
 enabled: true
 git:
   worktree: never

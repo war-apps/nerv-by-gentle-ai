@@ -102,7 +102,7 @@ release providers; all three shipped ones are native exec providers
 
 | Slot, operation | Payload | Answer (`data`) |
 |---|---|---|
-| `version` `validate` | `projects` (the `release.projects[]` identity keys: `name`, `path`, `shared_paths`, `scopes`, `tag_format`, `changelog`, `depends_on`) | `failed` with `{problems: [...]}`, each named by its path in `.ai-workflow.yml` |
+| `version` `validate` | `projects` (the `release.projects[]` identity keys: `name`, `path`, `shared_paths`, `scopes`, `tag_format`, `changelog`, `depends_on`) | `failed` with `{problems: [...]}`, each named by its path in `.ai-workflow/config.yaml` |
 | `version` `next` | `dir` (the release clone), `branch`, `projects`, `only` (the projects asked for), `version` (`nerv release --version`) | `{results: [...]}`: per project, the outputs `nerv version next` prints, the release type, the CHANGELOG file and section |
 | `version` `branch` | `dir`, `branch`, `projects` | `{name, prerelease, channel}` |
 | `version` `import` | `dir` | `{source, config, warnings}`: `config` is the provider's keys as a YAML mapping, which `nerv release setup --import` writes under `release.providers.<engine>`; `skipped` when there is nothing to import, `blocked` with `{manual}` for a configuration to move by hand |
@@ -195,6 +195,81 @@ A provider nerv implements itself is an exec provider whose steps run the
 hidden `{nerv} provider <extension>-<name> <operation>`, with the request on
 stdin and the response on stdout. It has no special case in its extension:
 `deploy-ssh-compose` and the three release providers are such providers.
+
+## Project extensions and providers
+
+A repository can add its own extensions and providers next to the ones nerv
+ships, in its committed `.ai-workflow/` folder:
+
+```
+.ai-workflow/
+  config.yaml
+  extensions/<name>/extension.yaml
+  providers/<extension>-<name>/provider.yaml    # plus its scripts and procedures
+```
+
+- Each manifest is checked with exactly the contract and slot rules above,
+  and its errors read like a shipped one's, named by the repository path
+  (`.ai-workflow/providers/deploy-rsync/provider.yaml: operations.deploy:
+  missing (implement it or declare not_implemented)`).
+- A project provider belongs to a shipped extension (`deploy`, `release`,
+  `task`) or to a project extension.
+- A name nerv already ships is refused (`.ai-workflow/providers/deploy-github:
+  nerv already ships an extension or provider named deploy-github; give the
+  project's another name`), and so is a folder that resolves outside the
+  repository.
+- They need no plugin: `nerv install` does not materialize them. `nerv
+  release`, `nerv version next`, `nerv release setup` and `nerv deploy` read
+  them from the repository, with its configuration; `nerv configure
+  --init-repo --repo-provider-config` and the wizard's repository step take
+  the keys of its task providers; the `task:dispatcher` reads its task
+  providers from `.ai-workflow/providers/task-*/provider.yaml`.
+- An exec provider runs its own files through `{provider_dir}`: the element
+  `{provider_dir}` is the provider's folder, and `{provider_dir}/<path>` a
+  file inside it. nerv resolves it to an absolute path when it loads the
+  provider, and refuses a path that leaves the folder (`..`, or a symlink
+  out of it) or does not exist. The command is still `{nerv}` or an
+  executable named in `requires`, so a script runs through its interpreter.
+  A provider nerv ships cannot use `{provider_dir}`.
+
+A deploy target that copies the release with the repository's own script:
+
+```yaml
+# .ai-workflow/providers/deploy-rsync/provider.yaml
+name: rsync
+extension: deploy
+slot: target
+contract_version: 1
+runtime: exec
+requires: [bash]
+config:
+  - key: host
+    scope: repo
+    type: string
+    prompt: The host to copy the release to
+operations:
+  preflight:
+    - argv: [bash, "{provider_dir}/preflight.sh"]
+  publish: not_implemented
+  deploy:
+    - argv: [bash, "{provider_dir}/deploy.sh", "{config.host}", "{version}"]
+  verify: not_implemented
+```
+
+```yaml
+# .ai-workflow/config.yaml
+deploy:
+  targets:
+    - name: lab
+      provider: rsync
+      config:
+        host: lab.example.com
+```
+
+Each script reads the request on its stdin and may print the response on
+its stdout, as any exec step does. Project scripts run with your
+permissions, like the repository's own build and deploy commands: review
+them as you review those.
 
 ## Request and response
 

@@ -174,7 +174,7 @@ func treeHash(t *testing.T, dirs ...string) string {
 	return hex.EncodeToString(h.Sum(nil))
 }
 
-// Rule 1: .nerv/nerv.yaml moves to .ai-workflow.yml with its comments and
+// Rule 1: .nerv/nerv.yaml moves to .ai-workflow/config.yaml with its comments and
 // key order, and the old file stays as .nerv/nerv.yaml.migrated.
 func TestConfig_ProjectFileMovesKeepingCommentsAndOrder(t *testing.T) {
 	w := newWorld(t, comprobantes)
@@ -187,12 +187,12 @@ func TestConfig_ProjectFileMovesKeepingCommentsAndOrder(t *testing.T) {
 	if got := w.read(".nerv/nerv.yaml.migrated"); got != old {
 		t.Error(".nerv/nerv.yaml.migrated is not the old file")
 	}
-	text := w.read(".ai-workflow.yml")
+	text := w.read(".ai-workflow/config.yaml")
 	prefix := old[:strings.Index(old, "release:")]
 	if !strings.HasPrefix(text, prefix) {
-		t.Errorf(".ai-workflow.yml does not keep the old file's head byte for byte:\n%s", text)
+		t.Errorf(".ai-workflow/config.yaml does not keep the old file's head byte for byte:\n%s", text)
 	}
-	contains(t, ".ai-workflow.yml", text,
+	contains(t, ".ai-workflow/config.yaml", text,
 		"# No build servers: the shared T2 host aborts dotnet with",
 		// yaml.v3 writes a flow mapping without the inner spaces.
 		`env: {MSBUILDDISABLENODEREUSE: "1", UseSharedCompilation: "false", DOTNET_CLI_USE_MSBUILD_SERVER: "0"}`)
@@ -210,14 +210,14 @@ func TestConfig_UserFileMovesToTheUserConfig(t *testing.T) {
 	w.migrate(migrate.Options{Home: w.home, User: true, ExtensionsFS: nerv.ExtensionsFS(), Now: now})
 
 	got := w.read(up.UserConfig)
-	want := "# the user config.yml -- NERV user-scope configuration\ngit:\n  worktree: ask\nmodels:\n  misato: { model: fable, effort: max }\n"
+	want := "# the user config.yaml -- NERV user-scope configuration\ngit:\n  worktree: ask\nmodels:\n  misato: { model: fable, effort: max }\n"
 	if got != want {
 		t.Errorf("user config:\n%s\nwant:\n%s", got, want)
 	}
 	if w.exists(up.LegacyUserConfig) || !w.exists(up.LegacyUserConfig+migrate.MigratedSuffix) {
 		t.Error("the old user file was not renamed to .migrated")
 	}
-	if w.exists(".ai-workflow.yml") {
+	if w.exists(".ai-workflow/config.yaml") {
 		t.Error("--user without a repository migrated the repository")
 	}
 }
@@ -226,8 +226,8 @@ func TestConfig_UserFileMovesToTheUserConfig(t *testing.T) {
 func TestPersonalKeys_ReportedWithoutUser(t *testing.T) {
 	w := newWorld(t, legacyFull)
 	p, _ := w.migrate(w.options(false, githubOrigin))
-	text := w.read(".ai-workflow.yml")
-	contains(t, ".ai-workflow.yml", text, "models:\n  misato: { model: fable, effort: high }", "assignee_id: 42")
+	text := w.read(".ai-workflow/config.yaml")
+	contains(t, ".ai-workflow/config.yaml", text, "models:\n  misato: { model: fable, effort: high }", "assignee_id: 42")
 	for _, want := range []string{"models: personal settings", "tasks.providers.teamwork.assignee_id: a personal setting", "config.infisical_domain: a personal setting"} {
 		if !anyContains(p.Warnings, want) {
 			t.Errorf("no warning %q in %q", want, p.Warnings)
@@ -243,22 +243,22 @@ func TestPersonalKeys_ReportedWithoutUser(t *testing.T) {
 func TestPersonalKeys_MoveWithUser(t *testing.T) {
 	w := newWorld(t, legacyFull)
 	w.migrate(w.options(true, githubOrigin))
-	project := w.read(".ai-workflow.yml")
+	project := w.read(".ai-workflow/config.yaml")
 	user := w.read(w.userPaths().UserConfig)
-	lacks(t, ".ai-workflow.yml", project, "models:", "assignee_id", "infisical_domain", "ssh_auth", "ssh_key_file")
+	lacks(t, ".ai-workflow/config.yaml", project, "models:", "assignee_id", "infisical_domain", "ssh_auth", "ssh_key_file")
 	contains(t, "user config", user,
 		"models:\n  misato: { model: fable, effort: high }",
 		"tasks:\n  providers:\n    teamwork:\n      assignee_id: 42",
 		"deploy:\n  providers:\n    ssh-compose:\n",
 		"infisical_domain: \"https://infisical.acme\"", "ssh_auth: key", "ssh_key_file: ~/.ssh/id_deploy")
-	contains(t, ".ai-workflow.yml", project, "project_id: 100", "tasklist_id: 200")
+	contains(t, ".ai-workflow/config.yaml", project, "project_id: 100", "tasklist_id: 200")
 }
 
 // Rule 2: tasks.rounding_minutes moves to the teamwork provider.
 func TestTasks_RoundingMinutesMovesToTeamwork(t *testing.T) {
 	w := newWorld(t, legacyFull)
 	w.migrate(w.options(false, githubOrigin))
-	doc := config.Parse(w.read(".ai-workflow.yml"))
+	doc := config.Parse(w.read(".ai-workflow/config.yaml"))
 	if v, ok := doc.Scalar("tasks.providers.teamwork.rounding_minutes"); !ok || v != "30" {
 		t.Errorf("tasks.providers.teamwork.rounding_minutes = %q, %v; want 30", v, ok)
 	}
@@ -273,8 +273,8 @@ func TestTasks_RemovedProvidersAreDropped(t *testing.T) {
 	w := newWorld(t, legacyFull)
 	w.write(".nerv/nerv.yaml", strings.Replace(w.read(".nerv/nerv.yaml"), "  provider: teamwork\n", "  provider: github-projects\n", 1))
 	p, _ := w.migrate(w.options(false, githubOrigin))
-	text := w.read(".ai-workflow.yml")
-	lacks(t, ".ai-workflow.yml", text, "jira", "github-projects", "task_ref_prefix")
+	text := w.read(".ai-workflow/config.yaml")
+	lacks(t, ".ai-workflow/config.yaml", text, "jira", "github-projects", "task_ref_prefix")
 	for _, want := range []string{"tasks.provider: github-projects was removed", "tasks.providers.jira: the jira provider was removed"} {
 		if !anyContains(p.Warnings, want) {
 			t.Errorf("no warning %q in %q", want, p.Warnings)
@@ -316,7 +316,7 @@ func TestTasks_MigratedSettingsLoadWithTheProviderManifests(t *testing.T) {
 					}
 				}
 			}
-			check(".ai-workflow.yml", "repo")
+			check(".ai-workflow/config.yaml", "repo")
 			if w.exists(w.userPaths().UserConfig) {
 				check(w.userPaths().UserConfig, "user")
 			}
@@ -365,21 +365,21 @@ func TestRelease_LegacyReleaseBecomesScriptModeRelease(t *testing.T) {
 	}; !reflect.DeepEqual(api.Images, want) {
 		t.Errorf("images = %+v, want %+v", api.Images, want)
 	}
-	text := w.read(".ai-workflow.yml")
-	contains(t, ".ai-workflow.yml", text, "\nrelease:")
-	lacks(t, ".ai-workflow.yml", text, "\nship:", "presets:", "semantic_release:", "4.2.0 pushed", "records no image references")
+	text := w.read(".ai-workflow/config.yaml")
+	contains(t, ".ai-workflow/config.yaml", text, "\nrelease:")
+	lacks(t, ".ai-workflow/config.yaml", text, "\nship:", "presets:", "semantic_release:", "4.2.0 pushed", "records no image references")
 }
 
-// S1: a 4.2.0 release: section already in .ai-workflow.yml (no old
+// S1: a 4.2.0 release: section already in .ai-workflow/config.yaml (no old
 // .nerv/nerv.yaml) is told apart by its 4.2.0 keys and converted in place;
 // today's release: section is left alone.
 func TestRelease_LegacySectionInTheProjectFileIsConverted(t *testing.T) {
 	w := world{t: t, root: filepath.Join(t.TempDir(), "repo"), home: t.TempDir()}
-	w.write(".ai-workflow.yml", "enabled: true\nrelease:\n  semantic_release: { version: 24.2.3 }\n  projects:\n    - name: api\n      path: .\n      presets: [dotnet]\n      dotnet: { project_file: Api.csproj }\n")
+	w.write(".ai-workflow/config.yaml", "enabled: true\nrelease:\n  semantic_release: { version: 24.2.3 }\n  projects:\n    - name: api\n      path: .\n      presets: [dotnet]\n      dotnet: { project_file: Api.csproj }\n")
 	p, _ := w.migrate(w.options(false, ""))
-	text := w.read(".ai-workflow.yml")
-	contains(t, ".ai-workflow.yml", text, "\nrelease:", "build: bash", "dotnet build")
-	lacks(t, ".ai-workflow.yml", text, "presets:", "semantic_release:")
+	text := w.read(".ai-workflow/config.yaml")
+	contains(t, ".ai-workflow/config.yaml", text, "\nrelease:", "build: bash", "dotnet build")
+	lacks(t, ".ai-workflow/config.yaml", text, "presets:", "semantic_release:")
 	if _, err := releaseconfig.Load(w.root); err != nil {
 		t.Fatalf("releaseconfig.Load: %v", err)
 	}
@@ -388,9 +388,9 @@ func TestRelease_LegacySectionInTheProjectFileIsConverted(t *testing.T) {
 	}
 
 	current := "enabled: true\nrelease:\n  projects:\n    - name: api\n      path: .\n      build: bash\n      stages: { build: { run: make } }\n"
-	w.write(".ai-workflow.yml", current)
+	w.write(".ai-workflow/config.yaml", current)
 	w.migrate(w.options(false, ""))
-	if got := w.read(".ai-workflow.yml"); got != current {
+	if got := w.read(".ai-workflow/config.yaml"); got != current {
 		t.Errorf("today's release: section changed:\n%s", got)
 	}
 }
@@ -433,8 +433,8 @@ func TestRelease_PresetsWithoutAnEquivalentGetATODO(t *testing.T) {
 	if len(lib.Hooks["before_build"]) != 1 {
 		t.Errorf("hooks.before_build = %v, want kept", lib.Hooks["before_build"])
 	}
-	text := w.read(".ai-workflow.yml")
-	contains(t, ".ai-workflow.yml", text,
+	text := w.read(".ai-workflow/config.yaml")
+	contains(t, ".ai-workflow/config.yaml", text,
 		migrate.TODOPrefix+" 4.2.0 pushed the packages to https://api.nuget.org/v3/index.json",
 		migrate.TODOPrefix+` 4.2.0 ran "npm publish --access restricted"`,
 		migrate.TODOPrefix+" 4.2.0 dropped --disable-build-servers")
@@ -532,7 +532,7 @@ func TestDeploy_PipelineBecomesTargetsAndHost(t *testing.T) {
 			t.Errorf("no warning %q in %q", want, p.Warnings)
 		}
 	}
-	lacks(t, ".ai-workflow.yml", w.read(".ai-workflow.yml"), "pipeline:")
+	lacks(t, ".ai-workflow/config.yaml", w.read(".ai-workflow/config.yaml"), "pipeline:")
 }
 
 // Rule 4: a repository whose semantic-release published GitHub releases
@@ -628,7 +628,7 @@ func TestODD_StrictTDDBecomesTheDefaultMode(t *testing.T) {
 		w := newWorld(t, comprobantes)
 		w.openspecFixture(strict)
 		w.migrate(w.options(false, githubOrigin))
-		doc := config.Parse(w.read(".ai-workflow.yml"))
+		doc := config.Parse(w.read(".ai-workflow/config.yaml"))
 		mode, _ := doc.Scalar("odd.tdd")
 		runner, _ := doc.Scalar("odd.test_runner")
 		wantMode, wantRunner := "standard", "none"
@@ -699,7 +699,7 @@ func TestDryRun_WritesNothing(t *testing.T) {
 		t.Fatal("the plan is empty")
 	}
 	diff := migrate.Render(p)
-	contains(t, "the rendered plan", diff, "--- /dev/null\n+++ b/.ai-workflow.yml\n", "move .nerv/nerv.yaml -> .nerv/nerv.yaml.migrated", "move openspec/changes/tw-1-feature/nerv/test-plan.md -> odd/tw-1-feature/nerv/test-plan.md", "remove openspec/changes/tw-1-feature/proposal.md", "+release:")
+	contains(t, "the rendered plan", diff, "--- /dev/null\n+++ b/.ai-workflow/config.yaml\n", "move .nerv/nerv.yaml -> .nerv/nerv.yaml.migrated", "move openspec/changes/tw-1-feature/nerv/test-plan.md -> odd/tw-1-feature/nerv/test-plan.md", "remove openspec/changes/tw-1-feature/proposal.md", "+release:")
 	if after := treeHash(t, w.root, w.home); after != before {
 		t.Error("planning changed the files")
 	}
@@ -752,11 +752,11 @@ func TestBackups_EveryChangedOrRemovedFile(t *testing.T) {
 	}
 }
 
-// A repository that already has .ai-workflow.yml with other content is
+// A repository that already has .ai-workflow/config.yaml with other content is
 // refused, and nothing is written.
 func TestConflict_BothFilesAreRefused(t *testing.T) {
 	w := newWorld(t, comprobantes)
-	w.write(".ai-workflow.yml", "enabled: true\n")
+	w.write(".ai-workflow/config.yaml", "enabled: true\n")
 	before := treeHash(t, w.root)
 	_, err := migrate.Compute(w.options(false, githubOrigin))
 	if !refusal.Is(err) {

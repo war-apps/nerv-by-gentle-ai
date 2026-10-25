@@ -166,7 +166,7 @@ func TestIntegration_ReleasePackagesWhatOriginHasAndNeverWritesToGit(t *testing.
 	releaseEnv(t)
 	marker := filepath.Join(t.TempDir(), "marker.log")
 	origin, work := newReleaseRepos(t)
-	work.write(".ai-workflow.yml", "release:\n  projects:\n"+markerProject("widgets", ".", "", marker))
+	work.write(".ai-workflow/config.yaml", "release:\n  projects:\n"+markerProject("widgets", ".", "", marker))
 	work.commit("chore: init", "a.txt")
 	work.git("tag", "v1.0.0")
 	work.commit("feat: add gadgets", "b.txt")
@@ -251,7 +251,7 @@ func TestIntegration_ReleaseMonorepoInOrder(t *testing.T) {
 	releaseEnv(t)
 	marker := filepath.Join(t.TempDir(), "marker.log")
 	origin, work := newReleaseRepos(t)
-	work.write(".ai-workflow.yml", "release:\n  projects:\n"+
+	work.write(".ai-workflow/config.yaml", "release:\n  projects:\n"+
 		markerProject("api", "api", "api-v${version}", marker)+
 		markerProject("web", "web", "web-v${version}", marker)+
 		markerProject("docs", "docs", "docs-v${version}", marker))
@@ -293,7 +293,7 @@ func TestIntegration_ReleaseProjectRaisedByDependsOn(t *testing.T) {
 	releaseEnv(t)
 	marker := filepath.Join(t.TempDir(), "marker.log")
 	origin, work := newReleaseRepos(t)
-	work.write(".ai-workflow.yml", "release:\n  projects:\n"+
+	work.write(".ai-workflow/config.yaml", "release:\n  projects:\n"+
 		markerProject("core", "core", "core-v${version}", marker)+
 		markerProject("app", "app", "app-v${version}", marker)+
 		"      depends_on:\n        - project: core\n          bump: minor\n")
@@ -331,8 +331,8 @@ func TestIntegration_ReleaseUsesTheLocalUncommittedSection(t *testing.T) {
 	work.commit("feat: add gadgets", "b.txt")
 	work.git("push", "-q", "origin", "main", "--tags")
 	// Not committed: only the working tree has it.
-	work.write(".ai-workflow.yml", "release:\n  projects:\n"+markerProject("widgets", ".", "", marker))
-	if status := work.git("status", "--porcelain"); !strings.Contains(status, ".ai-workflow.yml") {
+	work.write(".ai-workflow/config.yaml", "release:\n  projects:\n"+markerProject("widgets", ".", "", marker))
+	if status := work.git("status", "--porcelain", "--untracked-files=all"); !strings.Contains(status, ".ai-workflow/config.yaml") {
 		t.Fatalf("the section should be uncommitted: %q", status)
 	}
 
@@ -345,7 +345,7 @@ func TestIntegration_ReleaseUsesTheLocalUncommittedSection(t *testing.T) {
 	if len(got) != 2 || !strings.HasPrefix(got[0], "build widgets 1.1.0 v1.1.0") || !strings.HasPrefix(got[1], "prepare widgets") {
 		t.Errorf("the local section's stages and hooks did not run:\n%s", strings.Join(got, "\n"))
 	}
-	if out, err := exec.Command("git", "-C", origin.dir, "cat-file", "-e", "main:.ai-workflow.yml").CombinedOutput(); err == nil {
+	if out, err := exec.Command("git", "-C", origin.dir, "cat-file", "-e", "main:.ai-workflow/config.yaml").CombinedOutput(); err == nil {
 		t.Errorf("the local section reached origin: %s", out)
 	}
 }
@@ -356,7 +356,7 @@ func TestIntegration_ReleaseWithTheBuiltInConfiguration(t *testing.T) {
 	requireReleaseToolchain(t)
 	releaseEnv(t)
 	origin, work := newReleaseRepos(t)
-	work.write(".ai-workflow.yml", "release:\n  projects:\n    - name: widgets\n      path: .\n      build: bash\n      stages:\n        build: { run: 'true' }\n")
+	work.write(".ai-workflow/config.yaml", "release:\n  projects:\n    - name: widgets\n      path: .\n      build: bash\n      stages:\n        build: { run: 'true' }\n")
 	work.commit("chore: init", "a.txt")
 	work.git("tag", "v1.0.0")
 	work.git("checkout", "-q", "-b", "develop")
@@ -389,7 +389,7 @@ func TestIntegration_ReleaseExplicitVersionUsesTheBranchsLastRelease(t *testing.
 	releaseEnv(t)
 	marker := filepath.Join(t.TempDir(), "marker.log")
 	_, work := newReleaseRepos(t)
-	work.write(".ai-workflow.yml", "release:\n  projects:\n"+markerProject("widgets", ".", "", marker))
+	work.write(".ai-workflow/config.yaml", "release:\n  projects:\n"+markerProject("widgets", ".", "", marker))
 	work.commit("chore: init", "a.txt")
 	work.git("checkout", "-q", "-b", "develop")
 	work.commit("feat: first alpha", "b.txt")

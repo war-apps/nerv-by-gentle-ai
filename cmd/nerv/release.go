@@ -28,7 +28,7 @@ import (
 const releaseUsage = `Usage: nerv release [flags]
 
 Builds, tests and packages each project of the release: section of
-.ai-workflow.yml from your machine, as the CI build would, and leaves a local
+.ai-workflow/config.yaml from your machine, as the CI build would, and leaves a local
 artifact for nerv deploy. The version is computed natively (see "nerv
 version next --help"), or given with --version. In a fresh temporary clone
 of origin's branch, for
@@ -45,7 +45,7 @@ nerv release never writes to git: no commit, no tag, no push; nerv deploy does
 that from the artifact. Your repository is never modified (only its
 .nerv/artifacts/, which ignores itself), and only what origin has is built:
 a local branch ahead of or behind origin is refused. The release: section is
-your local .ai-workflow.yml, committed or not; the code is origin's.
+your local .ai-workflow/config.yaml, committed or not; the code is origin's.
 
 Flags:
   --cwd <dir>              A directory inside the repository (default ".")
@@ -351,7 +351,9 @@ func (s *releaseRun) execute(ctx context.Context) ([]releaseOutcome, error) {
 	if _, err := requestShape(top, s.project); err != nil {
 		return nil, err
 	}
-	s.providers = releaseProviders(s.opts, s.stderr)
+	if s.providers, err = releaseProviders(s.opts, top, s.stderr); err != nil {
+		return nil, err
+	}
 	if err := s.checkReleaseConfig(ctx, top); err != nil {
 		return nil, err
 	}
@@ -407,7 +409,7 @@ func (s *releaseRun) execute(ctx context.Context) ([]releaseOutcome, error) {
 func (s *releaseRun) checkReleaseConfig(ctx context.Context, top string) error {
 	rel, err := releaseconfig.Load(top)
 	if errors.Is(err, releaseconfig.ErrNotConfigured) {
-		return refuse("%s", withLegacyHint("the repository has no release: section in .ai-workflow.yml: nerv release needs one, with the build provider (build: docker-compose or bash) of each project; see /release:setup", top))
+		return refuse("%s", withLegacyHint("the repository has no release: section in .ai-workflow/config.yaml: nerv release needs one, with the build provider (build: docker-compose or bash) of each project; see /release:setup", top))
 	}
 	if err != nil {
 		return err
@@ -570,7 +572,7 @@ type releaseItem struct {
 func (s *releaseRun) releaseProjects(ctx context.Context) ([]releaseOutcome, error) {
 	rel := s.ws.Config()
 	if rel == nil {
-		return nil, refuse("the repository has no release: section in .ai-workflow.yml")
+		return nil, refuse("the repository has no release: section in .ai-workflow/config.yaml")
 	}
 	ordered, err := rel.TopoOrder()
 	if err != nil {
@@ -762,7 +764,7 @@ func (s *releaseRun) listRelease(ordered []releaseconfig.Project, versions []rel
 	case s.version != "":
 		fmt.Fprintf(s.stderr, "nerv release: version %s from --version (not computed)\n", s.version)
 	case s.configSource != "":
-		fmt.Fprintf(s.stderr, "nerv release: version config: %s\n", configSourceText(s.configSource, ".ai-workflow.yml"))
+		fmt.Fprintf(s.stderr, "nerv release: version config: %s\n", configSourceText(s.configSource, ".ai-workflow/config.yaml"))
 	}
 	for i, p := range ordered {
 		if !versions[i].Releasing() {

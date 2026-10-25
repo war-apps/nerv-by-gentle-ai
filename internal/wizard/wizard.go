@@ -52,7 +52,7 @@ type Options struct {
 type Summary struct {
 	// Changed is true when any section actually wrote something (user
 	// config, task provider settings, the models block, or a repo's
-	// .ai-workflow.yml).
+	// .ai-workflow/config.yaml).
 	Changed bool
 }
 
@@ -60,7 +60,7 @@ type Summary struct {
 // the optional required-skills install, user-scope config (git, skills
 // stacks, critical paths, artifacts), the task provider settings when the
 // task plugin is enabled, the optional per-role models editor, the
-// optional per-repo .ai-workflow.yml init loop, and the closing
+// optional per-repo .ai-workflow/config.yaml init loop, and the closing
 // apply/refresh step.
 //
 // Run prints its closing "Restart Claude Code..." line only when

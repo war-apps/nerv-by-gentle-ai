@@ -12,6 +12,15 @@ Branch: `feat/extensions-providers` (from develop c74e6d3). Delivery: ask-on-ris
 - **S5 Deploy providers.** "deploy es otra extension que va a tener como proveedor github, ssh, bash, etc."
 - **S6 One contract per level.** "todos estos proveedores y extensiones deben comunicarse con el core a traves de un mismo contrato: las extensiones deben tener el mismo y los proveedores de cada extension tambien solo que estos ultimos ese contrato es entre la extension y el proveedor."
 - **S8 Bundled providers.** "hagamos que los providers ya definidos de las extensiones este instaladas por defecto, excepto los de task". This is declared per extension in extension.yaml: release and deploy are bundled; task keeps suggesting its providers.
+- **S9 `.ai-workflow/` folder.** "creemos la carpeta .ai-workflow y ahi dejemos el config de nerv como config.yaml, extension.yaml y provider.yaml. saquemos .ai-workflow.yml y aputnemos a config.yaml". Layout, the user's choice of "Una carpeta por cada uno (Recommended)":
+  ```
+  .ai-workflow/
+    config.yaml
+    extensions/<name>/extension.yaml
+    providers/<extension>-<name>/provider.yaml (+ scripts, procedures)
+  ```
+  - Project extensions and providers are validated with the same contract and added to the ones nerv ships.
+  - `.ai-workflow.yml` is removed; `nerv migrate` moves it.
 - **S7 Configuration.** "todos deben poder ser configurados desde .ai-workflow.yml"
 
 ## Tasks
@@ -24,11 +33,12 @@ Order: T4 first (it touches every other surface), then T1, T2, T3, T5, T6, T7, T
 | T2 | S6, S2 | `extension.yaml` for task, release, deploy; discovery and requirements read from it instead of hard-coded maps | delegated with T1 | done; verifier PASS; review approved | 4840c1d |
 | T3 | S6, S3, S5 | One `provider.yaml` shape for all providers; port task-teamwork, deploy-github, deploy-ssh-compose | delegated with T1 | done; verifier PASS; review approved | 4840c1d |
 | T4 | S1 | Rename ship to release (code, CLI, config, extension, artifact schema, docs) | delegated (context backstop: ~95 files, keeps the parent thin for T1-T9) | done; verifier PASS | 277d5df |
-| T5 | S4, S8 | Release slots: version (conventional-commits, preinstalled default) and build (docker-compose, bash) as providers; bundled/suggested install | delegated (context backstop) | done; verifier pending | see L13 |
-| T6 | S5 | Deploy bash target provider | inline | pending | |
+| T5 | S4, S8 | Release slots: version (conventional-commits, preinstalled default) and build (docker-compose, bash) as providers; bundled/suggested install | delegated (context backstop) | done; verifier FAIL (B1, B2), correction pending | dda6006 |
+| T6 | S5 | Deploy bash target provider; deploy moves onto the shared `extension.Exec` runner (from T10) | delegated (parallel with T11) | done; verifier pending | e2e74cc |
 | T7 | S7 | Uniform `.ai-workflow.yml` keys for every extension and provider | inline | pending | |
 | T8 | S1, S7 | `nerv migrate` from 4.2.0 and from 5.0.0-alpha.1 | inline | pending | |
 | T10 | S6 | Follow-ups from L11: help text, status validation, requires cycle, preflight cwd/stderr, toolRe dup, docs wording, deploy onto the shared extension.Exec runner and its `{build_mode}` variable renamed | inline | pending | |
+| T11 | S9 | `.ai-workflow/config.yaml` replaces `.ai-workflow.yml`; project extensions and providers from `.ai-workflow/extensions` and `.ai-workflow/providers` | delegated (parallel with T6) | done; verifier pending | see L18 |
 | T9 | S2 | Docs, install output and marketplace say extensions/providers; fix the stale repo marketplace.json | inline | pending | |
 
 ## Log
@@ -126,3 +136,37 @@ Order: T4 first (it touches every other surface), then T1, T2, T3, T5, T6, T7, T
   - Gap: deploy still has its own exec runner; added to T10.
   - Risk items 3 and 5.
 - **L14 (2026-10-24, user decision):** asked what "fusiona extension.yaml y provider.yaml en .ai-workflow.yml" means. The user answered: "hagamnos esto si te parece, creemos la carpeta .ai-workflow y ahi dejemos el config de nerv como config.yaml, extension.yaml y provider.yaml. saquemos .ai-workflow.yml y aputnemos a config.yaml"
+- **L15 (2026-10-24, user decision):** for the layout inside `.ai-workflow/`, the user chose "Una carpeta por cada uno (Recommended)", so S9 was added.
+  - Parent defaults: the user config file becomes `config.yaml` (from `config.yml`) for consistency, and migrate renames it.
+  - A project extension or provider whose name collides with a shipped one is refused.
+  - Project exec providers run project scripts, like today's script stages, so Risk item 2 applies and gets a verifier.
+- **L16 (T5 verifier): FAIL, 2 blockers.** The correction batch runs after T6 and T11 land, because their surfaces overlap.
+  - **B1:** `nerv version next` no longer validates the build part of the config. An unknown build provider (`build: maven`), docker-compose without a file, and unknown provider keys now exit 0. On base they exit 1, and `/release:setup` step 6 relies on `version next` to check what it wrote.
+    - Repro: `release:\n  build: maven\n  projects: [{ name: app, path: . }]`, then `nerv version next --offline` gives exit 0.
+  - **B2:** `nerv install --help` (cmd/nerv/install.go:30-31) still says the deploy providers are offered once deploy is installed, and does not mention bundled providers.
+  - Advisories:
+    - an artifact that still has `build_mode` is accepted and the field is silently ignored;
+    - "build mode" wording remains in plugins/release/commands/build.md:46 and agents/builder.md:38;
+    - only the first pass's type errors are reported.
+- **L17 (T6 evidence):**
+  - deploy-bash is a native exec provider (`deploy.RunBashOp`, internal/deploy/bash.go) with config keys `script` (required), `publish_script` and `verify_script` (optional).
+    - Preflight checks the scripts in the user's repo.
+    - publish, deploy and verify run the script from the release commit, extracted with git archive, with the envelope on stdin and `NERV_DEPLOY_*` in the environment.
+  - Deploy now uses the shared `extension.Exec`. `{build_mode}` is now `{build_provider}`. Preflight stderr is surfaced; `extension.ValidTool` is shared; `Exec` refuses an unknown status.
+  - Differential: 7 deploy cases identical.
+  - Pending parent edits, once T11 lands (both are in T11's surfaces):
+    - add the `deploy-bash` entry to `nativeProviders` in cmd/nerv/deploy.go;
+    - update the fixtures in cmd/nerv/install_test.go:321, cmd/nerv/deploy_test.go:86 and internal/plugin/families_test.go:21,50,73;
+    - fix `build_mode` in plugins/deploy/skills/deploy/SKILL.md:64;
+    - optionally make `ParseResponse` refuse unknown statuses.
+  - Risk: items 2 and 3.
+- **L18 (T11 evidence):**
+  - The writer reported gofmt, vet, build, `go test ./...` (36 packages) and the hook tests (19 and 17 passed) clean. The parent re-ran the full suite after wiring deploy-bash; e2e74cc also builds and tests clean on its own.
+  - What changed:
+    - the paths are now `.ai-workflow/config.yaml` and the user `config.yaml`;
+    - a leftover `.ai-workflow.yml` or `config.yml` is refused with the migrate hint;
+    - migrate moves both files;
+    - `extension.WithProject` merges project manifests under the same contract, with `{provider_dir}` and folder-escape checks and collisions refused.
+  - Differential against dda6006 with the config at the old path: identical apart from the temp clone names and the migrate help text.
+  - Leftover mentions of the old paths are in plugins/release-conventional-commits/README.md, bench/README.md, bench/journeys.md, CONTRIBUTING.md and three code comments. They are now part of T9.
+  - Risk: items 1, 2 and 3.

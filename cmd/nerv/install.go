@@ -57,7 +57,7 @@ and removes the materialized marketplace directory.
 
 const applyModelsUsage = `Usage: nerv apply-models [flags]
 
-Applies the models: overrides from the user-scope config.yml (merged over
+Applies the models: overrides from the user-scope config.yaml (merged over
 the plugin's own committed defaults) to the cached agent frontmatter.
 `
 
@@ -81,6 +81,9 @@ func runInstall(args []string, stdout, stderr io.Writer, opts options) int {
 		return 2
 	}
 	workflowconfig.PrintHints(stderr, home, "")
+	if refusedPreviousUser(stderr, "install", home) {
+		return 1
+	}
 
 	deps := install.Deps{
 		Home:                        home,
@@ -171,6 +174,9 @@ func runApplyModels(args []string, stdout, stderr io.Writer, opts options) int {
 		return 2
 	}
 	workflowconfig.PrintHints(stderr, home, "")
+	if refusedPreviousUser(stderr, "apply-models", home) {
+		return 1
+	}
 
 	deps := install.Deps{
 		Home:     home,

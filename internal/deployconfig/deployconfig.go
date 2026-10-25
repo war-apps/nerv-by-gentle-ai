@@ -1,5 +1,5 @@
 // Package deployconfig reads the deploy: section of a repository's
-// .ai-workflow.yml, the configuration of `nerv deploy`:
+// .ai-workflow/config.yaml, the configuration of `nerv deploy`:
 //
 //	deploy:
 //	  host: github                 # the git host provider (deploy-<name>)
@@ -30,8 +30,8 @@ import (
 )
 
 // ErrNotConfigured is returned by Load when the repository has no
-// .ai-workflow.yml or the file has no deploy: key.
-var ErrNotConfigured = errors.New("deploy: not configured in .ai-workflow.yml")
+// .ai-workflow/config.yaml or the file has no deploy: key.
+var ErrNotConfigured = errors.New("deploy: not configured in .ai-workflow/config.yaml")
 
 // DefaultCommitMessage is @semantic-release/git's default release commit
 // message.
@@ -103,8 +103,11 @@ func CommitMessage(message string, r Release) string {
 	})
 }
 
-// Load reads the deploy: section of repoRoot's .ai-workflow.yml.
+// Load reads the deploy: section of repoRoot's .ai-workflow/config.yaml.
 func Load(repoRoot string) (*Deploy, error) {
+	if err := paths.RefusePreviousProject(repoRoot); err != nil {
+		return nil, err
+	}
 	path := paths.ProjectConfig(repoRoot)
 	data, err := os.ReadFile(path)
 	if errors.Is(err, os.ErrNotExist) {

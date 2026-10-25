@@ -1,11 +1,11 @@
 ---
-description: Set up the release section of .ai-workflow.yml interactively — imports an existing semantic-release config with nerv release setup --import, detects the projects, compose files and scripts, asks each project's build provider (docker-compose or bash) and its stage commands or compose file, writes the section and validates it with nerv version next
+description: Set up the release section of .ai-workflow/config.yaml interactively — imports an existing semantic-release config with nerv release setup --import, detects the projects, compose files and scripts, asks each project's build provider (docker-compose or bash) and its stage commands or compose file, writes the section and validates it with nerv version next
 argument-hint: [--project <name>]
 ---
 
 # /release:setup
 
-Build the `release:` section of `<repo>/.ai-workflow.yml` for `nerv version
+Build the `release:` section of `<repo>/.ai-workflow/config.yaml` for `nerv version
 next` and `nerv release`: import what an existing semantic-release config
 says, detect what the repository has, propose a complete section, ask only
 what cannot be detected (one question at a time), write it, and prove it
@@ -29,7 +29,7 @@ comments) is in English.
 2. Run `git rev-parse --show-toplevel`. On failure, say the release commands
    need a git repository and stop. Every path below is relative to that
    top level.
-3. Read `.ai-workflow.yml` if it exists.
+3. Read `.ai-workflow/config.yaml` if it exists.
    - It has a top-level `release:` key with no 4.2.0 key (`semantic_release:`
      or a project preset: `presets`, `dotnet`, `node`, `docker`, `nuget`,
      `npm`): show that block as it is and ask one question: **edit it** (the
@@ -45,7 +45,7 @@ Only the `release:` block is added (at the end of the file, after one blank
 line) or replaced (from the `release:` line up to the next line that starts at
 column 0 with a non-space, non-`#` character, or the end of the file). Keep
 every other byte as it is: the rest of the file is managed by `nerv
-configure`'s line-based editor. No `.ai-workflow.yml` yet: create it
+configure`'s line-based editor. No `.ai-workflow/config.yaml` yet: create it
 holding only the section, and mention that `/nerv:init` adds the rest of
 NERV's configuration.
 
@@ -103,7 +103,10 @@ per non-obvious choice. Rules:
   tags use another one.
 - **`build`**, the build provider, for every project (or once as
   `release.build` when all share it); it is required and has no default,
-  and there are no presets.
+  and there are no presets. Besides `docker-compose` and `bash`, offer the
+  repository's own build providers, `.ai-workflow/providers/release-<name>/provider.yaml`
+  with `slot: build` (docs/extensions.md, "Project extensions and
+  providers"), and ask their `config` keys under `providers.<name>`.
   - `docker-compose`: `providers.docker-compose.file` and `test_service`
     (under `release.providers` when shared, else the project's
     `providers`) and the project's `images` it builds, with `${version}`
@@ -145,7 +148,7 @@ write it. Write only on an explicit yes.
 
 ## 6. Write and validate
 
-1. Write the section into `.ai-workflow.yml` as described in step 1.
+1. Write the section into `.ai-workflow/config.yaml` as described in step 1.
 2. Run `nerv version next --offline --json`, and in a monorepo also with
    `--project <name>` per project.
 3. **Exit 1 with a configuration error**: show the path-qualified lines as
@@ -160,7 +163,7 @@ write it. Write only on an explicit yes.
 
 Tell the user, without doing any of it:
 
-1. Review `.ai-workflow.yml`: `nerv release` uses this local file as it is,
+1. Review `.ai-workflow/config.yaml`: `nerv release` uses this local file as it is,
    committed or not. Committing it is recommended so the team shares it.
 2. Run `/release:build`: it always rehearses first and packages the artifact
    only after an explicit yes; it never commits, tags or pushes.
@@ -168,4 +171,4 @@ Tell the user, without doing any of it:
    deploy,deploy-github`) and run `/deploy:setup`.
 
 Never commit, push, run `nerv release` or edit any file other than
-`.ai-workflow.yml`.
+`.ai-workflow/config.yaml`.

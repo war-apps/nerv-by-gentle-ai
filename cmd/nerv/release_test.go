@@ -254,7 +254,10 @@ func newReleaseFixture(t *testing.T, nervYAML string) *releaseFixture {
 			t.Fatal(err)
 		}
 		if nervYAML != "" {
-			if err := os.WriteFile(filepath.Join(dir, ".ai-workflow.yml"), []byte(nervYAML), 0o644); err != nil {
+			if err := os.MkdirAll(filepath.Join(dir, ".ai-workflow"), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(dir, ".ai-workflow/config.yaml"), []byte(nervYAML), 0o644); err != nil {
 				t.Fatal(err)
 			}
 		}
@@ -1231,7 +1234,10 @@ func TestRelease_UsesTheLocalConfigurationNotOrigins(t *testing.T) {
 	f.monorepoResults()
 	// Origin's committed copy (in the clone) has other commands.
 	other := strings.ReplaceAll(releaseMonorepoYAML, "echo build core", "echo origin build core")
-	if err := os.WriteFile(filepath.Join(f.ws.dir, ".ai-workflow.yml"), []byte(other), 0o644); err != nil {
+	if err := os.MkdirAll(filepath.Join(f.ws.dir, ".ai-workflow"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(f.ws.dir, ".ai-workflow/config.yaml"), []byte(other), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	if code, _, stderr := f.run(t, "--yes"); code != 0 {
@@ -1329,7 +1335,7 @@ func TestRelease_SaysWhereTheVersionConfigCameFrom(t *testing.T) {
 	f := newReleaseFixture(t, releaseMonorepoYAML)
 	f.monorepoResults()
 	code, doc, stderr := f.runJSON(t, "--dry-run")
-	if code != 0 || doc.SemanticReleaseConfig != "repository" || !strings.Contains(stderr, "version config: release: section (.ai-workflow.yml)") {
+	if code != 0 || doc.SemanticReleaseConfig != "repository" || !strings.Contains(stderr, "version config: release: section (.ai-workflow/config.yaml)") {
 		t.Errorf("exit %d, document %+v\nstderr %s", code, doc, stderr)
 	}
 }

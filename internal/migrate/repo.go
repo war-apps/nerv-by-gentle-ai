@@ -52,21 +52,42 @@ func rewriteHeader(doc *config.Document) {
 		if !strings.HasPrefix(strings.TrimSpace(l), "#") {
 			continue
 		}
-		l = strings.ReplaceAll(l, "~/.claude/nerv/nerv.yaml", "the user config.yml")
+		l = strings.ReplaceAll(l, "~/.claude/nerv/nerv.yaml", "the user config.yaml")
 		l = strings.ReplaceAll(l, ".nerv/nerv.yaml", paths.ProjectConfigFile)
+		l = strings.ReplaceAll(l, paths.PreviousProjectConfigFile, paths.ProjectConfigFile)
+		l = strings.ReplaceAll(l, "ai-workflow/config.yml", "ai-workflow/config.yaml")
 		lines[i] = l
 	}
 	*doc = *config.Parse(strings.Join(lines, ""))
 }
 
-// planUser plans the user configuration: the old ~/.claude/nerv/nerv.yaml
-// becomes config.yml (task rules applied) and is kept as .migrated.
+// planUser plans the user configuration: the 4.2.0 ~/.claude/nerv/nerv.yaml
+// becomes config.yaml (task rules applied) and is kept as .migrated, and so
+// does the previous config.yml.
 func planUser(p *Plan, o Options) (*userState, error) {
 	pp := paths.Resolve(o.Home)
 	u := &userState{path: pp.UserConfig}
 	newData, newExists, err := readOptional(pp.UserConfig)
 	if err != nil {
 		return nil, err
+	}
+	prevData, prevExists, err := readOptional(pp.PreviousUserConfig)
+	if err != nil {
+		return nil, err
+	}
+	if prevExists {
+		// The previous config.yml is today's configuration under its old
+		// name: it is the one the 4.2.0 file is compared with, and it moves.
+		doc := config.Parse(string(prevData))
+		rewriteHeader(doc)
+		if newExists && string(newData) != doc.String() {
+			return nil, refuse("%s and %s both exist: nerv migrate does not merge two user configurations; move the settings of the old one into the new one by hand (nerv configure --set), or remove %s and run nerv migrate --user again", pp.PreviousUserConfig, pp.UserConfig, pp.PreviousUserConfig)
+		}
+		to := migratedPath(pp.PreviousUserConfig, o)
+		p.Changes = append(p.Changes, Change{Kind: Rename, Path: pp.PreviousUserConfig, To: to, Old: prevData, User: true})
+		p.note("user config: %s moves to %s; the old file is kept as %s", pp.PreviousUserConfig, pp.UserConfig, to)
+		newData, newExists = []byte(doc.String()), true
+		u.moved = true
 	}
 	oldData, oldExists, err := readOptional(pp.LegacyUserConfig)
 	if err != nil {
@@ -82,12 +103,12 @@ func planUser(p *Plan, o Options) (*userState, error) {
 		if newExists && string(newData) != doc.String() {
 			return nil, refuse("%s and %s both exist: nerv migrate does not merge two user configurations; move the settings of the old one into the new one by hand (nerv configure --set), or remove %s and run nerv migrate --user again", pp.LegacyUserConfig, pp.UserConfig, pp.UserConfig)
 		}
-		u.doc, u.exists, u.original = doc, newExists, newData
+		u.doc, u.exists, u.original = doc, newExists && !u.moved, newData
 		to := migratedPath(pp.LegacyUserConfig, o)
 		p.Changes = append(p.Changes, Change{Kind: Rename, Path: pp.LegacyUserConfig, To: to, Old: oldData, User: true})
 		p.note("user config: %s moves to %s; the old file is kept as %s", pp.LegacyUserConfig, pp.UserConfig, to)
 	case newExists:
-		u.doc, u.exists, u.original = config.Parse(string(newData)), true, newData
+		u.doc, u.exists, u.original = config.Parse(string(newData)), !u.moved, newData
 	default:
 		u.doc = config.Parse("")
 	}
@@ -111,6 +132,25 @@ func planRepo(p *Plan, o Options, user *userState) error {
 	if err != nil {
 		return err
 	}
+	prevPath := paths.PreviousProjectConfig(root)
+	prevData, prevExists, err := readOptional(prevPath)
+	if err != nil {
+		return err
+	}
+	var prevText []byte
+	if prevExists {
+		// The previous .ai-workflow.yml is today's configuration under its
+		// old name: it moves into the folder, converted as if it were there.
+		if newExists && string(newData) != string(prevData) {
+			return refuse("%s and %s both exist: nerv migrate does not merge them; merge the old one into %s by hand, or remove %s and run nerv migrate again", prevPath, newPath, paths.ProjectConfigFile, paths.PreviousProjectConfigFile)
+		}
+		if oldExists {
+			return refuse("%s and %s both exist: nerv migrate does not merge them; merge the old one into %s by hand, or remove %s and run nerv migrate again", oldPath, prevPath, paths.PreviousProjectConfigFile, ".nerv/nerv.yaml")
+		}
+		doc := config.Parse(string(prevData))
+		rewriteHeader(doc)
+		prevText = []byte(doc.String())
+	}
 	tdd, err := planODD(p, o)
 	if err != nil {
 		return err
@@ -122,9 +162,13 @@ func planRepo(p *Plan, o Options, user *userState) error {
 		if err != nil {
 			return err
 		}
-	case newExists:
-		doc = config.Parse(string(newData))
-		if legacy := releaseconfig.LegacyKeys(newData); len(legacy) > 0 {
+	case newExists || prevExists:
+		current := newData
+		if prevExists {
+			current = prevText
+		}
+		doc = config.Parse(string(current))
+		if legacy := releaseconfig.LegacyKeys(current); len(legacy) > 0 {
 			// A 4.2.0 release: section has today's key: its 4.2.0 keys
 			// tell it apart.
 			p.note("%s: the release: section is the 4.2.0 one (%s)", paths.ProjectConfigFile, strings.Join(legacy, ", "))
@@ -153,6 +197,10 @@ func planRepo(p *Plan, o Options, user *userState) error {
 			p.Changes = append(p.Changes, Change{Kind: Write, Path: newPath, New: []byte(text)})
 		case string(newData) != text:
 			p.Changes = append(p.Changes, Change{Kind: Write, Path: newPath, Old: newData, New: []byte(text)})
+		}
+		if prevExists {
+			p.Changes = append(p.Changes, Change{Kind: Remove, Path: prevPath, Old: prevData})
+			p.note("%s moves to %s; the old file is backed up under .nerv/backups/", paths.PreviousProjectConfigFile, paths.ProjectConfigFile)
 		}
 		if oldExists {
 			to := migratedPath(oldPath, o)
@@ -184,6 +232,9 @@ func checkLoads(text string) error {
 		return err
 	}
 	defer os.RemoveAll(dir)
+	if err := os.MkdirAll(filepath.Dir(paths.ProjectConfig(dir)), 0o700); err != nil {
+		return err
+	}
 	if err := os.WriteFile(paths.ProjectConfig(dir), []byte(text), 0o600); err != nil {
 		return err
 	}
@@ -196,7 +247,7 @@ func checkLoads(text string) error {
 	return nil
 }
 
-// translateConfig turns a 4.2.0 project nerv.yaml into .ai-workflow.yml.
+// translateConfig turns a 4.2.0 project nerv.yaml into .ai-workflow/config.yaml.
 func translateConfig(p *Plan, o Options, data []byte, user *userState) (*config.Document, error) {
 	where := paths.ProjectConfigFile
 	doc := config.Parse(string(data))
@@ -314,14 +365,18 @@ func migrateRelease(p *Plan, o Options, doc *config.Document) (*config.Document,
 	return doc, githubRelease, nil
 }
 
-// userProvider is the tasks.provider of the user's configuration, old or
-// new, or "".
+// userProvider is the tasks.provider of the user's configuration (today's,
+// the previous config.yml or the 4.2.0 one), or "".
 func userProvider(o Options) string {
 	if o.Home == "" {
 		return ""
 	}
 	if wc, err := workflowconfig.Load(o.Home, ""); err == nil && wc.UserExists {
 		v, _ := wc.Scalar("tasks.provider")
+		return v
+	}
+	if data, ok, _ := readOptional(paths.Resolve(o.Home).PreviousUserConfig); ok {
+		v, _ := config.Parse(string(data)).Scalar("tasks.provider")
 		return v
 	}
 	if data, ok, _ := readOptional(paths.Resolve(o.Home).LegacyUserConfig); ok {

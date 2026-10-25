@@ -68,7 +68,7 @@ type Options struct {
 // url.<real>.insteadOf (owner-only file in an owner-only temporary
 // directory), so neither a command line nor an environment ever holds it.
 // The release: section is the user's local one (their working tree's
-// .ai-workflow.yml, committed or not, loaded once by New), never the clone's
+// .ai-workflow/config.yaml, committed or not, loaded once by New), never the clone's
 // copy: only the code comes from origin. Close removes everything.
 type Workspace struct {
 	runner  proc.Runner
@@ -238,7 +238,7 @@ func (w *Workspace) OriginHead() string { return w.head }
 // local origin.
 func (w *Workspace) PublicURL() string { return w.public }
 
-// Config is the release: section of the user's local .ai-workflow.yml (nil when
+// Config is the release: section of the user's local .ai-workflow/config.yaml (nil when
 // it has none), the one every step uses; the clone's copy is ignored.
 func (w *Workspace) Config() *releaseconfig.Release { return w.rel }
 

@@ -1,5 +1,5 @@
 ---
-description: Show the next release version of this repository (or of each monorepo project) computed by nerv's native version engine from the release section of .ai-workflow.yml
+description: Show the next release version of this repository (or of each monorepo project) computed by nerv's native version engine from the release section of .ai-workflow/config.yaml
 argument-hint: [--branch <name>] [--project <name>] [--offline]
 ---
 

@@ -13,12 +13,15 @@ import (
 	"github.com/war-apps/nerv-by-gentle-ai/internal/releaseconfig"
 )
 
-// writeConfig writes text as <repo>/.ai-workflow.yml in a fresh temporary
+// writeConfig writes text as <repo>/.ai-workflow/config.yaml in a fresh temporary
 // repository and returns the repository root.
 func writeConfig(t *testing.T, text string) string {
 	t.Helper()
 	repo := t.TempDir()
-	if err := os.WriteFile(filepath.Join(repo, ".ai-workflow.yml"), []byte(text), 0o644); err != nil {
+	if err := os.MkdirAll(filepath.Join(repo, ".ai-workflow"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(repo, ".ai-workflow/config.yaml"), []byte(text), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	return repo
@@ -52,17 +55,17 @@ func TestLoad_NotConfigured(t *testing.T) {
 		name string
 		repo func(t *testing.T) string
 	}{
-		{"no .ai-workflow.yml", func(t *testing.T) string { return t.TempDir() }},
+		{"no .ai-workflow/config.yaml", func(t *testing.T) string { return t.TempDir() }},
 		// The old file is never read as configuration (nerv migrate moves it).
 		{"only the old .nerv/nerv.yaml", func(t *testing.T) string {
 			return writeLegacyConfig(t, "release:\n  projects:\n    - name: api\n      path: .\n      build: bash\n")
 		}},
-		{".ai-workflow.yml without release", func(t *testing.T) string {
+		{".ai-workflow/config.yaml without release", func(t *testing.T) string {
 			return writeConfig(t, "enabled: true\nmodels:\n  misato: { model: fable }\n")
 		}},
-		{"empty .ai-workflow.yml", func(t *testing.T) string { return writeConfig(t, "") }},
-		{"comment-only .ai-workflow.yml", func(t *testing.T) string { return writeConfig(t, "# nothing yet\n") }},
-		// .ai-workflow.yml is otherwise maintained by a line-based editor: a strict
+		{"empty .ai-workflow/config.yaml", func(t *testing.T) string { return writeConfig(t, "") }},
+		{"comment-only .ai-workflow/config.yaml", func(t *testing.T) string { return writeConfig(t, "# nothing yet\n") }},
+		// .ai-workflow/config.yaml is otherwise maintained by a line-based editor: a strict
 		// YAML error outside release: must not matter to a repo without one.
 		{"duplicate key elsewhere", func(t *testing.T) string {
 			return writeConfig(t, "enabled: true\nenabled: false\n")
@@ -106,7 +109,7 @@ func TestLoad_ToleratesUnrelatedYAMLErrors(t *testing.T) {
 	}
 }
 
-// A document whose top level is not a mapping is a broken .ai-workflow.yml, not a
+// A document whose top level is not a mapping is a broken .ai-workflow/config.yaml, not a
 // repository without release configuration.
 func TestLoad_RootNotMapping(t *testing.T) {
 	for _, text := range []string{"- a\n- b\n", "just a scalar\n"} {
@@ -116,7 +119,7 @@ func TestLoad_RootNotMapping(t *testing.T) {
 			if !errors.As(err, &verr) {
 				t.Fatalf("err = %v, want a *ValidationError", err)
 			}
-			if !strings.Contains(err.Error(), "top level of .ai-workflow.yml must be a mapping") {
+			if !strings.Contains(err.Error(), "top level of .ai-workflow/config.yaml must be a mapping") {
 				t.Fatalf("err = %v", err)
 			}
 		})

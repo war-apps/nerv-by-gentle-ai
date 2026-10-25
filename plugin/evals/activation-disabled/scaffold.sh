@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Seeds an empty workspace with a git repo and a disabled .ai-workflow.yml
+# Seeds an empty workspace with a git repo and a disabled .ai-workflow/config.yaml
 # (enabled: false), so the NERV SessionStart hook must stay silent. Runs
 # only under `claude plugin eval --scaffold`.
 set -euo pipefail
@@ -7,7 +7,7 @@ set -euo pipefail
 git init -q -b main
 
 mkdir -p .nerv
-cat > .ai-workflow.yml <<'EOF'
+mkdir -p .ai-workflow && cat > .ai-workflow/config.yaml <<'EOF'
 enabled: false
 git:
   worktree: never

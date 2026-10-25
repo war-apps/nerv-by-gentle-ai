@@ -87,8 +87,9 @@ them with `nerv install --with release,deploy,deploy-github` (add
 `/deploy:setup` once, then `/release:build` leaves a local artifact in
 `.nerv/artifacts/<project>/<version>/` and `/deploy:run` releases it. Both
 always rehearse with a dry run and act only after your explicit yes. A
-repository set up with nerv 4.2.0 migrates with `nerv migrate` (see
-[docs/migration.md](docs/migration.md)).
+repository set up with nerv 4.2.0 or 5.0.0-alpha.1 (`.ai-workflow.yml`)
+migrates with `nerv migrate` (see [docs/migration.md](docs/migration.md));
+until then nerv refuses to run on the old file.
 
 ## Requirements
 
@@ -183,7 +184,7 @@ run `nerv install` again to refresh the plugin cache and re-apply
 configuration.
 
 **Upgrading from a release with built-in tasks.** An existing `tasks:`
-block in `~/.config/ai-workflow/config.yml` or `.ai-workflow.yml` keeps working once
+block in `~/.config/ai-workflow/config.yaml` or `.ai-workflow/config.yaml` keeps working once
 the task plugin is installed; without it, core ignores the block and never
 deletes it. Copies of the `/task:*` commands that an older release put in
 `~/.claude/commands/task/` are reported by `nerv install` and removed only
@@ -218,12 +219,12 @@ native blocking prompts, pre-filled from the current config, and applies
 only the answers you confirm.
 
 **Activation per repository.** A repo opts in by writing
-`.ai-workflow.yml` with `enabled: true` — run
+`.ai-workflow/config.yaml` with `enabled: true` — run
 `nerv configure --init-repo <path>` (with `--repo-base`, and a repeatable
 `--repo-provider-config <provider>.<key>=<value>` for task-provider
 settings), or `/nerv:init` from inside Claude Code for the same thing
 through guided questions. Running `--init-repo` on a repo that already has
-`.ai-workflow.yml` leaves its content as written.
+`.ai-workflow/config.yaml` leaves its content as written.
 `/nerv:status` reports the resolved config and, while a run is in progress,
 the orchestrator lock state.
 
@@ -243,7 +244,7 @@ The wizard walks through these sections:
 3. **User config** — asks `git` (base branch, worktree policy, worktree
    pattern, branch and commit-ref patterns), `skills` (one comma-separated
    stack per consuming role), `critical_paths`, and `artifacts.commit`,
-   then writes `~/.config/ai-workflow/config.yml`, backing up any existing file
+   then writes `~/.config/ai-workflow/config.yaml`, backing up any existing file
    first. A field left unchanged (Enter keeps the shown value) is never
    rewritten at all; a whole block (`git:`, `skills:`, `artifacts:`) is
    only generated fresh when it is missing from the file entirely. An
@@ -253,7 +254,7 @@ The wizard walks through these sections:
    or regenerated.
 4. **Models** (`--skip-models`) — optionally edits per-role model/effort
    overrides (see "Configuring models and effort" below).
-5. **Repos** (`--skip-repos`) — optionally writes `.ai-workflow.yml` in one
+5. **Repos** (`--skip-repos`) — optionally writes `.ai-workflow/config.yaml` in one
    or more local git repositories, leaving an already-initialized repo
    untouched.
 6. **Task providers** — shown only when `task@nerv` is enabled. It prompts
@@ -271,7 +272,7 @@ answer per line) instead of prompting, for scripted setup.
 
 After the wizard, open Claude Code in each configured repository and run
 `/nerv:init` once — this refreshes the skill registry; the wizard itself
-only writes `.ai-workflow.yml`. Runs are tracked on gentle-ai's ODD feature
+only writes `.ai-workflow/config.yaml`. Runs are tracked on gentle-ai's ODD feature
 documents (`odd/tasks/{feature}.md`), which the orchestrator creates for
 FULL runs.
 
@@ -300,7 +301,7 @@ nerv configure --init-repo <path> --repo-base <branch> [--repo-provider-config <
 one batch as its own occurrence on a single invocation. Nothing is written
 when nothing changed, and the command exits 1 on a rejected key or value,
 or on any unknown key in a `--set`/`--set-model` batch (writing nothing for
-that batch). `--config <path>` overrides the user-scope `config.yml` path,
+that batch). `--config <path>` overrides the user-scope `config.yaml` path,
 for scripted or tested runs.
 
 Skills and models directly:
@@ -310,9 +311,12 @@ nerv skills --dry-run --json
 nerv apply-models
 ```
 
-Where files live: user scope `~/.config/ai-workflow/config.yml` (personal
-defaults, never committed), project scope `<repo>/.ai-workflow.yml`
-(committed), and the plugin cache under
+Where files live: user scope `~/.config/ai-workflow/config.yaml` (personal
+defaults, never committed), project scope `<repo>/.ai-workflow/config.yaml`
+(committed, next to the repository's own extensions and providers in
+`.ai-workflow/extensions/` and `.ai-workflow/providers/`; see
+[docs/extensions.md](docs/extensions.md#project-extensions-and-providers)),
+and the plugin cache under
 `~/.claude/plugins/cache/nerv/nerv/<version>/`.
 
 ### Developer workflow
@@ -333,7 +337,7 @@ flags (tests inject them through options, not through argv): a fake home
 does not sandbox `claude` or `npx`, both of which read the real user's
 Claude Code and npm configuration regardless of `HOME`/`USERPROFILE`. Test
 config edits through the fakes exercised by `go test ./...`, or against a
-disposable, backed-up `~/.config/ai-workflow/config.yml` — never by pointing a real
+disposable, backed-up `~/.config/ai-workflow/config.yaml` — never by pointing a real
 `nerv install`/`nerv configure` run at a throwaway home directory.
 
 Behavioral tests live under `bench/`: see [`bench/README.md`](bench/README.md)
@@ -342,7 +346,7 @@ for the manual journey suite and the `claude plugin eval` corpus.
 ## Configuration schema
 
 Every Nerv by Gentle-AI setting lives in two scope copies of one schema
-(user `~/.config/ai-workflow/config.yml` and project `<repo>/.ai-workflow.yml`,
+(user `~/.config/ai-workflow/config.yaml` and project `<repo>/.ai-workflow/config.yaml`,
 project overriding user key by key) with sections for skills, per-role
 model/effort overrides, critical paths, artifacts and git. The `tasks:`
 section belongs to the optional task plugin; core ignores it.
@@ -381,7 +385,7 @@ example YAML, and how to configure per-role models and effort (wizard,
 - [docs/pipeline.md](docs/pipeline.md) — migrating from the removed `nerv
   pipeline` and its `pipeline:` section to release and deploy (`nerv migrate`).
 - [docs/migration.md](docs/migration.md) — `nerv migrate`: moving a
-  repository and the user configuration from nerv 4.2.0 (configuration
+  repository and the user configuration from nerv 4.2.0 or 5.0.0-alpha.1 (configuration
   files, `release:` and `deploy:`, the semantic-release import, openspec to
   ODD, the plugins to install).
 - [docs/troubleshooting.md](docs/troubleshooting.md) — known limitations

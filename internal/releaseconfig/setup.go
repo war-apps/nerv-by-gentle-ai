@@ -35,7 +35,7 @@ func (e *EngineConflictError) Error() string {
 	return fmt.Sprintf("%s already sets %d engine key(s) to other values: %s", e.Section, len(parts), strings.Join(parts, "; "))
 }
 
-// ImportSection returns the .ai-workflow.yml text data with imported (the
+// ImportSection returns the .ai-workflow/config.yaml text data with imported (the
 // YAML mapping a version engine's import answered, such as an imported
 // semantic-release configuration) written under
 // release.providers.<provider>: each key it sets is written, and every

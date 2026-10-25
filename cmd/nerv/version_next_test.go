@@ -29,7 +29,7 @@ var releaseconfigValidationError = releaseconfig.ValidationError{Problems: []str
 
 // nextFixture is a fake repository for `nerv version next`: git's top-level
 // answer comes from a scripted runner, the release configuration (if any)
-// from a real .ai-workflow.yml in a temp dir, and the engine is a recorded
+// from a real .ai-workflow/config.yaml in a temp dir, and the engine is a recorded
 // fake.
 type nextFixture struct {
 	top     string
@@ -61,7 +61,10 @@ func newNextFixture(t *testing.T, nervYAML string) *nextFixture {
 		if err := os.MkdirAll(filepath.Join(top, ".nerv"), 0o755); err != nil {
 			t.Fatal(err)
 		}
-		if err := os.WriteFile(filepath.Join(top, ".ai-workflow.yml"), []byte(nervYAML), 0o644); err != nil {
+		if err := os.MkdirAll(filepath.Join(top, ".ai-workflow"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(top, ".ai-workflow/config.yaml"), []byte(nervYAML), 0o644); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -820,7 +823,7 @@ func TestVersionNext_SaysWhereTheVersionConfigCameFrom(t *testing.T) {
 		source, file        string
 		want                string
 	}{
-		{"release section", oneProjectYAML, "api", "repository", ".ai-workflow.yml", "version config: release: section (.ai-workflow.yml)"},
+		{"release section", oneProjectYAML, "api", "repository", ".ai-workflow/config.yaml", "version config: release: section (.ai-workflow/config.yaml)"},
 		{"built-in", "", "repo", "default", "", "version config: built-in default (dim)"},
 	}
 	for _, tt := range tests {

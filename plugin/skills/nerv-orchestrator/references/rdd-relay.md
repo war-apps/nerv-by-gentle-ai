@@ -35,7 +35,7 @@ is all-or-declared, so Ikari declares it:
    (a `sha256:` digest).
 2. List the untracked paths with `git ls-files --others --exclude-standard`
    and drop every path under `.nerv/` or `odd/{feature}/`, the document
-   `odd/tasks/{feature}.md`, and `.ai-workflow.yml` while it is still
+   `odd/tasks/{feature}.md`, and `.ai-workflow/config.yaml` while it is still
    untracked.
 3. Nothing left → rerun assess (same flags) plus
    `--untracked-scope=exclude --expected-untracked-inventory=<digest>`.

@@ -11,7 +11,10 @@ import (
 func load(t *testing.T, content string) (*Deploy, error) {
 	t.Helper()
 	repo := t.TempDir()
-	if err := os.WriteFile(filepath.Join(repo, ".ai-workflow.yml"), []byte(content), 0o644); err != nil {
+	if err := os.MkdirAll(filepath.Join(repo, ".ai-workflow"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(repo, ".ai-workflow/config.yaml"), []byte(content), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	return Load(repo)

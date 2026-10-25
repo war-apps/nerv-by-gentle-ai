@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/war-apps/nerv-by-gentle-ai/internal/paths"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/refusal"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/workflowconfig"
 )
 
@@ -23,13 +24,13 @@ func write(t *testing.T, path, text string) {
 func TestLoad_ReadsTheTwoNewFiles(t *testing.T) {
 	home, repo := t.TempDir(), t.TempDir()
 	write(t, paths.Resolve(home).UserConfig, "git:\n  base_branch: develop\n")
-	write(t, filepath.Join(repo, ".ai-workflow.yml"), "enabled: true\n")
+	write(t, paths.ProjectConfig(repo), "enabled: true\n")
 
 	cfg, err := workflowconfig.Load(home, repo)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.UserPath != paths.Resolve(home).UserConfig || cfg.ProjectPath != filepath.Join(repo, ".ai-workflow.yml") {
+	if cfg.UserPath != paths.Resolve(home).UserConfig || cfg.ProjectPath != paths.ProjectConfig(repo) {
 		t.Errorf("paths = %q, %q", cfg.UserPath, cfg.ProjectPath)
 	}
 	if !cfg.UserExists || !cfg.ProjectExists {
@@ -46,7 +47,7 @@ func TestLoad_ReadsTheTwoNewFiles(t *testing.T) {
 func TestScalar_MergesKeyByKeyWithTheProjectWinning(t *testing.T) {
 	home, repo := t.TempDir(), t.TempDir()
 	write(t, paths.Resolve(home).UserConfig, "git:\n  base_branch: develop\n  remote: upstream\n")
-	write(t, filepath.Join(repo, ".ai-workflow.yml"), "git:\n  base_branch: main\n")
+	write(t, paths.ProjectConfig(repo), "git:\n  base_branch: main\n")
 
 	cfg, err := workflowconfig.Load(home, repo)
 	if err != nil {
@@ -117,5 +118,31 @@ func TestLoad_NoRepoReadsOnlyTheUserFile(t *testing.T) {
 	}
 	if cfg.ProjectPath != "" || cfg.ProjectExists || len(cfg.Hints) != 0 {
 		t.Errorf("cfg = %+v, want no project", cfg)
+	}
+}
+
+// S9: a leftover .ai-workflow.yml or user config.yml is refused with the
+// nerv migrate hint, even next to the new file, and is left unchanged.
+func TestLoad_RefusesThePreviousFiles(t *testing.T) {
+	for _, tc := range []struct {
+		name, hint string
+		file       func(home, repo string) string
+	}{
+		{"project", `run "nerv migrate" to move it`, func(_, repo string) string { return paths.PreviousProjectConfig(repo) }},
+		{"user", `run "nerv migrate --user" to move it`, func(home, _ string) string { return paths.Resolve(home).PreviousUserConfig }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			home, repo := t.TempDir(), t.TempDir()
+			write(t, paths.ProjectConfig(repo), "enabled: true\n")
+			previous := tc.file(home, repo)
+			write(t, previous, "enabled: false\n")
+			_, err := workflowconfig.Load(home, repo)
+			if err == nil || !refusal.Is(err) || !strings.Contains(err.Error(), previous) || !strings.Contains(err.Error(), tc.hint) {
+				t.Fatalf("err = %v, want a refusal naming %s and %s", err, previous, tc.hint)
+			}
+			if data, _ := os.ReadFile(previous); string(data) != "enabled: false\n" {
+				t.Errorf("%s changed: %q", previous, data)
+			}
+		})
 	}
 }

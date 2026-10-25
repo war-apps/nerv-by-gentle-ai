@@ -135,7 +135,10 @@ func TestCompute_UnknownBranch(t *testing.T) {
 // removes everything.
 func TestNew_ClonesOriginAndComputesInTheClone(t *testing.T) {
 	f := newFixture(t)
-	if err := os.WriteFile(filepath.Join(f.user, ".ai-workflow.yml"), []byte("release:\n  providers:\n    conventional-commits:\n      tag_format: v${version}\n  projects:\n    - name: app\n      path: .\n      build: bash\n"), 0o644); err != nil {
+	if err := os.MkdirAll(filepath.Join(f.user, ".ai-workflow"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(f.user, ".ai-workflow/config.yaml"), []byte("release:\n  providers:\n    conventional-commits:\n      tag_format: v${version}\n  projects:\n    - name: app\n      path: .\n      build: bash\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	before := state(t, f.user)
@@ -152,7 +155,7 @@ func TestNew_ClonesOriginAndComputesInTheClone(t *testing.T) {
 	if ws.Config() == nil || ws.Config().Projects[0].Name != "app" {
 		t.Fatalf("config = %+v", ws.Config())
 	}
-	if _, err := os.Stat(filepath.Join(ws.Dir(), ".ai-workflow.yml")); !errors.Is(err, os.ErrNotExist) {
+	if _, err := os.Stat(filepath.Join(ws.Dir(), ".ai-workflow/config.yaml")); !errors.Is(err, os.ErrNotExist) {
 		t.Errorf("the clone holds origin's code only, not the local file: %v", err)
 	}
 	results, err := ws.Compute(context.Background(), nil)

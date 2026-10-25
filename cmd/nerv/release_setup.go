@@ -19,7 +19,7 @@ import (
 	"github.com/war-apps/nerv-by-gentle-ai/internal/releaseplan"
 )
 
-// sectionVersion is the release.version of a .ai-workflow.yml text, read
+// sectionVersion is the release.version of a .ai-workflow/config.yaml text, read
 // without loading the section (a scalar; "" when it has none).
 func sectionVersion(data []byte) string {
 	node, err := yamlsection.Locate(data, releaseconfig.SectionKey)
@@ -38,7 +38,7 @@ const releaseSetupUsage = `Usage: nerv release setup --import [--force] [--dry-r
 
 Imports, once, the repository's semantic-release configuration (package.json
 "release", .releaserc, .releaserc.json, .releaserc.yaml or .yml) into the
-release: section of .ai-workflow.yml, through the version engine's import
+release: section of .ai-workflow/config.yaml, through the version engine's import
 (release.version, by default conventional-commits): its branches, release
 rules, tag format, repository URL and changelog become the engine's keys,
 under release.providers.<engine>. The section's other keys (the projects
@@ -115,7 +115,11 @@ func releaseSetupImport(ctx context.Context, cwd string, dryRun, force bool, std
 	}
 	// The engine is the section's (its release.version), read before the
 	// section is validated: the import may be what makes it valid.
-	engine, err := releaseplan.NewVersionEngine(releaseProviders(opts, stderr), &releaseconfig.Release{Version: sectionVersion(data)})
+	providers, err := releaseProviders(opts, top, stderr)
+	if err != nil {
+		return err
+	}
+	engine, err := releaseplan.NewVersionEngine(providers, &releaseconfig.Release{Version: sectionVersion(data)})
 	if err != nil {
 		return err
 	}
