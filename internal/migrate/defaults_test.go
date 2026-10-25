@@ -85,6 +85,27 @@ defaults:
 	}
 }
 
+// A removed provider is dropped, not moved under defaults:, so a setup
+// never copies it into a new project; the legacy rounding_minutes still
+// moves to the teamwork provider and stays personal.
+func TestUserDefaults_RemovedProviderIsDroppedNotMoved(t *testing.T) {
+	w := userWorld(t, "tasks:\n  rounding_minutes: 15\n  provider: jira\n", "")
+	userPath := w.userPaths().UserConfig
+
+	p, _ := w.migrate(userOnly(w))
+	got := yamlMap(t, w.read(userPath))
+	want := yamlMap(t, "tasks:\n  providers: {teamwork: {rounding_minutes: 15}}\n")
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("user config =\n%s\nwant the map %v", w.read(userPath), want)
+	}
+	if !anyContains(p.Warnings, "user config: tasks.provider: jira was removed from nerv") {
+		t.Errorf("no removed-provider warning in %q", p.Warnings)
+	}
+	if again := w.plan(userOnly(w)); !again.Empty() {
+		t.Errorf("a second run has changes: %s", migrate.Render(again))
+	}
+}
+
 // A user file with personal keys only, or seeds already, has nothing to
 // move.
 func TestUserDefaults_PersonalKeysAndSeedsStay(t *testing.T) {

@@ -18,6 +18,11 @@ import (
 // manifests, the timer store) stay where they are. A section whose
 // defaults are already set is reported and left alone.
 func moveUserDefaults(p *Plan, u *userState, fsys fs.FS) error {
+	// The task conversions first, so a removed provider is dropped rather
+	// than moved into a seed; on a converted file they change nothing.
+	if err := migrateTasks(p, u.doc, "user config"); err != nil {
+		return err
+	}
 	personal, err := workflowconfig.LoadPersonal(fsys)
 	if err != nil {
 		return err
