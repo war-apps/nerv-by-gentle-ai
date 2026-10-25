@@ -23,8 +23,8 @@ nerv migrate --force            # also move a change whose lock is still held
 | `tasks.rounding_minutes` | `tasks.providers.teamwork.rounding_minutes` |
 | `tasks.provider: jira` or `github-projects`, `tasks.providers.jira` / `.github-projects` | Dropped and reported: those providers were removed. |
 | `tasks.providers.teamwork.task_ref_prefix` | Dropped: the provider's manifest fixes the prefix. |
-| `release:` | `ship:` (see [Ship](#ship)) |
-| the semantic-release configuration (`package.json` `release`, `.releaserc*`) | Imported into `ship:` by the same code as `nerv ship setup --import`. Its warnings are printed. |
+| `release:` (4.2.0) | `release:`, today's section (see [Release](#release)). A 4.2.0 `release:` already in `.ai-workflow.yml` is told apart by its 4.2.0 keys (`semantic_release:`, the presets) and converted in place. |
+| the semantic-release configuration (`package.json` `release`, `.releaserc*`) | Imported into `release:` by the same code as `nerv release setup --import`. Its warnings are printed. |
 | `pipeline:` | `deploy:` (see [Deploy](#deploy)) |
 | `openspec/changes/<change>/`, in flight, FULL | `odd/tasks/<change>.md`, with its run files in `odd/<change>/nerv/` and its lock in `.nerv/locks/<change>.lock` (see [ODD](#odd)) |
 | `openspec/changes/<change>/`, in flight, DIRECT or LIGHT | `.nerv/runs/<change>/`, with no ODD document, and its lock in `.nerv/locks/<change>.lock` (see [ODD](#odd)) |
@@ -33,13 +33,13 @@ nerv migrate --force            # also move a change whose lock is still held
 | — | `.nerv/.gitignore` (`*`): `.nerv/` now holds runtime files only. |
 
 Comments and key order are kept where possible. Untouched lines are copied
-byte for byte. Rewritten sections (`ship:`, `deploy:`) are written again by
+byte for byte. Rewritten sections (`release:`, `deploy:`) are written again by
 yaml.v3, so a flow mapping loses its inner spaces: `{ a: 1 }` becomes
 `{a: 1}`.
 
-### Ship
+### Release
 
-Each 4.2.0 project becomes a `ship:` project with `build.mode: script`.
+Each 4.2.0 project becomes a project of today's `release:` section with `build.mode: script`.
 Its presets turn into the stage commands they ran in 4.2.0:
 
 - **dotnet**:
@@ -58,7 +58,7 @@ A stage command the project wrote itself still replaces the presets', as it
 did in 4.2.0. The docker preset's builds go into `stages.package`, and every
 image 4.2.0 pushed becomes a `build.images` entry `{ name, tags }` with its
 4.2.0 tag kinds (`version` always, the channel off the default channel,
-`latest` on it): `nerv ship` tags and saves every reference into the
+`latest` on it): `nerv release` tags and saves every reference into the
 artifact after the package commands and records them, and the
 `deploy-ssh-compose` publish pushes them all, as 4.2.0 did. An image with
 `push: false` is saved by the package commands themselves, with no
@@ -94,8 +94,8 @@ Reported, with no equivalent:
 - `pipeline.sync`: there is no back-merge after a release;
 - `pipeline.deploy.selection: branches`: a target deploys its environment when the environment's `DOCKER_IMAGE_VERSION` points at the release; choose targets with `nerv deploy --target`;
 - `pipeline.registry`'s credential variables: run `docker login` before `nerv deploy`;
-- `pipeline.images`: the project's `build.images`, saved into the artifact by nerv ship and pushed by the `deploy-ssh-compose` publish;
-- `pipeline.dotnet`: the ship stages already cover validate and test.
+- `pipeline.images`: the project's `build.images`, saved into the artifact by nerv release and pushed by the `deploy-ssh-compose` publish;
+- `pipeline.dotnet`: the release stages already cover validate and test.
 
 ### ODD
 
@@ -134,12 +134,12 @@ The run ends with the exact install line for the plugins the old
 configuration used:
 
 - `task` and `task-teamwork` when `tasks.provider` was `teamwork` (also the 4.2.0 default when nothing set it);
-- `ship` when `release:` existed;
+- `release` when the 4.2.0 `release:` section existed;
 - `deploy` and `deploy-github` when a git host was written;
 - `deploy-ssh-compose` when `pipeline.deploy` existed.
 
 ```
-plugins: nerv install --with task,task-teamwork,ship,deploy,deploy-github
+plugins: nerv install --with task,task-teamwork,release,deploy,deploy-github
 ```
 
 `--install` runs that line through `nerv install` (without the closing
@@ -159,7 +159,7 @@ wizard). The install step reports old `/task:*` copies in
   - the old file and its replacement both exist with different content (nerv migrate does not merge them);
   - an ODD document of the same name already exists, and `nerv migrate` did not write it;
   - a change's lock is still held on this machine, without `--force`;
-  - the migrated `.ai-workflow.yml` does not load with today's `ship:` and `deploy:` readers.
+  - the migrated `.ai-workflow.yml` does not load with today's `release:` and `deploy:` readers.
 
 Exit codes: 0 for migrated, nothing to migrate, or a dry run; 1 for a
 refusal (including running outside a git repository without `--user`); 2

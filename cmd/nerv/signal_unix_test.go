@@ -11,7 +11,7 @@ import (
 
 // TestSignalContext_CancelsOnInterruptTerminateAndHangup sends each signal to
 // this process and expects the real signal context to be cancelled (and the
-// process to survive: the signal is caught, not fatal). nerv ship and nerv
+// process to survive: the signal is caught, not fatal). nerv release and nerv
 // deploy start their commands in their own session, so these signals reach
 // them only through this context.
 func TestSignalContext_CancelsOnInterruptTerminateAndHangup(t *testing.T) {

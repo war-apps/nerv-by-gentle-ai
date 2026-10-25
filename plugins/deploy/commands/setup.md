@@ -26,20 +26,20 @@ English.
 2. Run `git rev-parse --show-toplevel`; on failure, say deploy needs a git
    repository and stop.
 3. Read `.ai-workflow.yml`.
-   - No `ship:` section: say deploy consumes ship's artifacts and that
-     `/ship:setup` comes first; stop.
+   - No `release:` section: say deploy consumes release's artifacts and that
+     `/release:setup` comes first; stop.
    - A `deploy:` key: show it and ask **edit it** (the default) or **start
      over**. Stop and wait.
    - An old `pipeline:` key: it is no longer read. Say `nerv migrate
      --dry-run` shows its translation, and offer to build `deploy:` here
      from its `pipeline.deploy` environments instead (one
      `deploy-ssh-compose` target each). Its `pipeline.images` are not a
-     `deploy:` key: ship builds the images now, from the `ship:` project's
-     `build.images` (`/ship:setup` writes them), and `deploy-ssh-compose`
+     `deploy:` key: release builds the images now, from the `release:` project's
+     `build.images` (`/release:setup` writes them), and `deploy-ssh-compose`
      pushes them.
 
 Only the `deploy:` block is added or replaced, with the same rule as
-`/ship:setup` (from the `deploy:` line up to the next column-0 key); every
+`/release:setup` (from the `deploy:` line up to the next column-0 key); every
 other byte stays as it is.
 
 ## 2. Providers
@@ -57,7 +57,7 @@ plugins. Suggest what is missing, without installing it:
   the `infisical` CLI with `source: infisical`).
 
 The install line is `nerv install --with deploy,deploy-github,deploy-ssh-compose`
-(only the ones missing; `deploy` requires `ship`). After installing, the
+(only the ones missing; `deploy` requires `release`). After installing, the
 user restarts Claude Code. Continue with the providers the user has or
 will install.
 
@@ -101,7 +101,7 @@ only on an explicit yes.
 ## 6. Next steps
 
 Tell the user, without doing any of it: set the user-scope keys with `nerv
-configure`, run `/ship:build`, then `/deploy:run`.
+configure`, run `/release:build`, then `/deploy:run`.
 
 Never commit, push, run `nerv deploy` without `--dry-run`, or edit any file
 other than `.ai-workflow.yml`.

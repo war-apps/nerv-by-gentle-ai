@@ -34,7 +34,7 @@ type Request struct {
 	// origin's tags and semantic-release notes are fetched first, as
 	// semantic-release does.
 	Offline bool
-	// Version is an explicit version (nerv ship --version): when set, each
+	// Version is an explicit version (nerv release --version): when set, each
 	// requested project releases it instead of the computed one, even
 	// without a commit that triggers a release, with its tag and its notes
 	// and CHANGELOG section written from the commits since the project's

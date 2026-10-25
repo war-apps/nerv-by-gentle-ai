@@ -12,7 +12,7 @@ import (
 	nerv "github.com/war-apps/nerv-by-gentle-ai"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/env/envtest"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/migrate"
-	"github.com/war-apps/nerv-by-gentle-ai/internal/shiprun"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/releaserun"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/versioning"
 )
 
@@ -68,10 +68,10 @@ func TestMigrate_DryRunPrintsEveryChangeAndWritesNothing(t *testing.T) {
 		t.Fatalf("exit %d\n%s\n%s", code, out, errOut)
 	}
 	for _, want := range []string{
-		"--- /dev/null\n+++ b/.ai-workflow.yml\n", "+ship:", "+deploy:\n+  host: github",
+		"--- /dev/null\n+++ b/.ai-workflow.yml\n", "+release:", "+deploy:\n+  host: github",
 		"move .nerv/nerv.yaml -> .nerv/nerv.yaml.migrated",
 		"warning: semantic-release package.json: @semantic-release/exec",
-		"plugins: nerv install --with task,task-teamwork,ship,deploy,deploy-github",
+		"plugins: nerv install --with task,task-teamwork,release,deploy,deploy-github",
 		"nerv migrate: dry run:",
 	} {
 		if !strings.Contains(out, want) {
@@ -130,7 +130,7 @@ func TestMigrate_UsageErrors(t *testing.T) {
 
 func TestMigrate_InstallRunsTheInstallStep(t *testing.T) {
 	_, opts := migrateRepo(t, "dim.comprobantes.api")
-	seedShipFamilyForCLI(t, opts.Home)
+	seedReleaseFamilyForCLI(t, opts.Home)
 	runner := opts.Runner.(*envtest.FakeRunner)
 	for k, v := range baseInstallRunner().Responses {
 		runner.Responses[k] = v
@@ -139,7 +139,7 @@ func TestMigrate_InstallRunsTheInstallStep(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("exit %d\n%s\n%s", code, out, errOut)
 	}
-	for _, plugin := range []string{"task@nerv", "task-teamwork@nerv", "ship@nerv", "deploy@nerv", "deploy-github@nerv"} {
+	for _, plugin := range []string{"task@nerv", "task-teamwork@nerv", "release@nerv", "deploy@nerv", "deploy-github@nerv"} {
 		if !strings.Contains(out, "claude plugin install "+plugin) {
 			t.Errorf("%s not installed:\n%s", plugin, out)
 		}
@@ -150,7 +150,7 @@ func TestMigrate_InstallRunsTheInstallStep(t *testing.T) {
 }
 
 // oldDockerArgv is what the 4.2.0 docker preset ran for dim.comprobantes.api
-// (internal/shipplan/presets.go at 03d4401): one build per image with the
+// (internal/releaseplan/presets.go at 03d4401): one build per image with the
 // version tag, the channel tag off the default channel, latest on it, the
 // sorted build arguments and the version and revision labels.
 func oldDockerArgv(version, channel, head string) [][]string {
@@ -200,11 +200,11 @@ func evalDocker(t *testing.T, script string, env map[string]string) [][]string {
 	return builds
 }
 
-// nerv ship --dry-run of the migrated dim.comprobantes.api runs the commands
+// nerv release --dry-run of the migrated dim.comprobantes.api runs the commands
 // 4.2.0 ran: its own stage commands verbatim, and the docker preset's
-// builds; ship then saves build.images into the artifact. The push moved
+// builds; release then saves build.images into the artifact. The push moved
 // to deploy.
-func TestMigrate_ShipDryRunPlansThe420Commands(t *testing.T) {
+func TestMigrate_ReleaseDryRunPlansThe420Commands(t *testing.T) {
 	top, opts := migrateRepo(t, "dim.comprobantes.api")
 	old, err := os.ReadFile(filepath.Join(top, ".nerv", "nerv.yaml"))
 	if err != nil {
@@ -220,7 +220,7 @@ func TestMigrate_ShipDryRunPlansThe420Commands(t *testing.T) {
 			migrated = string(c.New)
 		}
 	}
-	f := newShipFixture(t, migrated)
+	f := newReleaseFixture(t, migrated)
 	csproj := filepath.Join(f.ws.dir, "src", "Api", "Dim.Comprobantes.Api.csproj")
 	if err := os.MkdirAll(filepath.Dir(csproj), 0o755); err != nil {
 		t.Fatal(err)
@@ -228,12 +228,12 @@ func TestMigrate_ShipDryRunPlansThe420Commands(t *testing.T) {
 	if err := os.WriteFile(csproj, []byte("<Project><PropertyGroup><Version>1.0.0</Version></PropertyGroup></Project>\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	f.ws.results = []versioning.Result{shipResult("api", "1.2.0", "v1.2.0")}
+	f.ws.results = []versioning.Result{releaseResult("api", "1.2.0", "v1.2.0")}
 	code, stdout, stderr := f.run(t, "--dry-run")
 	if code != 0 {
-		t.Fatalf("nerv ship --dry-run: exit %d\n%s\n%s", code, stdout, stderr)
+		t.Fatalf("nerv release --dry-run: exit %d\n%s\n%s", code, stdout, stderr)
 	}
-	stages := map[string]shiprun.Step{}
+	stages := map[string]releaserun.Step{}
 	var order, saves []string
 	for _, s := range f.steps {
 		if _, seen := stages[s.Stage]; !seen {
@@ -248,7 +248,7 @@ func TestMigrate_ShipDryRunPlansThe420Commands(t *testing.T) {
 	if want := []string{"restore", "lint", "build", "test", "coverage", "package"}; !slices.Equal(order, want) {
 		t.Fatalf("stages run %q, want %q", order, want)
 	}
-	// L22/L23: after the package commands, ship tags each build.images
+	// L22/L23: after the package commands, release tags each build.images
 	// entry with its 4.2.0 tag kinds (a stable release adds latest) and
 	// saves every reference into the artifact (recorded for deploy to push).
 	outputs := filepath.Join(f.ws.ArtifactsDir(), "api", "outputs")
@@ -287,6 +287,6 @@ func TestMigrate_ShipDryRunPlansThe420Commands(t *testing.T) {
 		}
 	}
 	if strings.Contains(stages["package"].Command.Run, "docker save") {
-		t.Errorf("the package stage saves the pushed images itself (ship does):\n%s", stages["package"].Command.Run)
+		t.Errorf("the package stage saves the pushed images itself (release does):\n%s", stages["package"].Command.Run)
 	}
 }

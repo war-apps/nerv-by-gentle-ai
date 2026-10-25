@@ -80,13 +80,13 @@ func TestLegacyConfig_ApplyModelsHints(t *testing.T) {
 	}
 }
 
-func TestLegacyConfig_ShipRefusesAsUnconfiguredWithTheHint(t *testing.T) {
-	f := newShipFixture(t, "")
+func TestLegacyConfig_ReleaseRefusesAsUnconfiguredWithTheHint(t *testing.T) {
+	f := newReleaseFixture(t, "")
 	old := filepath.Join(f.top, ".nerv", "nerv.yaml")
-	writeLegacy(t, old, shipMonorepoYAML)
+	writeLegacy(t, old, releaseMonorepoYAML)
 
 	code, _, stderr := f.run(t, "--yes")
-	if code != 1 || !strings.Contains(stderr, "no ship: section in .ai-workflow.yml") {
+	if code != 1 || !strings.Contains(stderr, "no release: section in .ai-workflow.yml") {
 		t.Fatalf("exit %d, stderr %q: want the not-configured refusal", code, stderr)
 	}
 	got := hintLines(stderr, old)
@@ -102,10 +102,10 @@ func TestLegacyConfig_ShipRefusesAsUnconfiguredWithTheHint(t *testing.T) {
 func TestLegacyConfig_VersionNextIsTheWholeRepositoryWithTheHint(t *testing.T) {
 	f := newNextFixture(t, "")
 	old := filepath.Join(f.top, ".nerv", "nerv.yaml")
-	writeLegacy(t, old, "ship:\n  projects:\n    - name: api\n      path: api\n")
+	writeLegacy(t, old, "release:\n  projects:\n    - name: api\n      path: api\n")
 
 	code, _, stderr := f.run(t, "--project", "api")
-	if code != 1 || !strings.Contains(stderr, "no ship: section in .ai-workflow.yml") {
+	if code != 1 || !strings.Contains(stderr, "no release: section in .ai-workflow.yml") {
 		t.Fatalf("exit %d, stderr %q: want the single-project refusal", code, stderr)
 	}
 	if got := hintLines(stderr, old); len(got) != 1 {

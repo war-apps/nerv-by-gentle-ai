@@ -1,11 +1,11 @@
 # Deploy plugin: `nerv deploy`
 
-The deploy plugin (`deploy@nerv`) releases what the [ship plugin](release-commands.md)
-packaged. It requires `ship`, and its git hosts and targets are provider
+The deploy plugin (`deploy@nerv`) releases what the [release plugin](release-commands.md)
+packaged. It requires `release`, and its git hosts and targets are provider
 plugins (`deploy-github`, `deploy-ssh-compose`). Install them with:
 
 ```sh
-nerv install --with ship,deploy,deploy-github
+nerv install --with release,deploy,deploy-github
 nerv install --with deploy-ssh-compose   # the SSH and compose target
 ```
 
@@ -18,10 +18,10 @@ The plugin's agent, `deploy:deployer`, runs the same dry run and, with your
 approved project, version and tag, the real deploy. Its skill, `deploy`, is
 the contract below.
 
-`nerv deploy` takes an artifact that `nerv ship` left in
+`nerv deploy` takes an artifact that `nerv release` left in
 `.nerv/artifacts/<project>/<version>/` and turns it into a release. It writes
 the release to git, publishes and deploys the artifact to its targets, and
-creates the release on the git host. `nerv ship` never writes to git. Every
+creates the release on the git host. `nerv release` never writes to git. Every
 git write happens here, so an artifact that is never deployed leaves no trace
 in the repository.
 
@@ -65,10 +65,10 @@ status: `done`, `skipped`, `failed`, `not-run` or `dry-run`.
 When origin's branch has commits after the artifact's base commit, the deploy
 is refused. With `--rebase`, the release commit is cherry-picked onto the new
 head. A conflict, for example someone else editing the CHANGELOG, is refused.
-If origin no longer contains the base commit, ship again.
+If origin no longer contains the base commit, release again.
 
 `--rebase` warns that the tag then points at a commit whose code was never
-built: the artifact was built from the base commit. Shipping again is the
+built: the artifact was built from the base commit. Releasing again is the
 safe path; `/deploy:run` never adds `--rebase` on its own.
 
 ### Re-runs
@@ -277,7 +277,7 @@ overrides):
 ## Migrating from `nerv pipeline`
 
 The `pipeline:` section's `docker` push and `deploy` steps are this
-plugin's `deploy-ssh-compose` target, and its `release` step is `nerv ship`
+plugin's `deploy-ssh-compose` target, and its `release` step is `nerv release`
 then `nerv deploy` with `deploy-github`. The key-by-key translation is in
 [pipeline.md](pipeline.md); `nerv migrate --dry-run` shows it for your
 repository.

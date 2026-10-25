@@ -11,7 +11,7 @@ import (
 )
 
 // Every deploy provider nerv ships has a valid manifest, named after its
-// plugin (deploy-<name>); the GitHub host and the SSH compose target ship.
+// plugin (deploy-<name>); the GitHub host and the SSH compose target release.
 func TestEmbeddedDeployProviders_AreValid(t *testing.T) {
 	exts, err := plugin.Extensions(nerv.ExtensionsFS())
 	if err != nil {

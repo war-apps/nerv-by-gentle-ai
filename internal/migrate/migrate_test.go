@@ -21,8 +21,8 @@ import (
 	"github.com/war-apps/nerv-by-gentle-ai/internal/migrate"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/paths"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/refusal"
-	"github.com/war-apps/nerv-by-gentle-ai/internal/shipconfig"
-	"github.com/war-apps/nerv-by-gentle-ai/internal/shipplan"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/releaseconfig"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/releaseplan"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/versioning"
 )
 
@@ -195,7 +195,7 @@ func TestConfig_ProjectFileMovesKeepingCommentsAndOrder(t *testing.T) {
 		"# No build servers: the shared T2 host aborts dotnet with",
 		// yaml.v3 writes a flow mapping without the inner spaces.
 		`env: {MSBUILDDISABLENODEREUSE: "1", UseSharedCompilation: "false", DOTNET_CLI_USE_MSBUILD_SERVER: "0"}`)
-	if strings.Index(text, "git:") > strings.Index(text, "tasks:") || strings.Index(text, "tasks:") > strings.Index(text, "ship:") {
+	if strings.Index(text, "git:") > strings.Index(text, "tasks:") || strings.Index(text, "tasks:") > strings.Index(text, "release:") {
 		t.Errorf("the key order changed:\n%s", text)
 	}
 }
@@ -323,22 +323,22 @@ func TestTasks_MigratedSettingsLoadWithTheProviderManifests(t *testing.T) {
 	}
 }
 
-// Rule 3: release: becomes ship:, the presets become build.mode: script
-// with the commands 4.2.0 ran, the project's own stage commands win, and
-// the result loads with today's strict loader.
-func TestShip_ReleaseBecomesScriptModeShip(t *testing.T) {
+// Rule 3: the 4.2.0 release: becomes today's release:, the presets become
+// build.mode: script with the commands 4.2.0 ran, the project's own stage
+// commands win, and the result loads with today's strict loader.
+func TestRelease_LegacyReleaseBecomesScriptModeRelease(t *testing.T) {
 	w := newWorld(t, comprobantes)
 	old := w.read(".nerv/nerv.yaml")
 	w.migrate(w.options(false, githubOrigin))
-	rel, err := shipconfig.Load(w.root)
+	rel, err := releaseconfig.Load(w.root)
 	if err != nil {
-		t.Fatalf("shipconfig.Load: %v", err)
+		t.Fatalf("releaseconfig.Load: %v", err)
 	}
 	if err := rel.CheckBuild(); err != nil {
 		t.Fatalf("CheckBuild: %v", err)
 	}
 	api, _ := rel.Project("api")
-	if api.Build == nil || api.Build.Mode != shipconfig.ModeScript {
+	if api.Build == nil || api.Build.Mode != releaseconfig.ModeScript {
 		t.Fatalf("build = %+v, want mode script", api.Build)
 	}
 	if !slices.Equal(api.Build.VersionFiles, []string{"src/Api/Dim.Comprobantes.Api.csproj"}) {
@@ -353,30 +353,56 @@ func TestShip_ReleaseBecomesScriptModeShip(t *testing.T) {
 	contains(t, "stages.package", pkg,
 		"docker build -f docker/Dockerfile -t ghcr.io/dirm-s-a/dim.comprobantes.api:\"$NERV_RELEASE_VERSION\"",
 		"docker build -f docker/LoginBroker.Dockerfile -t ghcr.io/dirm-s-a/dim.comprobantes.api-login-broker:\"$NERV_RELEASE_VERSION\"")
-	// L22: the pushed images are build.images, which ship saves and records
+	// L22: the pushed images are build.images, which release saves and records
 	// for deploy to push: the script saves nothing itself.
 	lacks(t, "stages.package", pkg, "docker save")
 	// The images keep 4.2.0's tag kinds in the mapping form.
 	all := []string{"version", "channel", "latest"}
-	if want := []shipconfig.BuildImage{
+	if want := []releaseconfig.BuildImage{
 		{Name: "ghcr.io/dirm-s-a/dim.comprobantes.api", Tags: all},
 		{Name: "ghcr.io/dirm-s-a/dim.comprobantes.api-login-broker", Tags: all},
 	}; !reflect.DeepEqual(api.Build.Images, want) {
 		t.Errorf("build.images = %+v, want %+v", api.Build.Images, want)
 	}
 	text := w.read(".ai-workflow.yml")
-	lacks(t, ".ai-workflow.yml", text, "\nrelease:", "presets:", "semantic_release:", "4.2.0 pushed", "records no image references")
+	contains(t, ".ai-workflow.yml", text, "\nrelease:")
+	lacks(t, ".ai-workflow.yml", text, "\nship:", "presets:", "semantic_release:", "4.2.0 pushed", "records no image references")
+}
+
+// S1: a 4.2.0 release: section already in .ai-workflow.yml (no old
+// .nerv/nerv.yaml) is told apart by its 4.2.0 keys and converted in place;
+// today's release: section is left alone.
+func TestRelease_LegacySectionInTheProjectFileIsConverted(t *testing.T) {
+	w := world{t: t, root: filepath.Join(t.TempDir(), "repo"), home: t.TempDir()}
+	w.write(".ai-workflow.yml", "enabled: true\nrelease:\n  semantic_release: { version: 24.2.3 }\n  projects:\n    - name: api\n      path: .\n      presets: [dotnet]\n      dotnet: { project_file: Api.csproj }\n")
+	p, _ := w.migrate(w.options(false, ""))
+	text := w.read(".ai-workflow.yml")
+	contains(t, ".ai-workflow.yml", text, "\nrelease:", "mode: script", "dotnet build")
+	lacks(t, ".ai-workflow.yml", text, "presets:", "semantic_release:")
+	if _, err := releaseconfig.Load(w.root); err != nil {
+		t.Fatalf("releaseconfig.Load: %v", err)
+	}
+	if !slices.Contains(p.Plugins, "release") {
+		t.Errorf("plugins = %v, want release", p.Plugins)
+	}
+
+	current := "enabled: true\nrelease:\n  projects:\n    - name: api\n      path: .\n      build: { mode: script }\n      stages: { build: { run: make } }\n"
+	w.write(".ai-workflow.yml", current)
+	w.migrate(w.options(false, ""))
+	if got := w.read(".ai-workflow.yml"); got != current {
+		t.Errorf("today's release: section changed:\n%s", got)
+	}
 }
 
 // Rule 3: the presets without an equivalent (nuget, npm push) get a TODO
 // comment and a report line; the dotnet preset's commands and coverage
 // threshold, node's install and scripts, and the hooks move over.
-func TestShip_PresetsWithoutAnEquivalentGetATODO(t *testing.T) {
+func TestRelease_PresetsWithoutAnEquivalentGetATODO(t *testing.T) {
 	w := newWorld(t, legacyFull)
 	p, _ := w.migrate(w.options(false, githubOrigin))
-	rel, err := shipconfig.Load(w.root)
+	rel, err := releaseconfig.Load(w.root)
 	if err != nil {
-		t.Fatalf("shipconfig.Load: %v", err)
+		t.Fatalf("releaseconfig.Load: %v", err)
 	}
 	web, _ := rel.Project("web")
 	if got := web.Stages["restore"]; got.Run != "pnpm install --frozen-lockfile" || got.Workdir != "web" {
@@ -418,12 +444,12 @@ func TestShip_PresetsWithoutAnEquivalentGetATODO(t *testing.T) {
 	}
 }
 
-// Rule 3: the semantic-release configuration is imported into the ship:
+// Rule 3: the semantic-release configuration is imported into the release:
 // section through versioning.Import, with its warnings reported.
-func TestShip_ImportsTheSemanticReleaseConfiguration(t *testing.T) {
+func TestRelease_ImportsTheSemanticReleaseConfiguration(t *testing.T) {
 	w := newWorld(t, comprobantes)
 	p, _ := w.migrate(w.options(false, githubOrigin))
-	rel, err := shipconfig.Load(w.root)
+	rel, err := releaseconfig.Load(w.root)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -617,9 +643,9 @@ func TestPlugins_InstallLineNamesWhatTheRepositoryUsed(t *testing.T) {
 	cases := []struct {
 		fixture, origin, want string
 	}{
-		{comprobantes, githubOrigin, "nerv install --with task,task-teamwork,ship,deploy,deploy-github"},
-		{legacyFull, githubOrigin, "nerv install --with task,task-teamwork,ship,deploy,deploy-github,deploy-ssh-compose"},
-		{comprobantes, "", "nerv install --with task,task-teamwork,ship,deploy"},
+		{comprobantes, githubOrigin, "nerv install --with task,task-teamwork,release,deploy,deploy-github"},
+		{legacyFull, githubOrigin, "nerv install --with task,task-teamwork,release,deploy,deploy-github,deploy-ssh-compose"},
+		{comprobantes, "", "nerv install --with task,task-teamwork,release,deploy"},
 	}
 	for _, c := range cases {
 		w := newWorld(t, c.fixture)
@@ -669,7 +695,7 @@ func TestDryRun_WritesNothing(t *testing.T) {
 		t.Fatal("the plan is empty")
 	}
 	diff := migrate.Render(p)
-	contains(t, "the rendered plan", diff, "--- /dev/null\n+++ b/.ai-workflow.yml\n", "move .nerv/nerv.yaml -> .nerv/nerv.yaml.migrated", "move openspec/changes/tw-1-feature/nerv/test-plan.md -> odd/tw-1-feature/nerv/test-plan.md", "remove openspec/changes/tw-1-feature/proposal.md", "+ship:")
+	contains(t, "the rendered plan", diff, "--- /dev/null\n+++ b/.ai-workflow.yml\n", "move .nerv/nerv.yaml -> .nerv/nerv.yaml.migrated", "move openspec/changes/tw-1-feature/nerv/test-plan.md -> odd/tw-1-feature/nerv/test-plan.md", "remove openspec/changes/tw-1-feature/proposal.md", "+release:")
 	if after := treeHash(t, w.root, w.home); after != before {
 		t.Error("planning changed the files")
 	}
@@ -741,9 +767,9 @@ func TestConflict_BothFilesAreRefused(t *testing.T) {
 }
 
 // L22: the dim fixtures migrate to script mode with build.images, and the
-// ship plan of the migrated project saves every image after its package
+// release plan of the migrated project saves every image after its package
 // commands and records its reference for deploy-ssh-compose to push.
-func TestShip_MigratedDockerPresetPlansTheImageSaves(t *testing.T) {
+func TestRelease_MigratedDockerPresetPlansTheImageSaves(t *testing.T) {
 	for fixture, want := range map[string][]string{
 		comprobantes: {"ghcr.io/dirm-s-a/dim.comprobantes.api", "ghcr.io/dirm-s-a/dim.comprobantes.api-login-broker"},
 		factura:      {"ghcr.io/dirm-s-a/dim-factura-electronica-service"},
@@ -754,13 +780,13 @@ func TestShip_MigratedDockerPresetPlansTheImageSaves(t *testing.T) {
 			if anyContains(p.Warnings, "will not push them") || anyContains(p.Warnings, "records no image references") || anyContains(p.Warnings, "built locally only") {
 				t.Errorf("the old push warning is left: %q", p.Warnings)
 			}
-			rel, err := shipconfig.Load(w.root)
+			rel, err := releaseconfig.Load(w.root)
 			if err != nil {
 				t.Fatal(err)
 			}
 			proj := rel.Projects[0]
 			artifacts := t.TempDir()
-			plan, err := shipplan.Build(w.root, proj, shipplan.Context{Version: "1.4.0-alpha.2", Channel: "alpha", Tag: "v1.4.0-alpha.2", ArtifactsDir: artifacts})
+			plan, err := releaseplan.Build(w.root, proj, releaseplan.Context{Version: "1.4.0-alpha.2", Channel: "alpha", Tag: "v1.4.0-alpha.2", ArtifactsDir: artifacts})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -777,7 +803,7 @@ func TestShip_MigratedDockerPresetPlansTheImageSaves(t *testing.T) {
 			if !slices.Equal(saves, wantSaves) {
 				t.Errorf("plan image references = %q, want %q", saves, wantSaves)
 			}
-			var pkg []shipplan.Step
+			var pkg []releaseplan.Step
 			for _, st := range plan.Stages {
 				if st.Name == "package" {
 					pkg = st.Steps

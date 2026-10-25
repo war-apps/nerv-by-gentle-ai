@@ -14,8 +14,8 @@ import (
 	nerv "github.com/war-apps/nerv-by-gentle-ai"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/env"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/proc"
-	"github.com/war-apps/nerv-by-gentle-ai/internal/shipclone"
-	"github.com/war-apps/nerv-by-gentle-ai/internal/shipplan"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/releaseclone"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/releaseplan"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/version"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/versioning"
 )
@@ -26,13 +26,13 @@ Commands:
   version [--json]     Print the binary and plugin versions
   version next [flags] Compute the next release version with the native
                        engine (see "nerv version next --help")
-  ship [flags]         Build, test and package origin's code into a local
-                       artifact, no git writes (see "nerv ship --help")
-  ship setup --import [--dry-run]
+  release [flags]      Build, test and package origin's code into a local
+                       artifact, no git writes (see "nerv release --help")
+  release setup --import [--dry-run]
                        Import a semantic-release configuration into the
-                       ship: section (see "nerv ship setup --help")
+                       release: section (see "nerv release setup --help")
   deploy --artifact <dir> [flags]
-                       Release and deploy a ship artifact: release commit,
+                       Release and deploy a release artifact: release commit,
                        tag, push, targets, git host release
                        (see "nerv deploy --help")
   migrate [flags]      Move a repository (and, with --user, the user
@@ -45,8 +45,8 @@ Commands:
   skills [flags]       Install or verify skills (see "nerv skills --help")
 
 Maintainer commands:
-  release <preview|apply|guard> [flags]
-                       Release tooling for this repository (see "nerv release --help")
+  maintainer-release <preview|apply|guard> [flags]
+                       Release tooling for this repository (see "nerv maintainer-release --help")
 `
 
 // options bundles nerv's external effects (the embedded plugin tree, the
@@ -91,21 +91,21 @@ type options struct {
 	// real golang.org/x/term check, which a unit test cannot exercise
 	// directly (it depends on a real OS file descriptor/console).
 	IsTerminal func() bool
-	// ComputeVersions is the `nerv version next` engine (shipclone.Compute);
-	// tests inject a recorded fake. Nil means shipclone.Compute.
-	ComputeVersions func(context.Context, shipclone.ComputeOptions) ([]versioning.Result, error)
+	// ComputeVersions is the `nerv version next` engine (releaseclone.Compute);
+	// tests inject a recorded fake. Nil means releaseclone.Compute.
+	ComputeVersions func(context.Context, releaseclone.ComputeOptions) ([]versioning.Result, error)
 	// SignalContext derives the context a long-running command runs under,
 	// cancelled on SIGINT, SIGTERM and (on Unix) SIGHUP, with a stop function
 	// and the signal received (nil if none). Tests inject a controllable one.
 	// Nil means signalContext.
 	SignalContext func(context.Context) (context.Context, context.CancelFunc, func() os.Signal)
-	// OpenShipWorkspace creates the release clone of nerv ship; tests inject
-	// a fake. Nil means shipclone.New.
-	OpenShipWorkspace func(context.Context, shipclone.Options) (shipWorkspace, error)
-	// ShipSteps returns the runner of nerv ship's process steps for the
+	// OpenReleaseWorkspace creates the release clone of nerv release; tests inject
+	// a fake. Nil means releaseclone.New.
+	OpenReleaseWorkspace func(context.Context, releaseclone.Options) (releaseWorkspace, error)
+	// ReleaseSteps returns the runner of nerv release's process steps for the
 	// release clone at repoRoot, streaming to output; tests inject a
-	// recorder. Nil means a shiprun.Runner.
-	ShipSteps func(repoRoot string, output io.Writer) shipplan.StepRunner
+	// recorder. Nil means a releaserun.Runner.
+	ReleaseSteps func(repoRoot string, output io.Writer) releaseplan.StepRunner
 	// DeployProc runs nerv deploy's provider commands and the
 	// deploy-ssh-compose operations' infisical, ssh and sshpass, and
 	// DeploySleep waits between the health checks; tests inject fakes. Nil
@@ -124,7 +124,7 @@ func defaultOptions() options {
 		Getenv:          os.Getenv,
 		Stdin:           os.Stdin,
 		IsTerminal:      stdinIsTerminal,
-		ComputeVersions: shipclone.Compute,
+		ComputeVersions: releaseclone.Compute,
 		SignalContext:   signalContext,
 	}
 }
@@ -156,8 +156,8 @@ func run(args []string, stdout, stderr io.Writer, opts options) int {
 		return runApplyModels(args[1:], stdout, stderr, opts)
 	case "skills":
 		return runSkills(args[1:], stdout, stderr, opts)
-	case "ship":
-		return runShip(args[1:], stdout, stderr, opts)
+	case "release":
+		return runRelease(args[1:], stdout, stderr, opts)
 	case "deploy":
 		return runDeploy(args[1:], stdout, stderr, opts)
 	case "migrate":
@@ -169,8 +169,8 @@ func run(args []string, stdout, stderr io.Writer, opts options) int {
 	case "pipeline":
 		fmt.Fprintln(stderr, pipelineRemoved)
 		return 2
-	case "release":
-		return runRelease(args[1:], stdout, stderr, opts)
+	case "maintainer-release":
+		return runMaintainerRelease(args[1:], stdout, stderr, opts)
 	default:
 		fmt.Fprint(stderr, usage)
 		return 2
@@ -218,11 +218,11 @@ func runVersion(args []string, stdout, stderr io.Writer, opts options) int {
 // pipelineRemoved answers the removed nerv pipeline command with where each
 // of its steps went.
 const pipelineRemoved = `nerv pipeline was removed. Its steps moved:
-  validate and test: nerv ship (stages of each project in the ship: section)
-  docker and release: nerv ship, then nerv deploy
+  validate and test: nerv release (stages of each project in the release: section)
+  docker and release: nerv release, then nerv deploy
   deploy: the deploy-ssh-compose target of the deploy: section (nerv deploy)
   sync: not ported yet
-Move the pipeline: section of .ai-workflow.yml with nerv migrate, or by hand (/ship:setup and /deploy:setup).`
+Move the pipeline: section of .ai-workflow.yml with nerv migrate, or by hand (/release:setup and /deploy:setup).`
 
 func pluginFS() fs.FS {
 	return nerv.PluginFS()

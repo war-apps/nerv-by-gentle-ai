@@ -11,7 +11,7 @@
 //	    commit_message: "chore(release): ${nextRelease.version} [skip ci]\n\n${nextRelease.notes}"
 //	    remote: origin
 //
-// Like internal/shipconfig it cuts the top-level block out of the file and
+// Like internal/releaseconfig it cuts the top-level block out of the file and
 // parses it strictly: unknown keys are refused. Which config keys a target
 // accepts is its provider manifest's business (internal/deployrun).
 package deployconfig
@@ -25,8 +25,8 @@ import (
 	"strings"
 
 	"github.com/war-apps/nerv-by-gentle-ai/internal/paths"
-	"github.com/war-apps/nerv-by-gentle-ai/internal/shipconfig"
-	"github.com/war-apps/nerv-by-gentle-ai/internal/shipconfig/yamlsection"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/releaseconfig"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/releaseconfig/yamlsection"
 )
 
 // ErrNotConfigured is returned by Load when the repository has no
@@ -121,7 +121,7 @@ func Load(repoRoot string) (*Deploy, error) {
 }
 
 func parse(data []byte) (*Deploy, error) {
-	if msg := shipconfig.RemovedPipeline(data); msg != "" {
+	if msg := releaseconfig.RemovedPipeline(data); msg != "" {
 		return nil, errors.New(msg)
 	}
 	node, err := yamlsection.Locate(data, "deploy")

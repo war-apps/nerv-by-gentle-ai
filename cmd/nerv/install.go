@@ -24,12 +24,12 @@ extension plugins named by --with, keeps the ones already enabled up to
 date, and, when stdin is a terminal, offers the others, in this order:
   1. the task plugin (task@nerv, the /task:* commands);
   2. its providers (task-<name>@nerv), only once task is installed;
-  3. the ship plugin (ship@nerv: nerv ship, the version engine);
-  4. the deploy plugin (deploy@nerv: nerv deploy), only once ship is
+  3. the release plugin (release@nerv: nerv release, the version engine);
+  4. the deploy plugin (deploy@nerv: nerv deploy), only once release is
      installed;
   5. the deploy providers (deploy-<name>@nerv, such as deploy-github and
      deploy-ssh-compose), only once deploy is installed.
-Requirements: deploy requires ship, a task provider requires task,
+Requirements: deploy requires release, a task provider requires task,
 and a deploy provider requires deploy; each is offered only once what it
 requires is installed or chosen. A plugin named in --with brings what it
 requires with it; a requirement this nerv does not ship is refused.
@@ -44,7 +44,7 @@ Flags:
   --no-skills           Skip installing skills
   --no-configure        Skip the closing wizard/hint entirely
   --with <names>        Comma-separated extension plugins to install, such as
-                        task,task-<provider>,ship,deploy,deploy-<provider>
+                        task,task-<provider>,release,deploy,deploy-<provider>
                         (each brings what it requires)
 `
 

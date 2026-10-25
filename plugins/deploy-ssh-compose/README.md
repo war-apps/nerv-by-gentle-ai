@@ -24,7 +24,7 @@ scopes are in `deploy-provider.yaml` and in `docs/deploy.md`.
 ## Install
 
 ```sh
-nerv install --with ship,deploy,deploy-ssh-compose
+nerv install --with release,deploy,deploy-ssh-compose
 ```
 
 Then add a target with `provider: ssh-compose` to the `deploy:` section of

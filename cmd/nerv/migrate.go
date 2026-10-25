@@ -27,10 +27,11 @@ Moves a repository (and, with --user, your user configuration) from nerv
     otherwise;
   - tasks.rounding_minutes moves to tasks.providers.teamwork, and the
     removed jira and github-projects providers are dropped;
-  - release: becomes ship:, each project's presets become build.mode:
-    script with the commands 4.2.0 ran (a TODO(nerv migrate) comment marks
+  - the 4.2.0 release: section becomes today's release: section (in
+    .ai-workflow.yml too, told apart by its 4.2.0 keys), each project's
+    presets become build.mode: script with the commands 4.2.0 ran (a TODO(nerv migrate) comment marks
     what has no exact equivalent), and the semantic-release configuration
-    is imported (as nerv ship setup --import does);
+    is imported (as nerv release setup --import does);
   - pipeline: becomes deploy: (one deploy-ssh-compose target per
     environment), with deploy.host github when origin is on GitHub;
   - each in-flight FULL openspec/changes/<change>/ becomes

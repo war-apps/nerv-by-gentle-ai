@@ -8,7 +8,7 @@ import (
 	"github.com/war-apps/nerv-by-gentle-ai/internal/plugin"
 )
 
-// S1: deploy requires ship; the deploy providers require deploy; the task
+// S1: deploy requires release; the deploy providers require deploy; the task
 // providers require task.
 func TestExtensions_EmbeddedRequirements(t *testing.T) {
 	exts, err := plugin.Extensions(nerv.ExtensionsFS())
@@ -17,7 +17,7 @@ func TestExtensions_EmbeddedRequirements(t *testing.T) {
 	}
 	want := map[string][]string{
 		"task": nil, "task-teamwork": {"task"},
-		"ship": nil, "deploy": {"ship"}, "deploy-github": {"deploy"}, "deploy-ssh-compose": {"deploy"},
+		"release": nil, "deploy": {"release"}, "deploy-github": {"deploy"}, "deploy-ssh-compose": {"deploy"},
 	}
 	for _, e := range exts {
 		req, ok := want[e.Name]
@@ -34,7 +34,7 @@ func TestExtensions_EmbeddedRequirements(t *testing.T) {
 	}
 }
 
-// S1: the suggestion order is task and its providers, then ship, then
+// S1: the suggestion order is task and its providers, then release, then
 // deploy, then the deploy providers; anything else after, by name.
 func TestSuggestionOrder(t *testing.T) {
 	exts, err := plugin.Extensions(nerv.ExtensionsFS())
@@ -45,16 +45,16 @@ func TestSuggestionOrder(t *testing.T) {
 	for _, e := range plugin.SuggestionOrder(exts) {
 		got = append(got, e.Name)
 	}
-	want := []string{"task", "task-teamwork", "ship", "deploy", "deploy-github", "deploy-ssh-compose"}
+	want := []string{"task", "task-teamwork", "release", "deploy", "deploy-github", "deploy-ssh-compose"}
 	if !slices.Equal(got, want) {
 		t.Errorf("SuggestionOrder = %v, want %v", got, want)
 	}
-	other := []plugin.Extension{{Name: "zeta"}, {Name: "deploy", Requires: []string{"ship"}}, {Name: "alpha"}, {Name: "ship"}}
+	other := []plugin.Extension{{Name: "zeta"}, {Name: "deploy", Requires: []string{"release"}}, {Name: "alpha"}, {Name: "release"}}
 	got = nil
 	for _, e := range plugin.SuggestionOrder(other) {
 		got = append(got, e.Name)
 	}
-	if want := []string{"ship", "deploy", "alpha", "zeta"}; !slices.Equal(got, want) {
+	if want := []string{"release", "deploy", "alpha", "zeta"}; !slices.Equal(got, want) {
 		t.Errorf("SuggestionOrder = %v, want %v", got, want)
 	}
 }

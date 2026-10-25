@@ -68,8 +68,8 @@ The marketplace ships seven plugins:
 | `nerv@nerv` | yes | Core: adapts gentle-ai's agents to the NERV pipeline. It holds no task, timer or tracker logic. |
 | `task@nerv` | no | The task plugin: the `/task:*` commands, local timers, and the `task:dispatcher` agent that turns pipeline events into tracker operations. |
 | `task-teamwork@nerv` | no | A task provider for Teamwork, shipped as its own plugin with a `provider.yaml` manifest. |
-| `ship@nerv` | no | The ship plugin: `/ship:version`, `/ship:setup`, `/ship:build`, the `ship:versioner` and `ship:builder` agents. A native version engine (no semantic-release) and a build in `compose` or `script` mode that leaves a local artifact; it never writes to git. |
-| `deploy@nerv` | no | The deploy plugin (requires `ship`): `/deploy:run`, `/deploy:setup` and the `deploy:deployer` agent. It turns an artifact into a release: release commit, tag, push, targets, git host release. |
+| `release@nerv` | no | The release plugin: `/release:version`, `/release:setup`, `/release:build`, the `release:versioner` and `release:builder` agents. A native version engine (no semantic-release) and a build in `compose` or `script` mode that leaves a local artifact; it never writes to git. |
+| `deploy@nerv` | no | The deploy plugin (requires `release`): `/deploy:run`, `/deploy:setup` and the `deploy:deployer` agent. It turns an artifact into a release: release commit, tag, push, targets, git host release. |
 | `deploy-github@nerv` | no | A deploy git host for GitHub releases (`gh`), with a `deploy-provider.yaml` manifest. |
 | `deploy-ssh-compose@nerv` | no | A deploy target: pushes the artifact's images and updates the containers over SSH with the host's compose script. |
 
@@ -81,10 +81,10 @@ nothing, asks no task question and logs nothing. See
 [docs/integration.md](docs/integration.md#task-plugin) for the event
 table, the envelope, the per-event switches and `/task:replay`.
 
-The ship and deploy plugins are independent of the orchestrator: install
-them with `nerv install --with ship,deploy,deploy-github` (add
-`deploy-ssh-compose` for SSH and compose hosts), run `/ship:setup` and
-`/deploy:setup` once, then `/ship:build` leaves a local artifact in
+The release and deploy plugins are independent of the orchestrator: install
+them with `nerv install --with release,deploy,deploy-github` (add
+`deploy-ssh-compose` for SSH and compose hosts), run `/release:setup` and
+`/deploy:setup` once, then `/release:build` leaves a local artifact in
 `.nerv/artifacts/<project>/<version>/` and `/deploy:run` releases it. Both
 always rehearse with a dry run and act only after your explicit yes. A
 repository set up with nerv 4.2.0 migrates with `nerv migrate` (see
@@ -170,9 +170,9 @@ Flags: `--no-configure` (skip the closing wizard/hint entirely),
 `--no-skills` (skip installing skills), `--require-gentle-ai` (fail with
 exit 1 when gentle-ai is missing or not 4.x), `--with <names>` (install
 extension plugins such as `task,task-teamwork` or
-`ship,deploy,deploy-github`; in a terminal, install offers the task plugin,
-its providers, the ship plugin, the deploy plugin, then the deploy
-providers; `deploy` requires `ship`).
+`release,deploy,deploy-github`; in a terminal, install offers the task plugin,
+its providers, the release plugin, the deploy plugin, then the deploy
+providers; `deploy` requires `release`).
 
 ### Updating
 
@@ -362,22 +362,22 @@ example YAML, and how to configure per-role models and effort (wizard,
   configuration schema and how to configure per-role models and effort.
 - [docs/releases.md](docs/releases.md) — versioning, release channels,
   and how to cut a release.
-- [docs/release-commands.md](docs/release-commands.md) — the ship plugin
-  for your own repositories: `nerv version next` / `/ship:version` (the next
+- [docs/release-commands.md](docs/release-commands.md) — the release plugin
+  for your own repositories: `nerv version next` / `/release:version` (the next
   semantic version of a repo or of each monorepo project, from the native
-  engine), `nerv ship` / `/ship:build` (build, test and package what is on
-  origin into a local artifact) and the `ship:` section, which
-  `/ship:setup` writes interactively (importing an existing semantic-release
-  config with `nerv ship setup --import`).
+  engine), `nerv release` / `/release:build` (build, test and package what is on
+  origin into a local artifact) and the `release:` section, which
+  `/release:setup` writes interactively (importing an existing semantic-release
+  config with `nerv release setup --import`).
 - [docs/deploy.md](docs/deploy.md) — the deploy plugin: `nerv deploy` /
   `/deploy:run` (release commit, tag, push, targets, git host release from
   an artifact), the `deploy:` section (`/deploy:setup`) and the provider
   contract (`deploy-github`, `deploy-ssh-compose`).
 - [docs/pipeline.md](docs/pipeline.md) — migrating from the removed `nerv
-  pipeline` and its `pipeline:` section to ship and deploy (`nerv migrate`).
+  pipeline` and its `pipeline:` section to release and deploy (`nerv migrate`).
 - [docs/migration.md](docs/migration.md) — `nerv migrate`: moving a
   repository and the user configuration from nerv 4.2.0 (configuration
-  files, `ship:` and `deploy:`, the semantic-release import, openspec to
+  files, `release:` and `deploy:`, the semantic-release import, openspec to
   ODD, the plugins to install).
 - [docs/troubleshooting.md](docs/troubleshooting.md) — known limitations
   and troubleshooting.
