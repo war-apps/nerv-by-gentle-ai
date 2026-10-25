@@ -1,6 +1,6 @@
 {
   "name": "deploy-github",
-  "version": "5.0.0",
+  "version": "5.1.0",
   "description": "GitHub git host for nerv deploy: creates the GitHub release of a deployed tag with the gh CLI",
   "author": { "name": "Walter Rodriguez" }
 }
