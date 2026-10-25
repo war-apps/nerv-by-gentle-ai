@@ -39,14 +39,14 @@ yaml.v3, so a flow mapping loses its inner spaces: `{ a: 1 }` becomes
 
 ### Release
 
-Each 4.2.0 project becomes a project of today's `release:` section with `build.mode: script`.
+Each 4.2.0 project becomes a project of today's `release:` section with `build: bash`.
 Its presets turn into the stage commands they ran in 4.2.0:
 
 - **dotnet**:
   - `dotnet restore`, `dotnet format --verify-no-changes`, `dotnet build -c <configuration> --no-restore -p:Version="$NERV_RELEASE_VERSION"` and `dotnet test -c <configuration> --no-build`;
   - each with `--disable-build-servers` and the build-server-safe environment;
-  - `project_file` becomes `build.version_files`;
-  - `coverage_threshold` becomes `build.coverage.line`, with the test collecting coverage into `$NERV_RELEASE_ARTIFACTS_DIR/coverage`.
+  - `project_file` becomes the project's `version_files`;
+  - `coverage_threshold` becomes the project's `coverage.line`, with the test collecting coverage into `$NERV_RELEASE_ARTIFACTS_DIR/coverage`.
 - **node**: the frozen-lockfile install (`npm ci`, `pnpm install --frozen-lockfile`, `yarn install --immutable` or `--frozen-lockfile`), then the `lint`, `build` and `test` scripts that `package.json` defines.
 - **docker**:
   - one `docker build` per image, with the same tags (the version; the channel off the default channel; `latest` on it), build arguments and labels;
@@ -56,7 +56,7 @@ Its presets turn into the stage commands they ran in 4.2.0:
 
 A stage command the project wrote itself still replaces the presets', as it
 did in 4.2.0. The docker preset's builds go into `stages.package`, and every
-image 4.2.0 pushed becomes a `build.images` entry `{ name, tags }` with its
+image 4.2.0 pushed becomes an `images` entry of the project `{ name, tags }` with its
 4.2.0 tag kinds (`version` always, the channel off the default channel,
 `latest` on it): `nerv release` tags and saves every reference into the
 artifact after the package commands and records them, and the
@@ -94,7 +94,7 @@ Reported, with no equivalent:
 - `pipeline.sync`: there is no back-merge after a release;
 - `pipeline.deploy.selection: branches`: a target deploys its environment when the environment's `DOCKER_IMAGE_VERSION` points at the release; choose targets with `nerv deploy --target`;
 - `pipeline.registry`'s credential variables: run `docker login` before `nerv deploy`;
-- `pipeline.images`: the project's `build.images`, saved into the artifact by nerv release and pushed by the `deploy-ssh-compose` publish;
+- `pipeline.images`: the project's `images`, saved into the artifact by nerv release and pushed by the `deploy-ssh-compose` publish;
 - `pipeline.dotnet`: the release stages already cover validate and test.
 
 ### ODD

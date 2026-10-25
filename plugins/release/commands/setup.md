@@ -1,5 +1,5 @@
 ---
-description: Set up the release section of .ai-workflow.yml interactively — imports an existing semantic-release config with nerv release setup --import, detects the projects, compose files and scripts, asks each project's build mode (compose or script) and its stage commands or compose file, writes the section and validates it with nerv version next
+description: Set up the release section of .ai-workflow.yml interactively — imports an existing semantic-release config with nerv release setup --import, detects the projects, compose files and scripts, asks each project's build provider (docker-compose or bash) and its stage commands or compose file, writes the section and validates it with nerv version next
 argument-hint: [--project <name>]
 ---
 
@@ -56,7 +56,7 @@ Look for `package.json` `release`, `.releaserc`, `.releaserc.json`,
 (`.releaserc.js`, `.cjs`, `.mjs`, `release.config.*`).
 
 - **A JSON or YAML config:** run `nerv release setup --import --dry-run`. It
-  prints the translated engine keys (`branches`, `release_rules`,
+  prints the translated engine keys under `release.providers.conventional-commits` (`branches`, `release_rules`,
   `note_keywords`, `tag_format`, `changelog`) and one warning per part it
   cannot translate (the `npm` and `exec` plugins, `presetConfig.types`,
   `extends`, maintenance branches, an invalid prerelease branch). Show the
@@ -84,11 +84,11 @@ built or run.
 | Look at | To learn |
 |---|---|
 | `.github/workflows/*.yml` | The build, test, coverage and package commands CI runs (the script stages), with their flags (e.g. `-warnaserror`); docker build steps (image names, Dockerfiles, context, build args). |
-| `docker-compose*.yml`, `compose*.yaml` | Whether compose builds the project: its services with a `build:` key and their `image:` names (`build.images`), and a service that runs the tests (`build.test_service`). |
+| `docker-compose*.yml`, `compose*.yaml` | Whether compose builds the project: its services with a `build:` key and their `image:` names (the project's `images`), and a service that runs the tests (`providers.docker-compose.test_service`). |
 | `*.csproj`, `*.sln`, `*.slnx` | dotnet projects: the deployable one, packable libraries, test projects (not release projects). |
 | `Dockerfile`, `*.Dockerfile`, `docker/` | Images and their `ARG`s (e.g. `APP_VERSION`). |
 | `package.json` (each project) | Scripts `lint` / `build` / `test`; the package manager (`packageManager`, else the lockfile) for the restore command. |
-| Release scripts (`scripts/*`, exec commands, CI steps) | Steps release covers (a bump-csproj script is `build.version_files`), steps that become stages, and the rest (hooks). Publishing steps (docker push, nuget push, npm publish) belong to deploy. |
+| Release scripts (`scripts/*`, exec commands, CI steps) | Steps release covers (a bump-csproj script is `version_files`), steps that become stages, and the rest (hooks). Publishing steps (docker push, nuget push, npm publish) belong to deploy. |
 | Layout and `git log --format=%s -200` | Monorepo or not, and the conventional-commit scopes used per folder. |
 
 ## 4. Propose the complete section
@@ -101,18 +101,21 @@ per non-obvious choice. Rules:
   when the log uses scopes other than the project name, and `shared_paths`
   for shared build files. Keep the default `tag_format` unless the existing
   tags use another one.
-- **`build.mode`** for every project; it is required and has no default,
+- **`build`**, the build provider, for every project (or once as
+  `release.build` when all share it); it is required and has no default,
   and there are no presets.
-  - `compose`: the compose `file`, the `test_service` and the `images` it
-    builds, with `${version}` where the tag is the version. Only `restore`,
-    `lint` and `coverage` stages may be written.
-  - `script`: every stage command the project uses, copied from CI with its
+  - `docker-compose`: `providers.docker-compose.file` and `test_service`
+    (under `release.providers` when shared, else the project's
+    `providers`) and the project's `images` it builds, with `${version}`
+    where the tag is the version. Only `restore`, `lint` and `coverage`
+    stages may be written.
+  - `bash`: every stage command the project uses, copied from CI with its
     flags (`restore`, `lint`, `build`, `test`, `coverage`, `package`). The
     `package` stage writes what the artifact keeps into
     `$NERV_RELEASE_OUTPUTS_DIR` (`dotnet pack -o "$NERV_RELEASE_OUTPUTS_DIR"`,
     `docker save -o "$NERV_RELEASE_OUTPUTS_DIR/<name>.tar" <image>` after a
     `docker build`). Never a publish step.
-- **`build.version_files`**, **`build.coverage`**, **`build.shared_host`**,
+- **`version_files`**, **`coverage`**, **`providers.bash.shared_host`**,
   **`submodules`**, **hooks** and **`depends_on`** as the skill's §2 says.
   A pinned .NET SDK becomes a `before_restore` hook writing `global.json`.
 - **A 4.2.0 `release:` block**: carry its projects, paths, scopes,
@@ -126,11 +129,11 @@ Ask ONE question at a time, each with a recommended default, then STOP and
 wait for the answer before the next one. Never assume an answer. Always ask,
 for each project, unless the user already said it:
 
-- its **build mode**, `compose` or `script` (recommend the one detection
-  points to);
-- in `compose` mode, the **compose file**, the **test service** and the
+- its **build provider**, `docker-compose` or `bash` (recommend the one
+  detection points to);
+- with `docker-compose`, the **compose file**, the **test service** and the
   **image names**, when detection does not show them;
-- in `script` mode, the **command of each stage** the project uses, when CI
+- with `bash`, the **command of each stage** the project uses, when CI
   does not show it, and what the `package` stage must leave in the artifact.
 
 Other typical questions: coverage floors, `depends_on` and its `bump`,

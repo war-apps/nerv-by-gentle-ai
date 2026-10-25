@@ -1,7 +1,6 @@
 package releaseconfig
 
 import (
-	"errors"
 	"fmt"
 	"math"
 	"regexp"
@@ -10,7 +9,6 @@ import (
 	"time"
 
 	"github.com/war-apps/nerv-by-gentle-ai/internal/releaseconfig/yamlsection"
-	"github.com/war-apps/nerv-by-gentle-ai/internal/versioning"
 )
 
 // Stages are the pipeline stages, in run order.
@@ -27,8 +25,7 @@ var Shells = []string{"node", "pwsh", "bash"}
 // Bumps are the dependency bump levels.
 var Bumps = []string{"patch", "minor", "major", "none"}
 
-// BuildArgPlaceholders are the placeholders a compose-mode build.images
-// reference may use: ${version}, ${channel} and ${tag}.
+// BuildArgPlaceholders are the placeholders an images reference may use: ${version}, ${channel} and ${tag}.
 var BuildArgPlaceholders = []string{"version", "channel", "tag"}
 
 // reservedEnvPrefix is the prefix of the variables NERV passes to hooks.
@@ -42,8 +39,7 @@ var (
 )
 
 // finalizePaths runs after validation: it rewrites every path as a clean
-// forward-slash path and derives the default changelog from the (now known
-// to be safe) project path.
+// forward-slash path.
 func (r *Release) finalizePaths() {
 	for i := range r.Projects {
 		p := &r.Projects[i]
@@ -51,19 +47,14 @@ func (r *Release) finalizePaths() {
 		for j := range p.SharedPaths {
 			p.SharedPaths[j] = normalize(p.SharedPaths[j])
 		}
-		if p.Changelog == "" {
-			p.Changelog = r.defaultChangelog(p.Path)
-		} else {
+		if p.Changelog != "" {
 			p.Changelog = normalize(p.Changelog)
 		}
-		if b := p.Build; b != nil {
-			b.File = normalize(b.File)
-			for j := range b.VersionFiles {
-				b.VersionFiles[j] = normalize(b.VersionFiles[j])
-			}
-			if b.Coverage != nil {
-				b.Coverage.Dir = normalize(b.Coverage.Dir)
-			}
+		for j := range p.VersionFiles {
+			p.VersionFiles[j] = normalize(p.VersionFiles[j])
+		}
+		if p.Coverage != nil {
+			p.Coverage.Dir = normalize(p.Coverage.Dir)
 		}
 		for stage, c := range p.Stages {
 			c.Workdir = normalize(c.Workdir)
@@ -83,11 +74,17 @@ func normalize(p string) string { return yamlsection.NormalizePath(p) }
 // validate returns one path-qualified message per problem.
 func (r *Release) validate() []string {
 	var v validator
-	// The engine settings are the version engine's own, checked by it.
-	var engine *versioning.ConfigError
-	if err := r.engineSettings().WithDefaults().Validate(); errors.As(err, &engine) {
-		for _, p := range engine.Problems {
-			v.addf("%s.%s", SectionKey, p)
+	// The providers' keys are each provider's own, checked when it is
+	// called; only the names are the section's.
+	if r.Version != "" && !nameRe.MatchString(r.Version) {
+		v.addf("release.version: %q is not a provider name", r.Version)
+	}
+	if r.Build != "" && !nameRe.MatchString(r.Build) {
+		v.addf("release.build: %q is not a provider name", r.Build)
+	}
+	for _, name := range sortedKeys(r.Providers) {
+		if !nameRe.MatchString(name) {
+			v.addf("release.providers.%s: not a provider name", name)
 		}
 	}
 
@@ -131,7 +128,14 @@ func (r *Release) validate() []string {
 				v.addf("%s.scopes[%d]: %q is not a valid conventional-commit scope", at, j, s)
 			}
 		}
-		v.checkTagFormat(at, p, tagOwner)
+		if p.TagFormat != "" {
+			v.checkTagFormat(at, p, tagOwner)
+		}
+		for _, name := range sortedKeys(p.Providers) {
+			if !nameRe.MatchString(name) {
+				v.addf("%s.providers.%s: not a provider name", at, name)
+			}
+		}
 
 		seen := map[string]bool{}
 		for j, d := range p.DependsOn {

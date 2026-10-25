@@ -55,7 +55,7 @@ func TestLoad_NotConfigured(t *testing.T) {
 		{"no .ai-workflow.yml", func(t *testing.T) string { return t.TempDir() }},
 		// The old file is never read as configuration (nerv migrate moves it).
 		{"only the old .nerv/nerv.yaml", func(t *testing.T) string {
-			return writeLegacyConfig(t, "release:\n  projects:\n    - name: api\n      path: .\n      build: { mode: script }\n")
+			return writeLegacyConfig(t, "release:\n  projects:\n    - name: api\n      path: .\n      build: bash\n")
 		}},
 		{".ai-workflow.yml without release", func(t *testing.T) string {
 			return writeConfig(t, "enabled: true\nmodels:\n  misato: { model: fable }\n")
@@ -131,7 +131,8 @@ func TestLoad_MergeKeys(t *testing.T) {
     - &base
       name: api
       path: api
-      build: { mode: script, version_files: [api/Api.csproj] }
+      build: bash
+      version_files: [api/Api.csproj]
       hooks:
         prepare:
           - &bump { run: scripts/bump.sh, shell: pwsh }
@@ -147,13 +148,13 @@ func TestLoad_MergeKeys(t *testing.T) {
       path: cli
 `)
 	worker, cli := rel.Projects[1], rel.Projects[2]
-	if worker.Build == nil || len(worker.Build.VersionFiles) != 1 || worker.Build.VersionFiles[0] != "api/Api.csproj" || worker.Path != "worker" {
+	if worker.Build != "bash" || len(worker.VersionFiles) != 1 || worker.VersionFiles[0] != "api/Api.csproj" || worker.Path != "worker" {
 		t.Errorf("worker = %+v", worker)
 	}
 	if got := worker.Stages["test"]; got.Run != "scripts/test.sh" || got.Shell != "pwsh" {
 		t.Errorf("worker.stages.test = %+v", got)
 	}
-	if cli.Build == nil || cli.TagFormat != "cli-v${version}" {
+	if cli.Build != "bash" || cli.Path != "cli" {
 		t.Errorf("cli = %+v", cli)
 	}
 
@@ -335,7 +336,7 @@ func TestLoad_UnknownFieldsReportedWithOtherProblems(t *testing.T) {
 		"release.projects[0].pth: unknown field",
 		"release.projects[0].path: required",
 		"release.projects[0].presets: the presets were removed",
-		`release.projects[0].build.mode: unknown mode "make"`,
+		"release.projects[0].build.mode: build is the build provider's name now",
 	} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("error %q lacks %q", err, want)
@@ -353,9 +354,6 @@ release:
 tasks:
   provider: none
 `)
-	if rel.TagFormat != releaseconfig.DefaultTagFormat || rel.Changelog.File != releaseconfig.DefaultChangelog {
-		t.Errorf("section defaults = tag_format %q, changelog.file %q", rel.TagFormat, rel.Changelog.File)
-	}
 	if len(rel.Projects) != 1 {
 		t.Fatalf("projects = %d, want 1", len(rel.Projects))
 	}
@@ -363,11 +361,10 @@ tasks:
 	if p.Path != "." {
 		t.Errorf("path = %q, want .", p.Path)
 	}
-	if p.TagFormat != releaseconfig.DefaultTagFormat {
-		t.Errorf("tag_format = %q, want %s", p.TagFormat, releaseconfig.DefaultTagFormat)
-	}
-	if p.Changelog != releaseconfig.DefaultChangelog {
-		t.Errorf("changelog = %q, want %s", p.Changelog, releaseconfig.DefaultChangelog)
+	// The tag format and the changelog are the version engine's defaults
+	// (internal/releaseplan's engine tests).
+	if p.TagFormat != "" || p.Changelog != "" {
+		t.Errorf("tag_format %q, changelog %q, want them left to the engine", p.TagFormat, p.Changelog)
 	}
 	if !reflect.DeepEqual(p.Scopes, []string{"app"}) {
 		t.Errorf("scopes = %v, want [app]", p.Scopes)
@@ -390,8 +387,8 @@ func TestLoad_MonorepoDefaults(t *testing.T) {
 	api, lib := rel.Projects[0], rel.Projects[1]
 	checks := []struct{ field, got, want string }{
 		{"api.path", api.Path, "src/Api"},
-		{"api.tag_format", api.TagFormat, "api-v${version}"},
-		{"api.changelog", api.Changelog, "src/Api/CHANGELOG.md"},
+		{"api.tag_format", api.TagFormat, ""},
+		{"api.changelog", api.Changelog, ""},
 		{"api.depends_on[0].bump", api.DependsOn[0].Bump, releaseconfig.DefaultBump},
 		{"lib.path", lib.Path, "src/Lib"},
 		{"lib.tag_format", lib.TagFormat, "lib@${version}"},
@@ -419,7 +416,7 @@ func TestLoad_CommandDefaults(t *testing.T) {
   projects:
     - name: api
       path: .
-      build: { mode: script }
+      build: bash
       stages:
         test: { run: "dotnet test --no-build" }
       hooks:
@@ -482,7 +479,7 @@ func TestLoad_DocumentedExample(t *testing.T) {
 	}
 	rel := mustLoad(t, example)
 	p := rel.Projects[0]
-	if p.Name != "api" || p.TagFormat != "v${version}" || p.Build == nil || p.Build.Mode == "" {
+	if p.Name != "api" || rel.BuildProvider(p) == "" {
 		t.Errorf("documented example loaded as %+v", p)
 	}
 }
@@ -491,10 +488,8 @@ func TestLoad_DocumentedExample(t *testing.T) {
 // constant must be a deliberate change to docs/release-commands.md too.
 func TestDefaults_MatchDocs(t *testing.T) {
 	want := map[string]string{
-		releaseconfig.DefaultTagFormat: "v${version}",
-		releaseconfig.DefaultChangelog: "CHANGELOG.md",
-		releaseconfig.DefaultBump:      "patch",
-		releaseconfig.DefaultShell:     "bash",
+		releaseconfig.DefaultBump:  "patch",
+		releaseconfig.DefaultShell: "bash",
 	}
 	doc, err := os.ReadFile(filepath.Join("..", "..", "docs", "release-commands.md"))
 	if err != nil {
@@ -521,7 +516,7 @@ func TestLoad_ValidationErrors(t *testing.T) {
 		{"release not a mapping", "release: [a]\n", "release: must be a mapping"},
 		{"unknown top-level release key", "release:\n  projets: []\n", `release.projets: unknown field`},
 		{"unknown project key", one + "      dockr: {}\n", `release.projects[0].dockr: unknown field`},
-		{"unknown nested key", one + "      build:\n        mod: script\n", `release.projects[0].build.mod: unknown field`},
+		{"unknown nested key", one + "      coverage:\n        lin: 80\n", `release.projects[0].coverage.lin: unknown field`},
 		{"wrong type", one + "      scopes: api\n", "release: line 5"},
 		{"missing name", "release:\n  projects:\n    - path: .\n", `release.projects[0].name: required`},
 		{"bad name chars", "release:\n  projects:\n    - name: My_Api\n      path: .\n", `release.projects[0].name: "My_Api" must match [a-z0-9][a-z0-9-]*`},
@@ -537,6 +532,7 @@ func TestLoad_ValidationErrors(t *testing.T) {
 		{"tag format without version", one + "      tag_format: release-1\n", `release.projects[0].tag_format: "release-1" must contain ${version}`},
 		{"tag format unknown placeholder", one + "      tag_format: \"${name}-${version}\"\n", `release.projects[0].tag_format: unknown placeholder ${name}`},
 		{"duplicate tag format", "release:\n  projects:\n    - name: a\n      path: a\n      tag_format: v${version}\n    - name: b\n      path: b\n      tag_format: v${version}\n", `release.projects[1].tag_format: "v${version}" is already used by project "a"`},
+		{"engine key in the section", "release:\n  tag_format: v1\n  projects:\n    - name: a\n      path: .\n", `release.tag_format: moved to release.providers.conventional-commits.tag_format`},
 		{"unknown dependency", one + "      depends_on:\n        - project: lib2\n", `release.projects[0].depends_on[0].project: unknown project "lib2"`},
 		{"missing dependency project", one + "      depends_on:\n        - bump: minor\n", `release.projects[0].depends_on[0].project: required`},
 		{"self dependency", one + "      depends_on:\n        - project: lib\n", `release.projects[0].depends_on[0].project: a project cannot depend on itself`},
@@ -555,7 +551,6 @@ func TestLoad_ValidationErrors(t *testing.T) {
 		{"zero timeout", one + "      stages:\n        build: { run: x, timeout: 0s }\n", `release.projects[0].stages.build.timeout: "0s" must be positive`},
 		{"negative timeout", one + "      stages:\n        build: { run: x, timeout: -5m }\n", `release.projects[0].stages.build.timeout: "-5m" must be positive`},
 		{"unknown bump", one + "    - name: a\n      path: a\n      depends_on: [{ project: lib, bump: huge }]\n", `release.projects[1].depends_on[0].bump: unknown bump "huge" (want patch, minor, major or none)`},
-		{"engine tag format", "release:\n  tag_format: v1\n  projects:\n    - name: a\n      path: .\n      tag_format: a-${version}\n", `release.tag_format: "v1" must contain ${version} exactly once`},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

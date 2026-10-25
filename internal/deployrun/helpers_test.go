@@ -124,7 +124,7 @@ func newEnv(t *testing.T) *world {
 	dir, err := artifact.Write(e.repo, artifact.Input{
 		Manifest: artifact.Manifest{
 			Project: "repo", Version: "1.0.0-alpha.1", Channel: "alpha", Tag: "v1.0.0-alpha.1",
-			BaseCommit: e.base, Branch: "develop", BuildMode: "compose", Images: []string{"reg.example/app:1.0.0-alpha.1"},
+			BaseCommit: e.base, Branch: "develop", BuildProvider: "docker-compose", Images: []string{"reg.example/app:1.0.0-alpha.1"},
 		},
 		Notes: notes, ChangelogSection: "## 1.0.0-alpha.1 (2026-10-23)\n\n* first\n",
 		Outputs:      []artifact.OutputSource{{Path: "app.tar", Kind: artifact.KindImageTar, From: src}},

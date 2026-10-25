@@ -5,9 +5,10 @@ contract:
 
 - An **extension** (`task`, `release`, `deploy`) adds a capability to the
   core. It talks to the core through its `extension.yaml`.
-- A **provider** (`task-teamwork`, `deploy-github`, `deploy-ssh-compose`)
-  implements one slot of an extension: a tracker, a git host, a deploy
-  target. It talks to its extension through its `provider.yaml`.
+- A **provider** (`task-teamwork`, `release-conventional-commits`,
+  `release-docker-compose`, `release-bash`, `deploy-github`,
+  `deploy-ssh-compose`) implements one slot of an extension: a tracker, a
+  version engine, a build, a git host, a deploy target. It talks to its extension through its `provider.yaml`.
 
 Every extension uses the same `extension.yaml` schema, and every provider,
 of every extension, uses the same `provider.yaml` schema. Both share the
@@ -27,7 +28,12 @@ one manifest at its root:
 | `<extension>-<provider>` | `provider.yaml` | `plugins/deploy-github/provider.yaml` |
 
 A provider requires its extension: `nerv install --with deploy-github`
-also installs `deploy` (and `release`, which `deploy` requires). A provider
+also installs `deploy` (and `release`, which `deploy` requires). An
+extension with `providers: bundled` brings every provider it ships with
+it: installing `release` installs `release-conventional-commits`,
+`release-docker-compose` and `release-bash`, never asked; with
+`providers: suggested` (task) each provider is offered after its
+extension. A provider
 whose extension is not shipped, whose folder is not
 `<extension>-<provider>`, or that does not fit its slot is refused.
 
@@ -37,6 +43,7 @@ whose extension is not shipped, whose folder is not
 name: deploy                   # the folder's name
 contract_version: 1
 suggest_order: 3               # nerv install suggests task (1), release (2), deploy (3); 0 or unset comes last, by name
+providers: bundled             # bundled: every provider shipped is installed with the extension, never asked; suggested (the default): each is offered after it
 requires: [release]            # extensions installed with this one
 runtime: exec                  # exec: the core runs argv; agent: the core launches the agent entry
 argv: ["{nerv}", deploy]       # runtime exec; runtime agent names `agent: <plugin>:<agent>` instead
@@ -58,9 +65,18 @@ slots:
   extension that lists it; an extension with `runtime: agent` is reached by
   launching its `agent` entry. Today only `task` subscribes, through
   `task:dispatcher`.
-- **`cardinality`**: `one` provider at a time (deploy's `host`), `many`
-  active at once (task's `provider`), or one per configured target
-  (`per-target`, deploy's `target`).
+- **`providers`**: how `nerv install` installs the extension's providers:
+  `bundled` installs every provider the tree ships for it together with
+  the extension, without a prompt (each listed as `Adding <provider>
+  (bundled with <extension>)`); `suggested`, the default, offers each one
+  after its extension. Any other value is refused.
+- **`cardinality`**: `one` provider at a time (deploy's `host`, release's
+  `version`), `many` active at once (task's `provider`), or one per
+  configured target (`per-target`: deploy's `target`, release's `build`,
+  one per project).
+- **`default`**: the provider used when the configuration names none
+  (release's `version`: `conventional-commits`). It does not decide what is
+  installed; `providers` does.
 - **`operations`** lists every operation of the slot. A provider declares
   each one; only an `optional` one may be `not_implemented`.
 - **`provider_fields`** are `{name, type, required}` entries (types as for
@@ -71,11 +87,43 @@ slots:
 
 The shipped extensions:
 
-| Extension | Runtime | Requires | Events | Slots |
-|---|---|---|---|---|
-| `task` | agent, `task:dispatcher` | | the 7 core events | `provider` (many): the 13 task operations, all optional |
-| `release` | exec, `nerv release` | | | none yet |
-| `deploy` | exec, `nerv deploy` | `release` | | `host` (one): `releaseExists`, `createRelease`; `target` (per-target): `preflight`, `publish`, `verify` optional, `deploy` required |
+| Extension | Runtime | Requires | Providers | Events | Slots |
+|---|---|---|---|---|---|
+| `task` | agent, `task:dispatcher` | | suggested | the 7 core events | `provider` (many): the 13 task operations, all optional |
+| `release` | exec, `nerv release` | | bundled | | `version` (one, default `conventional-commits`): `next`, `branch` required, `validate`, `import` optional; `build` (per-target, one per project): `plan` required, `validate` optional |
+| `deploy` | exec, `nerv deploy` | `release` | bundled | | `host` (one): `releaseExists`, `createRelease`; `target` (per-target): `preflight`, `publish`, `verify` optional, `deploy` required |
+
+### The release slots
+
+`nerv release`, `nerv version next` and `nerv release setup` call the
+release providers; all three shipped ones are native exec providers
+(`nerv provider release-<name> <operation>`). The payloads and answers are
+`internal/releaseplan/contract.go`'s:
+
+| Slot, operation | Payload | Answer (`data`) |
+|---|---|---|
+| `version` `validate` | `projects` (the `release.projects[]` identity keys: `name`, `path`, `shared_paths`, `scopes`, `tag_format`, `changelog`, `depends_on`) | `failed` with `{problems: [...]}`, each named by its path in `.ai-workflow.yml` |
+| `version` `next` | `dir` (the release clone), `branch`, `projects`, `only` (the projects asked for), `version` (`nerv release --version`) | `{results: [...]}`: per project, the outputs `nerv version next` prints, the release type, the CHANGELOG file and section |
+| `version` `branch` | `dir`, `branch`, `projects` | `{name, prerelease, channel}` |
+| `version` `import` | `dir` | `{source, config, warnings}`: `config` is the provider's keys as a YAML mapping, which `nerv release setup --import` writes under `release.providers.<engine>`; `skipped` when there is nothing to import, `blocked` with `{manual}` for a configuration to move by hand |
+| `build` `validate` | `project`, `at` (`release.projects[i]`), `stages` (the stages the project writes commands for) | as `version` `validate` |
+| `build` `plan` | as `validate` | `{steps: [{stage, name, exec}], image_prefix, stage_env, paths}`: the provider's own commands, run without a shell before the project's command of the stage; the env added under the project's stage commands; the files it reads, which `nerv release` checks on origin's branch |
+
+Every call's `config` is the provider's keys, resolved: the version
+engine's `release.providers.<provider>`; a build provider's
+`release.providers.<provider>` overridden by
+`release.projects[].providers.<provider>`; each checked against the
+provider's `config` (an undeclared key or a value of another type is
+refused) with the scalar defaults applied. `release.version` selects the
+engine (the slot's default when unset) and `release.build` /
+`release.projects[].build` the build; an unknown provider is refused,
+naming the slot's providers.
+
+| Provider | Slot | Keys | Operations |
+|---|---|---|---|
+| `conventional-commits` | `version` | `branches`, `release_rules`, `note_keywords`, `tag_format`, `repository_url`, `changelog` | all four: internal/versioning, semantic-release 24 with the `conventionalcommits` preset |
+| `docker-compose` | `build` | `file` (required), `test_service` | `validate` (the file, the service name, no `build`/`test`/`package` stage command), `plan` (`docker compose -f <file> build`, `run --rm <test_service>`) |
+| `bash` | `build` | `shared_host` | `validate`, `plan` (no command of its own; with `shared_host` the build-server environment for `restore`, `lint`, `build`, `test` and `package`) |
 
 ## `provider.yaml` (extension and provider)
 
@@ -133,8 +181,10 @@ events: [run.started]
   `string`, `int`, `bool`, `map` or `list`; a scalar key needs a `prompt`
   (what `nerv configure` asks) and a valid `default`. Where the values live
   is the extension's: `tasks.providers.<name>.<key>` for task providers,
-  `deploy.targets[].config.<key>` or `deploy.providers.<name>.<key>` for
-  deploy providers.
+  `release.providers.<name>.<key>` (and
+  `release.projects[].providers.<name>.<key>` for a build provider) for
+  release providers, `deploy.targets[].config.<key>` or
+  `deploy.providers.<name>.<key>` for deploy providers.
 - Unknown fields are refused, at the top level and inside every block. A
   top-level field that is not common must be one of the extension's
   `provider_fields`.
@@ -144,7 +194,7 @@ events: [run.started]
 A provider nerv implements itself is an exec provider whose steps run the
 hidden `{nerv} provider <extension>-<name> <operation>`, with the request on
 stdin and the response on stdout. It has no special case in its extension:
-`deploy-ssh-compose` is one.
+`deploy-ssh-compose` and the three release providers are such providers.
 
 ## Request and response
 

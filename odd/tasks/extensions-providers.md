@@ -11,6 +11,7 @@ Branch: `feat/extensions-providers` (from develop c74e6d3). Delivery: ask-on-ris
 - **S4 Release providers.** "el nuevo release va a tener como proveedores a docker compose o bash por ej, el motor de versiones tambien va a tener proveedores y como default va a tener preinstalado el actual motor que se llamara conventional commits"
 - **S5 Deploy providers.** "deploy es otra extension que va a tener como proveedor github, ssh, bash, etc."
 - **S6 One contract per level.** "todos estos proveedores y extensiones deben comunicarse con el core a traves de un mismo contrato: las extensiones deben tener el mismo y los proveedores de cada extension tambien solo que estos ultimos ese contrato es entre la extension y el proveedor."
+- **S8 Bundled providers.** "hagamos que los providers ya definidos de las extensiones este instaladas por defecto, excepto los de task". This is declared per extension in extension.yaml: release and deploy are bundled; task keeps suggesting its providers.
 - **S7 Configuration.** "todos deben poder ser configurados desde .ai-workflow.yml"
 
 ## Tasks
@@ -19,14 +20,15 @@ Order: T4 first (it touches every other surface), then T1, T2, T3, T5, T6, T7, T
 
 | ID | Specs | Task | Route | Status | Commit |
 |---|---|---|---|---|---|
-| T1 | S6 | Shared contract package: manifest loader, config schema, request/response envelope, statuses | delegated with T2-T3 (context backstop) | done | see L9 |
-| T2 | S6, S2 | `extension.yaml` for task, release, deploy; discovery and requirements read from it instead of hard-coded maps | delegated with T1 | done | see L9 |
-| T3 | S6, S3, S5 | One `provider.yaml` shape for all providers; port task-teamwork, deploy-github, deploy-ssh-compose | delegated with T1 | done | see L9 |
+| T1 | S6 | Shared contract package: manifest loader, config schema, request/response envelope, statuses | delegated with T2-T3 (context backstop) | done; verifier PASS; review approved | 8f859d5 |
+| T2 | S6, S2 | `extension.yaml` for task, release, deploy; discovery and requirements read from it instead of hard-coded maps | delegated with T1 | done; verifier PASS; review approved | 4840c1d |
+| T3 | S6, S3, S5 | One `provider.yaml` shape for all providers; port task-teamwork, deploy-github, deploy-ssh-compose | delegated with T1 | done; verifier PASS; review approved | 4840c1d |
 | T4 | S1 | Rename ship to release (code, CLI, config, extension, artifact schema, docs) | delegated (context backstop: ~95 files, keeps the parent thin for T1-T9) | done; verifier PASS | 277d5df |
-| T5 | S4 | Release slots: version (conventional-commits, preinstalled default) and build (docker-compose, bash) as providers | inline | pending | |
+| T5 | S4, S8 | Release slots: version (conventional-commits, preinstalled default) and build (docker-compose, bash) as providers; bundled/suggested install | delegated (context backstop) | done; verifier pending | see L13 |
 | T6 | S5 | Deploy bash target provider | inline | pending | |
 | T7 | S7 | Uniform `.ai-workflow.yml` keys for every extension and provider | inline | pending | |
 | T8 | S1, S7 | `nerv migrate` from 4.2.0 and from 5.0.0-alpha.1 | inline | pending | |
+| T10 | S6 | Follow-ups from L11: help text, status validation, requires cycle, preflight cwd/stderr, toolRe dup, docs wording, deploy onto the shared extension.Exec runner and its `{build_mode}` variable renamed | inline | pending | |
 | T9 | S2 | Docs, install output and marketplace say extensions/providers; fix the stale repo marketplace.json | inline | pending | |
 
 ## Log
@@ -90,3 +92,37 @@ Order: T4 first (it touches every other surface), then T1, T2, T3, T5, T6, T7, T
     - `provider_fields` in extension.yaml lets an extension add its own fields (task: `task_ref_prefix`, `stages`, `events`);
     - the hidden `nerv provider <extension>-<name> <op>` replaces `nerv deploy-ssh-compose`.
   - Risk: item 3 (provider manifest, deploy step JSON shape) and item 5 (install discovery refuses invalid trees).
+- **L10 (native review, T4):**
+  - The user granted review of 277d5df. The first START was refused because the concurrent writer had left untracked files.
+  - It was rerun in a detached worktree at 277d5df with the same target identity. The native review stopped there with `lens_context_budget_exceeded` (terminal; the 9.4k-line rename is above the lens budget).
+  - Outcome: unavailable (budget). The independent verifier's PASS (L8) stands.
+  - The commits holding T1-T3 are 8f859d5 (T1) and 4840c1d (T2+T3). Both were assessed high, review due; their verifier was launched before review.
+  - T5 (with the release part of T7) was delegated for the context backstop.
+- **L11 (T1-T3 verifier and native reviews):**
+  - Verifier: PASS, no blockers.
+  - 8f859d5: granted, approved and acknowledged (lineage review-01664f936d1f5cc8). Advisories: contract.go:136-143 (ParseResponse accepts an unknown status as ok), manifest.go:112, manifest.go:67-74, provider.go:73-75, extensiontest.go:14-31.
+  - 4840c1d: granted, 4 lenses, approved and acknowledged. Advisories:
+    - the garbled `deploy --help` preflight sentence (cmd/nerv/deploy.go:41-42);
+    - preflight stderr is silenced (deployprovider/run.go:190-192);
+    - `toolRe` is duplicated (run.go:215);
+    - deployprovider/manifest.go:11 does not import the extension package;
+    - preflight runs in the user's repo (deployrun/run.go:403-405);
+    - preflight status coverage;
+    - discovery blast radius (plugin/extensions.go:85-88).
+  - Verifier advisories:
+    - a `requires` cycle would recurse in selectExtensions;
+    - task's event-to-operation rule is not enforced at discovery;
+    - an unknown response status counts as ok;
+    - the docs wording on `default`.
+  - All of these are follow-ups in T10.
+- **L12 (2026-10-24, user correction):** "hagamos que los providers ya definidos de las extensiones este instaladas por defecto, excepto los de task". S8 added and forwarded to the running T5 writer, as an extension.yaml field (bundled or suggested) with no extension names hard-coded in Go.
+- **L13 (T5 evidence):**
+  - The writer reported gofmt, vet, build, `go test ./...` and the hook tests clean, and the parent re-ran the suite.
+  - Slots: `version` (one, default conventional-commits; ops next and branch required, validate and import optional) and `build` (one, per-project override; plan required, validate optional).
+  - Config moved to `release.version`, `release.build`, `release.projects[].build` and `release.providers.<p>.*`. Old keys are refused by name.
+  - The artifact field `build_mode` is now `build_provider`.
+  - extension.yaml gains `providers: bundled|suggested`.
+  - Differential against 4840c1d: identical apart from the plan-header label and the moved keys.
+  - Gap: deploy still has its own exec runner; added to T10.
+  - Risk items 3 and 5.
+- **L14 (2026-10-24, user decision):** asked what "fusiona extension.yaml y provider.yaml en .ai-workflow.yml" means. The user answered: "hagamnos esto si te parece, creemos la carpeta .ai-workflow y ahi dejemos el config de nerv como config.yaml, extension.yaml y provider.yaml. saquemos .ai-workflow.yml y aputnemos a config.yaml"

@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"github.com/war-apps/nerv-by-gentle-ai/internal/releaseconfig"
-	"github.com/war-apps/nerv-by-gentle-ai/internal/versioning"
 )
 
 // loadProblems loads text and returns the validation problems, failing the
@@ -22,75 +21,73 @@ func loadProblems(t *testing.T, text string) string {
 	return strings.Join(invalid.Problems, "\n")
 }
 
-// S2, S3: the release: section embeds the version engine's settings, and its
-// projects are the engine's projects (one list).
-func TestLoad_ReleaseSectionEmbedsTheVersionEngine(t *testing.T) {
+// S4, S7: the release: section selects the providers of its slots and
+// holds their keys as written (each provider checks its own); its projects
+// keep only what is the release's, and an unset tag_format or changelog
+// is left to the version engine.
+func TestLoad_ReleaseSectionSelectsItsProviders(t *testing.T) {
 	rel := mustLoad(t, `release:
-  branches:
-    - main
-    - { name: next, prerelease: rc, channel: beta }
-  release_rules:
-    - { type: docs, release: patch }
-  note_keywords: [BREAKING]
-  tag_format: "release-${version}"
-  repository_url: https://example.com/org/repo
-  changelog: { file: HISTORY.md, title: "# History" }
+  version: conventional-commits
+  build: bash
+  providers:
+    conventional-commits:
+      branches:
+        - main
+        - { name: next, prerelease: rc, channel: beta }
+      tag_format: "release-${version}"
+    bash: { shared_host: true }
   projects:
     - name: core
       path: src/core
-      build: { mode: script }
     - name: api
       path: src/api
       shared_paths: [Directory.Build.props]
       scopes: [api, web]
       depends_on:
         - { project: core, bump: major }
-      build: { mode: script }
 `)
-	cfg := rel.Versioning()
-	if len(cfg.Branches) != 2 || cfg.Branches[1].Name != "next" || cfg.Branches[1].Prerelease.ID() != "rc" || cfg.Branches[1].Channel != "beta" {
-		t.Errorf("branches = %+v", cfg.Branches)
+	if rel.Version != "conventional-commits" || rel.Build != "bash" {
+		t.Errorf("version %q, build %q", rel.Version, rel.Build)
 	}
-	if len(cfg.ReleaseRules) != 1 || cfg.ReleaseRules[0].Type != "docs" || cfg.ReleaseRules[0].Release != "patch" {
-		t.Errorf("release_rules = %+v", cfg.ReleaseRules)
+	engine := rel.Providers["conventional-commits"]
+	if engine["tag_format"] != "release-${version}" || len(engine["branches"].([]any)) != 2 {
+		t.Errorf("providers.conventional-commits = %v", engine)
 	}
-	if strings.Join(cfg.NoteKeywords, ",") != "BREAKING" || cfg.TagFormat != "release-${version}" ||
-		cfg.RepositoryURL != "https://example.com/org/repo" || cfg.Changelog.Title != "# History" {
-		t.Errorf("engine settings = %+v", cfg)
+	if len(rel.Projects) != 2 {
+		t.Fatalf("projects = %+v", rel.Projects)
 	}
-	if len(cfg.Projects) != 2 {
-		t.Fatalf("projects = %+v", cfg.Projects)
+	api := rel.Projects[1]
+	if api.Path != "src/api" || strings.Join(api.SharedPaths, ",") != "Directory.Build.props" || strings.Join(api.Scopes, ",") != "api,web" ||
+		len(api.DependsOn) != 1 || api.DependsOn[0] != (releaseconfig.Dependency{Project: "core", Bump: "major"}) {
+		t.Errorf("api = %+v", api)
 	}
-	api := cfg.Projects[1]
-	want := versioning.Project{
-		Name: "api", Path: "src/api", SharedPaths: []string{"Directory.Build.props"}, Scopes: []string{"api", "web"},
-		TagFormat: "api-release-${version}", Changelog: "src/api/HISTORY.md",
-		DependsOn: []versioning.Dependency{{Project: "core", Bump: "major"}},
+	if api.TagFormat != "" || api.Changelog != "" {
+		t.Errorf("api tag %q changelog %q, want them left to the engine", api.TagFormat, api.Changelog)
 	}
-	if api.Name != want.Name || api.Path != want.Path || strings.Join(api.SharedPaths, ",") != "Directory.Build.props" ||
-		strings.Join(api.Scopes, ",") != "api,web" || api.TagFormat != want.TagFormat || api.Changelog != want.Changelog ||
-		len(api.DependsOn) != 1 || api.DependsOn[0] != want.DependsOn[0] {
-		t.Errorf("api = %+v, want %+v", api, want)
-	}
-	// The release project carries the same defaults.
-	p, _ := rel.Project("api")
-	if p.TagFormat != "api-release-${version}" || p.Changelog != "src/api/HISTORY.md" {
-		t.Errorf("release project = tag %q changelog %q", p.TagFormat, p.Changelog)
+	if core := rel.Projects[0]; strings.Join(core.Scopes, ",") != "core" {
+		t.Errorf("core scopes = %v, want the project's name", core.Scopes)
 	}
 }
 
-// S2: an invalid engine setting is refused with its release.-qualified path.
-func TestLoad_ReleaseSectionRefusesInvalidEngineSettings(t *testing.T) {
+// S7: the slot selections and provider names are names.
+func TestLoad_ReleaseSectionRefusesInvalidProviderNames(t *testing.T) {
 	got := loadProblems(t, `release:
-  release_rules:
-    - { type: docs, release: huge }
+  version: Conventional Commits
+  build: "a b"
+  providers:
+    Bash: {}
   projects:
     - name: api
       path: .
-      build: { mode: script }
 `)
-	if !strings.Contains(got, `release.release_rules[0]: release "huge" is not major, minor, patch or none`) {
-		t.Errorf("problems:\n%s", got)
+	for _, want := range []string{
+		`release.version: "Conventional Commits" is not a provider name`,
+		`release.build: "a b" is not a provider name`,
+		"release.providers.Bash: not a provider name",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("problems lack %q:\n%s", want, got)
+		}
 	}
 }
 
@@ -98,9 +95,9 @@ func TestLoad_ReleaseSectionRefusesInvalidEngineSettings(t *testing.T) {
 // is the 4.2.0 section: the refusal names the keys and nerv migrate.
 func TestLoad_LegacyReleaseSectionIsRefused(t *testing.T) {
 	for _, tt := range []struct{ name, yaml, key string }{
-		{"semantic_release", "release:\n  semantic_release: { version: 24.2.3 }\n  projects:\n    - name: api\n      path: .\n      build: { mode: script }\n", "release.semantic_release"},
+		{"semantic_release", "release:\n  semantic_release: { version: 24.2.3 }\n  projects:\n    - name: api\n      path: .\n      build: bash\n", "release.semantic_release"},
 		{"presets", "release:\n  projects:\n    - name: api\n      path: .\n      presets: [dotnet]\n", "release.projects[0].presets"},
-		{"preset settings", "release:\n  projects:\n    - name: web\n      path: web\n      build: { mode: script }\n    - name: api\n      path: .\n      docker: { images: [] }\n", "release.projects[1].docker"},
+		{"preset settings", "release:\n  projects:\n    - name: web\n      path: web\n      build: bash\n    - name: api\n      path: .\n      docker: { images: [] }\n", "release.projects[1].docker"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			got := loadProblems(t, tt.yaml)
@@ -120,7 +117,7 @@ func TestLegacyKeys(t *testing.T) {
 		name, yaml string
 		want       []string
 	}{
-		{"today's section", "release:\n  branches: [{ name: main }]\n  projects:\n    - name: api\n      path: .\n      build: { mode: script }\n", nil},
+		{"today's section", "release:\n  providers:\n    conventional-commits: { branches: [{ name: main }] }\n  projects:\n    - name: api\n      path: .\n      build: bash\n", nil},
 		{"no section", "enabled: true\n", nil},
 		{"4.2.0 section", "release:\n  semantic_release: { version: 24.2.3 }\n  projects:\n    - name: api\n      path: .\n      presets: [dotnet, nuget]\n      dotnet: { project_file: Api.csproj }\n",
 			[]string{"release.semantic_release", "release.projects[0].presets", "release.projects[0].dotnet"}},
@@ -135,7 +132,7 @@ func TestLegacyKeys(t *testing.T) {
 
 // S9: release.semantic_release has no equivalent.
 func TestLoad_SemanticReleaseKeyIsRefused(t *testing.T) {
-	got := loadProblems(t, "release:\n  semantic_release: { version: 24.2.3 }\n  projects:\n    - name: api\n      path: .\n      build: { mode: script }\n")
+	got := loadProblems(t, "release:\n  semantic_release: { version: 24.2.3 }\n  projects:\n    - name: api\n      path: .\n      build: bash\n")
 	if !strings.Contains(got, "release.semantic_release: removed") || !strings.Contains(got, "natively") {
 		t.Errorf("problems:\n%s", got)
 	}
@@ -155,7 +152,7 @@ release:
   projects:
     - name: api
       path: .
-      build: { mode: script }
+      build: bash
 `)
 	for _, want := range []string{
 		"pipeline: section is no longer read",
@@ -189,7 +186,7 @@ func TestLoad_PublishHooksPointToDeploy(t *testing.T) {
   projects:
     - name: api
       path: .
-      build: { mode: script }
+      build: bash
       hooks:
         before_publish: [{ run: echo }]
         after_publish: [{ run: echo }]
@@ -204,9 +201,9 @@ func TestLoad_PublishHooksPointToDeploy(t *testing.T) {
 // A section without projects configures the engine for the whole
 // repository (nerv version next); nerv release needs projects.
 func TestLoad_SectionWithoutProjects(t *testing.T) {
-	for _, text := range []string{"enabled: true\nrelease:\n", "release:\n  tag_format: r${version}\n"} {
+	for _, text := range []string{"enabled: true\nrelease:\n", "release:\n  providers:\n    conventional-commits: { tag_format: \"r${version}\" }\n"} {
 		rel := mustLoad(t, text)
-		if len(rel.Projects) != 0 || len(rel.Versioning().Projects) != 0 {
+		if len(rel.Projects) != 0 {
 			t.Errorf("%q: projects %+v", text, rel.Projects)
 		}
 		err := rel.CheckBuild()
@@ -227,7 +224,7 @@ func TestRemovedSections_PipelineNamesEveryRealKey(t *testing.T) {
 			t.Errorf("message does not say where pipeline.%s went:\n%s", key, msg)
 		}
 	}
-	for _, want := range []string{"script stages", "release.branches", "build.images", "deploy-ssh-compose", "build.version_files", "not ported", "run nerv migrate"} {
+	for _, want := range []string{"build: bash", "release.providers.conventional-commits.branches", "project's images", "deploy-ssh-compose", "project's version_files", "not ported", "run nerv migrate"} {
 		if !strings.Contains(msg, want) {
 			t.Errorf("message lacks %q:\n%s", want, msg)
 		}

@@ -1,0 +1,42 @@
+# Conventional Commits version engine of the NERV release extension
+# (contract: docs/extensions.md and internal/releaseplan/contract.go): the
+# behaviour of semantic-release 24 with the conventionalcommits preset,
+# natively in Go (internal/versioning). A native provider: every operation
+# runs nerv's own hidden `nerv provider release-conventional-commits
+# <operation>`. Its keys live under release.providers.conventional-commits.
+name: conventional-commits
+extension: release
+slot: version
+contract_version: 1
+runtime: exec
+config:
+  - key: branches
+    scope: repo
+    type: list
+  - key: release_rules
+    scope: repo
+    type: list
+  - key: note_keywords
+    scope: repo
+    type: list
+  - key: tag_format
+    scope: repo
+    type: string
+    default: v${version}
+    prompt: The tag of a release, with ${version} (each project's default derives from it)
+  - key: repository_url
+    scope: repo
+    type: string
+    prompt: What the release notes link to (empty uses origin's URL)
+  - key: changelog
+    scope: repo
+    type: map
+operations:
+  validate:
+    - argv: ["{nerv}", provider, release-conventional-commits, validate]
+  next:
+    - argv: ["{nerv}", provider, release-conventional-commits, next]
+  branch:
+    - argv: ["{nerv}", provider, release-conventional-commits, branch]
+  import:
+    - argv: ["{nerv}", provider, release-conventional-commits, import]

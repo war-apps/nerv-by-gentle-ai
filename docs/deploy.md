@@ -158,7 +158,7 @@ operations:
   is replaced as one argument. Values such as the release notes can never
   inject a command.
 - The variables are `project`, `version`, `channel`, `tag`, `base_commit`,
-  `branch`, `build_mode`, `prerelease`, `artifact_dir`, `notes_file`,
+  `branch`, `build_mode` (the artifact's `build_provider`), `prerelease`, `artifact_dir`, `notes_file`,
   `changelog_file`, `target`, `nerv` (the nerv binary), `config.<key>`, and
   `item` in a step with `for_each` (`images`, `image_tars` or `outputs`).
 - `when: prerelease` keeps a step or an argument only for a release on a

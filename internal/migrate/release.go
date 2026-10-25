@@ -19,6 +19,10 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// buildProvider is the build provider a 4.2.0 project gets: the presets ran
+// commands, which the bash provider's stages run.
+const buildProvider = "bash"
+
 // TODOPrefix starts every comment nerv migrate writes where a 4.2.0
 // behaviour has no exact equivalent.
 const TODOPrefix = "TODO(nerv migrate):"
@@ -116,7 +120,7 @@ type releaseTranslation struct {
 
 // translateRelease turns the 4.2.0 release: section of data into today's
 // release: section: semantic_release is dropped, each project's presets
-// become build.mode: script with the commands the 4.2.0 presets ran (its
+// become build: bash with the commands the 4.2.0 presets ran (its
 // own stage overrides still win, as in 4.2.0), the publish stage and
 // hooks go (deploy publishes), and every other key and comment is kept.
 func translateRelease(p *Plan, data []byte, repoRoot string) (*releaseTranslation, error) {
@@ -172,8 +176,9 @@ func translateProject(p *Plan, node *yaml.Node, index int, repoRoot string) erro
 	at := fmt.Sprintf("release.projects[%d] (%s)", index, old.Name)
 	old.Path = yamlsection.NormalizePath(old.Path)
 	plan := &stagePlan{steps: map[string][]step{}, todos: map[string][]string{}}
+	// build collects the project keys the presets give (coverage,
+	// version_files, images), written right after build: bash.
 	build := &yaml.Node{Kind: yaml.MappingNode, Tag: "!!map"}
-	addKV(build, "mode", scalar(releaseconfig.ModeScript))
 	for _, preset := range old.Presets {
 		switch preset {
 		case "dotnet":
@@ -191,14 +196,15 @@ func translateProject(p *Plan, node *yaml.Node, index int, repoRoot string) erro
 		}
 	}
 	if len(old.Presets) > 0 {
-		p.note("%s: presets %s became build.mode: script with the commands they ran", at, strings.Join(old.Presets, ", "))
+		p.note("%s: presets %s became build: bash with the commands they ran", at, strings.Join(old.Presets, ", "))
 	}
 
 	var content []*yaml.Node
 	buildPlaced := false
 	placeBuild := func() {
 		if !buildPlaced {
-			content = append(content, scalar("build"), build)
+			content = append(content, scalar("build"), scalar(buildProvider))
+			content = append(content, build.Content...)
 			buildPlaced = true
 		}
 	}
@@ -224,9 +230,9 @@ func translateProject(p *Plan, node *yaml.Node, index int, repoRoot string) erro
 	placeBuild()
 	if stagesNode == nil && len(plan.steps) > 0 {
 		stagesNode = &yaml.Node{Kind: yaml.MappingNode, Tag: "!!map"}
-		// The stages go right after build:.
+		// The stages go right after build: and the keys the presets gave.
 		idx := slices.IndexFunc(content, func(n *yaml.Node) bool { return n.Value == "build" })
-		content = slices.Insert(content, idx+2, scalar("stages"), stagesNode)
+		content = slices.Insert(content, idx+2+len(build.Content), scalar("stages"), stagesNode)
 	}
 	if stagesNode != nil {
 		mergeStages(p, stagesNode, plan, at)
@@ -236,7 +242,7 @@ func translateProject(p *Plan, node *yaml.Node, index int, repoRoot string) erro
 		}
 	}
 	if stagesNode == nil || len(stagesNode.Content) == 0 {
-		p.warn("%s: no stage commands: nerv release would package nothing; write the project's stages (build.mode: script)", at)
+		p.warn("%s: no stage commands: nerv release would package nothing; write the project's stages (build: bash)", at)
 	}
 	node.Content = content
 	return nil
@@ -385,7 +391,7 @@ const (
 // dotnetPreset is 4.2.0's dotnet preset: restore, format check, build with
 // the version, test (collecting coverage when a threshold is set) and the
 // coverage check, every command without build servers; the csproj version
-// write is build.version_files.
+// write is the project's version_files.
 func dotnetPreset(p *Plan, plan *stagePlan, build *yaml.Node, old oldProject, at string) {
 	d := old.Dotnet
 	if d == nil || d.ProjectFile == "" {
@@ -506,7 +512,7 @@ if [ -z "$NERV_RELEASE_CHANNEL" ] || [ "$NERV_RELEASE_CHANNEL" = default ]; then
 
 // dockerPreset is 4.2.0's docker preset, package side: one docker build per
 // image with its tags, build arguments and labels. Each image 4.2.0 pushed
-// becomes a build.images mapping {name, tags} with its 4.2.0 tag kinds:
+// becomes an images mapping {name, tags} with its 4.2.0 tag kinds:
 // nerv release tags it, saves every tag into the artifact after the package
 // commands and records each reference, and deploy-ssh-compose's publish
 // pushes them all. An image 4.2.0 did not push
@@ -526,7 +532,7 @@ func dockerPreset(p *Plan, plan *stagePlan, build *yaml.Node, old oldProject, at
 		if len(kinds) == 0 {
 			kinds = oldDockerTags
 		}
-		var known []string // the 4.2.0 tag kinds, deduplicated, for build.images
+		var known []string // the 4.2.0 tag kinds, deduplicated, for images
 		for _, kind := range kinds {
 			if slices.Contains(oldDockerTags, kind) && !slices.Contains(known, kind) {
 				known = append(known, kind)
@@ -593,7 +599,7 @@ func dockerPreset(p *Plan, plan *stagePlan, build *yaml.Node, old oldProject, at
 	plan.add("package", step{run: strings.Join(lines, "\n") + "\n"})
 	if len(images.Content) > 0 {
 		addKV(build, "images", images)
-		p.note("%s: the docker images 4.2.0 pushed became build.images with their 4.2.0 tags: nerv release tags and saves them into the artifact and deploy-ssh-compose pushes every tag", at)
+		p.note("%s: the docker images 4.2.0 pushed became the project's images with their 4.2.0 tags: nerv release tags and saves them into the artifact and deploy-ssh-compose pushes every tag", at)
 	}
 }
 

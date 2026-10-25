@@ -59,9 +59,9 @@ func (c Context) defaultChannel() bool { return c.Channel == "" || c.Channel == 
 // rendered (Render) and run (Executor).
 type Plan struct {
 	Project string
-	// Mode is the build mode, releaseconfig.ModeCompose or ModeScript.
-	Mode    string
-	Context Context
+	// Provider is the project's build provider (docker-compose, bash).
+	Provider string
+	Context  Context
 	// Stages are the stages with commands, in releaseconfig.Stages order.
 	Stages []Stage
 	// Hooks are the commands of the lifecycle hook keys (prepare, fail);
@@ -75,12 +75,12 @@ type Plan struct {
 	// OutputsDir is the package stage's output directory (OutputsEnv):
 	// what it holds after the run becomes the artifact's outputs/.
 	OutputsDir string
-	// Images are the images of build.images, saved after the package
+	// Images are the project's images, saved after the package
 	// stage's commands, each to its tar under OutputsDir.
 	Images []Image
 }
 
-// Image is one image of build.images, saved into the artifact.
+// Image is one image of the project's images, saved into the artifact.
 type Image struct {
 	// Ref is the image's first reference (Refs[0]), placeholders expanded.
 	Ref string
@@ -102,7 +102,7 @@ type Stage struct {
 // Step is one thing to run. Exactly one of Func, Exec or Command.Run is
 // what runs; Command also carries Env, Workdir and Timeout for Exec.
 type Step struct {
-	// Name is the output prefix: the stage of a script command (build), a
+	// Name is the output prefix: the stage of a project command (build), a
 	// built-in step (compose:build, git:submodules, coverage:check) or a
 	// hook key.
 	Name string
@@ -118,57 +118,55 @@ type Step struct {
 	Describe string
 }
 
-// sharedHostStages are the script stages that get the build-server
-// environment with build.shared_host: the stages dotnet commands run in.
-var sharedHostStages = []string{"restore", "lint", "build", "test", "package"}
-
-// Build plans project for the release c, in the release clone at repoRoot.
-// The project is expected as releaseconfig.Load returns it (defaults applied,
-// paths normalised); its build.mode is required.
+// Build plans project for the release c, in the release clone at repoRoot,
+// with the steps its build provider planned (BuildProvider.Plan). The
+// project is expected as releaseconfig.Load returns it (defaults applied,
+// paths normalised).
 //
-// Rules: in script mode each stage runs the project's command, and the
-// package stage ends with the images of build.images (saveImages: docker
-// tag for a {name, tags} entry's other tags, then one docker save per
-// image); in compose mode build is docker compose -f <file> build, test is
-// docker compose -f <file> run --rm <test_service> (no test_service: no
-// test stage), package is the same image steps, and only the restore, lint
-// and coverage stages may have the project's commands. A stage with no
-// command is skipped together with its before_/after_ hooks. The restore
-// stage starts with git submodule update when submodules is set, and the
-// coverage stage ends with the floor check when build.coverage is set;
-// both count as commands. With build.shared_host the restore, lint, build,
-// test and package commands get the build-server environment under their
-// own. Hooks of the lifecycle keys are returned in Plan.Hooks.
-func Build(repoRoot string, project releaseconfig.Project, c Context) (*Plan, error) {
+// Rules: each stage runs the provider's built-in steps (docker-compose:
+// build is docker compose -f <file> build, test is docker compose -f
+// <file> run --rm <test_service>), then the project's own command of the
+// stage, its env under the provider's stage env (bash's shared_host: the
+// build-server environment); the package stage ends with the project's
+// images (saveImages: docker tag for a {name, tags} entry's other tags,
+// then one docker save per image, named with the provider's image prefix).
+// A stage with no command is skipped together with its before_/after_
+// hooks. The restore stage starts with git submodule update when
+// submodules is set, and the coverage stage ends with the floor check when
+// coverage is set; both count as commands. Hooks of the lifecycle keys are
+// returned in Plan.Hooks.
+func Build(repoRoot string, project releaseconfig.Project, c Context, build BuildSteps) (*Plan, error) {
 	if c.Version == "" {
 		return nil, errors.New("plan: the release version is required")
 	}
 	if c.ArtifactsDir == "" || !filepath.IsAbs(c.ArtifactsDir) {
 		return nil, fmt.Errorf("plan: the artifacts directory must be an absolute path, got %q", c.ArtifactsDir)
 	}
-	bc := project.Build
-	if bc == nil || !slices.Contains(releaseconfig.Modes, bc.Mode) {
-		return nil, fmt.Errorf("project %q: build.mode is required (compose or script)", project.Name)
+	if build.Provider == "" {
+		return nil, fmt.Errorf("project %q: the build provider is required", project.Name)
 	}
 	dir := filepath.Join(c.ArtifactsDir, project.Name)
-	b := &builder{root: repoRoot, project: project, build: bc, ctx: c, dir: dir, steps: map[string][]Step{}}
-	plan := &Plan{Project: project.Name, Mode: bc.Mode, Context: c, Hooks: map[string][]Step{}, OutputsDir: filepath.Join(dir, "outputs")}
+	b := &builder{root: repoRoot, project: project, build: build, ctx: c, dir: dir, steps: map[string][]Step{}}
+	plan := &Plan{Project: project.Name, Provider: build.Provider, Context: c, Hooks: map[string][]Step{}, OutputsDir: filepath.Join(dir, "outputs")}
 	b.resetDirs = []string{plan.OutputsDir}
-	if bc.Mode == releaseconfig.ModeCompose {
-		b.compose()
+	for _, s := range build.Steps {
+		if !slices.Contains(releaseconfig.Stages, s.Stage) || len(s.Exec) == 0 {
+			return nil, fmt.Errorf("project %q: provider %s planned %q in stage %q", project.Name, build.Provider, s.Name, s.Stage)
+		}
+		b.add(s.Stage, Step{Name: s.Name, Exec: slices.Clone(s.Exec)})
 	}
 	for _, stage := range releaseconfig.Stages {
 		if cmd, ok := project.Stages[stage]; ok {
-			if bc.SharedHost && slices.Contains(sharedHostStages, stage) {
-				env := DotnetBuildServerEnv()
+			if extra := build.StageEnv[stage]; len(extra) > 0 {
+				env := maps.Clone(extra)
 				maps.Copy(env, cmd.Env)
 				cmd.Env = env
 			}
 			b.add(stage, Step{Name: stage, Command: cmd})
 		}
 	}
-	// The images are saved once the package stage's commands (script mode)
-	// or compose build have built them.
+	// The images are saved once the package stage's commands (bash) or
+	// compose build have built them.
 	images, err := b.saveImages(plan.OutputsDir)
 	if err != nil {
 		return nil, fmt.Errorf("project %q: %w", project.Name, err)
@@ -203,7 +201,7 @@ func Build(repoRoot string, project releaseconfig.Project, c Context) (*Plan, er
 type builder struct {
 	root        string
 	project     releaseconfig.Project
-	build       *releaseconfig.Build
+	build       BuildSteps
 	ctx         Context
 	dir         string
 	coverageDir string
@@ -262,41 +260,29 @@ var imageRefRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._/:@-]*$`)
 // placeholderRe matches a ${name} placeholder of an image reference.
 var placeholderRe = regexp.MustCompile(`\$\{([a-z_]+)\}`)
 
-// compose plans compose mode's build and test commands.
-func (b *builder) compose() {
-	file := b.build.File
-	b.add("build", Step{Name: "compose:build", Exec: []string{"docker", "compose", "-f", file, "build"}})
-	if svc := b.build.TestService; svc != "" {
-		b.add("test", Step{Name: "compose:test", Exec: []string{"docker", "compose", "-f", file, "run", "--rm", svc}})
-	}
-}
-
 // saveImages plans, at the end of the package stage, one docker save per
-// image of build.images, and returns the images saved. A {name, tags}
+// image of the project's images, and returns the images saved. A {name, tags}
 // entry is built as <name>:<version>: it is first given its other tags
 // with docker tag, then saved with all of them, as 4.2.0 tagged it.
 func (b *builder) saveImages(outputs string) ([]Image, error) {
-	prefix := "docker:"
-	if b.build.Mode == releaseconfig.ModeCompose {
-		prefix = "compose:"
-	}
+	prefix := b.build.ImagePrefix
 	var images []Image
 	saved := func(ref string) bool {
 		return slices.ContainsFunc(images, func(i Image) bool { return slices.Contains(i.Refs, ref) })
 	}
-	for _, bi := range b.build.Images {
+	for _, bi := range b.project.Images {
 		var source string
 		var refs []string
 		if bi.Ref != "" {
 			ref := b.expand(bi.Ref)
 			if !imageRefRe.MatchString(ref) {
-				return nil, fmt.Errorf("build.images: %q expands to %q, not an image reference", bi.Ref, ref)
+				return nil, fmt.Errorf("images: %q expands to %q, not an image reference", bi.Ref, ref)
 			}
 			source, refs = ref, []string{ref}
 		} else {
 			tags, err := b.dockerTags(bi)
 			if err != nil {
-				return nil, fmt.Errorf("build.images %s: %w", bi.Name, err)
+				return nil, fmt.Errorf("images %s: %w", bi.Name, err)
 			}
 			source = bi.Name + ":" + b.ctx.Version
 			for _, t := range tags {
@@ -309,7 +295,7 @@ func (b *builder) saveImages(outputs string) ([]Image, error) {
 		}
 		for _, ref := range refs {
 			if !imageRefRe.MatchString(ref) {
-				return nil, fmt.Errorf("build.images: %q is not an image reference", ref)
+				return nil, fmt.Errorf("images: %q is not an image reference", ref)
 			}
 			if ref != source {
 				b.add("package", Step{Name: prefix + "tag " + ref, Exec: []string{"docker", "tag", source, ref}})
@@ -386,10 +372,10 @@ func (b *builder) expand(s string) string {
 	})
 }
 
-// coverage plans the floor check of build.coverage at the end of the
-// coverage stage.
+// coverage plans the floor check of the project's coverage at the end of
+// the coverage stage.
 func (b *builder) coverage() {
-	c := b.build.Coverage
+	c := b.project.Coverage
 	if c == nil || !c.Floors().Enabled() {
 		return
 	}

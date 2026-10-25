@@ -23,7 +23,7 @@ APPROVED: <project>=<version> ...      # package only: what the user said yes to
 ## Steps
 
 1. **Rehearse.** Run `nerv release --dry-run --json <ARGS>`. It can take minutes: it runs every stage in the clone, and writes no artifact.
-2. **On a refusal or failure** (exit 1 or 2), return `error` and the relevant stderr lines as they are. For a missing `build.mode`, name `/release:setup`; for a preset key or a 4.2.0 `release:` section, name `nerv migrate` and `/release:setup`. `nothing-to-release` is a normal result.
+2. **On a refusal or failure** (exit 1 or 2), return `error` and the relevant stderr lines as they are. For a missing build provider, name `/release:setup`; for a moved key (`moved to ...`), name the new place and `nerv migrate`; for a preset key or a 4.2.0 `release:` section, name `nerv migrate` and `/release:setup`. `nothing-to-release` is a normal result.
 3. **`MODE: rehearse`** stops here and returns the plan (Output).
 4. **`MODE: package`** needs `APPROVED`, one entry per project the dry run would package, with exactly the versions it printed. When `APPROVED` is missing or differs from the dry run, return the new plan and say the user must approve it; run nothing else. Otherwise run:
 

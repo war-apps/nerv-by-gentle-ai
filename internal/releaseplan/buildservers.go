@@ -29,7 +29,7 @@ const MinBuildServersSDK = "7.0.100"
 // (VBCSCompiler), no MSBuild server. On shared hosts (the team's T2) reused
 // servers made dotnet die mid-release with "Internal CLR error
 // (0x80131506)". nerv release gives it to the script stages restore, lint,
-// build, test and package only with build.shared_host. A fresh map on
+// build, test and package only with the bash provider's shared_host. A fresh map on
 // every call.
 func DotnetBuildServerEnv() map[string]string {
 	return map[string]string{

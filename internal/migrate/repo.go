@@ -12,6 +12,7 @@ import (
 	"github.com/war-apps/nerv-by-gentle-ai/internal/deployconfig"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/paths"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/releaseconfig"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/releaseplan"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/versioning"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/workflowconfig"
 )
@@ -284,13 +285,17 @@ func migrateRelease(p *Plan, o Options, doc *config.Document) (*config.Document,
 	var manual *versioning.ManualMigrationError
 	switch {
 	case errors.As(err, &manual):
-		p.warn("%v; write the release: section's branches and release_rules from it (see /release:setup)", err)
+		p.warn("%v; write release.providers.conventional-commits' branches and release_rules from it (see /release:setup)", err)
 	case errors.Is(err, versioning.ErrNoSemanticReleaseConfig):
 		p.note("no semantic-release configuration: the version engine's default branches apply (main; develop alpha; release/* rc on beta; hotfix/* beta)")
 	case err != nil:
 		p.warn("the semantic-release configuration cannot be imported: %v", err)
 	default:
-		text, notes, err := releaseconfig.ImportSection([]byte(doc.String()), imported.Config, false)
+		engine, err := releaseplan.EngineYAML(imported.Config)
+		if err != nil {
+			return nil, false, refuse("importing %s: %v", imported.Source, err)
+		}
+		text, notes, err := releaseconfig.ImportSection([]byte(doc.String()), releaseconfig.EngineProvider, engine, false)
 		if err != nil {
 			return nil, false, refuse("importing %s into the release: section: %v", imported.Source, err)
 		}
@@ -304,7 +309,7 @@ func migrateRelease(p *Plan, o Options, doc *config.Document) (*config.Document,
 			}
 			p.warn("semantic-release %s: %s", imported.Source, w)
 		}
-		p.note("the semantic-release configuration of %s was imported into the release: section; it is no longer used", imported.Source)
+		p.note("the semantic-release configuration of %s was imported into release.providers.conventional-commits; it is no longer used", imported.Source)
 	}
 	return doc, githubRelease, nil
 }

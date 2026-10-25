@@ -1,6 +1,7 @@
 package migrate_test
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"io/fs"
@@ -324,7 +325,7 @@ func TestTasks_MigratedSettingsLoadWithTheProviderManifests(t *testing.T) {
 }
 
 // Rule 3: the 4.2.0 release: becomes today's release:, the presets become
-// build.mode: script with the commands 4.2.0 ran, the project's own stage
+// build: bash with the commands 4.2.0 ran, the project's own stage
 // commands win, and the result loads with today's strict loader.
 func TestRelease_LegacyReleaseBecomesScriptModeRelease(t *testing.T) {
 	w := newWorld(t, comprobantes)
@@ -338,11 +339,11 @@ func TestRelease_LegacyReleaseBecomesScriptModeRelease(t *testing.T) {
 		t.Fatalf("CheckBuild: %v", err)
 	}
 	api, _ := rel.Project("api")
-	if api.Build == nil || api.Build.Mode != releaseconfig.ModeScript {
-		t.Fatalf("build = %+v, want mode script", api.Build)
+	if api.Build != "bash" {
+		t.Fatalf("build = %q, want bash", api.Build)
 	}
-	if !slices.Equal(api.Build.VersionFiles, []string{"src/Api/Dim.Comprobantes.Api.csproj"}) {
-		t.Errorf("version_files = %q, want the dotnet project_file", api.Build.VersionFiles)
+	if !slices.Equal(api.VersionFiles, []string{"src/Api/Dim.Comprobantes.Api.csproj"}) {
+		t.Errorf("version_files = %q, want the dotnet project_file", api.VersionFiles)
 	}
 	for _, stage := range []string{"restore", "lint", "build", "test", "coverage"} {
 		if !strings.Contains(old, "run: "+api.Stages[stage].Run) {
@@ -361,8 +362,8 @@ func TestRelease_LegacyReleaseBecomesScriptModeRelease(t *testing.T) {
 	if want := []releaseconfig.BuildImage{
 		{Name: "ghcr.io/dirm-s-a/dim.comprobantes.api", Tags: all},
 		{Name: "ghcr.io/dirm-s-a/dim.comprobantes.api-login-broker", Tags: all},
-	}; !reflect.DeepEqual(api.Build.Images, want) {
-		t.Errorf("build.images = %+v, want %+v", api.Build.Images, want)
+	}; !reflect.DeepEqual(api.Images, want) {
+		t.Errorf("images = %+v, want %+v", api.Images, want)
 	}
 	text := w.read(".ai-workflow.yml")
 	contains(t, ".ai-workflow.yml", text, "\nrelease:")
@@ -377,7 +378,7 @@ func TestRelease_LegacySectionInTheProjectFileIsConverted(t *testing.T) {
 	w.write(".ai-workflow.yml", "enabled: true\nrelease:\n  semantic_release: { version: 24.2.3 }\n  projects:\n    - name: api\n      path: .\n      presets: [dotnet]\n      dotnet: { project_file: Api.csproj }\n")
 	p, _ := w.migrate(w.options(false, ""))
 	text := w.read(".ai-workflow.yml")
-	contains(t, ".ai-workflow.yml", text, "\nrelease:", "mode: script", "dotnet build")
+	contains(t, ".ai-workflow.yml", text, "\nrelease:", "build: bash", "dotnet build")
 	lacks(t, ".ai-workflow.yml", text, "presets:", "semantic_release:")
 	if _, err := releaseconfig.Load(w.root); err != nil {
 		t.Fatalf("releaseconfig.Load: %v", err)
@@ -386,7 +387,7 @@ func TestRelease_LegacySectionInTheProjectFileIsConverted(t *testing.T) {
 		t.Errorf("plugins = %v, want release", p.Plugins)
 	}
 
-	current := "enabled: true\nrelease:\n  projects:\n    - name: api\n      path: .\n      build: { mode: script }\n      stages: { build: { run: make } }\n"
+	current := "enabled: true\nrelease:\n  projects:\n    - name: api\n      path: .\n      build: bash\n      stages: { build: { run: make } }\n"
 	w.write(".ai-workflow.yml", current)
 	w.migrate(w.options(false, ""))
 	if got := w.read(".ai-workflow.yml"); got != current {
@@ -422,8 +423,8 @@ func TestRelease_PresetsWithoutAnEquivalentGetATODO(t *testing.T) {
 		t.Errorf("lib build = %q", lib.Stages["build"].Run)
 	}
 	contains(t, "lib test", lib.Stages["test"].Run, `--collect "XPlat Code Coverage" --results-directory "$NERV_RELEASE_ARTIFACTS_DIR/coverage"`)
-	if lib.Build.Coverage == nil || lib.Build.Coverage.Line != 80 {
-		t.Errorf("lib coverage = %+v, want line 80", lib.Build.Coverage)
+	if lib.Coverage == nil || lib.Coverage.Line != 80 {
+		t.Errorf("lib coverage = %+v, want line 80", lib.Coverage)
 	}
 	if lib.Stages["build"].Env["MSBUILDDISABLENODEREUSE"] != "1" {
 		t.Errorf("lib build env = %v, want the build-server-safe environment", lib.Stages["build"].Env)
@@ -444,8 +445,9 @@ func TestRelease_PresetsWithoutAnEquivalentGetATODO(t *testing.T) {
 	}
 }
 
-// Rule 3: the semantic-release configuration is imported into the release:
-// section through versioning.Import, with its warnings reported.
+// Rule 3: the semantic-release configuration is imported into
+// release.providers.conventional-commits through versioning.Import, with
+// its warnings reported.
 func TestRelease_ImportsTheSemanticReleaseConfiguration(t *testing.T) {
 	w := newWorld(t, comprobantes)
 	p, _ := w.migrate(w.options(false, githubOrigin))
@@ -457,17 +459,23 @@ func TestRelease_ImportsTheSemanticReleaseConfiguration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got := rel.Versioning()
-	if len(got.Branches) != len(imported.Config.Branches) {
-		t.Fatalf("branches = %+v, want the imported %+v", got.Branches, imported.Config.Branches)
+	engine := rel.Providers[releaseconfig.EngineProvider]
+	branches, _ := engine["branches"].([]any)
+	if len(branches) != len(imported.Config.Branches) {
+		t.Fatalf("branches = %+v, want the imported %+v", branches, imported.Config.Branches)
 	}
-	for i := range got.Branches {
-		if got.Branches[i].Name != imported.Config.Branches[i].Name || got.Branches[i].Channel != imported.Config.Branches[i].Channel {
-			t.Errorf("branch %d = %+v, want %+v", i, got.Branches[i], imported.Config.Branches[i])
+	for i, b := range branches {
+		name, channel := b, any(nil)
+		if m, ok := b.(map[string]any); ok {
+			name, channel = m["name"], m["channel"]
+		}
+		want := imported.Config.Branches[i]
+		if name != want.Name || (channel != nil && channel != want.Channel) || (channel == nil && want.Channel != "") {
+			t.Errorf("branch %d = %+v, want %+v", i, b, want)
 		}
 	}
-	if got.Changelog.File != "src/Api/CHANGELOG.md" {
-		t.Errorf("changelog.file = %q, want the imported src/Api/CHANGELOG.md", got.Changelog.File)
+	if changelog, _ := engine["changelog"].(map[string]any); changelog["file"] != "src/Api/CHANGELOG.md" {
+		t.Errorf("changelog = %v, want the imported file src/Api/CHANGELOG.md", engine["changelog"])
 	}
 	for _, want := range []string{"@semantic-release/exec", "@semantic-release/npm", "@semantic-release/github"} {
 		if !anyContains(p.Warnings, want) {
@@ -762,7 +770,7 @@ func TestConflict_BothFilesAreRefused(t *testing.T) {
 	}
 }
 
-// L22: the dim fixtures migrate to script mode with build.images, and the
+// L22: the dim fixtures migrate to build: bash with images, and the
 // release plan of the migrated project saves every image after its package
 // commands and records its reference for deploy-ssh-compose to push.
 func TestRelease_MigratedDockerPresetPlansTheImageSaves(t *testing.T) {
@@ -782,7 +790,17 @@ func TestRelease_MigratedDockerPresetPlansTheImageSaves(t *testing.T) {
 			}
 			proj := rel.Projects[0]
 			artifacts := t.TempDir()
-			plan, err := releaseplan.Build(w.root, proj, releaseplan.Context{Version: "1.4.0-alpha.2", Channel: "alpha", Tag: "v1.4.0-alpha.2", ArtifactsDir: artifacts})
+			// The migrated project's build provider plans it, as nerv
+			// release has it do (through this test binary, TestMain).
+			bp, err := releaseplan.NewBuildProvider(releaseplan.Providers{FS: nerv.ExtensionsFS()}, rel, 0)
+			if err != nil {
+				t.Fatal(err)
+			}
+			planned, err := bp.Plan(context.Background())
+			if err != nil {
+				t.Fatal(err)
+			}
+			plan, err := releaseplan.Build(w.root, proj, releaseplan.Context{Version: "1.4.0-alpha.2", Channel: "alpha", Tag: "v1.4.0-alpha.2", ArtifactsDir: artifacts}, planned)
 			if err != nil {
 				t.Fatal(err)
 			}

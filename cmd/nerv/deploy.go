@@ -6,6 +6,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/releaseplan"
 	"io"
 	"path/filepath"
 	"slices"
@@ -254,7 +255,28 @@ func writeDeployReport(w io.Writer, asJSON bool, rep deployrun.Report, runErr er
 // provider.yaml steps run the hidden `nerv provider <plugin> <operation>`
 // with the common request on stdin and the response on stdout.
 var nativeProviders = map[string]func(op string, stdout, stderr io.Writer, opts options) int{
-	"deploy-ssh-compose": runDeploySSHCompose,
+	"deploy-ssh-compose":            runDeploySSHCompose,
+	releaseplan.ConventionalCommits: nativeRelease(releaseplan.ConventionalCommits),
+	releaseplan.DockerCompose:       nativeRelease(releaseplan.DockerCompose),
+	releaseplan.Bash:                nativeRelease(releaseplan.Bash),
+}
+
+// nativeRelease runs one operation of a native release provider: the
+// version engine (conventional-commits) or a build provider.
+func nativeRelease(plugin string) func(op string, stdout, stderr io.Writer, opts options) int {
+	return func(op string, stdout, stderr io.Writer, opts options) int {
+		stdin := opts.Stdin
+		if stdin == nil {
+			stdin = strings.NewReader("")
+		}
+		signalCtx := opts.SignalContext
+		if signalCtx == nil {
+			signalCtx = signalContext
+		}
+		ctx, stop, _ := signalCtx(context.Background())
+		defer stop()
+		return releaseplan.RunNative(ctx, plugin, op, stdin, stdout, stderr, releaseplan.NativeDeps{})
+	}
 }
 
 // runProvider is the hidden `nerv provider <extension>-<name> <operation>`.

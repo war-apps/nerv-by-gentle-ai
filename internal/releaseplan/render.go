@@ -22,8 +22,8 @@ func (p *Plan) Render() string {
 	if p.Context.Tag != "" {
 		fmt.Fprintf(&b, ", tag %s", p.Context.Tag)
 	}
-	if p.Mode != "" {
-		fmt.Fprintf(&b, ", build mode %s", p.Mode)
+	if p.Provider != "" {
+		fmt.Fprintf(&b, ", build %s", p.Provider)
 	}
 	b.WriteString(")\n")
 	for _, st := range p.Stages {

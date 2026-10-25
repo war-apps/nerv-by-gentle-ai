@@ -4,6 +4,8 @@
 name: deploy
 contract_version: 1
 suggest_order: 3
+# Every deploy provider is installed with deploy, never asked.
+providers: bundled
 requires: [release]
 runtime: exec
 argv: ["{nerv}", deploy]

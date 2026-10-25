@@ -103,7 +103,7 @@ func markerProject(name, path, tagFormat, marker string) string {
 	line := func(what string) string {
 		return `{ run: 'echo "` + what + ` $NERV_RELEASE_PROJECT $NERV_RELEASE_VERSION $NERV_RELEASE_TAG dry=$NERV_RELEASE_DRY_RUN" >> ` + marker + `' }`
 	}
-	p := "    - name: " + name + "\n      path: " + path + "\n      build: { mode: script }\n"
+	p := "    - name: " + name + "\n      path: " + path + "\n      build: bash\n"
 	if tagFormat != "" {
 		p += "      tag_format: \"" + tagFormat + "\"\n"
 	}
@@ -221,7 +221,7 @@ func TestIntegration_ReleasePackagesWhatOriginHasAndNeverWritesToGit(t *testing.
 		t.Errorf("the user's checkout changed: %q", status)
 	}
 	m, dir := readArtifact(t, work, "widgets", "1.1.0")
-	if m.Tag != "v1.1.0" || m.BaseCommit != origin.git("rev-parse", "main") || m.BuildMode != "script" || len(m.Outputs) != 1 || m.Outputs[0].Path != "outputs/widgets.txt" {
+	if m.Tag != "v1.1.0" || m.BaseCommit != origin.git("rev-parse", "main") || m.BuildProvider != "bash" || len(m.Outputs) != 1 || m.Outputs[0].Path != "outputs/widgets.txt" {
 		t.Errorf("manifest %+v", m)
 	}
 	if len(m.ReleaseFiles) != 1 || m.ReleaseFiles[0].Path != "CHANGELOG.md" {
@@ -356,7 +356,7 @@ func TestIntegration_ReleaseWithTheBuiltInConfiguration(t *testing.T) {
 	requireReleaseToolchain(t)
 	releaseEnv(t)
 	origin, work := newReleaseRepos(t)
-	work.write(".ai-workflow.yml", "release:\n  projects:\n    - name: widgets\n      path: .\n      build: { mode: script }\n      stages:\n        build: { run: 'true' }\n")
+	work.write(".ai-workflow.yml", "release:\n  projects:\n    - name: widgets\n      path: .\n      build: bash\n      stages:\n        build: { run: 'true' }\n")
 	work.commit("chore: init", "a.txt")
 	work.git("tag", "v1.0.0")
 	work.git("checkout", "-q", "-b", "develop")

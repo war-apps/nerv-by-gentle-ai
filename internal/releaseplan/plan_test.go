@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/war-apps/nerv-by-gentle-ai/internal/artifact"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/extension"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/releaseconfig"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/releaserun"
 )
@@ -66,9 +67,45 @@ func writeFile(t *testing.T, root, rel, content string) {
 
 func bash(run string) releaseconfig.Command { return releaseconfig.Command{Run: run, Shell: "bash"} }
 
-// scriptProject is a script-mode project with every stage.
+// planBuild plans p as nerv release does, with the plan its build provider
+// (p.Build, with the keys p.Providers[p.Build]) answers, here from the
+// native provider in-process.
+func planBuild(t *testing.T, root string, p releaseconfig.Project, c Context) (*Plan, error) {
+	t.Helper()
+	steps, err := nativePlan(p)
+	if err != nil {
+		return nil, err
+	}
+	return Build(root, p, c, steps)
+}
+
+// nativePlan is the native build provider's plan of p.
+func nativePlan(p releaseconfig.Project) (BuildSteps, error) {
+	cfg := map[string]any{}
+	for k, v := range p.Providers[p.Build] {
+		cfg[k] = v
+	}
+	stages := []string{}
+	for _, stage := range releaseconfig.Stages {
+		if _, ok := p.Stages[stage]; ok {
+			stages = append(stages, stage)
+		}
+	}
+	req := extension.Request{Contract: extension.ContractVersion, Config: cfg, Payload: BuildPayload{Project: p.Name, At: "release.projects[0]", Stages: stages}}
+	resp := buildProvider(Extension+"-"+p.Build, OpPlan, req)
+	if resp.Failure() {
+		return BuildSteps{}, errors.New(resp.Message)
+	}
+	var data PlanData
+	if err := resp.DecodeData(&data); err != nil {
+		return BuildSteps{}, err
+	}
+	return BuildSteps{Provider: p.Build, PlanData: data}, nil
+}
+
+// scriptProject is a bash-built project with every stage.
 func scriptProject() releaseconfig.Project {
-	return releaseconfig.Project{Name: "api", Path: ".", Build: &releaseconfig.Build{Mode: releaseconfig.ModeScript},
+	return releaseconfig.Project{Name: "api", Path: ".", Build: "bash",
 		Stages: map[string]releaseconfig.Command{
 			"restore":  bash("dotnet restore"),
 			"lint":     bash("dotnet format --verify-no-changes"),
@@ -79,13 +116,13 @@ func scriptProject() releaseconfig.Project {
 		}}
 }
 
-// composeProject is a compose-mode project with a test service and two
-// images.
+// composeProject is a docker-compose-built project with a test service
+// and two images.
 func composeProject() releaseconfig.Project {
-	return releaseconfig.Project{Name: "api", Path: "api", Build: &releaseconfig.Build{
-		Mode: releaseconfig.ModeCompose, File: "api/docker-compose.yml", TestService: "tests",
-		Images: refs("ghcr.io/acme/api:${version}", "ghcr.io/acme/worker:${channel}-${tag}"),
-	}}
+	return releaseconfig.Project{Name: "api", Path: "api", Build: "docker-compose",
+		Providers: map[string]map[string]any{"docker-compose": {"file": "api/docker-compose.yml", "test_service": "tests"}},
+		Images:    refs("ghcr.io/acme/api:${version}", "ghcr.io/acme/worker:${channel}-${tag}"),
+	}
 }
 
 func stepOf(t *testing.T, plan *Plan, name string) Step {
@@ -114,12 +151,12 @@ func TestBuild_ScriptModeRunsTheProjectsStagesInOrder(t *testing.T) {
 		"fail":           {bash("echo fail")},
 		"before_restore": nil,
 	}
-	plan, err := Build(t.TempDir(), p, ctxFor("1.0.0", ""))
+	plan, err := planBuild(t, t.TempDir(), p, ctxFor("1.0.0", ""))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if plan.Mode != releaseconfig.ModeScript {
-		t.Errorf("mode %q", plan.Mode)
+	if plan.Provider != "bash" {
+		t.Errorf("provider %q", plan.Provider)
 	}
 	assertLines(t, lines(plan), []string{
 		"restore|git:submodules|git submodule update --init --recursive",
@@ -146,7 +183,7 @@ func TestBuild_ScriptModeRunsTheProjectsStagesInOrder(t *testing.T) {
 func TestBuild_ScriptModeStageKeepsItsSettings(t *testing.T) {
 	p := scriptProject()
 	p.Stages["build"] = releaseconfig.Command{Run: "make all", Shell: "bash", Workdir: "src", Timeout: "10m"}
-	plan, err := Build(t.TempDir(), p, ctxFor("1.0.0", ""))
+	plan, err := planBuild(t, t.TempDir(), p, ctxFor("1.0.0", ""))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -161,9 +198,9 @@ func TestBuild_ScriptModeStageKeepsItsSettings(t *testing.T) {
 func TestBuild_ScriptSharedHost(t *testing.T) {
 	for _, shared := range []bool{false, true} {
 		p := scriptProject()
-		p.Build.SharedHost = shared
+		p.Providers = map[string]map[string]any{"bash": {"shared_host": shared}}
 		p.Stages["lint"] = releaseconfig.Command{Run: "dotnet format", Shell: "bash", Env: map[string]string{"UseSharedCompilation": "true"}}
-		plan, err := Build(t.TempDir(), p, ctxFor("1.0.0", ""))
+		plan, err := planBuild(t, t.TempDir(), p, ctxFor("1.0.0", ""))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -192,7 +229,7 @@ func TestBuild_ComposeMode(t *testing.T) {
 	p := composeProject()
 	p.Stages = map[string]releaseconfig.Command{"lint": bash("hadolint api/Dockerfile")}
 	p.Hooks = map[string][]releaseconfig.Command{"after_build": {bash("echo built")}}
-	plan, err := Build(t.TempDir(), p, ctxFor("1.4.0-rc.1", "beta"))
+	plan, err := planBuild(t, t.TempDir(), p, ctxFor("1.4.0-rc.1", "beta"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -212,8 +249,8 @@ func TestBuild_ComposeMode(t *testing.T) {
 		t.Errorf("images %+v, want %+v", plan.Images, want)
 	}
 	// No test service: no test stage; the default channel has no channel.
-	p.Build.TestService = ""
-	if plan, err = Build(t.TempDir(), p, ctxFor("1.4.0", "")); err != nil {
+	delete(p.Providers["docker-compose"], "test_service")
+	if plan, err = planBuild(t, t.TempDir(), p, ctxFor("1.4.0", "")); err != nil {
 		t.Fatal(err)
 	}
 	if slices.ContainsFunc(plan.Stages, func(s Stage) bool { return s.Name == "test" }) {
@@ -226,18 +263,20 @@ func TestBuild_ComposeMode(t *testing.T) {
 
 func TestBuild_ComposeImageRefMustBeValid(t *testing.T) {
 	p := composeProject()
-	p.Build.Images = refs("ghcr.io/acme/api:${channel}")
-	if _, err := Build(t.TempDir(), p, ctxFor("1.0.0", "a b")); err == nil || !strings.Contains(err.Error(), "image") {
+	p.Images = refs("ghcr.io/acme/api:${channel}")
+	if _, err := planBuild(t, t.TempDir(), p, ctxFor("1.0.0", "a b")); err == nil || !strings.Contains(err.Error(), "image") {
 		t.Errorf("Build = %v, want a refusal of the expanded reference", err)
 	}
 }
 
-func TestBuild_RequiresABuildMode(t *testing.T) {
-	for _, b := range []*releaseconfig.Build{nil, {}, {Mode: "make"}} {
-		p := releaseconfig.Project{Name: "api", Path: ".", Build: b}
-		if _, err := Build(t.TempDir(), p, ctxFor("1.0.0", "")); err == nil || !strings.Contains(err.Error(), "build.mode") {
-			t.Errorf("build %+v: Build = %v, want a refusal naming build.mode", b, err)
-		}
+func TestBuild_RequiresABuildProvider(t *testing.T) {
+	p := releaseconfig.Project{Name: "api", Path: "."}
+	if _, err := Build(t.TempDir(), p, ctxFor("1.0.0", ""), BuildSteps{}); err == nil || !strings.Contains(err.Error(), "build provider is required") {
+		t.Errorf("Build = %v, want a refusal naming the build provider", err)
+	}
+	steps := BuildSteps{Provider: "x", PlanData: PlanData{Steps: []BuildStep{{Stage: "deploy", Name: "x", Exec: []string{"x"}}}}}
+	if _, err := Build(t.TempDir(), p, ctxFor("1.0.0", ""), steps); err == nil || !strings.Contains(err.Error(), `in stage "deploy"`) {
+		t.Errorf("Build = %v, want a refusal of a step outside the pipeline stages", err)
 	}
 }
 
@@ -248,7 +287,7 @@ func TestBuild_DirectoriesAreGivenToEveryStep(t *testing.T) {
 		}
 		p.Stages["lint"] = releaseconfig.Command{Run: "true", Shell: "bash", Env: map[string]string{"A": "1"}}
 		p.Hooks = map[string][]releaseconfig.Command{"after_test": {bash("true")}, "prepare": {bash("true")}}
-		plan, err := Build(t.TempDir(), p, ctxFor("1.0.0", ""))
+		plan, err := planBuild(t, t.TempDir(), p, ctxFor("1.0.0", ""))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -262,7 +301,7 @@ func TestBuild_DirectoriesAreGivenToEveryStep(t *testing.T) {
 				continue
 			}
 			if s.Command.Env[ArtifactsEnv] != dir || s.Command.Env[OutputsEnv] != filepath.Join(dir, "outputs") {
-				t.Errorf("%s %s: env %v", p.Build.Mode, s.Name, s.Command.Env)
+				t.Errorf("%s %s: env %v", p.Build, s.Name, s.Command.Env)
 			}
 		}
 		if p.Stages["lint"].Env[ArtifactsEnv] != "" {
@@ -280,7 +319,7 @@ func TestBuild_ContextIsChecked(t *testing.T) {
 		{Version: "1.0.0"},
 		{Version: "1.0.0", ArtifactsDir: "relative/dir"},
 	} {
-		if _, err := Build(t.TempDir(), scriptProject(), c); err == nil {
+		if _, err := planBuild(t, t.TempDir(), scriptProject(), c); err == nil {
 			t.Errorf("Build(%+v) = nil error", c)
 		}
 	}
@@ -324,7 +363,7 @@ func (f *fakeRunner) names() []string {
 func TestExecutor_RunsStagesInOrderAndStopsAtTheFirstFailure(t *testing.T) {
 	p := composeProject()
 	p.Hooks = map[string][]releaseconfig.Command{"after_test": {bash("echo after")}}
-	plan, err := Build(t.TempDir(), p, ctxFor("1.0.0", ""))
+	plan, err := planBuild(t, t.TempDir(), p, ctxFor("1.0.0", ""))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -371,8 +410,8 @@ func (w *writingRunner) Run(ctx context.Context, s releaserun.Step, v releaserun
 func TestExecutor_CoverageCheckRunsInProcess(t *testing.T) {
 	dir := t.TempDir()
 	p := scriptProject()
-	p.Build.Coverage = &releaseconfig.Coverage{Line: 90}
-	plan, err := Build(t.TempDir(), p, Context{Version: "1.0.0", ArtifactsDir: dir})
+	p.Coverage = &releaseconfig.Coverage{Line: 90}
+	plan, err := planBuild(t, t.TempDir(), p, Context{Version: "1.0.0", ArtifactsDir: dir})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -413,8 +452,8 @@ func TestExecutor_CoverageCheckRunsInProcess(t *testing.T) {
 func TestBuild_CoverageDirInTheClone(t *testing.T) {
 	root := t.TempDir()
 	p := composeProject()
-	p.Build.Coverage = &releaseconfig.Coverage{Dir: "api/coverage", Line: 80, Method: 85}
-	plan, err := Build(root, p, ctxFor("1.0.0", ""))
+	p.Coverage = &releaseconfig.Coverage{Dir: "api/coverage", Line: 80, Method: 85}
+	plan, err := planBuild(t, root, p, ctxFor("1.0.0", ""))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -429,18 +468,18 @@ func TestBuild_CoverageDirInTheClone(t *testing.T) {
 
 func TestPlan_Render(t *testing.T) {
 	p := composeProject()
-	p.Build.Images = p.Build.Images[:1]
-	p.Build.Coverage = &releaseconfig.Coverage{Line: 80}
+	p.Images = p.Images[:1]
+	p.Coverage = &releaseconfig.Coverage{Line: 80}
 	p.Hooks = map[string][]releaseconfig.Command{
 		"after_test": {{Run: "scripts/report.ps1", Shell: "pwsh", Workdir: "tools"}},
 		"prepare":    {bash("echo a\necho b")},
 	}
-	plan, err := Build(t.TempDir(), p, ctxFor("1.0.0", ""))
+	plan, err := planBuild(t, t.TempDir(), p, ctxFor("1.0.0", ""))
 	if err != nil {
 		t.Fatal(err)
 	}
 	dir := filepath.Join(artifacts, "api")
-	want := `api 1.0.0 (default channel, tag v1.0.0, build mode compose)
+	want := `api 1.0.0 (default channel, tag v1.0.0, build docker-compose)
   build
     compose:build  docker compose -f api/docker-compose.yml build
   test
@@ -461,10 +500,10 @@ func TestPlan_Render(t *testing.T) {
 
 func TestExecutor_LeftoversOfAnEarlierRunAreNotUsed(t *testing.T) {
 	p := scriptProject()
-	p.Build.Coverage = &releaseconfig.Coverage{Line: 90}
+	p.Coverage = &releaseconfig.Coverage{Line: 90}
 	c := ctxFor("3.1.0", "")
 	c.ArtifactsDir = t.TempDir()
-	plan, err := Build(t.TempDir(), p, c)
+	plan, err := planBuild(t, t.TempDir(), p, c)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -510,7 +549,7 @@ func TestExecutor_ResetsOnlyInsideTheArtifactsRoot(t *testing.T) {
 func TestPlan_OutputsListsWhatThePackageStageLeft(t *testing.T) {
 	c := ctxFor("1.0.0", "")
 	c.ArtifactsDir = t.TempDir()
-	script, err := Build(t.TempDir(), scriptProject(), c)
+	script, err := planBuild(t, t.TempDir(), scriptProject(), c)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -518,8 +557,8 @@ func TestPlan_OutputsListsWhatThePackageStageLeft(t *testing.T) {
 		t.Errorf("script mode before any run: %+v %v", got, err)
 	}
 	p := composeProject()
-	p.Build.Images = p.Build.Images[:1]
-	plan, err := Build(t.TempDir(), p, c)
+	p.Images = p.Images[:1]
+	plan, err := planBuild(t, t.TempDir(), p, c)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -555,8 +594,8 @@ func TestBuild_ScriptModeSavesItsImagesAfterThePackageStage(t *testing.T) {
 	p := scriptProject()
 	p.Stages = map[string]releaseconfig.Command{"package": bash("docker build -t ghcr.io/acme/api:$NERV_RELEASE_VERSION .")}
 	p.Hooks = map[string][]releaseconfig.Command{"after_package": {bash("echo packaged")}}
-	p.Build.Images = refs("ghcr.io/acme/api:${version}", "ghcr.io/acme/api:${channel}", "ghcr.io/acme/api:${version}")
-	plan, err := Build(t.TempDir(), p, ctxFor("1.4.0-alpha.2", "alpha"))
+	p.Images = refs("ghcr.io/acme/api:${version}", "ghcr.io/acme/api:${channel}", "ghcr.io/acme/api:${version}")
+	plan, err := planBuild(t, t.TempDir(), p, ctxFor("1.4.0-alpha.2", "alpha"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -590,8 +629,8 @@ func tagged(t *testing.T, channel string, kinds ...string) (*Plan, error) {
 	t.Helper()
 	p := scriptProject()
 	p.Stages = map[string]releaseconfig.Command{"package": bash("docker build -t ghcr.io/acme/api:$NERV_RELEASE_VERSION .")}
-	p.Build.Images = []releaseconfig.BuildImage{{Name: "ghcr.io/acme/api", Tags: kinds}}
-	return Build(t.TempDir(), p, ctxFor("1.4.0", channel))
+	p.Images = []releaseconfig.BuildImage{{Name: "ghcr.io/acme/api", Tags: kinds}}
+	return planBuild(t, t.TempDir(), p, ctxFor("1.4.0", channel))
 }
 
 // assertTagged checks the package stage tags the version reference with
@@ -641,8 +680,8 @@ func TestBuild_ImageTagsAlphaGivesVersionAndChannel(t *testing.T) {
 // saves the same way.
 func TestBuild_ImageTagsDefaultInComposeMode(t *testing.T) {
 	p := composeProject()
-	p.Build.Images = []releaseconfig.BuildImage{{Name: "ghcr.io/acme/api"}}
-	plan, err := Build(t.TempDir(), p, ctxFor("1.4.0", "beta"))
+	p.Images = []releaseconfig.BuildImage{{Name: "ghcr.io/acme/api"}}
+	plan, err := planBuild(t, t.TempDir(), p, ctxFor("1.4.0", "beta"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -659,8 +698,8 @@ func TestBuild_ImageTagsDropDuplicates(t *testing.T) {
 	assertTagged(t, plan, "docker", "ghcr.io/acme/api:1.4.0", "ghcr.io/acme/api:latest")
 
 	p := scriptProject()
-	p.Build.Images = []releaseconfig.BuildImage{{Ref: "ghcr.io/acme/api:latest"}, {Name: "ghcr.io/acme/api", Tags: []string{"version", "latest"}}}
-	if plan, err = Build(t.TempDir(), p, ctxFor("1.4.0", "")); err != nil {
+	p.Images = []releaseconfig.BuildImage{{Ref: "ghcr.io/acme/api:latest"}, {Name: "ghcr.io/acme/api", Tags: []string{"version", "latest"}}}
+	if plan, err = planBuild(t, t.TempDir(), p, ctxFor("1.4.0", "")); err != nil {
 		t.Fatal(err)
 	}
 	if len(plan.Images) != 2 || !slices.Equal(plan.Images[1].Refs, []string{"ghcr.io/acme/api:1.4.0"}) {
@@ -684,8 +723,8 @@ func TestBuild_ImageTagsRefuseInvalidTags(t *testing.T) {
 func TestBuild_ImagePlainStringNextToAMapping(t *testing.T) {
 	p := scriptProject()
 	p.Stages = map[string]releaseconfig.Command{}
-	p.Build.Images = []releaseconfig.BuildImage{{Ref: "ghcr.io/acme/web:${version}"}, {Name: "ghcr.io/acme/api", Tags: []string{"version", "latest"}}}
-	plan, err := Build(t.TempDir(), p, ctxFor("1.4.0", ""))
+	p.Images = []releaseconfig.BuildImage{{Ref: "ghcr.io/acme/web:${version}"}, {Name: "ghcr.io/acme/api", Tags: []string{"version", "latest"}}}
+	plan, err := planBuild(t, t.TempDir(), p, ctxFor("1.4.0", ""))
 	if err != nil {
 		t.Fatal(err)
 	}

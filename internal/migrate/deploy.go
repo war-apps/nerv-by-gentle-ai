@@ -89,13 +89,13 @@ func translatePipeline(p *Plan, data []byte, fsys fs.FS, user *userState) (*depl
 		for _, img := range imgs.Content {
 			names = append(names, scalarValue(value(img, "name")))
 		}
-		p.warn("pipeline.images (%s): nerv release builds the images now: give the release: project build.mode: compose with build.images (or a package stage that docker saves them into $NERV_RELEASE_OUTPUTS_DIR), and deploy-ssh-compose pushes them", strings.Join(names, ", "))
+		p.warn("pipeline.images (%s): nerv release builds the images now: give the release: project build: docker-compose with its images (or a package stage that docker saves them into $NERV_RELEASE_OUTPUTS_DIR), and deploy-ssh-compose pushes them", strings.Join(names, ", "))
 	}
 	if sync := value(node, "sync"); scalarValue(value(sync, "enabled")) != "false" {
 		p.warn("pipeline.sync (on unless sync.enabled: false): not ported: nerv deploy does no back-merge after a release; merge the released branch back into develop by hand")
 	}
 	if rel := value(node, "release"); rel != nil && value(rel, "version_files") != nil {
-		p.warn("pipeline.release.version_files: write them as build.version_files of the release: project")
+		p.warn("pipeline.release.version_files: write them as the version_files of the release: project")
 	}
 	dep := value(node, "deploy")
 	if dep == nil {

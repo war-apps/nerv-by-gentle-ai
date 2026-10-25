@@ -17,7 +17,7 @@ func TestExecutor_RunHooksRunsOneLifecycleKeyInOrder(t *testing.T) {
 	p.Hooks = map[string][]releaseconfig.Command{
 		"prepare": {{Run: "echo one", Shell: "bash"}, {Run: "echo two", Shell: "bash"}},
 	}
-	plan, err := Build(t.TempDir(), p, ctxFor("1.0.0", ""))
+	plan, err := planBuild(t, t.TempDir(), p, ctxFor("1.0.0", ""))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -69,7 +69,7 @@ func (c *countingRunner) Run(ctx context.Context, s releaserun.Step, v releaseru
 func TestStepFailure_IndexIsThePositionInItsStage(t *testing.T) {
 	p := composeProject()
 	p.Hooks = map[string][]releaseconfig.Command{"before_package": {{Run: "echo login", Shell: "bash"}}}
-	plan, err := Build(t.TempDir(), p, ctxFor("1.0.0", ""))
+	plan, err := planBuild(t, t.TempDir(), p, ctxFor("1.0.0", ""))
 	if err != nil {
 		t.Fatal(err)
 	}

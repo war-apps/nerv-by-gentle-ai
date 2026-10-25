@@ -11,13 +11,23 @@ exactly what CI would.
 | Command | Slash command | What it does | Changes anything? |
 |---|---|---|---|
 | `nerv version next` | `/release:version` | The next semantic version of the repository, or of each project of a monorepo, with the outputs of `cycjimmy/semantic-release-action`. | No. |
-| `nerv release` | `/release:build` | Builds, tests and packages what is on origin, in a throwaway clone, in each project's build mode (`compose` or `script`), per project in dependency order, and leaves a local artifact (`.nerv/artifacts/<project>/<version>/`) for [`nerv deploy`](deploy.md). | Only `.nerv/artifacts/` in your repository; never git (no commit, tag or push) and never a registry. |
-| `nerv release setup --import [--force] [--dry-run]` | `/release:setup` | Imports an existing semantic-release config into the `release:` section, once. | Only `.ai-workflow.yml` (nothing with `--dry-run`). |
+| `nerv release` | `/release:build` | Builds, tests and packages what is on origin, in a throwaway clone, with each project's build provider (`docker-compose` or `bash`), per project in dependency order, and leaves a local artifact (`.nerv/artifacts/<project>/<version>/`) for [`nerv deploy`](deploy.md). | Only `.nerv/artifacts/` in your repository; never git (no commit, tag or push) and never a registry. |
+| `nerv release setup --import [--force] [--dry-run]` | `/release:setup` | Imports an existing semantic-release config into the version engine's keys (`release.providers.conventional-commits`), once. | Only `.ai-workflow.yml` (nothing with `--dry-run`). |
 
 Both commands read the `release:` section of the project-scope
 `<repo>/.ai-workflow.yml`. Without it a repository is one project with the
-default branches; `nerv release` needs the section, with a `build.mode` for
-each project.
+default branches; `nerv release` needs the section, with a build provider
+for each project.
+
+The release extension has two provider slots
+([extensions.md](extensions.md#the-release-slots)): the **version engine**
+(`release.version`, by default `conventional-commits`, today's native
+engine) and the **build** (`release.build` for every project, overridden
+by `release.projects[].build`: `docker-compose` or `bash`). Each provider's
+keys live under `release.providers.<provider>`, and a project overrides a
+build provider's keys under `release.projects[].providers.<provider>`.
+nerv calls them through the common provider contract, and installs all
+three with the release plugin.
 
 The plugin ships two agents, `release:versioner` (computes and explains the
 next version) and `release:builder` (runs the dry run, and the real build only
@@ -72,9 +82,9 @@ In Claude Code, `/release:setup` writes the `release:` section for you:
 2. It detects compose files, `.csproj` / `.sln` / `.slnx` files,
    Dockerfiles, `package.json` scripts, CI build steps, release scripts,
    and a monorepo layout with its commit scopes.
-3. It asks, for each project, its `build.mode` (`compose` or `script`), and
-   then the compose file, test service and images, or the command of each
-   stage. There are no presets. It asks one question at a time, only what it
+3. It asks, for each project, its build provider (`docker-compose` or
+   `bash`), and then the compose file, test service and images, or the
+   command of each stage. There are no presets. It asks one question at a time, only what it
    cannot detect.
 4. It writes the section into `.ai-workflow.yml` (the rest of the file is
    kept as it is) and validates it with `nerv version next --offline`,
@@ -86,7 +96,7 @@ it for your team's sake; it is not required). Then run `/release:build`.
 `/release:setup --project <name>` adds or edits one project of an existing
 section. The examples below show the shapes it produces.
 
-### Single repository: dotnet API in script mode
+### Single repository: dotnet API built with bash
 
 A repository shaped like `dim.comprobantes.api`: the API's `.csproj`
 receives the version, the tests collect coverage with a line floor, and
@@ -99,10 +109,9 @@ release:
   projects:
     - name: api
       path: .
-      build:
-        mode: script
-        version_files: [src/Comprobantes.Api/Comprobantes.Api.csproj]
-        coverage: { line: 80 }
+      build: bash
+      version_files: [src/Comprobantes.Api/Comprobantes.Api.csproj]
+      coverage: { line: 80 }
       stages:
         restore: { run: dotnet restore Comprobantes.sln }
         lint: { run: dotnet format Comprobantes.sln --verify-no-changes }
@@ -132,20 +141,19 @@ In Claude Code, `/release:version` and `/release:build` do the same; `/release:b
 always rehearses with `--dry-run` first and packages only after your
 explicit yes.
 
-### Single repository: compose mode
+### Single repository: docker compose
 
 When a compose file already builds the images and runs the tests:
 
 ```yaml
 release:
+  build: docker-compose
+  providers:
+    docker-compose: { file: docker-compose.yml, test_service: tests }
   projects:
     - name: api
       path: .
-      build:
-        mode: compose
-        file: docker-compose.yml
-        test_service: tests
-        images: ["ghcr.io/org/api:${version}"]
+      images: ["ghcr.io/org/api:${version}"]
 ```
 
 `nerv release` runs `docker compose -f docker-compose.yml build`, then
@@ -165,9 +173,8 @@ release:
   projects:
     - name: core
       path: src/core
-      build:
-        mode: script
-        version_files: [src/core/Core.csproj]
+      build: bash
+      version_files: [src/core/Core.csproj]
       stages:
         build: { run: dotnet build src/core -c Release }
         package: { run: 'dotnet pack src/core -c Release --no-build -o "$NERV_RELEASE_OUTPUTS_DIR"' }
@@ -176,15 +183,14 @@ release:
       shared_paths: [Directory.Build.props]
       depends_on:
         - { project: core, bump: patch }
-      build:
-        mode: compose
-        file: src/api/docker-compose.yml
-        test_service: api-tests
-        images: ["ghcr.io/org/api:${version}"]
+      build: docker-compose
+      providers:
+        docker-compose: { file: src/api/docker-compose.yml, test_service: api-tests }
+      images: ["ghcr.io/org/api:${version}"]
     - name: web
       path: web
       scopes: [web, ui]
-      build: { mode: script }
+      build: bash
       stages:
         restore: { run: npm ci, workdir: web }
         test: { run: npm test, workdir: web }
@@ -218,21 +224,42 @@ project's own `path` is. Forward slashes are canonical; backslashes are
 accepted and normalised. Absolute paths (`/x`, `C:\x`) and paths that
 escape the repository (`../x`) are rejected.
 
+### Slots and providers
+
+| Key | Default | Meaning |
+|---|---|---|
+| `version` | `conventional-commits` | The version engine (the `version` slot's provider). |
+| `build` | none | The build provider of every project that names none: `docker-compose` or `bash`. `nerv release` needs one per project. |
+| `providers.<provider>` | `{}` | The provider's keys, as its `provider.yaml` declares them: [Version engine keys](#version-engine-keys) for `conventional-commits`, [`build`](#build) for the build providers. A key the provider does not declare, a value of another type, or a provider nerv does not ship is refused. |
+
+The keys moved from earlier alpha builds are refused with their new place:
+an engine key directly under `release:` (`release.branches: moved to
+release.providers.conventional-commits.branches`), and a project's `build:`
+mapping (`build.mode` is the provider's name now, `build.file` and
+`build.test_service` go to `providers.docker-compose`, `build.shared_host`
+to `providers.bash`, `build.images`, `build.version_files` and
+`build.coverage` to the project itself).
+
 ### Version engine keys
+
+The `conventional-commits` engine's keys, under
+`release.providers.conventional-commits`:
 
 ```text
 release:
-  branches:
-    - main
-    - { name: develop, prerelease: alpha, channel: alpha }
-    - { name: "release/*", prerelease: rc, channel: beta }
-    - { name: "hotfix/*", prerelease: beta, channel: beta }
-  release_rules:
-    - { type: docs, scope: readme, release: patch }
-    - { type: chore, release: none }
-  note_keywords: [BREAKING CHANGE, BREAKING CHANGES, BREAKING]
-  tag_format: "v${version}"
-  changelog: { file: CHANGELOG.md, title: "# Changelog" }
+  providers:
+    conventional-commits:
+      branches:
+        - main
+        - { name: develop, prerelease: alpha, channel: alpha }
+        - { name: "release/*", prerelease: rc, channel: beta }
+        - { name: "hotfix/*", prerelease: beta, channel: beta }
+      release_rules:
+        - { type: docs, scope: readme, release: patch }
+        - { type: chore, release: none }
+      note_keywords: [BREAKING CHANGE, BREAKING CHANGES, BREAKING]
+      tag_format: "v${version}"
+      changelog: { file: CHANGELOG.md, title: "# Changelog" }
   projects: [...]
 ```
 
@@ -258,10 +285,11 @@ numbering continues where CI left it. Not supported: maintenance branches
 
 ```sh
 nerv release setup --import --dry-run   # show the translation and the warnings
-nerv release setup --import             # write it into the release: section
+nerv release setup --import             # write it into release.providers.conventional-commits
 ```
 
-It reads the config semantic-release would (`package.json` `release`,
+The import is the version engine's own (its optional `import`
+operation): `conventional-commits` reads the config semantic-release would (`package.json` `release`,
 `.releaserc`, `.releaserc.json`, `.releaserc.yaml`, `.releaserc.yml`) and
 translates `branches`, the commit-analyzer's `releaseRules` and
 `parserOpts.noteKeywords`, `tagFormat`, `repositoryUrl` and the changelog
@@ -269,7 +297,7 @@ plugin's `changelogFile` and `changelogTitle`. Every part it cannot
 translate is reported, with what to do:
 
 - `@semantic-release/npm` and `@semantic-release/exec` (`prepareCmd`,
-  `publishCmd`, ...): write them as stages, hooks or `build.version_files`,
+  `publishCmd`, ...): write them as stages, hooks or `version_files`,
   and publishing as a [deploy](deploy.md) target;
 - `@semantic-release/git` and `@semantic-release/github`: they belong to the
   `deploy:` section (`git.commit_message`, `host: github`);
@@ -279,8 +307,9 @@ translate is reported, with what to do:
 
 The import writes only the engine keys the config sets
 (`branches`, `release_rules`, `note_keywords`, `tag_format`,
-`repository_url`, `changelog`) and keeps every other key of the section
-with its comments. A key the section already sets to another value is never
+`repository_url`, `changelog`), under `release.providers.<engine>`, and
+keeps every other key of the section with its comments. A key that block
+already sets to another value is never
 replaced silently: the import refuses (exit 1), writes nothing and lists
 each such key with its current and imported values; run it again with
 `--force` to replace them, and it prints each replaced value. A 4.2.0
@@ -304,10 +333,14 @@ At least one project is required. A single-repo setup is one project with
 | `path` | required | The project's directory. A commit touching it counts for the project. |
 | `shared_paths` | `[]` | Extra paths or globs whose changes also count for the project (shared code, build files). |
 | `scopes` | `[<name>]` | Conventional-commit scopes whose commits count for the project wherever they touch. A commit counts when it touches `path`/`shared_paths` **or** its scope matches; one commit can release several projects. |
-| `tag_format` | `v${version}` (one project) / `<name>-v${version}` | The project's tag. Must contain `${version}`, no other placeholder, and be unique across projects. |
-| `changelog` | `<path>/CHANGELOG.md` | The project's CHANGELOG file (repository-relative); see [The project's changelog](#the-projects-changelog). |
+| `tag_format` | the engine's: `v${version}` (one project) / `<name>-v${version}` | The project's tag. Must contain `${version}`, no other placeholder, and be unique across projects. |
+| `changelog` | the engine's: `<path>/CHANGELOG.md` | The project's CHANGELOG file (repository-relative); see [The project's changelog](#the-projects-changelog). |
 | `depends_on` | `[]` | Projects whose new release bumps this one; see below. |
-| `build` | required by `nerv release` | How the project is built, tested and packaged: its `mode` (`compose` or `script`, no default) and settings; see [`build`](#build). `nerv version next` ignores it. |
+| `build` | `release.build` | The project's build provider (`docker-compose` or `bash`); `nerv release` needs one; see [`build`](#build). `nerv version next` ignores it. |
+| `providers.<provider>` | `{}` | The project's own keys of a build provider, over `release.providers.<provider>`. |
+| `images` | `[]` | The images saved into the artifact; see [`build`](#build). |
+| `version_files` | `[]` | MSBuild files that receive the version; see [`build`](#build). |
+| `coverage` | none | Coverage floors; see [`build`](#build). |
 | `stages` | `{}` | The stage commands; see [Stages, hooks and commands](#stages-hooks-and-commands). |
 | `hooks` | `{}` | Extra scripts around stages and at the release lifecycle steps; same section. |
 | `submodules` | `false` | `true` runs `git submodule update --init --recursive` at the very start of `restore` (the stage is created if the project has no restore command). |
@@ -315,7 +348,7 @@ At least one project is required. A single-repo setup is one project with
 ### The project's changelog
 
 Each project writes its own CHANGELOG: `changelog`, or `<path>/` followed
-by `changelog.file` (`CHANGELOG.md`). `nerv release` writes the release's
+by the engine's `changelog.file` (`CHANGELOG.md`). `nerv release` writes the release's
 CHANGELOG section at the top of it (under its `# ` title when it has one)
 in the release clone only, and stores the new file in the artifact for
 `nerv deploy`'s release commit.
@@ -333,20 +366,23 @@ dependency order, otherwise in declaration order.
 
 ### `build`
 
-`mode` is required by `nerv release` and has no default. The other keys depend
-on it:
+The build provider (`release.projects[].build`, else `release.build`) is
+required by `nerv release` and has no default. Its keys are
+`release.providers.<provider>.<key>`, overridden per project by
+`release.projects[].providers.<provider>.<key>`; `images`, `version_files`
+and `coverage` are the project's own, whatever its provider:
 
-| Field | Modes | Default | Meaning |
+| Key | Where | Default | Meaning |
 |---|---|---|---|
-| `mode` | both | required | `compose` or `script` ([Build modes](#build-modes)). |
-| `file` | compose | required | The compose file, repository-relative: `docker compose -f <file>`. |
-| `test_service` | compose | none (no test stage) | The compose service `docker compose -f <file> run --rm <test_service>` runs; its exit code is the test result. |
-| `images` | both | `[]` | The images `docker save` packages into the artifact after the `package` stage, one archive per entry, every reference recorded in the manifest's `images` so the `deploy-ssh-compose` publish pushes them all. An entry is either a plain image reference, which may use `${version}`, `${channel}` (empty on the default channel) and `${tag}`, or a mapping `{name: <repository>, tags: [version, channel, latest]}` ([Image tags](#image-tags)). In compose mode they must be the images the compose file builds; in script mode the project's own commands (usually `stages.package`) must build them. |
-| `shared_host` | script | `false` | `true` gives the `restore`, `lint`, `build`, `test` and `package` commands the build-server-safe dotnet environment (`MSBUILDDISABLENODEREUSE=1`, `UseSharedCompilation=false`, `DOTNET_CLI_USE_MSBUILD_SERVER=0`) under their own `env`, for shared hosts where reused build servers crash dotnet. A command's own `env` wins key by key; its `run:` is never rewritten. |
-| `version_files` | both | `[]` | MSBuild project files (`.csproj`, `.fsproj`, `.vbproj`, `.props`, `.targets`) that receive `<Version>` and `<PackageReleaseNotes>` in the clone before the pipeline ([Version files](#version-files)). |
-| `coverage` | both | none | Coverage floors checked after the `coverage` stage over every Cobertura report (`*.cobertura.xml`) under `coverage.dir` ([Coverage](#coverage)). |
-| `coverage.dir` | both | `$NERV_RELEASE_ARTIFACTS_DIR/coverage` | Directory searched for the reports, repository-relative (a compose test service writes them through a bind mount). |
-| `coverage.line`, `coverage.branch`, `coverage.method` | both | `0` (not checked) | Minimum percentages, 0-100; at least one must be set. |
+| `build` | project or section | required | `docker-compose` or `bash` ([Build providers](#build-providers)). |
+| `file` | `providers.docker-compose` | required | The compose file, repository-relative: `docker compose -f <file>`. |
+| `test_service` | `providers.docker-compose` | none (no test stage) | The compose service `docker compose -f <file> run --rm <test_service>` runs; its exit code is the test result. |
+| `images` | project | `[]` | The images `docker save` packages into the artifact after the `package` stage, one archive per entry, every reference recorded in the manifest's `images` so the `deploy-ssh-compose` publish pushes them all. An entry is either a plain image reference, which may use `${version}`, `${channel}` (empty on the default channel) and `${tag}`, or a mapping `{name: <repository>, tags: [version, channel, latest]}` ([Image tags](#image-tags)). With `docker-compose` they must be the images the compose file builds; with `bash` the project's own commands (usually `stages.package`) must build them. |
+| `shared_host` | `providers.bash` | `false` | `true` gives the `restore`, `lint`, `build`, `test` and `package` commands the build-server-safe dotnet environment (`MSBUILDDISABLENODEREUSE=1`, `UseSharedCompilation=false`, `DOTNET_CLI_USE_MSBUILD_SERVER=0`) under their own `env`, for shared hosts where reused build servers crash dotnet. A command's own `env` wins key by key; its `run:` is never rewritten. |
+| `version_files` | project | `[]` | MSBuild project files (`.csproj`, `.fsproj`, `.vbproj`, `.props`, `.targets`) that receive `<Version>` and `<PackageReleaseNotes>` in the clone before the pipeline ([Version files](#version-files)). |
+| `coverage` | project | none | Coverage floors checked after the `coverage` stage over every Cobertura report (`*.cobertura.xml`) under `coverage.dir` ([Coverage](#coverage)). |
+| `coverage.dir` | project | `$NERV_RELEASE_ARTIFACTS_DIR/coverage` | Directory searched for the reports, repository-relative (a compose test service writes them through a bind mount). |
+| `coverage.line`, `coverage.branch`, `coverage.method` | project | `0` (not checked) | Minimum percentages, 0-100; at least one must be set. |
 
 #### Image tags
 
@@ -372,13 +408,13 @@ tag, then one `docker save` of every tag into the image's archive, and
 records each reference in the manifest:
 
 ```yaml
-build:
-  mode: compose
-  file: docker-compose.yml
-  images:
-    - { name: ghcr.io/org/api }                   # version, channel, latest
-    - { name: ghcr.io/org/worker, tags: [version] }
-    - "ghcr.io/org/tools:${version}"              # a plain reference
+build: docker-compose
+providers:
+  docker-compose: { file: docker-compose.yml }
+images:
+  - { name: ghcr.io/org/api }                   # version, channel, latest
+  - { name: ghcr.io/org/worker, tags: [version] }
+  - "ghcr.io/org/tools:${version}"              # a plain reference
 ```
 
 #### Migrating from the presets
@@ -389,10 +425,10 @@ refused, each key with what to write instead:
 
 | Old key | Write instead |
 |---|---|
-| `presets` | `build: { mode: script }` with each stage's command under `stages`, or `build: { mode: compose, file: ..., test_service: ..., images: [...] }`. |
-| `dotnet` | Its commands as `stages` (`dotnet restore`, `dotnet format --verify-no-changes`, `dotnet build -c Release --no-restore`, `dotnet test -c Release --no-build`); `project_file` to `build.version_files`, `coverage_threshold` to `build.coverage`, `shared_host` to `build.shared_host`; for `sdk`, a `before_restore` hook writing `global.json`. |
+| `presets` | `build: bash` with each stage's command under `stages`, or `build: docker-compose` with `providers: { docker-compose: { file: ..., test_service: ... } }` and `images: [...]`. |
+| `dotnet` | Its commands as `stages` (`dotnet restore`, `dotnet format --verify-no-changes`, `dotnet build -c Release --no-restore`, `dotnet test -c Release --no-build`); `project_file` to `version_files`, `coverage_threshold` to `coverage`, `shared_host` to `providers.bash.shared_host`; for `sdk`, a `before_restore` hook writing `global.json`. |
 | `node` | Its commands as `stages` (`npm ci`, `npm run lint`, `npm run build`, `npm test`). |
-| `docker` | `build.mode: compose`, or a script `package` stage running `docker build -t <name>:$NERV_RELEASE_VERSION`, with each image as `build.images: [{name: <name>, tags: [...]}]` so release tags and saves it as the preset did ([Image tags](#image-tags)). Pushing moved to `nerv deploy`. |
+| `docker` | `build: docker-compose`, or a bash `package` stage running `docker build -t <name>:$NERV_RELEASE_VERSION`, with each image as `images: [{name: <name>, tags: [...]}]` so release tags and saves it as the preset did ([Image tags](#image-tags)). Pushing moved to `nerv deploy`. |
 | `nuget`, `npm` | A `package` stage writing the package to `$NERV_RELEASE_OUTPUTS_DIR` (`dotnet pack -o`, `npm pack --pack-destination`). Publishing moved to `nerv deploy`. |
 | `stages.publish`, `hooks.publish`, `hooks.success` | Removed from `nerv release`: publishing, and what runs after it, belong to `nerv deploy`. |
 
@@ -410,8 +446,13 @@ invalid release configuration:
 
 Only a section that cannot be decoded at all (a value of the wrong kind,
 such as `scopes: api`) stops at the decoding problems. Both commands
-refuse an invalid section (exit 1) before reading origin; `nerv release` also
-refuses a project without `build.mode`.
+refuse an invalid section (exit 1) before reading origin, including what
+the version engine's `validate` refuses (its keys, the projects' tag
+formats); `nerv release` also refuses a project without a build provider,
+an unknown provider, a provider key it does not declare, and what the
+build provider's `validate` refuses (`docker-compose`: a missing or
+escaping `file`, a bad `test_service`, a `build`, `test` or `package`
+stage command).
 
 ### YAML notes
 
@@ -432,7 +473,8 @@ refuses a project without `build.mode`.
     - &base
       name: api
       path: api
-      build: { mode: script, version_files: [api/Api.csproj] }
+      build: bash
+      version_files: [api/Api.csproj]
     - <<: *base
       name: worker
       path: worker
@@ -462,7 +504,8 @@ install), and `nerv migrate` applies it with backups. By hand:
 2. Run `nerv release setup --import` to bring the branches and rules over from
    the semantic-release config, or write them
    ([Version engine keys](#version-engine-keys)).
-3. Give every project a `build.mode`, and replace the presets
+3. Give every project a build provider (`build: bash` runs the presets'
+   commands as stages), and replace the presets
    ([Migrating from the presets](#migrating-from-the-presets)).
 4. Move publishing (`@semantic-release/git`, `@semantic-release/github`,
    docker push, NuGet, npm) to the `deploy:` section ([deploy.md](deploy.md)).
@@ -649,8 +692,10 @@ yes, so the versions you approved are the only ones that can be packaged.
 1. Resolve the repository and the branch (default: the current one), load
    the `release:` section from your local `.ai-workflow.yml` (committed or
    not) and refuse, before anything else, a repository without the
-   section, an invalid section, a project without `build.mode`, an unknown
-   `--project`, or `--version` with several projects and no `--project`.
+   section, an invalid section, a project without a build provider, an
+   unknown provider or provider key, what the version engine's or a build
+   provider's `validate` refuses, an unknown `--project`, or `--version`
+   with several projects and no `--project`.
    This section is used for the whole run; the clone's copy is ignored.
 2. Create the **release clone**: a fresh `git clone --shared` of your
    repository in a temporary directory (never a worktree of it), whose
@@ -663,8 +708,10 @@ yes, so the versions you approved are the only ones that can be packaged.
    never pushes your commits. A branch that is not on origin is refused
    too. Refuse also, before any version is computed, when a path the
    section names (project `path`, a `shared_paths` entry without glob
-   characters, `build.file`, a `build.version_files` entry, a stage or hook
-   `workdir`) does not exist on origin's branch.
+   characters, a `version_files` entry, a stage or hook `workdir`) does not
+   exist on origin's branch; a file the build provider plans with
+   (`docker-compose`'s `file`) is checked the same way when the project is
+   planned, before any stage runs.
 4. Get every project's version: computed in the clone (as `nerv version
    next`, from the refs just read), or `--version`. Projects without a new
    release are reported and skipped. With `--expect`, refuse here unless
@@ -678,7 +725,7 @@ yes, so the versions you approved are the only ones that can be packaged.
    otherwise); `--dry-run` never asks.
 6. For each releasing project, in dependency order (`depends_on`):
    1. write, in the clone only, `<Version>` and `<PackageReleaseNotes>`
-      into `build.version_files` ([Version files](#version-files)) and the
+      into `version_files` ([Version files](#version-files)) and the
       CHANGELOG section at the top of the project's `changelog`, before the
       pipeline, so the packages carry them;
    2. run the pipeline (`restore` to `package`) and the `prepare` hooks;
@@ -727,32 +774,33 @@ prints exactly one JSON document, early refusals and failures included:
 | Code | When |
 |---|---|
 | `0` | Packaged, nothing to release, or a dry run that passed. |
-| `1` | Refused: no or an invalid `release:` section, a 4.2.0 `release:` section, a project without `build.mode`, unknown `--project`, `--version` not newer than the branch's last release, with an existing tag, or without `--project` in a monorepo, not a git repository or not on a branch, no origin remote, local branch not equal to origin's, an existing artifact without `--force`, no confirmation (or not a terminal without `--yes`), a plan that cannot be built. |
+| `1` | Refused: no or an invalid `release:` section (or provider keys), a 4.2.0 `release:` section, a project without a build provider, unknown `--project`, `--version` not newer than the branch's last release, with an existing tag, or without `--project` in a monorepo, not a git repository or not on a branch, no origin remote, local branch not equal to origin's, an existing artifact without `--force`, no confirmation (or not a terminal without `--yes`), a plan that cannot be built. |
 | `2` | Usage error, an environment error (origin unreachable, git or docker missing), or a failed step. |
 | `128 + signal` | Interrupted (`130` Ctrl-C, `143` SIGTERM, `129` SIGHUP); a second Ctrl-C ends `nerv` at once. |
 
-## Build modes
+## Build providers
 
-`nerv release` plans each project's pipeline from its `build.mode`, `stages`
-and `hooks` (`internal/releaseplan`), for the release being made (version,
+`nerv release` plans each project's pipeline from the steps its build
+provider answers (the provider's `plan` operation), its `stages` and its
+`hooks` (`internal/releaseplan`), for the release being made (version,
 channel, tag):
 
-| Stage | `script` | `compose` |
+| Stage | `bash` | `docker-compose` |
 |---|---|---|
 | `restore` | `stages.restore` | `stages.restore` |
 | `lint` | `stages.lint` | `stages.lint` |
 | `build` | `stages.build` | `docker compose -f <file> build` |
 | `test` | `stages.test` | `docker compose -f <file> run --rm <test_service>` (none without `test_service`) |
 | `coverage` | `stages.coverage`, then the floor check | `stages.coverage`, then the floor check |
-| `package` | `stages.package`, then, per `build.images` entry, `docker tag` of a mapping's other tags and one `docker save -o $NERV_RELEASE_OUTPUTS_DIR/<image>.tar <references>` | per `build.images` entry, `docker tag` of a mapping's other tags and one `docker save -o $NERV_RELEASE_OUTPUTS_DIR/<image>.tar <references>` |
+| `package` | `stages.package`, then, per `images` entry, `docker tag` of a mapping's other tags and one `docker save -o $NERV_RELEASE_OUTPUTS_DIR/<image>.tar <references>` | per `images` entry, `docker tag` of a mapping's other tags and one `docker save -o $NERV_RELEASE_OUTPUTS_DIR/<image>.tar <references>` |
 
 1. A stage with no command is skipped together with its `before_<stage>`
    and `after_<stage>` hooks; otherwise its `before_<stage>` hooks run
    first and its `after_<stage>` hooks last. `submodules: true` adds
    `git submodule update --init --recursive` at the start of `restore`; a
-   `build.coverage` floor adds the `coverage:check` step at the end of
+   `coverage` floor adds the `coverage:check` step at the end of
    `coverage`.
-2. In compose mode the project may write only `stages.restore`,
+2. With `docker-compose` the project may write only `stages.restore`,
    `stages.lint` and `stages.coverage`: a `build`, `test` or `package`
    command is refused (compose runs them).
 3. The first failing step stops the project, naming the stage and step.
@@ -760,7 +808,7 @@ channel, tag):
    stage:
 
    ```text
-   api 1.4.0 (default channel, tag v1.4.0, build mode compose)
+   api 1.4.0 (default channel, tag v1.4.0, build docker-compose)
      build
        compose:build  docker compose -f docker-compose.yml build
      test
@@ -769,7 +817,7 @@ channel, tag):
        compose:save ghcr.io/org/api:1.4.0  docker save -o /tmp/.../outputs/ghcr.io_org_api_1.4.0.tar ghcr.io/org/api:1.4.0
    ```
 
-Compose mode's commands run **without a shell**: each is an argument list
+The build provider's own commands run **without a shell**: each is an argument list
 given to `docker` (or `git` for the submodules), found on `PATH`, so paths
 with spaces need no quoting on any OS; a missing program fails the step
 with `<program> not found on PATH`. An image reference, once its
@@ -780,7 +828,7 @@ Stage commands and hooks run through their `shell` as described in
 Every step also receives `NERV_RELEASE_ARTIFACTS_DIR`, a per-project
 directory outside the repository for build outputs, and
 `NERV_RELEASE_OUTPUTS_DIR` (`$NERV_RELEASE_ARTIFACTS_DIR/outputs`), where
-the package stage writes what goes into the artifact; with `build.coverage`
+the package stage writes what goes into the artifact; with `coverage`
 also `NERV_RELEASE_COVERAGE_DIR`, the directory the floor check searches.
 The outputs directory, and the default coverage directory, are emptied
 before the first stage of every run, so a report or package left by an
@@ -788,7 +836,7 @@ earlier run is never counted or packaged.
 
 ### Coverage
 
-With `build.coverage`, the `coverage:check` step reads every Cobertura
+With `coverage`, the `coverage:check` step reads every Cobertura
 report (a file named `*.cobertura.xml`, such as coverlet's
 `coverage.cobertura.xml`) under the coverage directory, merges them by
 summing their counts (several test projects give several reports; their
@@ -813,7 +861,7 @@ projects must reference `coverlet.collector`).
 ### Version files
 
 Before the pipeline, `nerv release` writes the release into each
-`build.version_files` entry in the release clone, so the packages carry it,
+`version_files` entry in the release clone, so the packages carry it,
 and stores the new file in the artifact for `nerv deploy`'s release commit
 (what `dim.comprobantes.api`'s `scripts/bump-csproj.sh` does with sed).
 `<PackageReleaseNotes>` is the link to the release,
@@ -850,7 +898,7 @@ no partial artifact.
 
 | Entry | Content |
 |---|---|
-| `manifest.json` | Schema `nerv.release-artifact/v1`: `project`, `version`, `channel`, `tag`, `base_commit` (the origin commit built), `branch`, `build_mode`, `created_at`, `outputs` (`path`, `kind` `image-tar`, `file` or `dir`, `sha256`), `images` (every saved image reference, each tag of a mapping entry included) and `release_files` (`path` in the repository, `stored` in the artifact, `sha256`). |
+| `manifest.json` | Schema `nerv.release-artifact/v1`: `project`, `version`, `channel`, `tag`, `base_commit` (the origin commit built), `branch`, `build_provider` (the build provider that built it), `created_at`, `outputs` (`path`, `kind` `image-tar`, `file` or `dir`, `sha256`), `images` (every saved image reference, each tag of a mapping entry included) and `release_files` (`path` in the repository, `stored` in the artifact, `sha256`). |
 | `notes.md` | The release notes. |
 | `CHANGELOG.section.md` | The CHANGELOG section of the release. |
 | `outputs/` | What the package stage left in `$NERV_RELEASE_OUTPUTS_DIR`: each saved image's archive (`image-tar`), and every other entry as a `file` or a `dir`. A directory's `sha256` is the sha256 of its `sha256sum`-style listing (`<sha256>  <path>` per file, sorted by path). |
@@ -976,7 +1024,7 @@ are removed first.
 | `NERV_RELEASE_DRY_RUN` | `true` under `nerv release --dry-run`, else `false`. |
 | `NERV_RELEASE_ARTIFACTS_DIR` | Per-project directory for build outputs, outside the repository (see [Build modes](#build-modes)). |
 | `NERV_RELEASE_OUTPUTS_DIR` | `$NERV_RELEASE_ARTIFACTS_DIR/outputs`, emptied before the run: what the package stage writes there becomes the artifact's `outputs/`. |
-| `NERV_RELEASE_COVERAGE_DIR` | With `build.coverage`, the directory the coverage check searches for `*.cobertura.xml` reports (`build.coverage.dir` in the clone, or `$NERV_RELEASE_ARTIFACTS_DIR/coverage`); not set otherwise. |
+| `NERV_RELEASE_COVERAGE_DIR` | With `coverage`, the directory the coverage check searches for `*.cobertura.xml` reports (`coverage.dir` in the clone, or `$NERV_RELEASE_ARTIFACTS_DIR/coverage`); not set otherwise. |
 
 ## Security notes
 
@@ -1028,7 +1076,8 @@ Nothing has been built or written in any of these cases.
 | Message (abridged) | Cause | What to do |
 |---|---|---|
 | `your local <b> (...) is not origin/<b> (...)` | `nerv release` builds what is on origin. | `git push` or `git pull`, then run again. |
-| `the repository has no release: section` / `release.projects[N].build.mode: required by nerv release` | `nerv release` needs a `build.mode` per project. | Add the section (`/release:setup`) or the mode. |
+| `the repository has no release: section` / `release.projects[N].build: required by nerv release` | `nerv release` needs a build provider per project. | Add the section (`/release:setup`), `release.build`, or the project's `build`. |
+| `release.<key>: moved to release.providers.conventional-commits.<key>` / `release.projects[N].build.<key>: moved to ...` | The section has the keys of an earlier alpha. | Move each key where the message says (`nerv migrate`). |
 | a 4.2.0 `release:` section | The section has a 4.2.0 key (`semantic_release:`, a preset): today's section has neither. | `nerv migrate`, or by hand ([Migrating](#migrating-from-the-420-release-section-and-semantic-release)). |
 | `release.projects[N].presets: the presets were removed ...` (or `.dotnet`, `.docker`, ...) | The section still uses a removed preset. | Write what the message says ([Migrating from the presets](#migrating-from-the-presets)). |
 | `the artifact <dir> already exists: pass --force to replace it` | That version was already packaged. | `--force` to rebuild it, or deploy the existing one. |
@@ -1041,7 +1090,7 @@ Nothing has been built or written in any of these cases.
 | `unknown project "x"; the release: section declares: ...` | `--project` typo. | Use one of the listed names. |
 | origin unreachable or timed out | Network, credentials or a prompt blocked by the no-prompt rules. | Fix access ([Reading origin](#reading-origin)); `nerv version next --offline` works without origin. |
 | `git X.Y.Z is too old: selecting a project's commits by path needs git 2.31.0 or newer` | Path filters need `--diff-merges`. | Upgrade git. |
-| `<program> not found on PATH` / missing interpreter | docker (compose mode) or a stage or hook shell is missing. | Install it (Docker with compose, Git for Windows, PowerShell 7, Node.js, ...). |
+| `<program> not found on PATH` / missing interpreter | docker (the docker-compose build) or a stage or hook shell is missing. | Install it (Docker with compose, Git for Windows, PowerShell 7, Node.js, ...). |
 | an inline pwsh command exits `3` | PowerShell older than 7.3. | Upgrade PowerShell. |
 
 ### Failures during a run
@@ -1076,7 +1125,7 @@ refuses them unless `--force`, so run the rest with `--project`.
   release, in both commands.
 - Offline (`nerv version next --offline`), a prerelease branch may compute
   another version than CI when a channel note exists only on origin.
-- `build.version_files` takes MSBuild project files only; other version
+- `version_files` takes MSBuild project files only; other version
   files (`package.json`, ...) are written by a stage command, in the clone,
   and do not reach the artifact's release files.
 - Compose mode leaves the services `docker compose run` started (the test

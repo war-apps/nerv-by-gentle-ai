@@ -10,7 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/war-apps/nerv-by-gentle-ai/internal/versioning"
+	nerv "github.com/war-apps/nerv-by-gentle-ai"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/releaseplan"
 )
 
 // git runs git in dir with an isolated configuration and fixed dates.
@@ -62,6 +63,20 @@ func newFixture(t *testing.T) fixture {
 	return f
 }
 
+// providers runs the release providers of the embedded extensions tree
+// through this test binary (TestMain).
+func providers() releaseplan.Providers { return releaseplan.Providers{FS: nerv.ExtensionsFS()} }
+
+// defaultEngine is the version engine without a release: section.
+func defaultEngine(t *testing.T) *releaseplan.VersionEngine {
+	t.Helper()
+	e, err := releaseplan.NewVersionEngine(providers(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return e
+}
+
 // state is everything the user's repository holds: refs, config, index.
 func state(t *testing.T, dir string) string {
 	t.Helper()
@@ -75,7 +90,7 @@ func state(t *testing.T, dir string) string {
 func TestCompute_ReadsOriginIntoACopyAndNeverWritesTheRepository(t *testing.T) {
 	f := newFixture(t)
 	before := state(t, f.user)
-	results, err := Compute(context.Background(), ComputeOptions{RepoRoot: f.user, Config: versioning.Config{}})
+	results, err := Compute(context.Background(), ComputeOptions{RepoRoot: f.user, Engine: defaultEngine(t)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -95,7 +110,7 @@ func TestCompute_ReadsOriginIntoACopyAndNeverWritesTheRepository(t *testing.T) {
 func TestCompute_OfflineReadsTheRepositoryAsItIs(t *testing.T) {
 	f := newFixture(t)
 	before := state(t, f.user)
-	results, err := Compute(context.Background(), ComputeOptions{RepoRoot: f.user, Offline: true})
+	results, err := Compute(context.Background(), ComputeOptions{RepoRoot: f.user, Offline: true, Engine: defaultEngine(t)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -110,7 +125,7 @@ func TestCompute_OfflineReadsTheRepositoryAsItIs(t *testing.T) {
 // A branch that is not local is refused before origin is read.
 func TestCompute_UnknownBranch(t *testing.T) {
 	f := newFixture(t)
-	if _, err := Compute(context.Background(), ComputeOptions{RepoRoot: f.user, Branch: "nope"}); err == nil || !strings.Contains(err.Error(), `branch "nope": not a local branch`) {
+	if _, err := Compute(context.Background(), ComputeOptions{RepoRoot: f.user, Branch: "nope", Engine: defaultEngine(t)}); err == nil || !strings.Contains(err.Error(), `branch "nope": not a local branch`) {
 		t.Fatalf("err = %v", err)
 	}
 }
@@ -120,13 +135,16 @@ func TestCompute_UnknownBranch(t *testing.T) {
 // removes everything.
 func TestNew_ClonesOriginAndComputesInTheClone(t *testing.T) {
 	f := newFixture(t)
-	if err := os.WriteFile(filepath.Join(f.user, ".ai-workflow.yml"), []byte("release:\n  tag_format: v${version}\n  projects:\n    - name: app\n      path: .\n      build: { mode: script }\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(f.user, ".ai-workflow.yml"), []byte("release:\n  providers:\n    conventional-commits:\n      tag_format: v${version}\n  projects:\n    - name: app\n      path: .\n      build: bash\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	before := state(t, f.user)
-	ws, err := New(context.Background(), Options{RepoRoot: f.user, Branch: "develop"})
+	ws, err := New(context.Background(), Options{RepoRoot: f.user, Branch: "develop", Providers: providers()})
 	if err != nil {
 		t.Fatal(err)
+	}
+	if ws.Engine() == nil || ws.Engine().Name() != "conventional-commits" {
+		t.Errorf("engine = %+v, want the default conventional-commits", ws.Engine())
 	}
 	if want := git(t, f.origin, "rev-parse", "develop"); ws.OriginHead() != want {
 		t.Errorf("origin head %s, want %s", ws.OriginHead(), want)

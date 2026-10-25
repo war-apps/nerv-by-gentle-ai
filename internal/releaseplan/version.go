@@ -20,8 +20,11 @@ type Version struct {
 	Tag string
 	// Notes are the release notes (Markdown).
 	Notes string
-	// ChangelogSection is the section the release adds to the CHANGELOG.
+	// ChangelogSection is the section the release adds to the CHANGELOG,
+	// and Changelog that CHANGELOG file, repository-relative (the version
+	// engine's: the project's changelog, or its default).
 	ChangelogSection string
+	Changelog        string
 	// LastTag and LastVersion are the previous release on the channel;
 	// empty when there is none.
 	LastTag     string

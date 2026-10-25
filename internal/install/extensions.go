@@ -15,7 +15,8 @@ import (
 // deps.ConfirmExtension is set, asked in plugin.SuggestionOrder (task, its
 // providers, release, deploy, the deploy providers) and only when every
 // requirement is already selected: deploy only once release is, a provider
-// only once its plugin is.
+// only once its plugin is. An extension whose providers are bundled brings
+// them all with it (plugin.Extension.Bundle), never asked.
 func selectExtensions(deps Deps, opts Options, settings *claude.Settings) ([]plugin.Extension, error) {
 	exts, err := plugin.Extensions(deps.ExtensionsFS)
 	if err != nil {
@@ -32,9 +33,21 @@ func selectExtensions(deps Deps, opts Options, settings *claude.Settings) ([]plu
 	has := func(name string) bool {
 		return slices.ContainsFunc(selected, func(e plugin.Extension) bool { return e.Name == name })
 	}
+	// add selects e and, for an extension that bundles its providers
+	// (providers: bundled), every one of them right after it, without
+	// asking.
 	add := func(e plugin.Extension) {
-		if !has(e.Name) {
-			selected = append(selected, e)
+		if has(e.Name) {
+			return
+		}
+		selected = append(selected, e)
+		for _, name := range e.Bundle {
+			if p, shipped := byName[name]; shipped && !has(name) {
+				if !slices.Contains(opts.Extensions, name) {
+					fmt.Fprintf(deps.Stdout, "Adding %s (bundled with %s)\n", name, e.Name)
+				}
+				selected = append(selected, p)
+			}
 		}
 	}
 
