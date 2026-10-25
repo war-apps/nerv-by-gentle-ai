@@ -157,9 +157,9 @@ often shows only across commits. The resilience and performance sweep
 covers the complete round too. Native evidence cannot stand in for
 this pass: the native RDD review runs only when a review is due for a
 commit, and even an `already_reviewed` range only proves that some
-native review covered it. The native plan picks its lenses by risk (a
-medium candidate gets a single consolidated lens), so the native
-reliability and resilience lenses may never have run on that range.
+native review covered it. Since gentle-ai 4.2.0 a review is due only for
+a `high` candidate, with the lenses pertinent to what changed, so the
+native reliability and resilience lenses may never have run on that range.
 
 ### Lens categories: plan coverage
 

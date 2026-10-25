@@ -37,31 +37,33 @@ user may override it when validating the step-6 commit.
 
 ### Verification gate
 
-gentle-ai's Delegated Verification Gate, decided by two inputs Ikari reads
-deterministically after the pilot returns: the RDD state (`on`, `off`,
-`unknown` — from the status line, else `gentle-ai review mode status`; a
-failure is `unknown`) and the risk tier of `gentle-ai review assess --cwd
-<repo> --json` over the pilot's uncommitted diff (`passive`, `medium`,
-`high`; a failure or unrecognized verb is `high`).
+gentle-ai's Delegated Verification Gate, the same whether RDD is on or
+off. After the pilot returns, Ikari runs `gentle-ai review assess --cwd
+<repo> --agent claude-code --json` over the pilot's uncommitted diff
+(`passive`, `medium`, `high`).
 
-- **RDD on**: the pilot's `## Verification` report is the verification of
-  record, and the native review at step 7 is the independent check. Maya
-  stays on demand: the pilot reported `partial` or `blocked`, or an
-  expensive check is better run on a cheaper profile. A `passive`
-  candidate needs only Ikari's structural readback.
-- **RDD off or unknown**: `passive` → structural readback only; `medium` →
-  pilot self-verification, plus Maya when the pilot ran on a small-model
-  profile (resolved effort `low` or a mini model such as `haiku`); `high`
-  or unassessable → pilot self-verification plus Maya as the independent
-  verifier. `unknown` never lowers a tier, and the small-model bias raises
-  it by one.
+- **Tier**: `passive` → Ikari's structural readback only; `medium` → the
+  pilot's `## Verification` report is the verification of record, whatever
+  model or effort the pilot ran on.
+- **Independent verifier**: Maya runs as the independent verifier when,
+  and only when, the change touches one of gentle-ai's Task Size high-risk
+  items — (1) data or irreversible effects, (2) security, (3) contracts
+  others consume, (4) concurrency, (5) delivery or environment, (6) no test
+  would catch a regression — and Ikari names it by adding `--escalate-item
+  <1-6> --escalate-reason "<one line>"` to that assessment. A native `high`
+  without a named item, a failed or unknown assessment, an unrecognized
+  verb, and the pilot's model or effort never launch her by themselves:
+  the pilot's self-verification stands, and Ikari names the item when one
+  applies. Maya also runs on demand when the pilot reported `partial` or
+  `blocked`, or an expensive check is better run on a cheaper profile.
+- **RDD on**: the native review at step 7 is an additional outside view of
+  the committed work unit. It never replaces or skips this gate, and Maya,
+  when the gate calls her, runs before step 6, so before the review. A
+  declined consent, a disabled clone, or a refused START or STATUS changes
+  nothing about verification.
 - **Spot check**: in every tier Ikari re-runs one reported verification
   command before step 6 and compares it with the report; a mismatch goes
   back to the pilot.
-- When the native review does not reach a terminal outcome for this
-  candidate (consent declined, RDD disabled after the status read, START
-  or STATUS refused), Ikari applies the RDD-off rule to the committed work
-  unit before close; a resulting fix re-enters step 4 as a new commit.
 
 Maya's reduced mode runs only the tests and lint/build touching the
 changed files — never the full suite — per the `b`/`c` phases of her

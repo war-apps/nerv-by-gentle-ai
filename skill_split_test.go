@@ -118,6 +118,11 @@ func TestLightPipeline_LaunchesOneBoundedWriter(t *testing.T) {
 	const path = "skills/nerv-orchestrator/references/pipeline-light.md"
 	light := readPluginText(t, path)
 	assertContainsAll(t, path, light, "MODE: solo", "Delegated Verification Gate", "spot check", "user validates before commit")
+	assertContainsAll(t, path, normalizeSpace(light),
+		"Maya runs as the independent verifier when, and only when, the change touches one of gentle-ai's Task Size high-risk items",
+		"`--escalate-item <1-6> --escalate-reason \"<one line>\"`",
+		"never launch her by themselves",
+		"It never replaces or skips this gate")
 	for _, line := range strings.Split(light, "\n") {
 		if strings.HasPrefix(line, "|") && strings.Contains(line, "Kaworu") {
 			t.Errorf("%s still has a Kaworu step row: %s", path, line)
@@ -127,8 +132,9 @@ func TestLightPipeline_LaunchesOneBoundedWriter(t *testing.T) {
 
 // DIRECT is the only tier where Ikari edits source itself. The test pins its
 // real rules: the classification thresholds in the core, no NERV agent
-// besides Maya (the task plugin's dispatcher is not a NERV agent), Maya only on a high or unassessable tier with RDD off or
-// unknown, user validation before the commit, and the ratchet to LIGHT.
+// besides Maya (the task plugin's dispatcher is not a NERV agent), Maya only
+// for a named gentle-ai high-risk item, with RDD on or off, user validation
+// before the commit, and the ratchet to LIGHT.
 func TestDirectPipeline_PinsItsRoutingRules(t *testing.T) {
 	const corePath = "skills/nerv-orchestrator/SKILL.md"
 	assertContainsAll(t, corePath, normalizeSpace(readPluginText(t, corePath)),
@@ -143,8 +149,10 @@ func TestDirectPipeline_PinsItsRoutingRules(t *testing.T) {
 	assertContainsAll(t, path, normalizeSpace(direct),
 		"No NERV agent is launched except `nerv:maya`",
 		"`nerv:maya` only when",
-		"RDD off or unknown",
-		"`high`, a failed assessment or an unrecognized verb launches `nerv:maya`",
+		"whether RDD is on or off",
+		"`--escalate-item <1-6> --escalate-reason \"<one line>\"`",
+		"A native `high` alone, a failed assessment or an unrecognized verb never launches her",
+		"never replaces this check",
 		"**user validates before commit**",
 		"**Ratchet to LIGHT.**",
 		"loads `pipeline-light.md`",
