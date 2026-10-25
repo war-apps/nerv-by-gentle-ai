@@ -144,6 +144,13 @@ func TestWithProject_InvalidProjectManifestsAreRefused(t *testing.T) {
 		{"extension with an unknown field", map[string]string{
 			".ai-workflow/extensions/lab/extension.yaml": string(extensiontest.Extension("lab", 0)) + "colour: red\n",
 		}, ".ai-workflow/extensions/lab/extension.yaml: yaml: unmarshal errors:"},
+		{"extension requiring an extension of no tree", map[string]string{
+			".ai-workflow/extensions/lab/extension.yaml": string(extensiontest.Extension("lab", 0, "acme", "omega")),
+		}, ".ai-workflow/extensions/lab/extension.yaml: requires: omega is not an extension of this tree"},
+		{"extensions requiring each other", map[string]string{
+			".ai-workflow/extensions/lab/extension.yaml": string(extensiontest.Extension("lab", 0, "zoo")),
+			".ai-workflow/extensions/zoo/extension.yaml": string(extensiontest.Extension("zoo", 0, "lab")),
+		}, ".ai-workflow/extensions/lab/extension.yaml: requires cycle: lab -> zoo -> lab"},
 		{"folder without its manifest", map[string]string{
 			".ai-workflow/extensions/lab/README.md": "x",
 		}, ".ai-workflow/extensions/lab: no extension.yaml"},

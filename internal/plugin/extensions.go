@@ -3,6 +3,7 @@ package plugin
 import (
 	"cmp"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/fs"
 	"math"
@@ -52,19 +53,21 @@ type Extension struct {
 	Bundled bool
 }
 
-// Extensions lists the extension plugins of fsys, one per top-level
+// Extensions lists the extensions and providers of fsys, one per top-level
 // folder holding a .claude-plugin/plugin.json whose name is the folder's
 // name, in name order. Each folder holds exactly one manifest, checked
 // whole: an extension.yaml, or a provider.yaml in a folder named
 // <extension>-<provider> whose extension fsys also ships and whose slot it
-// fits. A nil fsys has none.
+// fits. Every requires must name an extension fsys ships, with no cycle.
+// An error names the offending manifest by its path in fsys and the rule
+// it breaks; a nil fsys has none.
 func Extensions(fsys fs.FS) ([]Extension, error) {
 	if fsys == nil {
 		return nil, nil
 	}
 	entries, err := fs.ReadDir(fsys, ".")
 	if err != nil {
-		return nil, fmt.Errorf("listing extension plugins: %w", err)
+		return nil, fmt.Errorf("listing extensions and providers: %w", err)
 	}
 
 	var exts []Extension
@@ -97,8 +100,31 @@ func Extensions(fsys fs.FS) ([]Extension, error) {
 		exts = append(exts, ext)
 	}
 	sort.Slice(exts, func(i, j int) bool { return exts[i].Name < exts[j].Name })
+	if err := checkRequires(exts); err != nil {
+		return nil, err
+	}
 	markBundles(exts, bundles)
 	return exts, nil
+}
+
+// checkRequires refuses a tree whose extensions require an extension it
+// does not ship (a provider is not one) or require each other in a cycle,
+// so nerv install never meets either.
+func checkRequires(exts []Extension) error {
+	requires := map[string][]string{}
+	for _, e := range exts {
+		if !e.Provider {
+			requires[e.Name] = e.Requires
+		}
+	}
+	isExtension := func(name string) bool {
+		_, ok := requires[name]
+		return ok
+	}
+	if problems := extension.RequiresProblems(requires, isExtension); len(problems) > 0 {
+		return errors.New(strings.Join(problems, "; "))
+	}
+	return nil
 }
 
 // markBundles fills Bundle and Bundled: an extension in bundles gets
@@ -144,7 +170,7 @@ func describe(fsys fs.FS, ext *Extension) (bool, error) {
 		ext.Provider, ext.Owner, ext.Slot = true, owner.Name, p.Slot
 		ext.Requires, ext.Order = []string{owner.Name}, owner.SuggestOrder
 	default:
-		return false, fmt.Errorf("%s: neither %s nor %s: every extension plugin speaks the extension contract (docs/extensions.md)", ext.Name, extension.ManifestFile, extension.ProviderFile)
+		return false, fmt.Errorf("%s: neither %s nor %s: every extension and provider speaks the extension contract (docs/extensions.md)", ext.Name, extension.ManifestFile, extension.ProviderFile)
 	}
 	return false, nil
 }

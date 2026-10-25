@@ -5,8 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"maps"
 	"slices"
-	"sort"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -66,17 +66,19 @@ type Slot struct {
 	// Operations maps each operation a provider of the slot implements to
 	// Required or Optional (only an optional one may be NotImplemented).
 	Operations map[string]string `yaml:"operations"`
+	// Events maps each core event the extension hands the slot's providers
+	// to the slot operations handling it needs: a provider that handles
+	// the event (its provider.yaml events) cannot declare one of them
+	// NotImplemented.
+	Events map[string][]string `yaml:"events"`
 }
 
 // OperationNames returns the slot's operations in name order.
-func (s Slot) OperationNames() []string {
-	names := make([]string, 0, len(s.Operations))
-	for op := range s.Operations {
-		names = append(names, op)
-	}
-	sort.Strings(names)
-	return names
-}
+func (s Slot) OperationNames() []string { return slices.Sorted(maps.Keys(s.Operations)) }
+
+// EventNames returns the events the slot hands its providers, in name
+// order.
+func (s Slot) EventNames() []string { return slices.Sorted(maps.Keys(s.Events)) }
 
 // Bundles reports whether the extension's providers are installed with
 // it (providers: bundled).
@@ -118,6 +120,8 @@ func LoadManifest(fsys fs.FS, dir string) (*Manifest, error) {
 	}
 	m, err := ParseManifest(data)
 	if err != nil {
+		// ParseManifest's errors start with "extension.yaml: ": this makes
+		// them "<dir>/extension.yaml: ...", the manifest's path in fsys.
 		return nil, fmt.Errorf("%s/%w", dir, err)
 	}
 	if m.Name != dir {
@@ -220,6 +224,72 @@ func (m *Manifest) problems() []string {
 			if level := s.Operations[op]; level != Required && level != Optional {
 				add("%s.operations.%s %q must be %s or %s", at, op, level, Required, Optional)
 			}
+		}
+		for _, event := range s.EventNames() {
+			ops := s.Events[event]
+			if !m.Subscribes(event) {
+				add("%s.events.%s: the extension does not subscribe to it (events)", at, event)
+			}
+			if len(ops) == 0 {
+				add("%s.events.%s: an event needs at least one operation", at, event)
+			}
+			for _, op := range ops {
+				if _, ok := s.Operations[op]; !ok {
+					add("%s.events.%s: %s is not an operation of the slot", at, event, op)
+				}
+			}
+		}
+	}
+	return p
+}
+
+// RequiresProblems checks the requires of a tree's extensions together,
+// which one manifest alone cannot: requires maps each extension to its
+// requires, and known reports whether a name is an extension of the tree
+// (an extension outside requires, such as a shipped one a project
+// extension requires, has requires of its own already checked). It
+// returns every requirement known refuses, then every requires cycle once,
+// each named by the manifest that starts it: "<name>/extension.yaml: ...".
+func RequiresProblems(requires map[string][]string, known func(string) bool) []string {
+	names := slices.Sorted(maps.Keys(requires))
+	var p []string
+	for _, name := range names {
+		for _, req := range requires[name] {
+			if !known(req) {
+				p = append(p, fmt.Sprintf("%s/%s: requires: %s is not an extension of this tree", name, ManifestFile, req))
+			}
+		}
+	}
+
+	const (
+		unvisited = iota
+		onPath
+		done
+	)
+	state := map[string]int{}
+	var path []string
+	var visit func(name string)
+	visit = func(name string) {
+		state[name] = onPath
+		path = append(path, name)
+		for _, req := range requires[name] {
+			if _, inTree := requires[req]; !inTree {
+				continue
+			}
+			switch state[req] {
+			case onPath:
+				cycle := append(slices.Clone(path[slices.Index(path, req):]), req)
+				p = append(p, fmt.Sprintf("%s/%s: requires cycle: %s", req, ManifestFile, strings.Join(cycle, " -> ")))
+			case unvisited:
+				visit(req)
+			}
+		}
+		path = path[:len(path)-1]
+		state[name] = done
+	}
+	for _, name := range names {
+		if state[name] == unvisited {
+			visit(name)
 		}
 	}
 	return p

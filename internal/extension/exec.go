@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"slices"
 	"strings"
 
 	"github.com/war-apps/nerv-by-gentle-ai/internal/proc"
@@ -43,7 +42,7 @@ func Exec(ctx context.Context, runner proc.Runner, where string, c Call, req Req
 		return Response{}, proc.Result{}, err
 	}
 	res, err := runner.Run(ctx, proc.Command{Name: c.Argv[0], Args: c.Argv[1:], Dir: c.Dir, Env: c.Env, Stdin: stdin, Stderr: c.Stderr})
-	resp, _ := ParseResponse(res.Stdout)
+	resp, _, statusErr := DecodeResponse(res.Stdout)
 	at := where + ": " + strings.Join(c.Argv, " ")
 	if err != nil {
 		detail := LastLine(res.Stderr)
@@ -55,19 +54,13 @@ func Exec(ctx context.Context, runner proc.Runner, where string, c Call, req Req
 		}
 		return resp, res, fmt.Errorf("%s: %w", at, err)
 	}
-	if resp.Status != "" && !slices.Contains(Statuses, resp.Status) {
-		return resp, res, fmt.Errorf("%s: unknown status %q (want %s)", at, resp.Status, statusList())
+	if statusErr != nil {
+		return resp, res, fmt.Errorf("%s: %w", at, statusErr)
 	}
 	if resp.Failure() {
 		return resp, res, fmt.Errorf("%s: %s: %s", at, resp.Status, resp.Message)
 	}
 	return resp, res, nil
-}
-
-// statusList is Statuses as prose: "ok, skipped, ... or needs_input".
-func statusList() string {
-	last := len(Statuses) - 1
-	return strings.Join(Statuses[:last], ", ") + " or " + Statuses[last]
 }
 
 // ValidTool reports whether name is an executable name a manifest may

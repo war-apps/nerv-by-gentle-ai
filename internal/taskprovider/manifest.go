@@ -79,12 +79,12 @@ func Parse(ext *extension.Manifest, data []byte) (*Manifest, error) {
 }
 
 func fromProvider(p *extension.Provider) (*Manifest, error) {
-	m := &Manifest{Name: p.Name, ContractVersion: p.ContractVersion, MCP: p.MCP, Config: p.Config, Operations: map[string]string{}}
+	m := &Manifest{Name: p.Name, ContractVersion: p.ContractVersion, MCP: p.MCP, Config: p.Config, Operations: map[string]string{}, Events: p.Events}
 	var problems []string
 	for _, f := range []struct {
 		name string
 		v    any
-	}{{"task_ref_prefix", &m.TaskRefPrefix}, {"stages", &m.Stages}, {"events", &m.Events}} {
+	}{{"task_ref_prefix", &m.TaskRefPrefix}, {"stages", &m.Stages}} {
 		if err := p.DecodeField(f.name, f.v); err != nil {
 			problems = append(problems, err.Error())
 		}
@@ -150,9 +150,10 @@ func (m *Manifest) MissingTools(available []string) []string {
 	return missing
 }
 
-// validate checks the task fields: the task ref prefix, the canonical
-// stage keys, and the events, each needing operations the provider
-// implements.
+// validate checks the task fields: the task ref prefix and the canonical
+// stage keys. The events, and the operations each needs, are the common
+// contract's (the task extension.yaml's provider slot), checked by
+// extension.Provider.CheckAgainst.
 func (m *Manifest) validate() []string {
 	var p []string
 	add := func(format string, args ...any) { p = append(p, fmt.Sprintf(format, args...)) }
@@ -163,21 +164,6 @@ func (m *Manifest) validate() []string {
 	for _, key := range sortedKeys(m.Stages) {
 		if !slices.Contains(StageKeys, key) {
 			add("stages.%s is not a canonical stage (%s)", key, strings.Join(StageKeys, ", "))
-		}
-	}
-	for i, event := range m.Events {
-		needs, ok := Events[event]
-		if !ok {
-			add("events: %s is not a contract event", event)
-			continue
-		}
-		if slices.Contains(m.Events[:i], event) {
-			add("events: %s: duplicated", event)
-		}
-		for _, op := range needs {
-			if _, declared := m.Operations[op]; declared && !m.Implements(op) {
-				add("events: %s needs %s, declared %s", event, op, NotImplemented)
-			}
 		}
 	}
 	return p

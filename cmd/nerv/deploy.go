@@ -39,9 +39,10 @@ origin) in a temporary directory at the artifact's base commit and:
   5. creates the git host's release (deploy.host), a prerelease for a
      release on a channel, unless it exists.
 
-Before anything is cloned or pushed, every target's preflight checks its
-config and the tools its provider needs are checked (deploy-ssh-compose:
-sshpass for password authentication, infisical for source infisical).
+Before anything is cloned or pushed, each target's preflight checks the
+target's config and that the tools its provider needs are installed
+(deploy-ssh-compose: sshpass for password authentication, infisical for
+source infisical).
 
 Your repository is never modified. When origin's branch moved past the
 artifact's base commit the deploy is refused, unless --rebase re-applies the

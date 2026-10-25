@@ -54,8 +54,10 @@ var StageKeys = []string{"pending", "analysis", "inDev", "testing", "implemented
 var Results = extension.Statuses
 
 // Events maps each event the pipeline emits to the operations a provider
-// must implement to handle it. run.closed never completes the task: that
-// stays an explicit user action (/task:close).
+// must implement to handle it, as the provider slot's events in
+// plugins/task/extension.yaml declare it (the shared validator enforces
+// that table). run.closed never completes the task: that stays an
+// explicit user action (/task:close).
 var Events = map[string][]string{
 	"run.started":          {"getTask", "assign", "moveStage"},
 	"verification.started": {"moveStage"},

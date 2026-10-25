@@ -55,6 +55,7 @@ slots:
   - name: host
     cardinality: one           # one | many | per-target
     default: github            # optional: the provider used when the configuration names none
+    events: {}                 # optional: each subscribed event -> the slot operations a provider handling it needs
     operations:
       releaseExists: required  # required | optional
       createRelease: required
@@ -83,10 +84,16 @@ slots:
   installed; `providers` does.
 - **`operations`** lists every operation of the slot. A provider declares
   each one; only an `optional` one may be `not_implemented`.
+- **slot `events`** (optional) maps each core event a provider of the slot
+  may handle to the slot operations that event needs. Its keys must be
+  events the extension subscribes to, and its operations must be
+  operations of the slot. A provider that lists an event in its own
+  `events` must implement every operation the event needs (task:
+  `audit.ranked` needs `comment`).
 - **`provider_fields`** are `{name, type, required}` entries (types as for
   config keys). They let an extension give its providers top-level fields
-  the common schema does not have, such as task's `task_ref_prefix`,
-  `stages` and `events`. A provider field must not reuse a common field
+  the common schema does not have, such as task's `task_ref_prefix` and
+  `stages`. A provider field must not reuse a common field
   name. The extension's own code gives them their meaning.
 
 The shipped extensions:
@@ -169,7 +176,7 @@ operations:
   getTask: procedures/get-task.md
   comment: not_implemented
 task_ref_prefix: TW            # task's provider_fields
-events: [run.started]
+events: [run.started]          # the core events it handles, checked against its slot's events
 ```
 
 - **Runtime `exec`**: each operation is a list of steps that Go runs
@@ -190,6 +197,9 @@ events: [run.started]
   `release.projects[].providers.<name>.<key>` for a build provider) for
   release providers, `deploy.targets[].config.<key>` or
   `deploy.providers.<name>.<key>` for deploy providers.
+- **`events`** (optional): the core events the provider handles. Each must
+  be an event of its slot's `events`, and none may need an operation the
+  provider declares `not_implemented`.
 - Unknown fields are refused, at the top level and inside every block. A
   top-level field that is not common must be one of the extension's
   `provider_fields`.
