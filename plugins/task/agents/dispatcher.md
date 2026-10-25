@@ -20,7 +20,7 @@ EVENT: <event>
 PAYLOAD: <the §6.1 payload, YAML>
 ```
 
-It also carries the merged `tasks:` block and the `git:` block of the configuration.
+It also carries the `tasks:` block (resolved as the task skill's §1 says: the project file, plus the personal keys of the user file) and the `git:` block of the configuration.
 
 ## Steps
 

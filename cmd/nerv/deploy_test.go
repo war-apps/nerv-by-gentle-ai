@@ -9,8 +9,33 @@ import (
 	"testing"
 
 	nerv "github.com/war-apps/nerv-by-gentle-ai"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/config"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/env"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/workflowconfig"
 )
+
+// A deploy provider key comes from the user file only when its manifest
+// declares scope: user; a repository key there no longer applies.
+func TestUserProviderValue_OnlyPersonalKeys(t *testing.T) {
+	personal, err := workflowconfig.LoadPersonal(nerv.ExtensionsFS())
+	if err != nil {
+		t.Fatal(err)
+	}
+	wc := workflowconfig.Config{
+		User:     config.Parse("deploy:\n  providers:\n    ssh-compose:\n      ssh_auth: key\n      ssh_port: 2222\n"),
+		Personal: personal,
+	}
+	value := userProviderValue(wc)
+	if v, ok := value("ssh-compose", "ssh_auth"); !ok || v != "key" {
+		t.Errorf("ssh_auth = %q, %v; want key (scope: user)", v, ok)
+	}
+	if v, ok := value("ssh-compose", "ssh_port"); ok {
+		t.Errorf("ssh_port = %q from the user file; a scope: repo key comes from the project only", v)
+	}
+	if _, ok := userProviderValue(workflowconfig.Config{Personal: personal})("ssh-compose", "ssh_auth"); ok {
+		t.Error("a value without a user file")
+	}
+}
 
 func TestRunDeploy_RequiresTheArtifact(t *testing.T) {
 	var stdout, stderr bytes.Buffer

@@ -21,14 +21,16 @@ import (
 // then writing .ai-workflow/config.yaml through configure.InitRepo — the same write
 // path "nerv configure --init-repo --repo-provider-config" uses. baseBranch
 // is the User-config section's own answer, used as this section's default
-// regardless of whether Section 1 actually wrote anything.
+// regardless of whether Section 1 actually wrote anything. userConfig's
+// defaults.tasks seeds the new file's tasks: section, and each value it
+// copies is shown.
 //
 // The path-exists/git-toplevel/already-initialized checks below duplicate
 // configure.InitRepo's own — necessary here because, unlike the
 // non-interactive --init-repo mode, the wizard must decide whether to ask
 // the base-branch and provider questions at all before it has
 // anything to hand InitRepo.
-func runReposSection(deps Deps, s *session, out io.Writer, baseBranch string, providers []configure.Provider) (bool, error) {
+func runReposSection(deps Deps, s *session, out io.Writer, baseBranch string, providers []configure.Provider, userConfig string) (bool, error) {
 	fmt.Fprintln(out)
 	fmt.Fprintln(out, "--- Repositories ---")
 
@@ -72,7 +74,7 @@ func runReposSection(deps Deps, s *session, out io.Writer, baseBranch string, pr
 			return anyChanged, err
 		}
 
-		req := configure.InitRepoRequest{Path: repoPath, Base: repoBaseBranch, ProviderConfig: providerConfig}
+		req := configure.InitRepoRequest{Path: repoPath, Base: repoBaseBranch, ProviderConfig: providerConfig, UserConfig: userConfig}
 
 		result, err := configure.InitRepo(deps, req)
 		if err != nil {
@@ -86,6 +88,11 @@ func runReposSection(deps Deps, s *session, out io.Writer, baseBranch string, pr
 
 		for _, w := range result.Warnings {
 			fmt.Fprintln(out, w)
+		}
+		for _, c := range result.Changes {
+			if value, seeded := strings.CutSuffix(c.To, configure.SeedSuffix); seeded {
+				fmt.Fprintf(out, "Copied from your defaults.tasks: %s: %s\n", c.Key, value)
+			}
 		}
 		for _, w := range result.Written {
 			fmt.Fprintf(out, "Written: %s\n", w)
