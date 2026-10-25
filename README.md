@@ -185,10 +185,13 @@ bring every provider they ship with them, unasked; `deploy` requires
 
 ### Updating
 
-Re-run the install method you used (the `scripts/install.sh` one-liner, or
-`go install ...@latest` on Windows), then
-run `nerv install` again to refresh the plugin cache and re-apply
-configuration.
+On Linux and macOS, run `nerv upgrade` (`--alpha` or `--rc` to follow a
+pre-release channel): it downloads the newest release, verifies its
+checksum, replaces the binary, then runs the new binary's `nerv install`.
+See [docs/commands.md](docs/commands.md#nerv-upgrade).
+
+On Windows, re-run `go install ...@latest`, then run `nerv install` again
+to refresh the plugin cache and re-apply configuration.
 
 **Upgrading from a release with built-in tasks.** An existing `tasks:`
 block in `~/.config/ai-workflow/config.yaml` or `.ai-workflow/config.yaml` keeps working once
