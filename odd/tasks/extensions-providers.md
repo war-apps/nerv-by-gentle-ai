@@ -250,3 +250,8 @@ Order: T4 first (it touches every other surface), then T1, T2, T3, T5, T6, T7, T
     - the top-level migrate usage names 5.0.0-alpha.1.
   - Advisory 4 (export-subst is also dropped) follows from L23 by design.
   - Advisory 5 (`release setup --import` ignores a leftover `.ai-workflow.yml`) was already the behaviour at the baseline.
+- **L31 (native reviews of the tail):** 9766737, 805eb07, 964fef2, 67c85f2 and 0a06cd5 were each assessed under budget, so they were reviewed as one slice from c045ed3 to 0a06cd5. 235c863 was assessed high and reviewed alone.
+  - **Slice:** the user granted it, and START stopped with `lens_context_budget_exceeded` (2.4k lines). The final verifier's PASS (L30) stands.
+  - **235c863:** the user granted it; approved and acknowledged. Its advisories are suggestions only: the extraction failure paths and timeout coverage for operations other than deploy.
+  - 9637627 (docs/usage text) was under budget and is left pending as passive-scale.
+  - **Feature status:** all tasks are done; delivery is pending the user's decision.
