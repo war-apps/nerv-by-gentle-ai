@@ -38,7 +38,7 @@ Commands:
                        tag, push, targets, git host release
                        (see "nerv deploy --help")
   migrate [flags]      Move a repository (and, with --user, the user
-                       configuration) from nerv 4.2.0 to this version
+                       configuration) from nerv 4.2.0 or 5.0.0-alpha.1
                        (see "nerv migrate --help")
   configure [flags]    Configure NERV (non-interactive; see "nerv configure --help")
   install [flags]      Install NERV (see "nerv install --help")

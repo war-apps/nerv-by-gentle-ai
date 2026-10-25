@@ -242,3 +242,11 @@ Order: T4 first (it touches every other surface), then T1, T2, T3, T5, T6, T7, T
   - Terminology leftovers are fixed in the install help, the wizard line, the evals and the code comments.
   - `go test ./...` and the hook tests pass.
   - Risk: item 3 (a bare `{provider_dir}` is now refused, printed text changed) and item 5 (deploy-time tree extraction rewritten).
+- **L29:** the stop hook raised the whole-branch candidate again (88566 lines) and the user granted review. The native START stopped with `lens_context_budget_exceeded` again (terminal).
+- **L30 (final verifier, 9766737..235c863): PASS, no blockers.** Items 1, 3 and 5 hold, and so does every commit.
+  - Advisories 1-3 were fixed inline:
+    - the broken `#build-modes` anchors now point to `#build-providers`;
+    - the importer's printed "deploy plugin" wording now says "deploy extension";
+    - the top-level migrate usage names 5.0.0-alpha.1.
+  - Advisory 4 (export-subst is also dropped) follows from L23 by design.
+  - Advisory 5 (`release setup --import` ignores a leftover `.ai-workflow.yml`) was already the behaviour at the baseline.

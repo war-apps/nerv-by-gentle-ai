@@ -335,9 +335,9 @@ func (im *importer) plugins(v any) {
 				}
 			}
 		case "@semantic-release/git":
-			im.warn(name, "the release commit (assets %v, message %v) is not part of the version engine: the deploy plugin makes it", cfg["assets"], orDefault(cfg["message"], "the default"))
+			im.warn(name, "the release commit (assets %v, message %v) is not part of the version engine: the deploy extension makes it", cfg["assets"], orDefault(cfg["message"], "the default"))
 		case "@semantic-release/github":
-			im.warn(name, "the GitHub release is not part of the version engine: the deploy plugin's git host provider publishes it")
+			im.warn(name, "the GitHub release is not part of the version engine: the deploy extension's git host provider publishes it")
 		case "@semantic-release/npm":
 			im.warn(name, "not translatable: the version engine does not write package.json or publish to npm (options %v); write the version from a build script if needed", cfg)
 		case "@semantic-release/exec":

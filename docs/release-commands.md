@@ -46,7 +46,7 @@ nerv install --with release
 - [Migrating from the 4.2.0 `release:` section and semantic-release](#migrating-from-the-420-release-section-and-semantic-release)
 - [`nerv version next`](#nerv-version-next)
 - [`nerv release`](#nerv-release)
-- [Build modes](#build-modes)
+- [Build providers](#build-providers)
 - [The artifact](#the-artifact)
 - [Stages, hooks and commands](#stages-hooks-and-commands)
 - [Security notes](#security-notes)
@@ -719,7 +719,7 @@ yes, so the versions you approved are the only ones that can be packaged.
    real run refuses an artifact that already exists for a releasing
    project's version, unless `--force`.
 5. Print each releasing project's version, channel, tag, last release, its
-   plan ([Build modes](#build-modes)) and its artifact directory, then ask
+   plan ([Build providers](#build-providers)) and its artifact directory, then ask
    `Package <n> project(s)? [y/N]` on an interactive terminal. `--yes`
    skips the question; without a terminal `--yes` is required (exit 1
    otherwise); `--dry-run` never asks.
@@ -1022,7 +1022,7 @@ are removed first.
 | `NERV_RELEASE_NOTES_FILE` | File holding the release notes (Markdown). |
 | `NERV_RELEASE_BRANCH` | Branch being built. |
 | `NERV_RELEASE_DRY_RUN` | `true` under `nerv release --dry-run`, else `false`. |
-| `NERV_RELEASE_ARTIFACTS_DIR` | Per-project directory for build outputs, outside the repository (see [Build modes](#build-modes)). |
+| `NERV_RELEASE_ARTIFACTS_DIR` | Per-project directory for build outputs, outside the repository (see [Build providers](#build-providers)). |
 | `NERV_RELEASE_OUTPUTS_DIR` | `$NERV_RELEASE_ARTIFACTS_DIR/outputs`, emptied before the run: what the package stage writes there becomes the artifact's `outputs/`. |
 | `NERV_RELEASE_COVERAGE_DIR` | With `coverage`, the directory the coverage check searches for `*.cobertura.xml` reports (`coverage.dir` in the clone, or `$NERV_RELEASE_ARTIFACTS_DIR/coverage`); not set otherwise. |
 

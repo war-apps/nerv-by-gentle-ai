@@ -118,7 +118,7 @@ isn't taking effect.
 | `nerv release` | Build, test and package origin's code into a local artifact; no git writes (release extension) |
 | `nerv release setup --import` | Import an existing semantic-release config into the `release:` section |
 | `nerv deploy` | Release and deploy a release artifact: release commit, tag, push, targets, git host release (deploy extension) |
-| `nerv migrate` | Move a repository (and, with `--user`, the user configuration) from nerv 4.2.0 to this version |
+| `nerv migrate` | Move a repository (and, with `--user`, the user configuration) from nerv 4.2.0 or 5.0.0-alpha.1 |
 | `nerv configure` | Configure NERV non-interactively (or run the wizard) |
 | `nerv install` | Install NERV (plugin, cache, skills, Engram KB) |
 | `nerv uninstall` | Uninstall NERV |
