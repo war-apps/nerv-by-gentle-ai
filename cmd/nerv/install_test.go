@@ -318,7 +318,7 @@ func seedReleaseFamilyForCLI(t *testing.T, home string) {
 		t.Fatal(err)
 	}
 	content := `{"plugins":{"nerv@nerv":[{"installPath":"/c/nerv","version":"` + pv + `"}]`
-	for _, name := range []string{"task", "task-teamwork", "release", "release-conventional-commits", "release-docker-compose", "release-bash", "deploy", "deploy-github", "deploy-ssh-compose"} {
+	for _, name := range []string{"task", "task-teamwork", "release", "release-conventional-commits", "release-docker-compose", "release-bash", "deploy", "deploy-bash", "deploy-github", "deploy-ssh-compose"} {
 		content += `,"` + name + `@nerv":[{"installPath":"/c/` + name + `","version":"` + pv + `"}]`
 	}
 	if err := os.WriteFile(filepath.Join(home, ".claude", "plugins", "installed_plugins.json"), []byte(content+"}}"), 0o644); err != nil {

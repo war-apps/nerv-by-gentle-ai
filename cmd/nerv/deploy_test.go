@@ -83,7 +83,7 @@ func TestRunProvider_DeploySSHComposeAnswersJSON(t *testing.T) {
 func TestRunProvider_RefusesAnUnknownProvider(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	if code := run([]string{"provider", "deploy-github", "createRelease"}, &stdout, &stderr, testOptions(t.TempDir())); code != 2 ||
-		!strings.Contains(stderr.String(), `"deploy-github" is not a native provider (deploy-ssh-compose, release-bash, release-conventional-commits, release-docker-compose)`) {
+		!strings.Contains(stderr.String(), `"deploy-github" is not a native provider (deploy-bash, deploy-ssh-compose, release-bash, release-conventional-commits, release-docker-compose)`) {
 		t.Errorf("exit %d, stderr %s", code, stderr.String())
 	}
 	stderr.Reset()

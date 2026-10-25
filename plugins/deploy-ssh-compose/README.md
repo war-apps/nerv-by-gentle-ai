@@ -32,5 +32,5 @@ scopes are in `provider.yaml` and in `docs/deploy.md`.
 nerv install --with release,deploy,deploy-ssh-compose
 ```
 
-Then add a target with `provider: ssh-compose` to the `deploy:` section of
-`.ai-workflow.yml`, or run `/deploy:setup`.
+Then add a `deploy.targets[]` entry with `provider: ssh-compose` to the
+project configuration, or run `/deploy:setup`.

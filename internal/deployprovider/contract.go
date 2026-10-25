@@ -67,9 +67,10 @@ var ForEach = []string{"images", "image_tars", "outputs"}
 // Variables are the template variables every operation can use, besides
 // config.<key> (a key the manifest declares) and item (in a for_each
 // step). prerelease is "true" for a release on a channel, "false"
-// otherwise.
+// otherwise; build_provider is the release build provider that made the
+// artifact (its manifest's build_provider).
 var Variables = []string{
-	"project", "version", "channel", "tag", "base_commit", "branch", "build_mode",
+	"project", "version", "channel", "tag", "base_commit", "branch", "build_provider",
 	"prerelease", "artifact_dir", "notes_file", "changelog_file", "target", "nerv",
 }
 

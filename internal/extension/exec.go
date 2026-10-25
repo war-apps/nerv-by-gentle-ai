@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"slices"
 	"strings"
 
 	"github.com/war-apps/nerv-by-gentle-ai/internal/proc"
@@ -26,7 +27,8 @@ type Call struct {
 // Exec runs the step c with req as JSON on its stdin and reads the
 // response it prints on its stdout. A non-zero exit is an error carrying
 // the response's message or the last stderr line, and so is a response
-// whose status is a Failure; where prefixes every error (such as
+// whose status is a Failure or not one of Statuses (a response without a
+// status answers by exit code alone); where prefixes every error (such as
 // "provider ssh-compose: deploy"). The returned Response is whatever the
 // step printed (zero when it printed none), also on error.
 func Exec(ctx context.Context, runner proc.Runner, where string, c Call, req Request) (Response, proc.Result, error) {
@@ -53,11 +55,25 @@ func Exec(ctx context.Context, runner proc.Runner, where string, c Call, req Req
 		}
 		return resp, res, fmt.Errorf("%s: %w", at, err)
 	}
+	if resp.Status != "" && !slices.Contains(Statuses, resp.Status) {
+		return resp, res, fmt.Errorf("%s: unknown status %q (want %s)", at, resp.Status, statusList())
+	}
 	if resp.Failure() {
 		return resp, res, fmt.Errorf("%s: %s: %s", at, resp.Status, resp.Message)
 	}
 	return resp, res, nil
 }
+
+// statusList is Statuses as prose: "ok, skipped, ... or needs_input".
+func statusList() string {
+	last := len(Statuses) - 1
+	return strings.Join(Statuses[:last], ", ") + " or " + Statuses[last]
+}
+
+// ValidTool reports whether name is an executable name a manifest may
+// require or a preflight may answer: a bare name looked up on PATH, never
+// a path or an option.
+func ValidTool(name string) bool { return toolRe.MatchString(name) }
 
 // ExitCode is the exit code an Exec error carries, -1 when it carries
 // none (the command could not start).

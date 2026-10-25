@@ -255,10 +255,27 @@ func writeDeployReport(w io.Writer, asJSON bool, rep deployrun.Report, runErr er
 // provider.yaml steps run the hidden `nerv provider <plugin> <operation>`
 // with the common request on stdin and the response on stdout.
 var nativeProviders = map[string]func(op string, stdout, stderr io.Writer, opts options) int{
+	"deploy-bash":                   runDeployBash,
 	"deploy-ssh-compose":            runDeploySSHCompose,
 	releaseplan.ConventionalCommits: nativeRelease(releaseplan.ConventionalCommits),
 	releaseplan.DockerCompose:       nativeRelease(releaseplan.DockerCompose),
 	releaseplan.Bash:                nativeRelease(releaseplan.Bash),
+}
+
+// runDeployBash runs one operation of the deploy-bash target provider: the
+// project's own deploy script, taken from the release commit.
+func runDeployBash(op string, stdout, stderr io.Writer, opts options) int {
+	stdin := opts.Stdin
+	if stdin == nil {
+		stdin = strings.NewReader("")
+	}
+	signalCtx := opts.SignalContext
+	if signalCtx == nil {
+		signalCtx = signalContext
+	}
+	ctx, stop, _ := signalCtx(context.Background())
+	defer stop()
+	return deploy.RunBashOp(ctx, op, stdin, stdout, deploy.BashDeps{Output: stderr})
 }
 
 // nativeRelease runs one operation of a native release provider: the

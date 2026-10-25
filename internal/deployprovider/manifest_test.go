@@ -133,3 +133,16 @@ func TestParse_PreflightRunsOnce(t *testing.T) {
 		t.Errorf("preflight for_each: %v", err)
 	}
 }
+
+// The artifact's build provider is {build_provider} (the artifact field
+// since the release providers); {build_mode} is gone.
+func TestParse_BuildProviderVariable(t *testing.T) {
+	ok := strings.Replace(validTarget, `["{nerv}", deploy-box, deploy]`, `["{nerv}", deploy-box, deploy, "{build_provider}"]`, 1)
+	if _, err := parse(t, ok); err != nil {
+		t.Errorf("{build_provider}: %v", err)
+	}
+	old := strings.Replace(validTarget, `["{nerv}", deploy-box, deploy]`, `["{nerv}", deploy-box, deploy, "{build_mode}"]`, 1)
+	if _, err := parse(t, old); err == nil || !strings.Contains(err.Error(), `"{build_mode}": unknown variable`) {
+		t.Errorf("{build_mode}: %v", err)
+	}
+}
