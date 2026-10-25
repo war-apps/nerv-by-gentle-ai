@@ -123,7 +123,11 @@ changes confirmed — never more.
    - **repo**: `nerv configure --init-repo <path> --repo-base <base> --json`.
      This never overwrites an existing `.ai-workflow/config.yaml`; if one is already
      present, the result carries a `warnings` entry saying so — report it
-     and move on without asking again.
+     and move on without asking again. A new file gets the user config's
+     `defaults.tasks` as its `tasks:` section (personal keys left out);
+     each copied value is a `changes` entry whose `to` ends with
+     `(from defaults.tasks)` — list those in the summary as copied from
+     the user's defaults.
 
    Read each call's JSON result (`changed`, `changes`, `written`,
    `warnings`, `backup`, `config_path`) and hold it for the final summary. A section with no

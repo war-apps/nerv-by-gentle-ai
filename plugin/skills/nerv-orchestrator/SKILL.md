@@ -131,8 +131,8 @@ Resolve NERV configuration from exactly two files, same schema:
 2. `<repo>/.ai-workflow/config.yaml` (project scope, committed); the old
    `~/.claude/nerv/nerv.yaml` and `.nerv/nerv.yaml` are never read.
 
-The project file overrides the user file key by key; a key missing from the
-project file falls back to the user file, then to the built-in default.
+The project file overrides the user file key by key; a key missing from the project file falls back to the user file, then to the built-in default.
+Exception: `tasks`, `release` and `deploy` come from the project file only, apart from personal keys (user-scope provider keys, `tasks.timer_store`, `tasks.stale_after_hours`); the user `defaults:` is never read at run time.
 `enabled` is meaningful only in the project file. Resolve once per session
 and cache; re-resolve only if either file changes mid-session.
 

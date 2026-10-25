@@ -521,8 +521,8 @@ A `needs_input` envelope carries a question; Ikari relays it verbatim and
 dispatches the event again with the answer in `data`. Dispatch is
 fail-soft: a `blocked` or `failed` envelope never halts or retries the run.
 
-**Per-event switches.** `tasks.events.<event>: off` in either configuration file
-scope turns one event off, and a run can switch events off for itself
+**Per-event switches.** `tasks.events.<event>: off` in the project's
+`.ai-workflow/config.yaml` turns one event off, and a run can switch events off for itself
 (`disabled_events`). A switched-off event is answered `skipped`. See
 [configuration.md](configuration.md#tasks-task-extension).
 

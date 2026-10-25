@@ -8,8 +8,9 @@ extension contract, `docs/extensions.md`): an extension with
 `runtime: agent` is reached by launching its `agent` entry. Today only the
 task extension subscribes, through `task:dispatcher`. When the task extension
 is installed (`task:dispatcher` is available), Ikari launches
-`task:dispatcher` with `EVENT: <event>` and this payload, plus the merged
-`tasks` and `git` blocks:
+`task:dispatcher` with `EVENT: <event>` and this payload, plus the `tasks`
+block (the project's, with the personal keys from the user file; see the
+`task` skill §1) and the merged `git` block:
 
 ```yaml
 task_ref: <from the run.started envelope; may be empty only on run.started>

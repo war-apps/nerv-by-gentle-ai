@@ -29,6 +29,8 @@ reported the same way, and the repository is treated as unconfigured.
 | the user `config.yml` (5.0.0-alpha.1, with `--user`) | the user `config.yaml` in the same folder. The old file is kept as `config.yml.migrated`. |
 | `models:` and the provider keys of user scope in the project file, such as `tasks.providers.teamwork.assignee_id` | Moved to the user config when `--user` runs in the same repository. Otherwise they stay where they are and are reported. |
 | `tasks.rounding_minutes` | `tasks.providers.teamwork.rounding_minutes` |
+| `tasks:`, `release:` and `deploy:` keys in the user `config.yaml` that are not personal (with `--user`) | Moved under `defaults.<section>`: they only seed new projects now, and are never read at run time. Personal keys stay: provider keys of user scope, `tasks.timer_store`, `tasks.stale_after_hours`. |
+| a project file without `tasks.provider`, when the user file has one | The project gets `tasks.provider` from `defaults.tasks.provider`, or else from the old user `tasks.provider`. |
 | `tasks.provider: jira` or `github-projects`, `tasks.providers.jira` / `.github-projects` | Dropped and reported: those providers were removed. |
 | `tasks.providers.teamwork.task_ref_prefix` | Dropped: the provider's manifest fixes the prefix. |
 | `ship:` (5.0.0-alpha.1) | `release:`, today's section (see [From 5.0.0-alpha.1](#from-500-alpha1)). |

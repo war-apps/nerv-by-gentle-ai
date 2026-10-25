@@ -185,14 +185,19 @@ bring every provider they ship with them, unasked; `deploy` requires
 
 ### Updating
 
-Re-run the install method you used (the `scripts/install.sh` one-liner, or
-`go install ...@latest` on Windows), then
-run `nerv install` again to refresh the plugin cache and re-apply
-configuration.
+On Linux and macOS, run `nerv upgrade` (`--alpha` or `--rc` to follow a
+pre-release channel): it downloads the newest release, verifies its
+checksum, replaces the binary, then runs the new binary's `nerv install`.
+See [docs/commands.md](docs/commands.md#nerv-upgrade).
+
+On Windows, re-run `go install ...@latest`, then run `nerv install` again
+to refresh the plugin cache and re-apply configuration.
 
 **Upgrading from a release with built-in tasks.** An existing `tasks:`
-block in `~/.config/ai-workflow/config.yaml` or `.ai-workflow/config.yaml` keeps working once
-the task extension is installed; without it, core ignores the block and never
+block in `.ai-workflow/config.yaml` keeps working once the task extension is
+installed. The task settings that are not personal are read from the project
+only: `nerv migrate --user` moves the ones in `~/.config/ai-workflow/config.yaml`
+under `defaults.tasks`, which seeds new projects. Without the extension, core ignores the block and never
 deletes it. Copies of the `/task:*` commands that an older release put in
 `~/.claude/commands/task/` are reported by `nerv install` and removed only
 after you confirm. See [docs/configuration.md](docs/configuration.md#tasks-task-extension).
@@ -266,8 +271,8 @@ The wizard walks through these sections:
    untouched.
 6. **Task providers** — shown only when the `task` extension is enabled. It prompts
    each enabled provider's scalar config keys, read from its
-   `provider.yaml`, plus `tasks.provider` when more than one provider is
-   enabled. The `/task:*` commands are served by the `task` extension itself,
+   `provider.yaml`, plus the default task provider for new repositories
+   (`defaults.tasks.provider`) when more than one provider is enabled. The `/task:*` commands are served by the `task` extension itself,
    so nothing is copied to `~/.claude/commands/task/`.
 
 The closing step (`--no-refresh` to skip) applies the resolved `models:`

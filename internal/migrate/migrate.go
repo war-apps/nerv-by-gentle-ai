@@ -142,6 +142,9 @@ func Compute(o Options) (*Plan, error) {
 		}
 	}
 	if user != nil {
+		if err := moveUserDefaults(p, user, o.ExtensionsFS); err != nil {
+			return nil, err
+		}
 		user.finish(p)
 	}
 	return p, nil

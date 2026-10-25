@@ -120,6 +120,7 @@ isn't taking effect.
 | `nerv deploy` | Release and deploy a release artifact: release commit, tag, push, targets, git host release (deploy extension) |
 | `nerv migrate` | Move a repository (and, with `--user`, the user configuration) from nerv 4.2.0 or 5.0.0-alpha.1 |
 | `nerv doctor` | Check that NERV is in order on this machine and in the repository, and list the steps to take |
+| `nerv upgrade` | Replace the nerv binary with the newest release (`--alpha`, `--rc`), then run its install |
 | `nerv configure` | Configure NERV non-interactively (or run the wizard) |
 | `nerv install` | Install NERV (plugin, cache, skills, Engram KB) |
 | `nerv uninstall` | Uninstall NERV |
@@ -273,11 +274,17 @@ Moves a repository from nerv 4.2.0 or 5.0.0-alpha.1 to this version, once:
 - the 4.2.0 `release:` section becomes today's `release:` section, with the semantic-release config imported;
 - `pipeline:` becomes `deploy:`;
 - the in-flight `openspec/changes` become ODD feature documents;
+- a project file without `tasks.provider` gets the user's
+  (`defaults.tasks.provider`, or the older user `tasks.provider`), since
+  `tasks:` is read from the project only;
 - `.nerv/.gitignore` is created.
 
 `--user` also moves `~/.claude/nerv/nerv.yaml`, or the user `config.yml`,
 to the user `config.yaml`,
-with the personal keys of the project file. `--dry-run` lists the steps
+with the personal keys of the project file, and moves the user file's
+run-time `tasks:`, `release:` and `deploy:` keys under
+`defaults.<section>`, keeping the personal ones in place (see
+[configuration.md](configuration.md#extension-sections-tasks-release-deploy)). `--dry-run` lists the steps
 it would take and writes nothing. `--install` installs the extensions and
 providers the repository used. Every changed or removed file is backed up first, and a
 second run changes nothing. See [migration.md](migration.md).
@@ -293,11 +300,13 @@ Checks that everything NERV needs is in order and changes nothing:
 
 - on this machine: gentle-ai 4.x, Claude Code and engram on the PATH, the
   NERV plugin installed, enabled and at this binary's version, its skills,
-  and the user configuration;
+  and the user configuration (a warning names its `tasks:`, `release:` and
+  `deploy:` keys that no longer apply, with `nerv migrate --user` as the
+  step);
 - in the repository: `.ai-workflow/config.yaml` with `enabled: true`, a
   pending `nerv migrate`, the project extensions and providers, the
-  `release:`, `deploy:` and `tasks:` sections with the extensions they need,
-  the origin remote and the base branch.
+  `release:`, `deploy:` and `tasks:` sections (read from the project file
+  only) with the extensions they need, the origin remote and the base branch.
 
 Each check prints `[ok]`, `[!!]` (should be changed), `[xx]` (NERV cannot
 work until it is fixed) or `[--]` (optional, not set up). Then come the
@@ -316,6 +325,30 @@ Next steps:
 
 `--json` prints the same results. The exit code is 1 when a check failed,
 0 otherwise.
+
+### nerv upgrade
+
+```bash
+nerv upgrade          # newest stable release
+nerv upgrade --rc     # newest of stable and vX.Y.Z-rc.N
+nerv upgrade --alpha  # newest of stable and vX.Y.Z-alpha.N
+```
+
+Replaces the running `nerv` binary (symlinks resolved) with the newest
+release of the channel, the way `scripts/install.sh` installs one: it
+downloads `nerv_<version>_<os>_<arch>.tar.gz` and `checksums.txt` from the
+GitHub release, verifies the archive's SHA-256, and renames the new binary
+over the old one. A prerelease channel also considers stable releases, so
+it never stays on an older prerelease when a newer stable one exists. Then
+it runs the new binary's `nerv install` (`nerv install --no-configure`
+without an interactive terminal) and exits with its exit code.
+
+Already on the newest release, or on a newer one (a `dev` build counts as
+older than any release), it says so and changes nothing. A failed
+download or checksum leaves the current binary untouched and exits 1;
+only Linux and macOS on amd64 or arm64 have prebuilt binaries (anywhere
+else, use `go install ...@latest`). `--alpha` with `--rc` is a usage
+error (exit 2).
 
 ### nerv install
 

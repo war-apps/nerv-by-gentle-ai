@@ -125,9 +125,14 @@ deploy:
 | `git.remote` | `origin` | The remote that is cloned and pushed to. |
 
 A provider key's value comes from the target's `config`. If the target does
-not set it, nerv reads `deploy.providers.<provider>.<key>` in the user
-configuration (`~/.config/ai-workflow/config.yaml`). If neither sets it, the
-manifest's default applies.
+not set it and the manifest declares the key `scope: user`, nerv reads
+`deploy.providers.<provider>.<key>` in the user configuration
+(`~/.config/ai-workflow/config.yaml`); a `scope: repo` key there no longer
+applies (`nerv doctor` names it, `nerv migrate --user` moves it under
+`defaults.deploy`). If neither sets it, the manifest's default applies. The
+user file's `defaults.deploy` is only a seed `/deploy:setup` copies into a
+project; see
+[configuration.md](configuration.md#extension-sections-tasks-release-deploy).
 
 ## Providers
 

@@ -198,6 +198,7 @@ func planRepo(p *Plan, o Options, user *userState) error {
 			doc.SetScalar("odd.tdd", tdd.mode)
 			doc.SetScalar("odd.test_runner", tdd.runner)
 		}
+		seedTaskProvider(p, o, doc)
 		if err := personalKeys(p, doc, paths.ProjectConfigFile, o.ExtensionsFS, user); err != nil {
 			return err
 		}
@@ -384,14 +385,20 @@ func migrateRelease(p *Plan, o Options, doc *config.Document) (*config.Document,
 	return doc, githubRelease, nil
 }
 
-// userProvider is the tasks.provider of the user's configuration (today's,
-// the previous config.yml or the 4.2.0 one), or "".
+// userProvider is the tasks.provider of the user's configuration (today's
+// seed defaults.tasks.provider, else its older tasks.provider, the
+// previous config.yml's or the 4.2.0 one's), or "".
 func userProvider(o Options) string {
 	if o.Home == "" {
 		return ""
 	}
 	if wc, err := workflowconfig.Load(o.Home, ""); err == nil && wc.UserExists {
-		v, _ := wc.Scalar("tasks.provider")
+		if d := workflowconfig.Defaults(wc.User); d != nil {
+			if v, ok := d.Scalar("tasks.provider"); ok {
+				return v
+			}
+		}
+		v, _ := wc.User.Scalar("tasks.provider")
 		return v
 	}
 	if data, ok, _ := readOptional(paths.Resolve(o.Home).PreviousUserConfig); ok {
