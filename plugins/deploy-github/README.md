@@ -20,5 +20,5 @@ on PATH and no configuration keys.
 nerv install --with release,deploy,deploy-github
 ```
 
-Then set `host: github` in the `deploy:` section of `.ai-workflow.yml`, or run
+Then set `deploy.host: github` in the project configuration, or run
 `/deploy:setup`.

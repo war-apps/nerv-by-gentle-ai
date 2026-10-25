@@ -215,3 +215,48 @@ func TestPreflight_ReadsRequiresOrTheRefusal(t *testing.T) {
 		t.Errorf("no preflight: %v %v", got, err)
 	}
 }
+
+// A refused preflight keeps what the provider wrote on stderr: its
+// message alone hides why (a missing tool, a stack trace).
+func TestPreflight_FailureSurfacesStderr(t *testing.T) {
+	withPreflight := strings.Replace(validTarget, "  preflight: not_implemented", "  preflight:\n    - argv: [\"{nerv}\", provider, deploy-box, preflight]", 1)
+	m := mustParse(t, withPreflight)
+	tests := []struct {
+		name string
+		res  proc.Result
+		want []string
+	}{
+		{"a message and stderr", proc.Result{Stdout: []byte(`{"status":"failed","message":"config.environment is required"}`), Stderr: []byte("trace one\ntrace two\n")},
+			[]string{"config.environment is required", "trace one", "trace two"}},
+		{"stderr only", proc.Result{Stderr: []byte("panic: boom\ngoroutine 1\n")}, []string{"panic: boom", "goroutine 1"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f := &fakeProc{answer: func(proc.Command) (proc.Result, error) { return tt.res, exitErr(1) }}
+			_, err := m.Preflight(context.Background(), f, sampleEnv(false))
+			if err == nil {
+				t.Fatal("Preflight succeeded")
+			}
+			for _, w := range tt.want {
+				if !strings.Contains(err.Error(), w) {
+					t.Errorf("Preflight error %q lacks %q", err, w)
+				}
+			}
+			if f.calls[0].Stderr != nil {
+				t.Errorf("the preflight's stderr is streamed; it must be captured for the refusal")
+			}
+		})
+	}
+}
+
+// Every step runs through the shared exec runner: an unknown status is
+// a failure, not ok.
+func TestRun_UnknownStatusFails(t *testing.T) {
+	m := mustParse(t, validTarget)
+	f := &fakeProc{answer: func(proc.Command) (proc.Result, error) {
+		return proc.Result{Stdout: []byte(`{"status":"deployed"}`)}, nil
+	}}
+	if _, err := m.Run(context.Background(), f, OpDeploy, sampleEnv(false)); err == nil || !strings.Contains(err.Error(), `unknown status "deployed"`) {
+		t.Errorf("Run: %v", err)
+	}
+}

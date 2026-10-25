@@ -2,7 +2,7 @@
 
 The deploy plugin (`deploy@nerv`) releases what the [release plugin](release-commands.md)
 packaged. It requires `release`, and its git hosts and targets are provider
-plugins (`deploy-github`, `deploy-ssh-compose`). Install them with:
+plugins (`deploy-github`, `deploy-ssh-compose`, `deploy-bash`). Install them with:
 
 ```sh
 nerv install --with release,deploy,deploy-github
@@ -43,6 +43,12 @@ answers the tools that configuration implies (`sshpass` with
 missing tool or a refused configuration is a refusal (exit 1) with nothing
 written, so a deploy never stops half-way for a missing binary after the
 tag is on origin. The preflight also runs in a dry run.
+
+The preflight runs in your repository, not in the temporary clone: it runs
+before the clone exists (a refused configuration costs no clone), and the
+clone has no working tree to check anyway. A provider that checks files,
+such as `deploy-bash`'s scripts, therefore checks your working tree; it
+checks them again in the release commit when it deploys.
 
 ## What it does
 
@@ -158,7 +164,8 @@ operations:
   is replaced as one argument. Values such as the release notes can never
   inject a command.
 - The variables are `project`, `version`, `channel`, `tag`, `base_commit`,
-  `branch`, `build_mode` (the artifact's `build_provider`), `prerelease`, `artifact_dir`, `notes_file`,
+  `branch`, `build_provider` (the release build provider that made the
+  artifact), `prerelease`, `artifact_dir`, `notes_file`,
   `changelog_file`, `target`, `nerv` (the nerv binary), `config.<key>`, and
   `item` in a step with `for_each` (`images`, `image_tars` or `outputs`).
 - `when: prerelease` keeps a step or an argument only for a release on a
@@ -178,10 +185,17 @@ operations:
   dry run. It refuses a bad config with `failed` and its message, and
   answers in `data.requires` the executables that config needs besides
   `requires`.
-- A native provider, such as `deploy-ssh-compose`, is an exec provider
-  whose steps run nerv's hidden `{nerv} provider deploy-<name> <operation>`.
-- Provider steps run in the temporary clone. The `gh` CLI therefore works on
-  origin's repository, with your `gh auth login` session.
+- A step answering a status that is none of these fails the operation: it
+  speaks another contract.
+- A native provider, such as `deploy-ssh-compose` or `deploy-bash`, is an
+  exec provider whose steps run nerv's hidden
+  `{nerv} provider deploy-<name> <operation>`.
+- Provider steps run in the temporary clone, except `preflight`, which runs
+  in your repository (see [Preflight](#preflight)). The clone holds origin's
+  commits, the release commit and its tag, but no checked-out files. The
+  `gh` CLI therefore works on origin's repository, with your
+  `gh auth login` session.
+- A refused preflight shows the provider's stderr under its message.
 
 ### deploy-github
 
@@ -231,6 +245,54 @@ Slot `target`, requires `docker` and `ssh`.
 | `verify_healthy` | repo | `true` |
 | `version_label` | repo | `org.opencontainers.image.version` |
 | `verify_timeout` | repo | `120s` |
+
+### deploy-bash
+
+Slot `target`, requires `bash` and `git`. It runs your repository's own
+scripts, through `nerv provider deploy-bash <operation>`:
+
+| Key | Scope | Default | Meaning |
+|---|---|---|---|
+| `script` | repo | required | The deploy script, relative to the repository root. |
+| `publish_script` | repo | none (`publish` is skipped) | Run by `publish`, before any target deploys. |
+| `verify_script` | repo | none (`verify` is skipped) | Run by `verify`, after the target's deploy. |
+
+```yaml
+deploy:
+  targets:
+    - name: docs
+      provider: bash
+      config:
+        script: deploy/deploy.sh
+        verify_script: deploy/check.sh
+```
+
+- `preflight` checks, in your repository, that every configured script is a
+  regular file inside it: a relative path without `..`, outside `.git`, and
+  no symlink leading out of the repository.
+- `publish`, `deploy` and `verify` run the script of the release commit (the
+  artifact's tag), never your working tree's: the script must be a regular
+  file there, not a symlink. That commit's files are extracted into a
+  temporary directory, and `bash <script>` runs there.
+- The script reads the common JSON request on stdin, and finds the deploy
+  variables in its environment:
+
+  | Variable | Value |
+  |---|---|
+  | `NERV_DEPLOY_OPERATION` | `publish`, `deploy` or `verify`. |
+  | `NERV_DEPLOY_TARGET` | The target's name (`deploy.targets[].name`). |
+  | `NERV_DEPLOY_PROJECT`, `NERV_DEPLOY_VERSION`, `NERV_DEPLOY_TAG` | The artifact's project, version and tag. |
+  | `NERV_DEPLOY_CHANNEL`, `NERV_DEPLOY_PRERELEASE` | The release channel (empty for none) and `true` or `false`. |
+  | `NERV_DEPLOY_BRANCH`, `NERV_DEPLOY_BASE_COMMIT`, `NERV_DEPLOY_COMMIT` | The release branch, the artifact's base commit and the release commit. |
+  | `NERV_DEPLOY_BUILD_PROVIDER` | The build provider that made the artifact. |
+  | `NERV_DEPLOY_ARTIFACT_DIR`, `NERV_DEPLOY_NOTES_FILE`, `NERV_DEPLOY_CHANGELOG_FILE` | The artifact's directory, its release notes and its CHANGELOG section. |
+  | `NERV_DEPLOY_IMAGES` | The artifact's image references, space-separated. |
+
+- The script may print the common JSON response on stdout: its `status`,
+  `message` and `data` are the operation's, and `failed`, `blocked` or
+  `needs_input` fail the deploy with its message. Without a response, exit
+  0 is `ok` and a non-zero exit fails with the script's last stderr line.
+  Its stderr is shown as it runs.
 
 ## Deploy data
 

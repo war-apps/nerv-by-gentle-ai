@@ -249,7 +249,7 @@ func TestRunInstall_WithDeployProvider_BringsDeployAndRelease(t *testing.T) {
 		t.Errorf("want release, then deploy added, then deploy-github installed:\n%s", out)
 	}
 	// S4: release and deploy bring every provider they ship, never asked.
-	for _, p := range []string{"release-bash", "release-conventional-commits", "release-docker-compose", "deploy-ssh-compose"} {
+	for _, p := range []string{"release-bash", "release-conventional-commits", "release-docker-compose", "deploy-bash", "deploy-ssh-compose"} {
 		owner, _, _ := strings.Cut(p, "-")
 		if !strings.Contains(out, "Adding "+p+" (bundled with "+owner+")") || !strings.Contains(out, "-> claude plugin install "+p+"@nerv") {
 			t.Errorf("want %s added with %s and installed:\n%s", p, owner, out)

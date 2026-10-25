@@ -1,0 +1,37 @@
+# Script target of the NERV deploy extension (contract: docs/extensions.md
+# and internal/deployprovider): runs the repository's own deploy scripts. A
+# native provider: its operations run nerv's own hidden `nerv provider
+# deploy-bash <operation>`. preflight checks, in the repository and before
+# anything is written, that each configured script is a regular file inside
+# it; publish, deploy and verify run the script from the release commit's
+# tree with bash, the request on its stdin and the NERV_DEPLOY_* variables
+# in its environment, and the script's JSON response (when it prints one)
+# is the operation's. publish and verify without their script are skipped.
+name: bash
+extension: deploy
+slot: target
+contract_version: 1
+runtime: exec
+requires: [bash, git]
+config:
+  - key: script
+    scope: repo
+    type: string
+    prompt: The deploy script, relative to the repository root (such as deploy/deploy.sh)
+  - key: publish_script
+    scope: repo
+    type: string
+    prompt: The script that publishes the artifact before every target deploys (empty skips publish)
+  - key: verify_script
+    scope: repo
+    type: string
+    prompt: The script that checks the target after its deploy (empty skips verify)
+operations:
+  preflight:
+    - argv: ["{nerv}", provider, deploy-bash, preflight]
+  publish:
+    - argv: ["{nerv}", provider, deploy-bash, publish]
+  deploy:
+    - argv: ["{nerv}", provider, deploy-bash, deploy]
+  verify:
+    - argv: ["{nerv}", provider, deploy-bash, verify]

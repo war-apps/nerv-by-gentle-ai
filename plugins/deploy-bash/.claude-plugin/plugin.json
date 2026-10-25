@@ -1,0 +1,6 @@
+{
+  "name": "deploy-bash",
+  "version": "4.2.0",
+  "description": "Script target for nerv deploy: runs the repository's own deploy script (and optional publish and verify scripts) from the release commit, with the request on stdin and the deploy variables in its environment",
+  "author": { "name": "Walter Rodriguez" }
+}

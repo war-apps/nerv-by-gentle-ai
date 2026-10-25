@@ -2,7 +2,6 @@ package deployprovider
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -158,7 +157,7 @@ func (m *Manifest) ReleaseExists(ctx context.Context, runner proc.Runner, env En
 	quiet.Output = nil
 	resp, res, err := m.exec(ctx, runner, OpReleaseExists, quiet, c)
 	if err != nil {
-		if pattern := c.step.AbsentStderr; pattern != "" && exitCode(err) > 0 && regexp.MustCompile(pattern).Match(res.Stderr) {
+		if pattern := c.step.AbsentStderr; pattern != "" && extension.ExitCode(err) > 0 && regexp.MustCompile(pattern).Match(res.Stderr) {
 			return false, nil
 		}
 		return false, err
@@ -189,19 +188,19 @@ func (m *Manifest) Preflight(ctx context.Context, runner proc.Runner, env Env) (
 	for _, c := range cmds {
 		quiet := env
 		quiet.Output = nil
-		resp, _, err := m.exec(ctx, runner, OpPreflight, quiet, c)
+		resp, res, err := m.exec(ctx, runner, OpPreflight, quiet, c)
 		if err != nil {
 			if resp.Failure() && resp.Message != "" {
-				return nil, errors.New(resp.Message)
+				return nil, withStderr(resp.Message, res.Stderr)
 			}
-			return nil, err
+			return nil, withStderr(err.Error(), res.Stderr)
 		}
 		var data PreflightData
 		if err := resp.DecodeData(&data); err != nil {
 			return nil, fmt.Errorf("provider %s: %s: data: %w", m.Name, OpPreflight, err)
 		}
 		for _, tool := range data.Requires {
-			if !toolRe.MatchString(tool) {
+			if !extension.ValidTool(tool) {
 				return nil, fmt.Errorf("provider %s: %s: %q is not an executable name", m.Name, OpPreflight, tool)
 			}
 			if !slices.Contains(requires, tool) {
@@ -212,9 +211,8 @@ func (m *Manifest) Preflight(ctx context.Context, runner proc.Runner, env Env) (
 	return requires, nil
 }
 
-var toolRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._+-]*$`)
-
-// exec runs one command with its request on stdin and reads its response.
+// exec runs one command through the shared exec runner (extension.Exec)
+// with its request on stdin, and reads its response.
 func (m *Manifest) exec(ctx context.Context, runner proc.Runner, op string, env Env, c command) (extension.Response, proc.Result, error) {
 	payload := env.Payload
 	payload.Item = c.item
@@ -226,42 +224,16 @@ func (m *Manifest) exec(ctx context.Context, runner proc.Runner, op string, env 
 		Contract: ContractVersion, Extension: Extension, Slot: m.Slot, Provider: m.Name, Operation: op,
 		Config: config, Payload: payload,
 	}
-	stdin, err := json.Marshal(req)
-	if err != nil {
-		return extension.Response{}, proc.Result{}, err
-	}
-	pc := proc.Command{Name: c.argv[0], Args: c.argv[1:], Dir: env.Dir, Env: env.ProcEnv, Stdin: stdin, Stderr: env.Output}
-	res, err := runner.Run(ctx, pc)
-	resp, _ := extension.ParseResponse(res.Stdout)
-	where := fmt.Sprintf("provider %s: %s: %s", m.Name, op, strings.Join(c.argv, " "))
-	if err != nil {
-		detail := lastLine(res.Stderr)
-		if resp.Message != "" {
-			detail = resp.Message
-		}
-		if detail != "" {
-			return resp, res, fmt.Errorf("%s: %w: %s", where, err, detail)
-		}
-		return resp, res, fmt.Errorf("%s: %w", where, err)
-	}
-	if resp.Failure() {
-		return resp, res, fmt.Errorf("%s: %s: %s", where, resp.Status, resp.Message)
-	}
-	return resp, res, nil
+	call := extension.Call{Argv: c.argv, Dir: env.Dir, Env: env.ProcEnv, Stderr: env.Output}
+	return extension.Exec(ctx, runner, fmt.Sprintf("provider %s: %s", m.Name, op), call, req)
 }
 
-func exitCode(err error) int {
-	var coder interface{ ExitCode() int }
-	if errors.As(err, &coder) {
-		return coder.ExitCode()
+// withStderr adds what a refused step wrote on stderr to its refusal,
+// indented under it, unless the refusal already is that one line.
+func withStderr(refusal string, stderr []byte) error {
+	text := strings.TrimSpace(string(stderr))
+	if text == "" || strings.HasSuffix(refusal, text) {
+		return errors.New(refusal)
 	}
-	return -1
-}
-
-func lastLine(b []byte) string {
-	s := strings.TrimSpace(string(b))
-	if i := strings.LastIndex(s, "\n"); i >= 0 {
-		s = s[i+1:]
-	}
-	return strings.TrimSpace(s)
+	return fmt.Errorf("%s\n  stderr:\n    %s", refusal, strings.ReplaceAll(text, "\n", "\n    "))
 }

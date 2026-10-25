@@ -9,8 +9,8 @@ import (
 )
 
 // Every deploy provider nerv ships has a valid provider.yaml, in a
-// deploy-<name> plugin requiring deploy; the GitHub host and the SSH
-// compose target release.
+// deploy-<name> plugin requiring deploy: the GitHub host, and the SSH
+// compose and bash targets.
 func TestEmbeddedDeployProviders_AreValid(t *testing.T) {
 	exts, err := plugin.Extensions(nerv.ExtensionsFS())
 	if err != nil {
@@ -31,7 +31,7 @@ func TestEmbeddedDeployProviders_AreValid(t *testing.T) {
 		}
 		slots[m.Name] = m.Slot
 	}
-	if slots["github"] != deployprovider.SlotHost || slots["ssh-compose"] != deployprovider.SlotTarget {
-		t.Errorf("embedded deploy providers %v, want github (host) and ssh-compose (target)", slots)
+	if slots["github"] != deployprovider.SlotHost || slots["ssh-compose"] != deployprovider.SlotTarget || slots["bash"] != deployprovider.SlotTarget {
+		t.Errorf("embedded deploy providers %v, want github (host), ssh-compose and bash (targets)", slots)
 	}
 }

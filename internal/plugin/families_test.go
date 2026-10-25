@@ -18,7 +18,7 @@ func TestExtensions_EmbeddedRequirements(t *testing.T) {
 	want := map[string][]string{
 		"task": nil, "task-teamwork": {"task"},
 		"release": nil, "release-conventional-commits": {"release"}, "release-docker-compose": {"release"}, "release-bash": {"release"},
-		"deploy": {"release"}, "deploy-github": {"deploy"}, "deploy-ssh-compose": {"deploy"},
+		"deploy": {"release"}, "deploy-bash": {"deploy"}, "deploy-github": {"deploy"}, "deploy-ssh-compose": {"deploy"},
 	}
 	for _, e := range exts {
 		req, ok := want[e.Name]
@@ -47,7 +47,7 @@ func TestSuggestionOrder(t *testing.T) {
 	for _, e := range plugin.SuggestionOrder(exts) {
 		got = append(got, e.Name)
 	}
-	want := []string{"task", "task-teamwork", "release", "release-bash", "release-conventional-commits", "release-docker-compose", "deploy", "deploy-github", "deploy-ssh-compose"}
+	want := []string{"task", "task-teamwork", "release", "release-bash", "release-conventional-commits", "release-docker-compose", "deploy", "deploy-bash", "deploy-github", "deploy-ssh-compose"}
 	if !slices.Equal(got, want) {
 		t.Errorf("SuggestionOrder = %v, want %v", got, want)
 	}
@@ -70,7 +70,7 @@ func TestExtensions_BundledProviders(t *testing.T) {
 	}
 	want := map[string][]string{
 		"release": {"release-bash", "release-conventional-commits", "release-docker-compose"},
-		"deploy":  {"deploy-github", "deploy-ssh-compose"},
+		"deploy":  {"deploy-bash", "deploy-github", "deploy-ssh-compose"},
 	}
 	for _, e := range exts {
 		if !slices.Equal(e.Bundle, want[e.Name]) {
