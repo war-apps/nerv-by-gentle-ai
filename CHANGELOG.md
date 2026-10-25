@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.1.0] - 2026-10-25
+
+Upgrading from 5.0.0: `tasks`, `release` and `deploy` are now read from the
+project's `.ai-workflow/config.yaml` only, apart from personal keys. If your
+user configuration sets other `tasks:` or `deploy:` keys, `nerv doctor` says
+so: run `nerv migrate --user` to move them under `defaults:`, then
+`nerv migrate` in each repository to copy `tasks.provider` into it. Later
+upgrades: `nerv upgrade` (`--alpha` or `--rc` for prereleases).
+
+### Added
+- cli: add nerv upgrade (46948b4)
+- config: read tasks, release and deploy from the project only (f656c7f)
+- configure: seed a new repository's sections from the user defaults (bd9c14d)
+
+### Changed
+- cli: name extensions by their bare name (ade0b6d)
+
+### Fixed
+- migrate: drop removed task providers before moving user keys under defaults (b6c8194)
+
 ## [5.0.0] - 2026-10-25
 
 Upgrading from 4.2.0 or a 5.0.0 alpha: run `nerv doctor`, then `nerv migrate
