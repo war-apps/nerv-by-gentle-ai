@@ -7,6 +7,64 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.0.0] - 2026-10-25
+
+Upgrading from 4.2.0 or a 5.0.0 alpha: run `nerv doctor`, then `nerv migrate
+--dry-run` and `nerv migrate` (`--user` for the user configuration). The
+configuration now lives in `.ai-workflow/config.yaml`; the entries below that
+name `ship` or `.ai-workflow.yml` are intermediate steps of this release.
+
+### Breaking
+- configure: remove task settings from core and prompt provider settings from manifests (4eb326a)
+- orchestrator: emit task events to the task plugin instead of tracking tasks (8ecff2a)
+- ship: package releases into a local artifact with compose or script builds (f0254d2)
+- config: read configuration from .ai-workflow.yml and the ai-workflow user config (9c6032c)
+- orchestrator: track NERV runs in gentle-ai's ODD document instead of OpenSpec (7af0059)
+- ship: drop semantic-release and nerv pipeline for the native version engine (2e80414)
+- rename the ship extension to release (b37b91f)
+- extension: read every extension and provider from its manifest (1684958)
+- release: run versioning and builds through release providers (31d860e)
+- config: move the project config into .ai-workflow/ with project providers (a3d72e2)
+
+### Added
+- taskprovider: add the task provider contract and manifest validator (bba18f4)
+- install: ship and install extension plugins from the nerv marketplace (5747eb2)
+- task: add the task plugin with its contract, dispatcher and /task:* commands (29ac930)
+- task-teamwork: add the Teamwork task provider (a7f142a)
+- install: offer to remove old /task:* copies and refresh enabled extensions (c48900d)
+- orchestrator: apply the lessons of real NERV runs (bfacb17)
+- ship: add shared-host dotnet, submodule and per-metric coverage settings (4ac5d1e)
+- versioning: compute releases natively with semantic-release parity (d30bbe5)
+- deploy: deploy ship artifacts and make the release commit, tag and host release (367d066)
+- ship: add the ship and deploy plugins with their agents and commands (16474d7)
+- migrate: add nerv migrate to move a 4.2.0 repository and user config (9f6cf70)
+- orchestrator: keep DIRECT and LIGHT runs out of the ODD document (487ccd0)
+- ship: push the 4.2.0 channel and latest image tags again (06b7238)
+- extension: add the shared extension and provider contract (5b770ca)
+- deploy: add the bash target provider and share the exec runner (45bdce7)
+- migrate: convert 5.0.0-alpha.1 ship: sections and refuse them elsewhere (c53745a)
+- migrate: list the steps instead of diffs (a348146)
+- doctor: add nerv doctor to check the machine and the repository (e54c5e5)
+
+### Fixed
+- install: retry failed extension uninstalls and release extensions atomically (f4e4072)
+- task: let the task plugin own the subtasks_per_wave check (6059a08)
+- task: keep switched-off task plugins silent and list needs_input results (b591c8b)
+- versioning: sort release notes with the CLDR root collation (26d33ef)
+- config: resolve the user config per platform in prose and for fake homes (c5c0bf4)
+- install: tell task and deploy providers apart and refuse unshipped requirements (322edc0)
+- deploy: refuse release files inside .git and environments without an image version (ed99e5d)
+- orchestrator: keep the lock out of git in fresh clones and the ODD document a file (d752c90)
+- deploy: create lightweight release tags as semantic-release does (3690480)
+- ship: keep hand-tuned engine keys, push script-mode images and fill --version notes (d25d8ff)
+- deploy: refuse every git-directory alias and fail closed on unreadable paths (dc1a016)
+- migrate: migrate transactionally, guard live locks and keep small runs out of ODD (771b0f9)
+- deploy: extract deploy-bash trees without export attributes and add a timeout (bb4e8c6)
+- point release docs at build providers and name alpha.1 in migrate usage (984339d)
+- release: check build providers in version next and document bundled installs (9cf51d1)
+- deploy: check deploy-bash scripts in the base commit at preflight (346645d)
+- extension: enforce requirements, statuses and task events at discovery (9c22863)
+
 ## [4.2.0] - 2026-10-16
 
 ### Added
