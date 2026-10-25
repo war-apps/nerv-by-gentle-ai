@@ -142,7 +142,7 @@ Inject only the configuration each agent needs, never the full document:
 |---|---|
 | every agent | its `skills.<category>` stack (resolved to paths, see Delegation) |
 | pilots, Aoba | `git` block, `commit_ref`, delivery-budget state |
-| `task:dispatcher` (only when the task plugin is installed) | `tasks` block, `git` block |
+| `task:dispatcher` (only when the task extension is installed) | `tasks` block, `git` block |
 | Fuyutsuki, Hyuga | `critical_paths` |
 
 **Model and effort per role.** Resolve every `nerv:<role>` launch's
@@ -187,12 +187,12 @@ code, Ikari:
 1. **Resolves the configuration.** Merge `~/.config/ai-workflow/config.yaml` (user scope)
    and `<repo>/.ai-workflow/config.yaml` (project scope) per `## Configuration
    resolution` above. Core reads no `tasks` key and never deletes a
-   `tasks:` block; it only relays it to the task plugin.
-2. **Detects the task plugin.** It is installed when the agent type
+   `tasks:` block; it only relays it to the task extension.
+2. **Detects the task extension.** It is installed when the agent type
    `task:dispatcher` is available in this session. When it is not, the run
    asks no task question, runs no task step, writes no `task_event` entry
    and creates no `task-events.yaml`; `task_ref` stays empty.
-3. **Classifies** the change (below), then, with the task plugin installed,
+3. **Classifies** the change (below), then, with the task extension installed,
    emits `run.started` (see `## Task events`) in every tier, carrying any
    task ref the user already gave. A `needs_input` envelope (for example,
    which task to start) is relayed verbatim as a blocking prompt and
@@ -208,7 +208,7 @@ code, Ikari:
       `.claude/worktrees/{slug}`), never asked here.
    2. **Branch name** — proposed from `git.branch_pattern` filled with
       `{prefix}` (the lowercase prefix of `task_ref`, e.g. `tw`), `{id}`,
-      and `{slug}`; editable. With no task (no task plugin, or no
+      and `{slug}`; editable. With no task (no task extension, or no
       `task_ref` in its envelopes), `{prefix}-{id}` is omitted and the slug
       comes from the request text.
    3. **Base branch** — proposed from `git.base_branch`, editable.
@@ -225,7 +225,7 @@ DIRECT/LIGHT, every Aoba launch that commits in FULL); with no task,
 
 ## Task events
 
-Core never talks to a task tracker. With the task plugin installed, Ikari
+Core never talks to a task tracker. With the task extension installed, Ikari
 emits `run.started`, `verification.started`, `audit.ranked`,
 `issue.deferred`, `wave.started`, `run.closed` and `run.halted` through
 `task:dispatcher`, records every envelope in `nerv/task-events.yaml` plus
@@ -484,7 +484,7 @@ them.
   DIRECT or LIGHT run ratchets to FULL.
 - `references/task-events.md` — the task-event payload, emission points
   and recording rules. Load before the first `task:dispatcher` launch, and
-  only when the task plugin is installed.
+  only when the task extension is installed.
 - `references/rdd-relay.md` — the RDD assessment and consent relay. Load
   right before the first work-unit commit of the feature.
 - `references/delivery.md` — the work-unit commit cadence, PR-strategy

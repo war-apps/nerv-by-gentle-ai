@@ -12,7 +12,7 @@ read-only refute mode, the ranked issue gate, fix routing, the
 bounded re-audit loop). The configuration
 (`config.yaml` and `.ai-workflow/config.yaml`: two scopes, one schema, project overrides user)
 is resolved at Preflight. Task tracking later moved out of core into the
-optional task plugin (`task@nerv`): core only emits the events of
+optional task extension (`task@nerv`): core only emits the events of
 SKILL.md `## Task events` through `task:dispatcher`, and only when that
 agent is available.
 Phase 5 hardening ships the orchestrator lock (concurrency guard, heartbeat

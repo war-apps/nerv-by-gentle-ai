@@ -1,13 +1,13 @@
 # Extensions and providers
 
-NERV's optional plugins come in two kinds, and each kind speaks one
-contract:
+NERV's optional add-ons come in two kinds, and each kind speaks one
+contract. Each one ships as its own Claude Code plugin (`<name>@nerv`):
 
 - An **extension** (`task`, `release`, `deploy`) adds a capability to the
   core. It talks to the core through its `extension.yaml`.
 - A **provider** (`task-teamwork`, `release-conventional-commits`,
   `release-docker-compose`, `release-bash`, `deploy-github`,
-  `deploy-ssh-compose`) implements one slot of an extension: a tracker, a
+  `deploy-ssh-compose`, `deploy-bash`) implements one slot of an extension: a tracker, a
   version engine, a build, a git host, a deploy target. It talks to its extension through its `provider.yaml`.
 
 Every extension uses the same `extension.yaml` schema, and every provider,
@@ -18,7 +18,7 @@ request/response envelope below. `nerv` checks every manifest it ships, and
 
 ## Layout
 
-Each plugin is a top-level folder of `plugins/` with a
+Each extension and each provider is a top-level folder of `plugins/` with a
 `.claude-plugin/plugin.json` whose `name` is the folder's name, and exactly
 one manifest at its root:
 
@@ -42,6 +42,7 @@ whose extension is not shipped, whose folder is not
 ```yaml
 name: deploy                   # the folder's name
 contract_version: 1
+description: Releases and deploys a release artifact   # optional free text; nerv does not read it
 suggest_order: 3               # nerv install suggests task (1), release (2), deploy (3); 0 or unset comes last, by name
 providers: bundled             # bundled: every provider shipped is installed with the extension, never asked; suggested (the default): each is offered after it
 requires: [release]            # extensions installed with this one
@@ -59,6 +60,9 @@ slots:
       createRelease: required
 ```
 
+- **`description`** is optional free text about the extension. nerv does
+  not read it: what Claude Code and the marketplace show is the
+  `description` of the extension's `.claude-plugin/plugin.json`.
 - **`events`** are core events: `run.started`, `verification.started`,
   `audit.ranked`, `issue.deferred`, `wave.started`, `run.closed`,
   `run.halted`. The orchestrator hands each one to every installed
@@ -179,7 +183,8 @@ events: [run.started]
   `mcp` names. `mcp` is agent only.
 - **`config`**: the key schema shared with `extension.yaml`. `type` is
   `string`, `int`, `bool`, `map` or `list`; a scalar key needs a `prompt`
-  (what `nerv configure` asks) and a valid `default`. Where the values live
+  (what `nerv configure` asks); its `default` is optional and, when set,
+  must be a valid value of its `type`. Where the values live
   is the extension's: `tasks.providers.<name>.<key>` for task providers,
   `release.providers.<name>.<key>` (and
   `release.projects[].providers.<name>.<key>` for a build provider) for
@@ -194,7 +199,8 @@ events: [run.started]
 A provider nerv implements itself is an exec provider whose steps run the
 hidden `{nerv} provider <extension>-<name> <operation>`, with the request on
 stdin and the response on stdout. It has no special case in its extension:
-`deploy-ssh-compose` and the three release providers are such providers.
+`deploy-ssh-compose`, `deploy-bash` and the three release providers are such
+providers.
 
 ## Project extensions and providers
 
@@ -218,7 +224,7 @@ ships, in its committed `.ai-workflow/` folder:
   nerv already ships an extension or provider named deploy-github; give the
   project's another name`), and so is a folder that resolves outside the
   repository.
-- They need no plugin: `nerv install` does not materialize them. `nerv
+- They are not Claude Code plugins: `nerv install` does not materialize them. `nerv
   release`, `nerv version next`, `nerv release setup` and `nerv deploy` read
   them from the repository, with its configuration; `nerv configure
   --init-repo --repo-provider-config` and the wizard's repository step take

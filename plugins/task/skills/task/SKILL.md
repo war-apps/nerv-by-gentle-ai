@@ -1,13 +1,13 @@
 ---
 name: task
-description: NERV task plugin contract. Covers how providers are found (provider.yaml), the remote operations a provider implements, the composite operations, the local timer store, the pipeline events with their response envelope, fail-soft dispatch, the pending-event list, the listing table and the worktree offer. Loaded by the /task:* commands and by the task:dispatcher agent.
+description: NERV task extension contract. Covers how providers are found (provider.yaml), the remote operations a provider implements, the composite operations, the local timer store, the pipeline events with their response envelope, fail-soft dispatch, the pending-event list, the listing table and the worktree offer. Loaded by the /task:* commands and by the task:dispatcher agent.
 ---
 
-# NERV Task Plugin — Contract
+# NERV Task Extension — Contract
 
-The task plugin connects NERV to task trackers (Teamwork today). It does not talk to any tracker itself. Each tracker is a **provider plugin** that ships a `provider.yaml` manifest plus one procedure file per operation. Every provider of every extension has the same `provider.yaml` shape, checked against the slot the extension's `extension.yaml` declares (`docs/extensions.md`); this file defines what the task side adds.
+The task extension connects NERV to task trackers (Teamwork today). It does not talk to any tracker itself. Each tracker is a **provider** that ships a `provider.yaml` manifest plus one procedure file per operation. Every provider of every extension has the same `provider.yaml` shape, checked against the slot the extension's `extension.yaml` declares (`docs/extensions.md`); this file defines what the task side adds.
 
-`nerv` core knows nothing about tasks. The core orchestrator emits pipeline **events** only when this plugin is installed. The `task:dispatcher` agent turns each event into provider operations and answers with one envelope per provider (§6).
+`nerv` core knows nothing about tasks. The core orchestrator emits pipeline **events** only when this extension is installed. The `task:dispatcher` agent turns each event into provider operations and answers with one envelope per provider (§6).
 
 ## 1. Configuration
 
@@ -15,7 +15,7 @@ The configuration merges the user config (the path `nerv configure --print --jso
 
 | Key | Default | Meaning |
 |---|---|---|
-| `tasks.provider` | the only installed provider | Provider for bare task ids (no `PREFIX-`) and for `/task:me`, `/task:all`. `none` turns the plugin off in this scope: no events, no timers, no questions (S18). |
+| `tasks.provider` | the only installed provider | Provider for bare task ids (no `PREFIX-`) and for `/task:me`, `/task:all`. `none` turns the extension off in this scope: no events, no timers, no questions (S18). |
 | `tasks.ask_when_missing` | `true` | At `run.started` with no task, ask for one. `false` runs without a task, silently. |
 | `tasks.subtasks_per_wave` | `false` | Whether `wave.started` creates one subtask per FULL wave. |
 | `tasks.timer_store` | `~/.claude/work/timers.json` | Local timer store (§4). |
@@ -75,7 +75,7 @@ And the task fields, which `plugins/task/extension.yaml` allows under `provider_
 | `setPriority` | taskRef, `high`, `medium` or `low` | `{priority}` |
 | `listTasks` | scope (`mine` or `all`), filters | rows for the listing table (§8) |
 
-## 4. Local timers (owned by this plugin)
+## 4. Local timers (owned by this extension)
 
 Timers are **always local**, never a provider-side timer. That way several tasks, and several sessions on one task, can be tracked in parallel.
 
@@ -153,7 +153,7 @@ The core orchestrator emits these events. Each one lists the operations it needs
 | `verification.started` | The quality gate (FULL) or the work unit's check (LIGHT, DIRECT) starts | `moveStage` | Moves the task to `testing`. |
 | `audit.ranked` | The FULL issue ranking is accepted | `comment` | Posts the ranked audit summary. |
 | `issue.deferred` | The user accepts a DEFER issue | `createTask` | Creates one task per deferred issue, linked from the parent in its description. |
-| `wave.started` | Every FULL wave starts | `createSubtask` | Creates the wave's subtask, but only when `tasks.subtasks_per_wave` is `true`. Otherwise it answers `skipped` with `reason: subtasks_per_wave is off`. Core emits the event every time; this plugin owns the check. |
+| `wave.started` | Every FULL wave starts | `createSubtask` | Creates the wave's subtask, but only when `tasks.subtasks_per_wave` is `true`. Otherwise it answers `skipped` with `reason: subtasks_per_wave is off`. Core emits the event every time; this extension owns the check. |
 | `run.closed` | A run ends complete | `moveStage`, `logTime` | Stops this session's timer (§4.2) and moves the task to `implemented`. **It never calls `complete`.** One task can span several changes and repositories; completing it stays an explicit `/task:close` (S13). |
 | `run.halted` | A run halts before completion | `comment`, `moveStage`, `logTime` | Comments the halt cause, moves the task to `blocked` and stops this session's timer. |
 
@@ -177,7 +177,7 @@ disabled_events: []          # per-run switches chosen by the user (S10)
 
 For each event, the dispatcher works through these steps:
 
-1. **Event switch.** When the plugin is off in this scope (`tasks.provider: none`), or the event is `off` in config or in `disabled_events`, answer one envelope with `result: skipped` and `reason: switched off`. Nothing else runs.
+1. **Event switch.** When the extension is off in this scope (`tasks.provider: none`), or the event is `off` in config or in `disabled_events`, answer one envelope with `result: skipped` and `reason: switched off`. Nothing else runs.
 2. **Provider choice.** Pick every installed provider that is enabled and subscribes to the event. When `task_ref` is set, only the provider whose `task_ref_prefix` matches it is picked.
 3. **Run each provider:**
    - first the tool check (§2), then the event's operations through that provider's procedure files;
@@ -208,7 +208,7 @@ The orchestrator appends every envelope to the run folder's `task-events.yaml`, 
 - The run summary lists the pending envelopes under "Task events pending", along with the `/task:replay {feature}` command (the run id for DIRECT and LIGHT).
 - `/task:replay {feature}` finds the file in either location and dispatches every pending envelope again, in order, and marks each one `replayed: <ISO time>` with its new result.
 
-## 7. Composite operations (owned by this plugin)
+## 7. Composite operations (owned by this extension)
 
 | Composite | Steps |
 |---|---|

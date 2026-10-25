@@ -105,7 +105,7 @@ changes confirmed — never more.
      user the path is not a git repository and skip this section instead
      of asking further.
 
-   Task settings are not a section of this command: when the task plugin
+   Task settings are not a section of this command: when the task extension
    is installed, `nerv configure` asks for its providers' settings, read
    from each provider's `provider.yaml`.
 

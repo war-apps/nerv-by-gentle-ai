@@ -3,7 +3,7 @@
 `nerv pipeline`, its Claude Code command and the `pipeline:` section were
 removed.
 Its release step ran semantic-release, which nerv no longer uses: the
-version engine is native, and building and releasing are now two plugins
+version engine is native, and building and releasing are now two extensions
 with a local artifact between them.
 
 | Old step | Now |
@@ -21,7 +21,7 @@ is no longer read, and the commands point to `/release:setup` and
 
 ## Steps
 
-1. **Install the plugins**:
+1. **Install the extensions and providers**:
 
    ```sh
    nerv install --with release,deploy,deploy-github,deploy-ssh-compose
@@ -30,7 +30,7 @@ is no longer read, and the commands point to `/release:setup` and
 2. **See the whole migration** with `nerv migrate --dry-run`: it shows
    every change to the configuration files (the move to `.ai-workflow/config.yaml`,
    the translation of the 4.2.0 `release:` and `pipeline:` into today's
-   `release:` and `deploy:`, the semantic-release import, the plugins to install) before
+   `release:` and `deploy:`, the semantic-release import, the extensions to install) before
    writing anything. `nerv migrate` applies it, with backups.
 3. **Or migrate by hand** with the two setup commands: `/release:setup`
    (offers `nerv release setup --import` for the semantic-release config in

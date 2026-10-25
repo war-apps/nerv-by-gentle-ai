@@ -12,12 +12,12 @@ Nerv by Gentle-AI has two command surfaces: Claude Code slash commands
 | `/nerv:init` | Bootstrap NERV for the current repository (writes `.ai-workflow/config.yaml`) |
 | `/nerv:status` | Show NERV activation, config resolution, and change status (read-only) |
 
-### Task plugin commands (`/task:*`)
+### Task extension commands (`/task:*`)
 
-The `/task:*` commands belong to the optional task plugin (`task@nerv`),
-not to core. Claude Code serves them from the installed plugin, so nothing
-is copied to `~/.claude/commands/task/`. Each one runs the task plugin's
-contract against the configured provider plugins.
+The `/task:*` commands belong to the optional task extension (`task@nerv`),
+not to core. Claude Code serves them from the extension's installed plugin, so nothing
+is copied to `~/.claude/commands/task/`. Each one runs the task extension's
+contract against the configured providers.
 
 | Command | What it does |
 |---|---|
@@ -39,9 +39,9 @@ contract against the configured provider plugins.
 | `/task:testing` | Move a task to the testing stage |
 | `/task:timers` | Show the local timers of a task (or all running timers), with their session |
 
-### Release plugin commands (`/release:*`)
+### Release extension commands (`/release:*`)
 
-The optional release plugin (`release@nerv`) versions, builds and packages; its
+The optional release extension (`release@nerv`) versions, builds and packages; its
 agents are `release:versioner` and `release:builder`. Reference:
 [release-commands.md](release-commands.md).
 
@@ -51,17 +51,17 @@ agents are `release:versioner` and `release:builder`. Reference:
 | `/release:setup` | Write the `release:` section of `.ai-workflow/config.yaml`: import an existing semantic-release config (`nerv release setup --import`), ask each project's build provider (`docker-compose` or `bash`) and its stage commands or compose file |
 | `/release:build` | Build, test and package origin's code into a local artifact: dry run first, the real run only after your explicit yes; never writes to git |
 
-### Deploy plugin commands (`/deploy:*`)
+### Deploy extension commands (`/deploy:*`)
 
-The optional deploy plugin (`deploy@nerv`, which requires `release`) releases
+The optional deploy extension (`deploy@nerv`, which requires `release`) releases
 an artifact; its agent is `deploy:deployer`, and its git hosts and targets
-are provider plugins (`deploy-github`, `deploy-ssh-compose`). Reference:
+are providers (`deploy-github`, `deploy-ssh-compose`, `deploy-bash`). Reference:
 [deploy.md](deploy.md).
 
 | Command | What it does |
 |---|---|
 | `/deploy:run` | Release and deploy the latest local artifact, or the one you name: dry run first, then the release commit, tag, push, targets and git host release only after your explicit yes |
-| `/deploy:setup` | Write the `deploy:` section (host, targets, git) and suggest the provider plugins to install |
+| `/deploy:setup` | Write the `deploy:` section (host, targets, git) and suggest the providers to install |
 
 ### /nerv:configure
 
@@ -114,10 +114,10 @@ isn't taking effect.
 | Command | What it does |
 |---|---|
 | `nerv version` | Print the binary and plugin versions |
-| `nerv version next` | Compute the next release version with the native engine (release plugin) |
-| `nerv release` | Build, test and package origin's code into a local artifact; no git writes (release plugin) |
+| `nerv version next` | Compute the next release version with the native engine (release extension) |
+| `nerv release` | Build, test and package origin's code into a local artifact; no git writes (release extension) |
 | `nerv release setup --import` | Import an existing semantic-release config into the `release:` section |
-| `nerv deploy` | Release and deploy a release artifact: release commit, tag, push, targets, git host release (deploy plugin) |
+| `nerv deploy` | Release and deploy a release artifact: release commit, tag, push, targets, git host release (deploy extension) |
 | `nerv migrate` | Move a repository (and, with `--user`, the user configuration) from nerv 4.2.0 to this version |
 | `nerv configure` | Configure NERV non-interactively (or run the wizard) |
 | `nerv install` | Install NERV (plugin, cache, skills, Engram KB) |
@@ -276,8 +276,8 @@ Moves a repository from nerv 4.2.0 or 5.0.0-alpha.1 to this version, once:
 `--user` also moves `~/.claude/nerv/nerv.yaml`, or the user `config.yml`,
 to the user `config.yaml`,
 with the personal keys of the project file. `--dry-run` prints every change
-as a unified diff and writes nothing. `--install` installs the plugins the
-repository used. Every changed or removed file is backed up first, and a
+as a unified diff and writes nothing. `--install` installs the extensions and
+providers the repository used. Every changed or removed file is backed up first, and a
 second run changes nothing. See [migration.md](migration.md).
 
 ```
@@ -287,20 +287,20 @@ nerv migrate --user --install
 
 ### nerv install
 
-Materializes the embedded plugin, registers it in Claude Code's
+Materializes the embedded core plugin, registers it in Claude Code's
 `settings.json`, refreshes the plugin cache, applies model/effort
 assignments, ensures the Engram "nerv" knowledge base, and installs
-skills. It also installs the optional extension plugins named by `--with`,
+skills. It also installs the optional extensions and providers named by `--with`,
 keeps the ones already enabled up to date, and, when stdin is a terminal,
 offers the others, in this order:
 
-1. the task plugin (`task@nerv`, the `/task:*` commands);
+1. the task extension (`task@nerv`, the `/task:*` commands);
 2. its providers (`task-<name>@nerv`, such as `task-teamwork@nerv`), only
    once task is installed;
-3. the release plugin (`release@nerv`: `nerv release`), which brings its
+3. the release extension (`release@nerv`: `nerv release`), which brings its
    providers with it, unasked (`release-conventional-commits@nerv`, the
    version engine, `release-docker-compose@nerv` and `release-bash@nerv`);
-4. the deploy plugin (`deploy@nerv`: `nerv deploy`), only once release is
+4. the deploy extension (`deploy@nerv`: `nerv deploy`), only once release is
    installed, which brings its providers with it, unasked
    (`deploy-bash@nerv`, `deploy-github@nerv`, `deploy-ssh-compose@nerv`).
 
@@ -311,7 +311,7 @@ suggested` (task) has each provider offered after it.
 
 Requirements: `deploy` requires `release`, a task provider requires `task`,
 and a deploy provider requires `deploy`; each is offered only once what it
-requires is installed or chosen. A plugin named in `--with` brings what it
+requires is installed or chosen. An extension or provider named in `--with` brings what it
 requires with it, and a requirement this nerv does not ship is refused. Copies of the `/task:*` commands that an older release put in
 `~/.claude/commands/task/` are reported, and removed only after you
 confirm. See the README's "Install" section for the shell one-liners and
@@ -326,7 +326,7 @@ Flags:
   --require-gentle-ai   Fail (exit 1) when gentle-ai is missing or not 4.x
   --no-skills           Skip installing skills
   --no-configure        Skip the closing wizard/hint entirely
-  --with <names>        Comma-separated extension plugins to install, such as
+  --with <names>        Comma-separated extensions and providers to install, such as
                         task,task-<provider>,release,deploy,deploy-<provider>
                         (each brings what it requires)
 ```
@@ -456,11 +456,11 @@ type. The SessionStart activation header has the session
 invoke the orchestrator skill with the Skill tool in repos where NERV is
 enabled, and it governs how the session
 routes work to the named agents (Ikari, Misato, the MAGI, the pilots,
-Hyuga, Kaji, and so on). The task plugin's `task` skill and its
+Hyuga, Kaji, and so on). The task extension's `task` skill and its
 `task:dispatcher` agent work the same way: the orchestrator launches the
-dispatcher only when the task plugin is installed. The release plugin's `release` skill
+dispatcher only when the task extension is installed. The release extension's `release` skill
 with its `release:versioner` and `release:builder` agents, and the deploy
-plugin's `deploy` skill with its `deploy:deployer` agent, are loaded and
+extension's `deploy` skill with its `deploy:deployer` agent, are loaded and
 launched by their own `/release:*` and `/deploy:*` commands. You never invoke them by name —
 see [integration.md#roles](integration.md#roles) for what each agent does
 and when it runs.

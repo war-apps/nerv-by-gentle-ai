@@ -19,7 +19,7 @@ the table below or downgrade FULL to LIGHT or DIRECT mid-run.
 
 | Step | Actor | Launch prompt carries | Expected envelope | Gate |
 |---|---|---|---|---|
-| 0. Preflight | Ikari, `task:dispatcher` (only when the task plugin is installed), Aoba | — | `run.started` envelopes; worktree/branch state | user HARD if asked |
+| 0. Preflight | Ikari, `task:dispatcher` (only when the task extension is installed), Aoba | — | `run.started` envelopes; worktree/branch state | user HARD if asked |
 | 1. Intel | `nerv:ritsuko` (MODE: intel) | feature scope, the ODD document, skills | `nerv/exploration.md` (Ikari writes it to its locator, plus a `## Log` pointer) | gatekeeper |
 | 2. Test plan | `nerv:ritsuko` (MODE: test-plan) | `nerv/exploration.md`, the seeded `## Specs`, skills | the test-plan `## Log` entry (cases per `S#`, `### Corner-case questions`), appended verbatim by Ikari | **user HARD** — Ikari relays the questions as one grouped blocking prompt; the answers are written into `### Answers` and gate the plan |
 | 3. Plan | `nerv:misato` | the ODD document (with the answers), `nerv/exploration.md`, skills | `## Specs` completed, the design `## Log` entry (must contain `### New skills, scripts and commands`), `## Tasks` (ids `T1`, `T2`, ... with `Pilot` and `Depends on`) | gatekeeper — verifies the `### New skills, scripts and commands` heading exists in the design entry |
@@ -38,11 +38,11 @@ the table below or downgrade FULL to LIGHT or DIRECT mid-run.
 | 16. Ranking + issue gate | `nerv:hyuga` (dispatch c) | `audit-report.md` (post-refuter) | `nerv/issue-ranking.md` | **user HARD** — Ikari relays the ranked NOW/DEFER list as one blocking prompt: approve the NOW set / edit it / accept residual and close |
 | 17. Fix routing + re-audit loop | owning pilot per approved issue (FULL work-unit cycle: Kaworu RED when behavioral, Aoba commit, pilot fix, Aoba commit, RDD hook), `nerv:aoba` (fix-delta patch), audit passes, `nerv:kaji` | fixes committed; `nerv/audit/diff-round-N+1.patch` scoped to the fix delta only; updated `audit-report.md` carrying forward unresolved items | cap 2 re-audits (loop back to step 14 over the fix-delta patch); at the cap the user accepts the residual (`residual_accepted` in `issue-ranking.md`) or declines the remainder; deviations → Misato ruling |
 | 18. Docs + curate | `nerv:ritsuko` (MODE: docs), `nerv:fuyutsuki` (MODE: curate) | `issue-ranking.md`, fix commits, `## Tasks`, docs updates | `nerv/issue-resolutions.md`, `nerv/agent-config.md`, repo doc updates (Ikari writes them at Ritsuko-named locators), `## Summary` appended to `nerv/deliberation-log.md` | gatekeeper |
-| 19. Run summary + close | `nerv:aoba`; `task:dispatcher` `run.closed` (only when the task plugin is installed) | usage table, task envelopes and any KB mirrors still unflushed after Ikari's Engram flush at close (`usage-and-log.md`) | `nerv/run-summary.md`, the close `## Log` entry, then Aoba's close commit (`docs: close nerv run for {feature}`, committing `odd/tasks/{feature}.md` and `odd/{feature}/nerv/` per `artifacts.commit`); no archive (see `### Task events` below) | **user validates** the close commit |
+| 19. Run summary + close | `nerv:aoba`; `task:dispatcher` `run.closed` (only when the task extension is installed) | usage table, task envelopes and any KB mirrors still unflushed after Ikari's Engram flush at close (`usage-and-log.md`) | `nerv/run-summary.md`, the close `## Log` entry, then Aoba's close commit (`docs: close nerv run for {feature}`, committing `odd/tasks/{feature}.md` and `odd/{feature}/nerv/` per `artifacts.commit`); no archive (see `### Task events` below) | **user validates** the close commit |
 
 ### Task events
 
-When the task plugin is installed, Ikari emits the core's `## Task events`
+When the task extension is installed, Ikari emits the core's `## Task events`
 through `task:dispatcher` at these points in FULL (in DIRECT and LIGHT:
 Preflight, the work unit's verification start, and Close). Without
 `task:dispatcher`, none of them runs.

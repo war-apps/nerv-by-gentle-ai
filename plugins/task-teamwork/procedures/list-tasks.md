@@ -10,4 +10,4 @@ This implements the `listTasks` operation of the task contract (`task:task` skil
 2. **Filters.** A project name resolves through `teamwork_list_projects`, and `known_projects` applies. Date expressions become `due_before` and `due_after`. Free text becomes `search_term`.
 3. **Names.** Resolve the stage names with one `teamwork_list_workflow_stages` call per project, the tasklist names with one `teamwork_list_tasklists` call per project, and the project names with one `teamwork_list_projects` call.
 
-Return rows `{taskRef, name, own, project, tasklist, stage, priority, source: Teamwork}`. The listing table itself is built by the task plugin (skill §8).
+Return rows `{taskRef, name, own, project, tasklist, stage, priority, source: Teamwork}`. The listing table itself is built by the task extension (skill §8).

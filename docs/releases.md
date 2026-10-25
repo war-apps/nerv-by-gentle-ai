@@ -1,8 +1,8 @@
 # Releases
 
 **Versioning.** The plugin follows [SemVer](https://semver.org/). The
-`version` in `plugin/.claude-plugin/plugin.json` (and in every extension
-plugin's `plugins/<name>/.claude-plugin/plugin.json`, which `nerv maintainer-release
+`version` in `plugin/.claude-plugin/plugin.json` (and in every extension's and
+provider's `plugins/<name>/.claude-plugin/plugin.json`, which `nerv maintainer-release
 apply` bumps together), the git tag `vX.Y.Z`,
 the matching `## [X.Y.Z]` section in `CHANGELOG.md`, and the `nerv version`
 binary version (injected at build time from the tag by goreleaser) all

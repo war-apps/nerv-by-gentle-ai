@@ -59,8 +59,8 @@ git:
                                                   # reuses its own [worktrees] directory as <directory>/{repo}/{slug}
   branch_pattern: "feature/{prefix}-{id}-{slug}"   # {prefix}/{id} come from the run.started task_ref (tw-123)
   commit_ref_pattern: "({PREFIX}-{id})"
-tasks:                              # read only by the optional task plugin (task@nerv); core ignores it
-  provider: teamwork                # provider for bare task ids; "none" turns the task plugin off in this scope
+tasks:                              # read only by the optional task extension (task@nerv); core ignores it
+  provider: teamwork                # provider for bare task ids; "none" turns the task extension off in this scope
   ask_when_missing: true            # at run.started with no task, the dispatcher asks for one
   subtasks_per_wave: false          # whether wave.started creates one subtask per FULL wave
   events:                           # per-event switches, on (default) | off
@@ -73,7 +73,7 @@ tasks:                              # read only by the optional task plugin (tas
       stages: { inDev: DESARROLLO, testing: TESTING, implemented: IMPLEMENTA, blocked: BLOQUEA, canceled: CANCEL, pending: PENDIENTE, analysis: ANALISIS }
   sources:                          # extra work sources for listings (replaces ~/.claude/work/sources.md)
     - { name: erp-proveedores, type: google-sheets, ... }
-release:                               # release plugin; project scope only, never merged with the user file; see release-commands.md
+release:                               # release extension; project scope only, never merged with the user file; see release-commands.md
   version: conventional-commits     # the version engine (the default); its keys under providers.conventional-commits
   build: docker-compose             # every project's build provider: docker-compose or bash
   providers:                        # release.providers.<provider>.<key>, as each provider.yaml declares
@@ -81,13 +81,13 @@ release:                               # release plugin; project scope only, nev
     docker-compose: { file: docker-compose.yml }
   projects:
     - { name: api, path: ., images: ["ghcr.io/acme/app:${version}"] }
-deploy:                             # deploy plugin; see deploy.md
+deploy:                             # deploy extension; see deploy.md
   host: github
   targets:
     - { name: staging, provider: ssh-compose, config: { environment: staging } }
 ```
 
-`release:` configures the release plugin (`nerv version next` and `nerv release`,
+`release:` configures the release extension (`nerv version next` and `nerv release`,
 also `/release:version`, `/release:setup` and `/release:build`): its two
 provider slots, `release.version` (the version engine, by default
 `conventional-commits`) and `release.build` (the build provider of every
@@ -101,7 +101,7 @@ overrides for its build provider under
 dependencies, images, version files, stages, hooks and coverage. Its full reference is
 [release-commands.md](release-commands.md#configuration-release).
 
-`deploy:` configures the deploy plugin (`nerv deploy`, `/deploy:run`,
+`deploy:` configures the deploy extension (`nerv deploy`, `/deploy:run`,
 `/deploy:setup`): the git host provider, the targets with their provider
 config, and the release commit's message and remote. Provider keys with
 `scope: user` (credentials, local paths) go in the user file under
@@ -142,11 +142,11 @@ and warns when the cached agent frontmatter has drifted from it, so a
 pending `nerv apply-models` run is visible without inspecting the cache by
 hand.
 
-## `tasks:` (task plugin)
+## `tasks:` (task extension)
 
-Core never reads `tasks:`. The block belongs to the optional task plugin
-(`task@nerv`) and its provider plugins, such as `task-teamwork@nerv`. The
-full key reference is in the task plugin's contract
+Core never reads `tasks:`. The block belongs to the optional task extension
+(`task@nerv`) and its providers, such as `task-teamwork@nerv`. The
+full key reference is in the task extension's contract
 (`plugins/task/skills/task/SKILL.md`, section 1).
 
 - **Per-event switches.** `tasks.events.<event>: off` stops one pipeline
@@ -167,12 +167,12 @@ full key reference is in the task plugin's contract
 
 **Migration.** A `tasks:` block written by an older release keeps working:
 
-- with the task plugin installed, it is read under the layout above, so the
+- with the task extension installed, it is read under the layout above, so the
   Teamwork keys under `tasks.providers.teamwork.*` keep their paths;
 - without it, core ignores the block and never deletes it;
 - copies of the `/task:*` commands that an older release put in
   `~/.claude/commands/task/` are reported by `nerv install` and removed only
-  after you confirm. The `task` plugin now serves those commands itself.
+  after you confirm. The `task` extension now serves those commands itself.
 
 ### Roles and their gentle-ai equivalents
 
