@@ -38,6 +38,14 @@ English.
      the release project's `images` (`/release:setup` writes them), and `deploy-ssh-compose`
      pushes them.
 
+4. Read the user config (the path `nerv configure --print --json` reports
+   as `config_path`). Its `defaults.deploy`, when present, has the shape of
+   `deploy:` and is the user's seed for new sections: it never applies at
+   run time. Its other `deploy:` keys no longer apply either, except the
+   `scope: user` provider keys under `deploy.providers.<provider>.`
+   (`nerv migrate --user` moves the rest under `defaults.deploy`). Hold the
+   seed for §3.
+
 Only the `deploy:` block is added or replaced, with the same rule as
 `/release:setup` (from the `deploy:` line up to the next column-0 key); every
 other byte stays as it is.
@@ -70,6 +78,12 @@ installed ones, and offer them for `host` or a target like any other.
 
 Show the whole `deploy:` section as one YAML block:
 
+- **Seed.** Start from the user's `defaults.deploy` (§1.4): copy each of
+  its keys the section does not set yet, once (the repository's values and
+  what detection shows always win), leaving out any `scope: user` provider
+  key. Mark every copied key in the proposal ("from your
+  `defaults.deploy`"); never re-copy a default into an existing section on
+  later runs unless the user asks.
 - `host`: the git host provider's `name` (`github`).
 - `targets`: one entry per environment, in deploy order (staging before
   production), each with `name`, `provider` and `config` holding only the

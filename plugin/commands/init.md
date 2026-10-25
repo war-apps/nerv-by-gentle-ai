@@ -17,7 +17,10 @@ creates no `odd/` file.
 
 2. **Read existing config.** Read the user config (the path `nerv configure --print --json` reports as `config_path`: `~/.config/ai-workflow/config.yaml` on Linux, `%AppData%\ai-workflow\config.yaml` on Windows) (user scope) if
    present, and `<repo>/.ai-workflow/config.yaml` (project scope) if present. Merge
-   per the standard precedence (project overrides user key by key). Never
+   per the standard precedence (project overrides user key by key), except
+   `tasks:`, `release:` and `deploy:`, which come from the project file only
+   (the user file's run-time keys there no longer apply; its `defaults:`
+   section is a seed, see step 4). Never
    read the old `~/.claude/nerv/nerv.yaml` or `<repo>/.nerv/nerv.yaml` as
    configuration: if one exists without its new file, say once that
    `nerv migrate` moves it, and continue as if it were absent.
@@ -40,7 +43,15 @@ creates no `odd/` file.
 4. **Write `.ai-workflow/config.yaml`.** Compose the project file with `enabled: true`
    plus the resolved answers, following the schema in the approved NERV
    config (see `skills/nerv-orchestrator/SKILL.md` → Configuration
-   resolution). Append a fully commented-out `models:`
+   resolution). **Seed `tasks:`** from the user file's `defaults.tasks`
+   (same shape as `tasks:`), once: copy each of its keys the project file
+   does not set (the project's value always wins), and never copy a
+   personal key into the project (a `tasks.providers.<name>.<key>` whose
+   `provider.yaml` declares `scope: user`, `tasks.timer_store`,
+   `tasks.stale_after_hours`, `tasks.rounding_minutes`). Show each copied
+   key and value in the diff or summary as "copied from your
+   `defaults.tasks`". No `defaults.tasks`: write no `tasks:` section.
+   Append a fully commented-out `models:`
    block showing the syntax and today's plugin defaults, so the user can see
    how to override a role's model/effort without guessing a value:
 
@@ -87,7 +98,7 @@ creates no `odd/` file.
    header (`skills/nerv-orchestrator/references/odd-document.md`).
 
 6. **Summarize.** Print what was written (`.ai-workflow/config.yaml` path and its
-   resolved keys) and remind the user that no restart is required for the
+   resolved keys, marking the ones copied from `defaults.tasks`) and remind the user that no restart is required for the
    file itself, but the SessionStart hook only prints the activation
    header that loads the `nerv-orchestrator` skill on the **next** session
    start — this session keeps running under whatever routing was already

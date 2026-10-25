@@ -22,11 +22,15 @@ type InitRepoRequest struct {
 	Path           string
 	Base           string
 	ProviderConfig []string
+	// UserConfig is the user file whose defaults.tasks seeds the new
+	// tasks: section (empty: the one of Deps.Home).
+	UserConfig string
 }
 
 // InitRepo initializes path for NERV by writing <toplevel>/.ai-workflow/config.yaml
-// (config.FormatProjectFile, plus each ProviderConfig entry under
-// tasks.providers.<provider>.<key>) and, when missing, the runtime folder's
+// (config.FormatProjectFile, then the user's defaults.tasks as its tasks:
+// section, without the personal keys, then each ProviderConfig entry under
+// tasks.providers.<provider>.<key>, which wins) and, when missing, the runtime folder's
 // <toplevel>/.nerv/.gitignore of "*" — never overwriting or editing an
 // existing project config, reporting that case as a warning rather than an
 // error. A 4.2.0 <toplevel>/.nerv/nerv.yaml is not a project config: it is
@@ -68,7 +72,11 @@ func InitRepo(deps Deps, req InitRepoRequest) (Result, error) {
 		warnings = append(warnings, fmt.Sprintf("%s already initialized; left untouched.", repoConfigPath))
 	} else if errors.Is(statErr, fs.ErrNotExist) {
 		doc := config.Parse(config.FormatProjectFile(config.ProjectValues{BaseBranch: req.Base}))
-		changes = applyProviderSettings(doc, settings)
+		seeded, err := seedTasks(deps, req.UserConfig, doc)
+		if err != nil {
+			return Result{}, err
+		}
+		changes = append(append(emptyChanges(), seeded...), applyProviderSettings(doc, settings)...)
 		if _, err := atomicfile.Save(repoConfigPath, []byte(doc.String()), atomicfile.Options{}); err != nil {
 			return Result{}, err
 		}
