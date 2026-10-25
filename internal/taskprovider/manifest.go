@@ -11,7 +11,7 @@ import (
 	"github.com/war-apps/nerv-by-gentle-ai/internal/extension"
 )
 
-// ManifestFile is the manifest's name at the root of a provider plugin.
+// ManifestFile is the manifest's name at the root of a provider's folder.
 const ManifestFile = extension.ProviderFile
 
 // ConfigScopes and ConfigTypes are the common config key schema's.
@@ -117,7 +117,7 @@ func (m *Manifest) Subscribes(event string) bool {
 }
 
 // CheckFiles reports every operation file the manifest names that fsys
-// (the provider plugin's root) does not hold.
+// (the provider's folder) does not hold.
 func (m *Manifest) CheckFiles(fsys fs.FS) error {
 	var missing []string
 	for _, op := range Operations {

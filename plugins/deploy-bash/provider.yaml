@@ -6,7 +6,8 @@
 # it; publish, deploy and verify run the script from the release commit's
 # tree with bash, the request on its stdin and the NERV_DEPLOY_* variables
 # in its environment, and the script's JSON response (when it prints one)
-# is the operation's. publish and verify without their script are skipped.
+# is the operation's. publish and verify without their script are skipped,
+# and config.timeout (a duration) bounds each script run.
 name: bash
 extension: deploy
 slot: target
@@ -26,6 +27,10 @@ config:
     scope: repo
     type: string
     prompt: The script that checks the target after its deploy (empty skips verify)
+  - key: timeout
+    scope: repo
+    type: string
+    prompt: The longest each script may run, a Go duration such as 10m (empty means no limit)
 operations:
   preflight:
     - argv: ["{nerv}", provider, deploy-bash, preflight]

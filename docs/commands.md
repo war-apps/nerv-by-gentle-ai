@@ -156,7 +156,8 @@ With --init-repo:
   --repo-provider-config <provider>.<key>=<value>
                             Write tasks.providers.<provider>.<key> into the
                             repository's .ai-workflow/config.yaml (repeatable; repo-scope
-                            keys of the provider's provider.yaml only)
+                            keys of the provider's provider.yaml only, shipped
+                            or the project's in .ai-workflow/providers/)
 
 If `.ai-workflow/config.yaml` already exists it is not recreated, and an existing
 `tasks:` block in it is left untouched.

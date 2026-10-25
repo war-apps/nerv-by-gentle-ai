@@ -483,3 +483,17 @@ func TestRunConfigure_InitRepo_ProviderConfig_Refusals(t *testing.T) {
 		t.Errorf("stderr = %q, want the --init-repo requirement", stderr.String())
 	}
 }
+
+// --help says --repo-provider-config values are checked against the
+// provider's provider.yaml, shipped or the project's own.
+func TestRunConfigure_HelpNamesShippedAndProjectProviders(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"configure", "--help"}, &stdout, &stderr, testOptions(t.TempDir()))
+	if code != 2 {
+		t.Fatalf("configure --help exit = %d, want 2", code)
+	}
+	help := stderr.String()
+	if strings.Contains(help, "embedded provider.yaml") || !strings.Contains(help, "against the provider's provider.yaml (shipped,\n                             or the project's in .ai-workflow/providers/)") {
+		t.Errorf("configure --help:\n%s", help)
+	}
+}

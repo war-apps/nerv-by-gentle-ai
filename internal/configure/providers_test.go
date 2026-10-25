@@ -12,7 +12,7 @@ import (
 	"github.com/war-apps/nerv-by-gentle-ai/internal/configure"
 )
 
-// EmbeddedProviders lists every provider plugin nerv ships, by provider
+// EmbeddedProviders lists every provider nerv ships, by provider
 // name, with its parsed manifest.
 func TestEmbeddedProviders_ListsTheShippedProviders(t *testing.T) {
 	providers, err := configure.EmbeddedProviders(nerv.ExtensionsFS())

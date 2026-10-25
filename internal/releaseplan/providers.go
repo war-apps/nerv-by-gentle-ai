@@ -20,7 +20,7 @@ import (
 var ErrNotImplemented = errors.New("not implemented by the provider")
 
 // Providers calls the release extension's slot providers: the
-// release-<name> provider plugins of the extensions tree, each an exec
+// release-<name> providers of the extensions tree, each an exec
 // provider whose steps get the common request on their stdin and answer
 // the common response on their stdout.
 type Providers struct {

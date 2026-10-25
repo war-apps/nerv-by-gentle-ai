@@ -256,6 +256,7 @@ scripts, through `nerv provider deploy-bash <operation>`:
 | `script` | repo | required | The deploy script, relative to the repository root. |
 | `publish_script` | repo | none (`publish` is skipped) | Run by `publish`, before any target deploys. |
 | `verify_script` | repo | none (`verify` is skipped) | Run by `verify`, after the target's deploy. |
+| `timeout` | repo | none (no limit) | A duration (`10m`, `90s`) bounding each script run; past it the script's process group is killed and the operation fails. |
 
 ```yaml
 deploy:
@@ -273,7 +274,8 @@ deploy:
 - `publish`, `deploy` and `verify` run the script of the release commit (the
   artifact's tag), never your working tree's: the script must be a regular
   file there, not a symlink. That commit's files are extracted into a
-  temporary directory, and `bash <script>` runs there.
+  temporary directory, all of them (`export-ignore` attributes do not
+  apply) with their executable modes, and `bash <script>` runs there.
 - The script reads the common JSON request on stdin, and finds the deploy
   variables in its environment:
 

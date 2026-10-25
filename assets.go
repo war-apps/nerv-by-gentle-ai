@@ -1,5 +1,5 @@
 // Package nerv embeds the Nerv by Gentle-AI plugin tree, and the optional
-// extension plugins shipped in the same marketplace, so they can be
+// extensions and providers shipped in the same marketplace, so they can be
 // materialized on disk by the nerv CLI without a network round trip.
 package nerv
 
@@ -14,8 +14,9 @@ import (
 //go:embed all:plugin
 var pluginFS embed.FS
 
-// extensionsFS embeds the extension plugins, one folder per plugin under
-// plugins/ (the task plugin and its providers).
+// extensionsFS embeds the extensions and their providers, one folder each
+// under plugins/ (such as task and task-teamwork), each packaged as a
+// Claude Code plugin.
 //
 //go:embed all:plugins
 var extensionsFS embed.FS
@@ -33,8 +34,9 @@ func PluginFS() fs.FS {
 	return sub
 }
 
-// ExtensionsFS returns the embedded extension plugins rooted at "plugins",
-// so callers see one folder per plugin, such as "task/.claude-plugin/plugin.json".
+// ExtensionsFS returns the embedded extensions and providers rooted at
+// "plugins", so callers see one folder each, such as
+// "task/.claude-plugin/plugin.json".
 func ExtensionsFS() fs.FS {
 	sub, err := fs.Sub(extensionsFS, "plugins")
 	if err != nil {

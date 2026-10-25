@@ -13,11 +13,12 @@ import (
 	"github.com/war-apps/nerv-by-gentle-ai/internal/taskprovider"
 )
 
-// Provider is a task provider plugin shipped in the extensions tree, with
+// Provider is a task provider shipped in the extensions tree, with
 // its parsed provider.yaml. Core knows providers only through manifests:
 // no provider name or key is written into this package.
 type Provider struct {
-	// Plugin is the extension plugin's name, such as "task-<name>".
+	// Plugin is the provider's folder (and Claude Code plugin) name, such
+	// as "task-<name>".
 	Plugin   string
 	Manifest *taskprovider.Manifest
 }
@@ -31,7 +32,7 @@ func (p Provider) Key(key string) (taskprovider.ConfigKey, bool) {
 	return p.Manifest.Config[i], true
 }
 
-// EmbeddedProviders loads the provider.yaml of every task provider plugin
+// EmbeddedProviders loads the provider.yaml of every task provider
 // in fsys (typically nerv.ExtensionsFS()), in plugin name order. A nil
 // fsys has none.
 func EmbeddedProviders(fsys fs.FS) ([]Provider, error) {

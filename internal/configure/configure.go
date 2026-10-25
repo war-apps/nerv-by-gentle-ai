@@ -32,7 +32,7 @@ type Deps struct {
 	// so "agents/misato.md" and "skills-manifest.json" are
 	// top-level entries.
 	FS fs.FS
-	// ExtensionsFS holds the optional extension plugins, typically
+	// ExtensionsFS holds the optional extensions and providers, typically
 	// nerv.ExtensionsFS(): the task provider manifests that describe the
 	// provider settings InitRepo and the wizard accept. Nil holds none.
 	ExtensionsFS fs.FS

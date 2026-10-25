@@ -14,7 +14,8 @@ deploy-bash <operation>`.
 - `publish`, `deploy` and `verify` run `publish_script`, `script` and
   `verify_script` with `bash`. The script is the release commit's (the
   artifact's tag), never your working tree's, and must be a regular file
-  there, not a symlink; it runs in a temporary copy of that commit's files.
+  there, not a symlink; it runs in a temporary copy of all that commit's
+  files (`export-ignore` attributes do not apply).
   `publish` and `verify` without their script are skipped.
 
 The script reads the common JSON request on stdin and finds the deploy
@@ -30,7 +31,9 @@ exit code answers. It needs `bash` and `git` on PATH.
 ## Configuration
 
 `deploy.targets[].config.script` (required), `.publish_script` and
-`.verify_script` (optional), all repository-relative paths:
+`.verify_script` (optional), all repository-relative paths, and `.timeout`
+(optional, a duration such as `10m`: past it the script's process group is
+killed and the operation fails; no limit by default):
 
 ```yaml
 deploy:

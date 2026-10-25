@@ -43,7 +43,7 @@ func scalarOf(t *testing.T, path, key string) (string, bool) {
 }
 
 // S3: without task@nerv enabled, the wizard shows no Task providers section,
-// even when a provider plugin is enabled and its manifest is embedded.
+// even when a provider is enabled and its manifest is embedded.
 func TestRun_TaskProviders_HiddenWithoutTheTaskPlugin(t *testing.T) {
 	root := t.TempDir()
 	home := t.TempDir()
@@ -59,6 +59,26 @@ func TestRun_TaskProviders_HiddenWithoutTheTaskPlugin(t *testing.T) {
 	}
 	if strings.Contains(out.String(), "Task providers") {
 		t.Errorf("Task providers shown without task@nerv:\n%s", out.String())
+	}
+}
+
+// With task@nerv enabled and no provider, the Task providers section says
+// no task provider is enabled and points at nerv install.
+func TestRun_TaskProviders_SaysNoProviderIsEnabled(t *testing.T) {
+	root := t.TempDir()
+	home := t.TempDir()
+	writeFixture(t, filepath.Join(root, "config.yml"))
+	deps := configure.Deps{Home: home, FS: nerv.PluginFS(), ExtensionsFS: nerv.ExtensionsFS(), Runner: noRunner(), Now: fixedNow, LookPath: lookPathNone}
+	opts := skipAll()
+	opts.Paths = testPaths(root, home)
+	opts.SettingsPath = writeSettings(t, home, "nerv@nerv", "task@nerv")
+
+	var out bytes.Buffer
+	if _, err := wizard.Run(deps, strings.NewReader(strings.Repeat("\n", 12)), &out, opts); err != nil {
+		t.Fatalf("Run() error = %v; output:\n%s", err, out.String())
+	}
+	if !strings.Contains(out.String(), "--- Task providers ---\nNo task provider is enabled; install one with nerv install.\n") {
+		t.Errorf("output:\n%s", out.String())
 	}
 }
 

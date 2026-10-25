@@ -41,7 +41,8 @@ With --init-repo:
                             Task provider setting for this repo, written to
                              tasks.providers.<provider>.<key> (repeatable);
                              the key (repo scope only) and value are checked
-                             against the provider's embedded provider.yaml
+                             against the provider's provider.yaml (shipped,
+                             or the project's in .ai-workflow/providers/)
 
 Other flags:
   --json                    Print the result as JSON (ignored by --print, which always does)

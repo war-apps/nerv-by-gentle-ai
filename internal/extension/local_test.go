@@ -188,8 +188,9 @@ func TestWithProject_NameCollisionsAreRefused(t *testing.T) {
 }
 
 // {provider_dir} paths must stay inside the provider folder: ".." and
-// symlinks out of it are refused, and so is a missing file and a provider
-// nerv ships that uses it.
+// symlinks out of it are refused, and so is a missing file, a bare
+// {provider_dir} (a directory, never a runnable file) and a provider nerv
+// ships that uses it.
 func TestWithProject_ProviderDirPathsStayInTheFolder(t *testing.T) {
 	outside := filepath.Join(t.TempDir(), "evil.sh")
 	if err := os.WriteFile(outside, []byte("#!/bin/sh\n"), 0o755); err != nil {
@@ -202,6 +203,7 @@ func TestWithProject_ProviderDirPathsStayInTheFolder(t *testing.T) {
 		{"dot-dot", "{provider_dir}/../../../evil.sh", "../../../evil.sh leaves the provider folder", false},
 		{"symlink", "{provider_dir}/link.sh", "link.sh resolves to " + outside + ", outside the provider folder", true},
 		{"missing", "{provider_dir}/nope.sh", "nope.sh not found in the provider folder", false},
+		{"bare", "{provider_dir}", "{provider_dir} alone is the provider folder, not a file: name a file inside it ({provider_dir}/<file>)", false},
 		{"glued", "x{provider_dir}/ship.sh", "{provider_dir} is a whole element or the start of a path inside the provider folder ({provider_dir}/<file>)", false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

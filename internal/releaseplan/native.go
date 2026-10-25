@@ -38,7 +38,7 @@ type NativeDeps struct {
 	Git env.Runner
 }
 
-// RunNative runs one operation of the native release provider plugin:
+// RunNative runs one operation of the native release provider:
 // the request on stdin, one JSON response on stdout, and the exit code
 // (0 ok or skipped, 1 a failure the response explains, 2 a request that
 // cannot be read).
