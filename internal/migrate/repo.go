@@ -84,8 +84,8 @@ func planUser(p *Plan, o Options) (*userState, error) {
 			return nil, refuse("%s and %s both exist: nerv migrate does not merge two user configurations; move the settings of the old one into the new one by hand (nerv configure --set), or remove %s and run nerv migrate --user again", pp.PreviousUserConfig, pp.UserConfig, pp.PreviousUserConfig)
 		}
 		to := migratedPath(pp.PreviousUserConfig, o)
-		p.Changes = append(p.Changes, Change{Kind: Rename, Path: pp.PreviousUserConfig, To: to, Old: prevData, User: true})
-		p.note("user config: %s moves to %s; the old file is kept as %s", pp.PreviousUserConfig, pp.UserConfig, to)
+		p.Changes = append(p.Changes, Change{Kind: Rename, Path: pp.PreviousUserConfig, To: to, Old: prevData, User: true,
+			Why: "a copy of the old user configuration; your settings move to " + pp.UserConfig})
 		newData, newExists = []byte(doc.String()), true
 		u.moved = true
 	}
@@ -105,8 +105,8 @@ func planUser(p *Plan, o Options) (*userState, error) {
 		}
 		u.doc, u.exists, u.original = doc, newExists && !u.moved, newData
 		to := migratedPath(pp.LegacyUserConfig, o)
-		p.Changes = append(p.Changes, Change{Kind: Rename, Path: pp.LegacyUserConfig, To: to, Old: oldData, User: true})
-		p.note("user config: %s moves to %s; the old file is kept as %s", pp.LegacyUserConfig, pp.UserConfig, to)
+		p.Changes = append(p.Changes, Change{Kind: Rename, Path: pp.LegacyUserConfig, To: to, Old: oldData, User: true,
+			Why: "a copy of the old user configuration; your settings move to " + pp.UserConfig})
 	case newExists:
 		u.doc, u.exists, u.original = config.Parse(string(newData)), !u.moved, newData
 	default:
@@ -209,18 +209,22 @@ func planRepo(p *Plan, o Options, user *userState) error {
 		case oldExists && newExists && string(newData) != text:
 			return refuse("%s and %s both exist: nerv migrate does not merge them; merge the old one into %s by hand, or remove %s and run nerv migrate again", oldPath, newPath, paths.ProjectConfigFile, paths.ProjectConfigFile)
 		case !newExists:
-			p.Changes = append(p.Changes, Change{Kind: Write, Path: newPath, New: []byte(text)})
+			from := ".nerv/nerv.yaml"
+			if prevExists {
+				from = paths.PreviousProjectConfigFile
+			}
+			p.Changes = append(p.Changes, Change{Kind: Write, Path: newPath, New: []byte(text), Why: "the new project configuration, from " + from})
 		case string(newData) != text:
-			p.Changes = append(p.Changes, Change{Kind: Write, Path: newPath, Old: newData, New: []byte(text)})
+			p.Changes = append(p.Changes, Change{Kind: Write, Path: newPath, Old: newData, New: []byte(text), Why: "converted to this version's sections"})
 		}
 		if prevExists {
-			p.Changes = append(p.Changes, Change{Kind: Remove, Path: prevPath, Old: prevData})
-			p.note("%s moves to %s; the old file is backed up under .nerv/backups/", paths.PreviousProjectConfigFile, paths.ProjectConfigFile)
+			p.Changes = append(p.Changes, Change{Kind: Remove, Path: prevPath, Old: prevData,
+				Why: "replaced by " + paths.ProjectConfigFile + " (a backup is kept under .nerv/backups/)"})
 		}
 		if oldExists {
 			to := migratedPath(oldPath, o)
-			p.Changes = append(p.Changes, Change{Kind: Rename, Path: oldPath, To: to, Old: oldData})
-			p.note("%s moves to %s; the old file is kept as %s (git-ignored with .nerv/)", ".nerv/nerv.yaml", paths.ProjectConfigFile, ".nerv/"+filepath.Base(to))
+			p.Changes = append(p.Changes, Change{Kind: Rename, Path: oldPath, To: to, Old: oldData,
+				Why: "a copy of the old configuration, so an older nerv does not read it"})
 		}
 	} else if tdd != nil {
 		p.warn("odd.tdd: the repository has no %s to record strict_tdd in; run nerv configure --init, then nerv migrate again", paths.ProjectConfigFile)
@@ -228,7 +232,7 @@ func planRepo(p *Plan, o Options, user *userState) error {
 	ignore := filepath.Join(paths.RuntimeDir(root), ".gitignore")
 	if _, err := os.Lstat(ignore); errors.Is(err, fs.ErrNotExist) {
 		if _, err := os.Stat(paths.RuntimeDir(root)); err == nil || len(p.Changes) > 0 {
-			p.Changes = append(p.Changes, Change{Kind: Write, Path: ignore, New: []byte("*\n")})
+			p.Changes = append(p.Changes, Change{Kind: Write, Path: ignore, New: []byte("*\n"), Why: "keeps nerv's local files out of git"})
 		}
 	}
 	if o.Home != "" {

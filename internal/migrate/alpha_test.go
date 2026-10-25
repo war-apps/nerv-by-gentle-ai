@@ -71,7 +71,7 @@ func TestAlpha_ShipSectionBecomesRelease(t *testing.T) {
 	before := treeHash(t, w.root)
 
 	p := w.plan(w.options(false, githubOrigin))
-	contains(t, "the rendered plan", migrate.Render(p), "+++ b/.ai-workflow/config.yaml\n", "+release: # ship plugin", "remove .ai-workflow.yml\n")
+	contains(t, "the rendered plan", migrate.Render(p), "Create .ai-workflow/config.yaml: the new project configuration, from .ai-workflow.yml\n", "Delete .ai-workflow.yml: replaced by .ai-workflow/config.yaml")
 	contains(t, "the notes", strings.Join(p.Notes, "\n"),
 		"ship: renamed release: (the 5.0.0-alpha.1 section)",
 		"release.branches: moved to release.providers.conventional-commits.branches",

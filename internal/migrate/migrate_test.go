@@ -699,7 +699,16 @@ func TestDryRun_WritesNothing(t *testing.T) {
 		t.Fatal("the plan is empty")
 	}
 	diff := migrate.Render(p)
-	contains(t, "the rendered plan", diff, "--- /dev/null\n+++ b/.ai-workflow/config.yaml\n", "move .nerv/nerv.yaml -> .nerv/nerv.yaml.migrated", "move openspec/changes/tw-1-feature/nerv/test-plan.md -> odd/tw-1-feature/nerv/test-plan.md", "remove openspec/changes/tw-1-feature/proposal.md", "+release:")
+	contains(t, "the rendered plan", diff,
+		"Create .ai-workflow/config.yaml: the new project configuration, from .nerv/nerv.yaml\n",
+		"Move .nerv/nerv.yaml to .nerv/nerv.yaml.migrated: a copy of the old configuration, so an older nerv does not read it\n",
+		"Create odd/tasks/tw-1-feature.md: the task document of openspec/changes/tw-1-feature\n",
+		"Move openspec/changes/tw-1-feature/nerv/test-plan.md to odd/tw-1-feature/nerv/test-plan.md\n",
+		"Delete openspec/changes/tw-1-feature/proposal.md: its content is in odd/tasks/tw-1-feature.md\n",
+		"Create "+w.userPaths().UserConfig+": your user configuration\n",
+		"\nHow the configuration changes:\n  - ",
+		"\nNext, install the extensions it uses: nerv install --with ")
+	lacks(t, "the rendered plan", diff, "--- ", "+++ ", "@@ ")
 	if after := treeHash(t, w.root, w.home); after != before {
 		t.Error("planning changed the files")
 	}

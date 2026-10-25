@@ -54,8 +54,10 @@ Moves a repository (and, with --user, your user configuration) from nerv
     stay; strict_tdd becomes odd.tdd;
   - .nerv/.gitignore is created.
 
-It prints every change (a unified diff per file), what has no equivalent,
-and the nerv install line for the plugins the repository used. Every file
+It lists its steps, with or without --dry-run: each file it creates,
+updates, moves or deletes, and what for; then how the configuration
+changes, what to check by hand, and the nerv install line for the
+extensions the repository uses. Every file
 it changes or removes is backed up first (the repository's under
 .nerv/backups/migrate-<timestamp>/, the user config's next to it). When a
 step fails, every change already made is rolled back. A run interrupted
@@ -63,7 +65,7 @@ before it could roll back is finished by the next one. A second run changes
 nothing.
 
 Flags:
-  --dry-run      Print the changes; write nothing
+  --dry-run      List the steps; write nothing
   --user         Also migrate the user configuration (alone when the
                  directory is not inside a git repository)
   --install      Then install the plugins the repository used (nerv install
@@ -133,32 +135,30 @@ func migrateRun(ctx context.Context, cwd string, dryRun, user, install, force bo
 	if err != nil {
 		return err
 	}
-	fmt.Fprint(stdout, migrate.Render(plan))
-	for _, n := range plan.Notes {
-		fmt.Fprintf(stdout, "note: %s\n", n)
-	}
-	for _, w := range plan.Warnings {
-		fmt.Fprintf(stdout, "warning: %s\n", w)
-	}
 	line := plan.InstallCommand()
-	if line != "" {
-		fmt.Fprintf(stdout, "plugins: %s\n", line)
-	}
 	switch {
 	case plan.Empty():
+		fmt.Fprint(stdout, migrate.Render(plan))
 		fmt.Fprintln(stdout, "nerv migrate: nothing to migrate")
 	case dryRun:
-		fmt.Fprintf(stdout, "nerv migrate: dry run: %d change(s), nothing was written\n", len(plan.Changes))
+		fmt.Fprintln(stdout, "nerv migrate --dry-run: these are the steps nerv migrate would take; nothing is written:")
+		fmt.Fprint(stdout, migrate.Render(plan))
+		fmt.Fprintf(stdout, "\nnerv migrate: dry run: %d change(s), nothing was written\n", len(plan.Changes))
 		return nil
 	default:
+		fmt.Fprintln(stdout, "nerv migrate: these are the steps:")
+		fmt.Fprint(stdout, migrate.Render(plan))
 		backups, err := migrate.Apply(plan, o.Now)
-		for _, b := range backups {
-			fmt.Fprintf(stdout, "backup: %s\n", b)
+		if len(backups) > 0 {
+			fmt.Fprintln(stdout, "\nBackups:")
+			for _, b := range backups {
+				fmt.Fprintf(stdout, "  - %s\n", b)
+			}
 		}
 		if err != nil {
 			return err
 		}
-		fmt.Fprintf(stdout, "nerv migrate: %d change(s) written\n", len(plan.Changes))
+		fmt.Fprintf(stdout, "\nnerv migrate: %d change(s) written\n", len(plan.Changes))
 	}
 	if install && line != "" && !dryRun {
 		with := strings.TrimPrefix(line, "nerv install --with ")

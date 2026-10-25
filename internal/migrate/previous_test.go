@@ -23,7 +23,8 @@ func TestPrevious_ProjectFileMovesToTheFolder(t *testing.T) {
 
 	p := w.plan(w.options(false, ""))
 	diff := migrate.Render(p)
-	contains(t, "the rendered plan", diff, "--- /dev/null\n+++ b/.ai-workflow/config.yaml\n", "remove .ai-workflow.yml\n")
+	contains(t, "the rendered plan", diff, "1. Create .ai-workflow/config.yaml: the new project configuration, from .ai-workflow.yml\n", ". Delete .ai-workflow.yml: replaced by .ai-workflow/config.yaml (a backup is kept under .nerv/backups/)\n")
+	lacks(t, "the rendered plan", diff, "--- ", "+++ ", "@@ ")
 	if treeHash(t, w.root) != before {
 		t.Fatal("planning changed the files")
 	}
@@ -111,7 +112,7 @@ func TestPrevious_UserFileMovesToConfigYAML(t *testing.T) {
 	o := w.options(true, "")
 	o.RepoRoot = ""
 	p := w.plan(o)
-	contains(t, "the rendered plan", migrate.Render(p), "move "+up.PreviousUserConfig+" -> "+up.PreviousUserConfig+migrate.MigratedSuffix)
+	contains(t, "the rendered plan", migrate.Render(p), "Move "+up.PreviousUserConfig+" to "+up.PreviousUserConfig+migrate.MigratedSuffix+": a copy of the old user configuration; your settings move to "+up.UserConfig+"\n")
 	if treeHash(t, w.home) != before {
 		t.Fatal("planning changed the files")
 	}
