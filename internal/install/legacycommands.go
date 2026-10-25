@@ -56,7 +56,7 @@ func reportLegacyCommands(deps Deps) {
 	}
 
 	if deps.ConfirmRemoveLegacyCommands == nil || !deps.ConfirmRemoveLegacyCommands(files) {
-		fmt.Fprintln(deps.Stdout, "These copies shadow the task@nerv plugin's /task:* commands and can be removed.")
+		fmt.Fprintln(deps.Stdout, "These copies shadow the task extension's /task:* commands and can be removed.")
 		return
 	}
 

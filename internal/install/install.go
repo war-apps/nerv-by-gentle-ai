@@ -262,8 +262,18 @@ func refreshPlugin(ctx context.Context, deps Deps, id, wantVersion string) error
 			info.Version, pluginVersion)}
 	}
 
-	fmt.Fprintf(deps.Stdout, "%s version : %s (matches embedded; installPath: %s)\n", id, info.Version, info.InstallPath)
+	fmt.Fprintf(deps.Stdout, "%s version : %s (matches embedded; installPath: %s)\n", displayName(id), info.Version, info.InstallPath)
 	return nil
+}
+
+// displayName is how output names a plugin: an extension or provider by
+// its bare name ("task"), the core plugin by its id (nerv@nerv). The
+// "-> claude plugin ..." lines echo the real command, so they keep the id.
+func displayName(id string) string {
+	if id == PluginID {
+		return id
+	}
+	return strings.TrimSuffix(id, "@"+MarketplaceName)
 }
 
 func ensureEngram(ctx context.Context, deps Deps) {

@@ -36,7 +36,7 @@ The `git.*` keys `branch_pattern`, `commit_ref_pattern`, `worktree`, `worktree_p
 
 A provider comes from one of two places, and its **root** is where its `provider.yaml` lives:
 
-- **Installed:** its plugin `task-<name>@nerv` appears in `~/.claude/plugins/installed_plugins.json`. The root is that entry's `installPath`.
+- **Installed:** the provider `task-<name>` is installed: its Claude Code id `task-<name>@nerv` appears in `~/.claude/plugins/installed_plugins.json`. The root is that entry's `installPath`.
 - **Project:** the repository ships it as `.ai-workflow/providers/task-<name>/provider.yaml`, in the **main checkout** (`git rev-parse --path-format=absolute --git-common-dir`, then its parent), committed with the repository and never installed. The root is that folder. A project provider whose `task-<name>` is also an installed plugin's name is skipped and reported (`nerv` refuses that name collision), and so is one whose folder resolves outside the repository.
 
 Then read `<root>/provider.yaml` and `<root>/<operation file>`; an operation file must stay inside the root.

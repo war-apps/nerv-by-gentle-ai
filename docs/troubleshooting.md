@@ -7,7 +7,7 @@
   during the corner-case interview is a recorded decision, not a missing
   case, and will not surface as a finding.
 - **Teamwork is the only task provider shipped today.** Task tracking is the
-  optional task extension (`task@nerv`), and `task-teamwork@nerv` is its only
+  optional `task` extension, and `task-teamwork` is its only
   provider. Another provider is a new `task-<name>` provider with a valid `provider.yaml`; see
   "Adding a provider" in [integration.md](integration.md#task-extension).
 - **No task question, no timer, no task event.** The task extension is not

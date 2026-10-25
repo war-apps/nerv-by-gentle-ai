@@ -1,6 +1,6 @@
 # Deploy extension: `nerv deploy`
 
-The deploy extension (`deploy@nerv`) releases what the [release extension](release-commands.md)
+The deploy extension (`deploy`) releases what the [release extension](release-commands.md)
 packaged. It requires `release`, and its git hosts and targets are providers
 (`deploy-github`, `deploy-ssh-compose`, `deploy-bash`), installed with it. Install them with:
 

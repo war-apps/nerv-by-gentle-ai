@@ -472,11 +472,11 @@ instead of asking.
 Core holds no task, timer or tracker logic. Task tracking is split across
 the optional task extension and its providers, from the same marketplace:
 
-- **`task@nerv`**, the task extension. It owns the `/task:*` commands, the
+- **`task`**, the task extension. It owns the `/task:*` commands, the
   local timer store, timelog consolidation, the composite operations
   (block, cancel, done, close, stopAll) and the `task:dispatcher` agent.
   Its contract is `plugins/task/skills/task/SKILL.md`.
-- **Providers**, such as `task-teamwork@nerv`. Each one ships a
+- **Providers**, such as `task-teamwork`. Each one ships a
   `provider.yaml` manifest and one procedure file per remote operation.
 
 **Detection.** The orchestrator treats the task extension as installed when

@@ -1,7 +1,7 @@
 # release-conventional-commits
 
 The version engine of `nerv release` and `nerv version next` (Claude Code plugin
-`release-conventional-commits@nerv`, provider name `conventional-commits`,
+`release-conventional-commits`, provider name `conventional-commits`,
 slot `version`, the slot's default). It has no commands of its own: the
 release extension calls its operations from `provider.yaml`, the provider
 contract (`docs/extensions.md`, "The release slots"), through the hidden

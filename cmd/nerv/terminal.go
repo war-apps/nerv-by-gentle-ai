@@ -59,7 +59,7 @@ func extensionConfirmer(opts options, stdout io.Writer) func(name, description s
 		return nil
 	}
 	return func(name, description string) bool {
-		fmt.Fprintf(stdout, "Install %s@nerv (%s)? [y/N]: ", name, description)
+		fmt.Fprintf(stdout, "Install %s (%s)? [y/N]: ", name, description)
 		line, sawNewline := readAnswer(opts.Stdin)
 		if !sawNewline {
 			fmt.Fprintln(stdout)

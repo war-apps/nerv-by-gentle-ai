@@ -364,7 +364,7 @@ func TestRunInstall_Terminal_SuggestsExtensions(t *testing.T) {
 		t.Fatalf("exit code = %d, want 0; stdout:\n%s\nstderr:\n%s", code, stdout.String(), stderr.String())
 	}
 	out := stdout.String()
-	if !strings.Contains(out, "Install task@nerv") || !strings.Contains(out, "Install task-teamwork@nerv") {
+	if !strings.Contains(out, "Install task (") || !strings.Contains(out, "Install task-teamwork (") {
 		t.Errorf("expected both suggestions, got:\n%s", out)
 	}
 	if !strings.Contains(out, "-> claude plugin install task@nerv") || strings.Contains(out, "-> claude plugin install task-teamwork@nerv") {
@@ -430,7 +430,7 @@ func TestInstall_HelpDescribesTheSuggestionOrderAndRequirements(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	run([]string{"install", "--help"}, &stdout, &stderr, testOptions(t.TempDir()))
 	help := stdout.String() + stderr.String()
-	order := []string{"task@nerv", "task-<name>@nerv", "release@nerv", "deploy@nerv", "providers: bundled",
+	order := []string{"task extension", "task-<name>", "release extension", "deploy extension", "providers: bundled",
 		"release-conventional-commits", "release-docker-compose", "release-bash", "deploy-bash", "deploy-github", "deploy-ssh-compose",
 		"task's\nproviders are suggested"}
 	at := 0
@@ -441,11 +441,15 @@ func TestInstall_HelpDescribesTheSuggestionOrderAndRequirements(t *testing.T) {
 		}
 		at += i + len(want)
 	}
-	for _, want := range []string{"deploy requires release", "a provider requires its\nextension", "the task extension (task@nerv",
+	for _, want := range []string{"deploy requires release", "a provider requires its\nextension", "the task extension (the /task:* commands",
 		"Comma-separated extensions and providers to install"} {
 		if !strings.Contains(help, want) {
 			t.Errorf("help lacks %q:\n%s", want, help)
 		}
+	}
+	// S3: extensions and providers go by their bare name, never name@nerv.
+	if strings.Contains(help, "@nerv") {
+		t.Errorf("help names an extension by its Claude Code id:\n%s", help)
 	}
 	// Add-ons are extensions and their implementations providers; "plugin"
 	// is only their Claude Code packaging.

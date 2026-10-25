@@ -1,6 +1,6 @@
 # deploy-bash
 
-The script target for `nerv deploy` (Claude Code plugin `deploy-bash@nerv`, provider
+The script target for `nerv deploy` (Claude Code plugin `deploy-bash`, provider
 name `bash`, slot `target`). It has no commands of its own: `nerv deploy`
 runs its operations from `provider.yaml`, the provider contract
 (`docs/extensions.md`) that the `deploy` extension's skill details. It is a

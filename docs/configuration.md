@@ -62,7 +62,7 @@ git:
                                                   # reuses its own [worktrees] directory as <directory>/{repo}/{slug}
   branch_pattern: "feature/{prefix}-{id}-{slug}"   # {prefix}/{id} come from the run.started task_ref (tw-123)
   commit_ref_pattern: "({PREFIX}-{id})"
-tasks:                              # read only by the optional task extension (task@nerv); core ignores it; project scope, except its personal keys
+tasks:                              # read only by the optional task extension; core ignores it; project scope, except its personal keys
   provider: teamwork                # provider for bare task ids; "none" turns the task extension off in this repository
   ask_when_missing: true            # at run.started with no task, the dispatcher asks for one
   subtasks_per_wave: false          # whether wave.started creates one subtask per FULL wave
@@ -197,7 +197,7 @@ hand.
 ## `tasks:` (task extension)
 
 Core never reads `tasks:`. The block belongs to the optional task extension
-(`task@nerv`) and its providers, such as `task-teamwork@nerv`. The
+(`task`) and its providers, such as `task-teamwork`. The
 full key reference is in the task extension's contract
 (`plugins/task/skills/task/SKILL.md`, section 1).
 
@@ -214,7 +214,7 @@ full key reference is in the task extension's contract
   provider's `provider.yaml` declares under `config`, each with its scope
   (`user` or `repo`), type, default and prompt. `tasks.providers.<name>.enabled:
   false` keeps a provider installed but stops sending it events.
-- **Setting them.** When `task@nerv` is enabled, the `nerv configure`
+- **Setting them.** When the `task` extension is enabled, the `nerv configure`
   wizard shows a "Task providers" section that prompts each enabled
   provider's user-scope scalar keys, plus the default task provider for new
   repositories (`defaults.tasks.provider`) when more than one provider is
