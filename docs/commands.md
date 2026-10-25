@@ -302,7 +302,7 @@ offers the others, in this order:
    version engine, `release-docker-compose@nerv` and `release-bash@nerv`);
 4. the deploy plugin (`deploy@nerv`: `nerv deploy`), only once release is
    installed, which brings its providers with it, unasked
-   (`deploy-github@nerv`, `deploy-ssh-compose@nerv`).
+   (`deploy-bash@nerv`, `deploy-github@nerv`, `deploy-ssh-compose@nerv`).
 
 An extension whose `extension.yaml` says `providers: bundled` (release,
 deploy) installs every provider it ships with it, each listed as `Adding

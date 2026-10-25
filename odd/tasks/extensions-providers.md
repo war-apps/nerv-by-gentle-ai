@@ -33,7 +33,7 @@ Order: T4 first (it touches every other surface), then T1, T2, T3, T5, T6, T7, T
 | T2 | S6, S2 | `extension.yaml` for task, release, deploy; discovery and requirements read from it instead of hard-coded maps | delegated with T1 | done; verifier PASS; review approved | 4840c1d |
 | T3 | S6, S3, S5 | One `provider.yaml` shape for all providers; port task-teamwork, deploy-github, deploy-ssh-compose | delegated with T1 | done; verifier PASS; review approved | 4840c1d |
 | T4 | S1 | Rename ship to release (code, CLI, config, extension, artifact schema, docs) | delegated (context backstop: ~95 files, keeps the parent thin for T1-T9) | done; verifier PASS | 277d5df |
-| T5 | S4, S8 | Release slots: version (conventional-commits, preinstalled default) and build (docker-compose, bash) as providers; bundled/suggested install | delegated (context backstop) | done; verifier FAIL (B1, B2), correction pending | dda6006 |
+| T5 | S4, S8 | Release slots: version (conventional-commits, preinstalled default) and build (docker-compose, bash) as providers; bundled/suggested install | delegated (context backstop) | done; verifier FAIL (B1, B2), corrected and rechecked (L19) | dda6006 + fix |
 | T6 | S5 | Deploy bash target provider; deploy moves onto the shared `extension.Exec` runner (from T10) | delegated (parallel with T11) | done; verifier pending | e2e74cc |
 | T7 | S7 | Uniform `.ai-workflow.yml` keys for every extension and provider | inline | pending | |
 | T8 | S1, S7 | `nerv migrate` from 4.2.0 and from 5.0.0-alpha.1 | inline | pending | |
@@ -170,3 +170,10 @@ Order: T4 first (it touches every other surface), then T1, T2, T3, T5, T6, T7, T
   - Differential against dda6006 with the config at the old path: identical apart from the temp clone names and the migrate help text.
   - Leftover mentions of the old paths are in plugins/release-conventional-commits/README.md, bench/README.md, bench/journeys.md, CONTRIBUTING.md and three code comments. They are now part of T9.
   - Risk: items 1, 2 and 3.
+- **L19 (T5 correction batch, inline):**
+  - **B1 fixed:** a shared `checkBuilds` in cmd/nerv/release.go is used by both `nerv release` (build provider required) and `nerv version next` (projects without a build provider are skipped).
+    - RED was observed in `TestVersionNext_RefusesAnInvalidBuildProvider` (exit 2 with the fixture engine called) before GREEN.
+    - Recheck on the built binary: `build: maven` gives exit 1 with `release.build: unknown build provider "maven" (want bash, docker-compose)`.
+  - **B2 fixed:** `install --help` now describes the bundled providers; the test is updated.
+  - "build mode" wording in the release build command and the builder agent became "build provider", and docs/commands.md lists deploy-bash.
+  - The full suite passes.

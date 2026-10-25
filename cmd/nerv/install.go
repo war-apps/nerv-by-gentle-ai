@@ -26,13 +26,16 @@ date, and, when stdin is a terminal, offers the others, in this order:
   2. its providers (task-<name>@nerv), only once task is installed;
   3. the release plugin (release@nerv: nerv release, the version engine);
   4. the deploy plugin (deploy@nerv: nerv deploy), only once release is
-     installed;
-  5. the deploy providers (deploy-<name>@nerv, such as deploy-github and
-     deploy-ssh-compose), only once deploy is installed.
-Requirements: deploy requires release, a task provider requires task,
-and a deploy provider requires deploy; each is offered only once what it
-requires is installed or chosen. A plugin named in --with brings what it
-requires with it; a requirement this nerv does not ship is refused.
+     installed.
+An extension whose extension.yaml says providers: bundled (release and
+deploy) installs all its providers with it, without asking: release brings
+release-conventional-commits, release-docker-compose and release-bash, and
+deploy brings deploy-bash, deploy-github and deploy-ssh-compose. task's
+providers are suggested: each is offered after task.
+Requirements: deploy requires release, and a provider requires its
+extension; each is offered only once what it requires is installed or
+chosen. A plugin named in --with brings what it requires with it; a
+requirement this nerv does not ship is refused.
 Old /task:* copies in <home>/.claude/commands/task, which shadow the task
 plugin's commands, are reported, and removed when you confirm on a terminal.
 Unless --no-configure is given,
