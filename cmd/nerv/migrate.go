@@ -36,6 +36,13 @@ Moves a repository (and, with --user, your user configuration) from nerv
     what has no exact equivalent), and the semantic-release configuration
     is imported into release.providers.conventional-commits (as nerv
     release setup --import does);
+  - the 5.0.0-alpha.1 ship: section becomes release: (in either file):
+    its version engine keys move under release.providers.conventional-commits,
+    and each project's build: { mode: compose|script, ... } becomes
+    build: docker-compose|bash, with file and test_service under the
+    project's providers.docker-compose, shared_host under providers.bash,
+    and images, version_files and coverage on the project itself; a file
+    with both ship: and release: is refused;
   - pipeline: becomes deploy: (one deploy-ssh-compose target per
     environment), with deploy.host github when origin is on GitHub;
   - each in-flight FULL openspec/changes/<change>/ becomes
@@ -65,8 +72,8 @@ Flags:
   --cwd <dir>    A directory inside the repository (default ".")
 
 Exit codes: 0 migrated, nothing to migrate, or a dry run; 1 refused (not a
-repository, both the old and the new file exist, a result that does not
-load, a lock still held); 2 usage or environment error.
+repository, both the old and the new file exist, both ship: and release:,
+a result that does not load, a lock still held); 2 usage or environment error.
 `
 
 func runMigrate(args []string, stdout, stderr io.Writer, opts options) int {

@@ -291,3 +291,48 @@ func TestMigrate_ReleaseDryRunPlansThe420Commands(t *testing.T) {
 		t.Errorf("the package stage saves the pushed images itself (release does):\n%s", stages["package"].Command.Run)
 	}
 }
+
+// S1, S9: nerv migrate takes an alpha.1 repository (.ai-workflow.yml with a
+// ship: section) to .ai-workflow/config.yaml with the release: section:
+// --dry-run writes nothing, the run writes it, the result is read by nerv
+// version next's loader, and a second run has nothing to do.
+func TestMigrate_Alpha1ShipSection(t *testing.T) {
+	top, opts := migrateRepo(t, "alpha1")
+	old := mustReadFile(t, filepath.Join(top, ".ai-workflow.yml"))
+	code, out, errOut := runMigrateCLI(t, opts, "--dry-run")
+	if code != 0 || !strings.Contains(out, "+release: # ship plugin") || !strings.Contains(out, "ship: renamed release:") || !strings.Contains(out, "plugins: nerv install --with") {
+		t.Fatalf("--dry-run: exit %d\n%s\n%s", code, out, errOut)
+	}
+	if got := mustReadFile(t, filepath.Join(top, ".ai-workflow.yml")); got != old {
+		t.Error("--dry-run changed .ai-workflow.yml")
+	}
+	if _, err := os.Stat(filepath.Join(top, ".ai-workflow", "config.yaml")); err == nil {
+		t.Error("--dry-run wrote .ai-workflow/config.yaml")
+	}
+	if code, out, errOut = runMigrateCLI(t, opts); code != 0 {
+		t.Fatalf("exit %d\n%s\n%s", code, out, errOut)
+	}
+	text := mustReadFile(t, filepath.Join(top, ".ai-workflow", "config.yaml"))
+	if strings.Contains(text, "\nship:") || !strings.Contains(text, "      build: docker-compose\n") {
+		t.Errorf(".ai-workflow/config.yaml:\n%s", text)
+	}
+	if code, out, _ = runMigrateCLI(t, opts); code != 0 || !strings.Contains(out, "nerv migrate: nothing to migrate") {
+		t.Errorf("second run: exit %d\n%s", code, out)
+	}
+}
+
+// A file with both ship: and release: is refused (exit 1), unchanged.
+func TestMigrate_RefusesShipAndReleaseTogether(t *testing.T) {
+	top, opts := migrateRepo(t, "alpha1")
+	both := mustReadFile(t, filepath.Join(top, ".ai-workflow.yml")) + "release:\n  projects: []\n"
+	if err := os.WriteFile(filepath.Join(top, ".ai-workflow.yml"), []byte(both), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	code, out, errOut := runMigrateCLI(t, opts)
+	if code != 1 || !strings.Contains(errOut, "both a ship: section (5.0.0-alpha.1) and a release: section") {
+		t.Errorf("exit %d\n%s\n%s", code, out, errOut)
+	}
+	if got := mustReadFile(t, filepath.Join(top, ".ai-workflow.yml")); got != both {
+		t.Error("a refused migration changed .ai-workflow.yml")
+	}
+}

@@ -212,6 +212,10 @@ func TestRead_RefusesAnotherSchemaOrAPathLeavingTheArtifact(t *testing.T) {
 		want string
 	}{
 		{"schema", func(m map[string]any) { m["schema"] = "nerv.release-artifact/v2" }, "schema"},
+		// S1: an artifact nerv ship wrote (5.0.0-alpha.1) says how to get a
+		// current one.
+		{"alpha.1 schema", func(m map[string]any) { m["schema"] = "nerv.ship-artifact/v1" },
+			`schema "nerv.ship-artifact/v1": this artifact was made by nerv 5.0.0-alpha.1 (nerv ship); rebuild it with nerv release`},
 		{"output path", func(m map[string]any) {
 			m["outputs"] = []any{map[string]any{"path": "../escape", "kind": "file", "sha256": sum("")}}
 		}, "../escape"},

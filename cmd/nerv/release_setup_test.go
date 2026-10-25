@@ -233,3 +233,27 @@ func TestReleaseSetup_ErrorsNameTheReleaseSection(t *testing.T) {
 		t.Errorf("exit %d\nstdout %s\nstderr %s", code, stdout, stderr)
 	}
 }
+
+// S1, L8 advisory 1: setup --import refuses an alpha.1 ship: section,
+// naming nerv migrate, whether or not there is a configuration to import;
+// the file is left as it was.
+func TestReleaseSetup_RefusesTheAlphaShipSection(t *testing.T) {
+	for name, files := range map[string]map[string]string{
+		"with a semantic-release config": {"package.json": dimPackageJSON, ".ai-workflow/config.yaml": alphaShipYAML},
+		"without one":                    {".ai-workflow/config.yaml": alphaShipYAML},
+	} {
+		repo := setupRepo(t, files)
+		code, stdout, stderr := runSetup(t, repo, "--import")
+		if code != 1 || stdout != "" {
+			t.Errorf("%s: exit %d\nstdout %s\nstderr %s", name, code, stdout, stderr)
+		}
+		for _, want := range alphaShipWants {
+			if !strings.Contains(stderr, want) {
+				t.Errorf("%s: stderr lacks %q: %s", name, want, stderr)
+			}
+		}
+		if got := mustReadFile(t, filepath.Join(repo, ".ai-workflow/config.yaml")); got != alphaShipYAML {
+			t.Errorf("%s: .ai-workflow/config.yaml changed:\n%s", name, got)
+		}
+	}
+}

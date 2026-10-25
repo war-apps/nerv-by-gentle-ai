@@ -34,12 +34,12 @@ Order: T4 first (it touches every other surface), then T1, T2, T3, T5, T6, T7, T
 | T3 | S6, S3, S5 | One `provider.yaml` shape for all providers; port task-teamwork, deploy-github, deploy-ssh-compose | delegated with T1 | done; verifier PASS; review approved | 4840c1d |
 | T4 | S1 | Rename ship to release (code, CLI, config, extension, artifact schema, docs) | delegated (context backstop: ~95 files, keeps the parent thin for T1-T9) | done; verifier PASS | 277d5df |
 | T5 | S4, S8 | Release slots: version (conventional-commits, preinstalled default) and build (docker-compose, bash) as providers; bundled/suggested install | delegated (context backstop) | done; verifier FAIL (B1, B2), corrected and rechecked (L19) | dda6006 + fix |
-| T6 | S5 | Deploy bash target provider; deploy moves onto the shared `extension.Exec` runner (from T10) | delegated (parallel with T11) | done; verifier pending | e2e74cc |
-| T7 | S7 | Uniform `.ai-workflow.yml` keys for every extension and provider | inline | pending | |
-| T8 | S1, S7 | `nerv migrate` from 4.2.0 and from 5.0.0-alpha.1 | inline | pending | |
-| T10 | S6 | Follow-ups from L11: help text, status validation, requires cycle, preflight cwd/stderr, toolRe dup, docs wording, deploy onto the shared extension.Exec runner and its `{build_mode}` variable renamed | inline | pending | |
-| T11 | S9 | `.ai-workflow/config.yaml` replaces `.ai-workflow.yml`; project extensions and providers from `.ai-workflow/extensions` and `.ai-workflow/providers` | delegated (parallel with T6) | done; verifier pending | see L18 |
-| T9 | S2 | Docs, install output and marketplace say extensions/providers; fix the stale repo marketplace.json | inline | pending | |
+| T6 | S5 | Deploy bash target provider; deploy moves onto the shared `extension.Exec` runner (from T10) | delegated (parallel with T11) | done; verifier FAIL (B-A1) fixed inline (L21); review approved | e2e74cc, 805eb07 |
+| T7 | S7 | Every extension and provider configurable from the project config | done with T5 and T11 (L20) | done | dda6006, c045ed3 |
+| T8 | S1, S7 | `nerv migrate` from 4.2.0 and from 5.0.0-alpha.1 (`ship:` refused and migrated) | delegated (parallel with T9, T10) | done; verifier pending | see L26 |
+| T10 | S6 | Follow-ups (delegated, parallel with T8, T9) from L11: help text, status validation, requires cycle, preflight cwd/stderr, toolRe dup, docs wording, deploy onto the shared extension.Exec runner and its `{build_mode}` variable renamed | delegated | done | 67c85f2 |
+| T11 | S9 | `.ai-workflow/config.yaml` replaces `.ai-workflow.yml`; project extensions and providers from `.ai-workflow/extensions` and `.ai-workflow/providers` | delegated (parallel with T6) | done; verifier PASS | c045ed3 |
+| T9 | S2 | Docs, install output and marketplace say extensions/providers; fix the stale repo marketplace.json; leftover old config paths (L18) | delegated (parallel with T8, T10) | done | 964fef2 |
 
 ## Log
 
@@ -177,3 +177,56 @@ Order: T4 first (it touches every other surface), then T1, T2, T3, T5, T6, T7, T
   - **B2 fixed:** `install --help` now describes the bundled providers; the test is updated.
   - "build mode" wording in the release build command and the builder agent became "build provider", and docs/commands.md lists deploy-bash.
   - The full suite passes.
+- **L20 (dda6006 review, T7 scope):**
+  - The user granted review of dda6006. The native START stopped with `lens_context_budget_exceeded` (4.8k lines), so the outcome is unavailable (budget). The verifier (L16) plus the correction and recheck (L19) stand.
+  - T7: every extension and provider is now configurable from `.ai-workflow/config.yaml`: `tasks.providers.*`, `release.*` with `release.providers.*`, and `deploy.*` with `deploy.providers.*`.
+  - The `tasks:` key is kept rather than renamed to `task:`. Renaming it was not requested, and 4.2.0 repos already use it.
+- **L21 (T6/T11 verifier):**
+  - **Unit B (c045ed3): PASS** on every aspect and named risk.
+  - **Unit A (e2e74cc): FAIL, one blocker (B-A1).** Preflight checked only the working tree, so a symlinked or uncommitted script passed it and then failed after the tag push.
+    - Fixed inline in the parent's correction commit: preflight also checks the script in the artifact's `base_commit` when the repo has it.
+    - RED: `TestRunBashOp_PreflightChecksTheScriptInTheBaseCommit` returned ok for both cases. GREEN after the fix; the deploy and deployrun suites pass.
+  - Advisories:
+    - project exec providers run working-tree `{provider_dir}` scripts, as documented;
+    - `configure --help` still says "embedded provider.yaml" for `--repo-provider-config`;
+    - a bare `{provider_dir}` element is accepted and fails only when run;
+    - non-JSON stdout with exit 0 counts as ok, as documented.
+- **L22 (native reviews of e2e74cc and c045ed3):** the user granted both.
+  - **e2e74cc:** approved and acknowledged (3 lenses). Advisories to follow up:
+    - `git archive` honours `export-ignore`, so a script marked that way is missing (bash.go:233-236, 276);
+    - no timeout on the deploy script (bash.go:238-239);
+    - the full tree is extracted for each operation (bash.go:270-276);
+    - the `build_mode` payload field is removed (deployprovider/contract.go:73);
+    - Exec refusing unknown statuses changes behaviour for every exec provider (exec.go:58-60);
+    - the preflight working-tree check, already fixed in 805eb07.
+  - **c045ed3:** the native START stopped with `lens_context_budget_exceeded` (2.6k lines), so the outcome is unavailable (budget). The verifier's PASS (L21) stands.
+- **L23 (follow-ups queued after T10):**
+  - deploy-bash should extract the release tree with export-ignore disabled (or with `git checkout-index` into the temp dir) and get an optional `timeout` config key;
+  - `configure --help` should say "provider.yaml (shipped or project)";
+  - a bare `{provider_dir}` argv element should be refused at load.
+- **L24 (T9 evidence):**
+  - Terminology sweep across docs, prose, bench and plugin.json descriptions. The repo marketplace.json now lists all 11 plugins, pinned by `TestRepoMarketplace_ListsEveryShippedPlugin` (RED, then GREEN).
+  - Old config paths are fixed. `go test ./...` passes on 964fef2 in a clean worktree.
+  - Leftovers:
+    - the `cmd/nerv/install.go` help still says "extension plugins" (parent);
+    - comments in internal/install and internal/plugin (sent to T10);
+    - migrate messages that say "task plugin" (sent to T8);
+    - the `plugin/evals/task-plugin-absent-no-events` case.yaml and scaffold.sh text;
+    - comments and printed text in internal/wizard/providers.go:105, assets.go, internal/configure, internal/releaseplan, internal/taskprovider and internal/deployrun, plus the core plugin.json (parent, final pass).
+  - Risk: item 3 (renamed doc anchors, and the `/nerv:status` printed line is now "Task extension").
+- **L25 (T10 evidence):**
+  - Discovery refuses an unknown `requires` or a `requires` cycle. One `CheckStatus` serves `Exec` and `ParseResponse`/`DecodeResponse`.
+  - Slot `events` (event to needed operations) lives in extension.yaml, and provider `events` is a common field checked against it, so task's event rule runs at discovery.
+  - The `deploy --help` sentence is rewritten, and docs/extensions.md is updated by the parent.
+  - RED, then GREEN, for items 1-4. Items 5 and 6 confirmed existing behaviour.
+  - `go test ./...` passes on 67c85f2 in a clean worktree.
+  - Risk: item 3 (extension.yaml slot `events`, three printed messages) and item 5 (discovery refuses bad requires).
+- **L26 (T8 evidence):**
+  - `ship:` is refused by `version next`, `release` and `release setup --import`, with a `nerv migrate` hint, exit 1 and the file untouched.
+  - migrate converts alpha.1 `ship:` (in `.ai-workflow.yml` or in `config.yaml`) and the old-shape `release:` through one shared mapping (`releaseconfig.MoveKeys`, the data behind the moved-key refusals).
+  - A `nerv.ship-artifact/v1` artifact is refused with "rebuild it with nerv release". docs/migration.md has a "From 5.0.0-alpha.1" section.
+  - Differential: the 4.2.0 fixtures produce identical migrated files; stdout differs only in the reworded note.
+  - Departures from the brief:
+    - project-level `tag_format` and `changelog` stay on the project, because they are project keys today;
+    - an old-shape `release:` is also converted.
+  - Risk: item 1 (rewrites stored config) and item 3.

@@ -1373,3 +1373,21 @@ func TestPrependChangelog(t *testing.T) {
 		}
 	}
 }
+
+// S1, L8 advisory 1: nerv release refuses an alpha.1 ship: section, naming
+// nerv migrate, before origin is read; the file is left as it was.
+func TestRelease_RefusesTheAlphaShipSection(t *testing.T) {
+	f := newReleaseFixture(t, alphaShipYAML)
+	code, doc, _ := f.runJSON(t, "--yes")
+	if code != 1 || doc.Status != "refused" || len(f.events) != 0 {
+		t.Fatalf("exit %d, %+v, events %v", code, doc, f.events)
+	}
+	for _, want := range alphaShipWants {
+		if !strings.Contains(doc.Error, want) {
+			t.Errorf("error lacks %q: %s", want, doc.Error)
+		}
+	}
+	if got := mustReadFile(t, filepath.Join(f.top, ".ai-workflow/config.yaml")); got != alphaShipYAML {
+		t.Errorf(".ai-workflow/config.yaml changed:\n%s", got)
+	}
+}
