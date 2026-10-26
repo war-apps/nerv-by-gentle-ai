@@ -17,6 +17,7 @@ import (
 // fakeTool records its name, argv and stdin, and answers as the real tool
 // would for what deploy runs: gh release view/create keep a release per
 // tag in the fake's directory; docker push fails while fail-push exists;
+// a nerv provider operation answers failed while fail-<operation> exists;
 // the fake nerv runs the real deploy-ssh-compose preflight and every real
 // deploy-bash operation (the test binary, see TestMain), and prints an ok
 // response for any other operation.
@@ -39,6 +40,7 @@ nerv)
   if [ "$1" = provider ] && { [ "$3" = preflight ] || [ "$2" = deploy-bash ]; }; then
     NERV_FAKE_PROVIDER=1 exec "$NERV_TEST_BINARY" "$@" < "$FAKE_DIR/nerv.stdin"
   fi
+  if [ -f "$FAKE_DIR/fail-$3" ]; then echo '{"status":"failed","message":"'"$3"' broke"}'; exit 0; fi
   echo '{"status":"ok","message":"'"$3"' done"}'
   ;;
 esac
@@ -123,28 +125,50 @@ func newEnv(t *testing.T, files ...map[string]string) *world {
 	}
 	t.Setenv("NERV_TEST_BINARY", exe)
 	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	e.dockerConfig(`{"auths":{"reg.example":{"auth":"dXNlcjpwYXNz"}}}`)
 
-	src := filepath.Join(root, "image.tar")
-	writeFile(t, src, "image bytes", 0o644)
-	dir, err := artifact.Write(e.repo, artifact.Input{
-		Manifest: artifact.Manifest{
-			Project: "repo", Version: "1.0.0-alpha.1", Channel: "alpha", Tag: "v1.0.0-alpha.1",
-			BaseCommit: e.base, Branch: "develop", BuildProvider: "docker-compose", Images: []string{"reg.example/app:1.0.0-alpha.1"},
-		},
-		Notes: notes, ChangelogSection: "## 1.0.0-alpha.1 (2026-10-23)\n\n* first\n",
-		Outputs:      []artifact.OutputSource{{Path: "app.tar", Kind: artifact.KindImageTar, From: src}},
-		ReleaseFiles: []artifact.ReleaseFileSource{{Path: "CHANGELOG.md", Content: []byte(changelog)}},
-	}, false)
-	if err != nil {
-		t.Fatal(err)
-	}
-	e.dir = dir
+	e.writeArtifact([]string{"reg.example/app:1.0.0-alpha.1"}, "app.tar")
 	e.cfg = &deployconfig.Deploy{
 		Host:    "github",
 		Targets: []deployconfig.Target{{Name: "staging", Provider: "ssh-compose", Config: map[string]string{"environment": "staging"}}},
 		Git:     deployconfig.Git{CommitMessage: deployconfig.DefaultCommitMessage, Remote: "origin"},
 	}
 	return e
+}
+
+// writeArtifact (re)writes the artifact of the clone's develop head with
+// images and one image tar per name in tars.
+func (e *world) writeArtifact(images []string, tars ...string) {
+	t := e.t
+	t.Helper()
+	var outputs []artifact.OutputSource
+	for _, name := range tars {
+		src := filepath.Join(t.TempDir(), name)
+		writeFile(t, src, "image bytes of "+name, 0o644)
+		outputs = append(outputs, artifact.OutputSource{Path: name, Kind: artifact.KindImageTar, From: src})
+	}
+	dir, err := artifact.Write(e.repo, artifact.Input{
+		Manifest: artifact.Manifest{
+			Project: "repo", Version: "1.0.0-alpha.1", Channel: "alpha", Tag: "v1.0.0-alpha.1",
+			BaseCommit: e.base, Branch: "develop", BuildProvider: "docker-compose", Images: images,
+		},
+		Notes: notes, ChangelogSection: "## 1.0.0-alpha.1 (2026-10-23)\n\n* first\n",
+		Outputs:      outputs,
+		ReleaseFiles: []artifact.ReleaseFileSource{{Path: "CHANGELOG.md", Content: []byte(changelog)}},
+	}, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	e.dir = dir
+}
+
+// dockerConfig points DOCKER_CONFIG at a directory whose config.json is
+// config.
+func (e *world) dockerConfig(config string) {
+	e.t.Helper()
+	dir := filepath.Join(e.t.TempDir(), "docker")
+	writeFile(e.t, filepath.Join(dir, "config.json"), config, 0o600)
+	e.t.Setenv("DOCKER_CONFIG", dir)
 }
 
 func (e *world) options() Options {

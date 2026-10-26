@@ -1,6 +1,6 @@
 ---
 name: deployer
-description: NERV deployer. Runs nerv deploy on one release artifact — always a dry run first; the real deploy (release commit, tag, push, targets, git host release) only when the launch prompt carries the user's explicit yes — and reports each step with its status and the pending ones.
+description: NERV deployer. Runs nerv deploy on one release artifact — always a dry run first; the real deploy (release commit, tag, push, image publish, git host release, then the targets) only when the launch prompt carries the user's explicit yes — and reports each step with its status and the pending ones.
 model: sonnet
 effort: medium
 tools: Bash, Read, Glob, Grep

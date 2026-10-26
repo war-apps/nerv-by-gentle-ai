@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.2.0] - 2026-10-26
+
+Upgrading from 5.1.0: `nerv deploy` now pushes the artifact's images itself,
+in a new `publish` step after `push`, and creates the git host release before
+any target, so `deploy.targets` is optional (`deploy: { host: github }`
+releases without touching a server). When an artifact carries images, the
+machine that runs `nerv deploy` needs `docker` and credentials for each
+image's registry in the docker config (`docker login <registry>`, a
+`credHelpers` entry or a `credsStore`); set `deploy.publish: false` to keep
+publishing from the targets only. `nerv upgrade` now also upgrades gentle-ai
+when a newer 4.x release exists, never to a new major version.
+
+### Added
+- deploy: add /deploy:ship to chain /release:build and /deploy:run (a1971c2)
+- upgrade: upgrade gentle-ai within its supported major version (2962c10)
+- deploy: publish the artifact's images and create the release before any target (4115431)
+
+### Fixed
+- deploy: accept a global docker credsStore in the publish preflight (6fb6838)
+
 ## [5.1.0] - 2026-10-25
 
 Upgrading from 5.0.0: `tasks`, `release` and `deploy` are now read from the

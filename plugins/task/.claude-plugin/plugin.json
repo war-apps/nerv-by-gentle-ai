@@ -1,6 +1,6 @@
 {
   "name": "task",
-  "version": "5.1.0",
+  "version": "5.2.0",
   "description": "NERV task tracking: /task:* commands, local timers, and the event dispatcher that hands NERV pipeline events to the installed task providers",
   "author": { "name": "Walter Rodriguez" }
 }

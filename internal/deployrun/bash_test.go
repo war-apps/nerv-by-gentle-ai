@@ -55,7 +55,8 @@ func TestRun_DeploysWithTheBashTarget(t *testing.T) {
 	}
 }
 
-// A script answering failed fails its step and stops the deploy there.
+// A script answering failed fails its step and stops the deploy there; the
+// release, created before the targets, stays.
 func TestRun_BashScriptFailureStopsTheDeploy(t *testing.T) {
 	e := newEnv(t, map[string]string{"deploy/deploy.sh": `echo '{"status":"failed","message":"the docs host is down"}'` + "\n"})
 	bashTarget(e, map[string]string{"script": "deploy/deploy.sh"})
@@ -63,7 +64,7 @@ func TestRun_BashScriptFailureStopsTheDeploy(t *testing.T) {
 	if err == nil || refusal.Is(err) || !strings.Contains(err.Error(), "the docs host is down") {
 		t.Fatalf("Run: %v, want the script's failure", err)
 	}
-	wantStatuses(t, rep, map[string]string{"push": StatusDone, "deploy:docs": StatusFailed, "verify:docs": StatusNotRun, "release": StatusNotRun})
+	wantStatuses(t, rep, map[string]string{"push": StatusDone, "deploy:docs": StatusFailed, "verify:docs": StatusNotRun, "release": StatusDone})
 }
 
 // deploy-bash's preflight refuses a missing or escaping script before any

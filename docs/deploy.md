@@ -12,6 +12,7 @@ nerv install --with deploy-ssh-compose   # the SSH and compose target
 | Slash command | What it does |
 |---|---|
 | `/deploy:run` | Picks the latest local artifact, or the one you name (`api`, `api@1.4.0`, a directory), runs `nerv deploy --dry-run`, and deploys only after your explicit yes. It reports every step and the pending ones. |
+| `/deploy:ship` | Chains `/release:build` and `/deploy:run`: builds and packages (dry run, then your yes), then deploys each artifact it just packaged (dry run, then a second yes per artifact). It stops at the first refusal, failure or no, and says which artifacts are packaged but not deployed. |
 | `/deploy:setup` | Writes the `deploy:` section (host, targets with their provider config, git), asks only what it cannot detect, and suggests the providers to install. |
 
 The extension's agent, `deploy:deployer`, runs the same dry run and, with your
@@ -20,8 +21,10 @@ the contract below.
 
 `nerv deploy` takes an artifact that `nerv release` left in
 `.nerv/artifacts/<project>/<version>/` and turns it into a release. It writes
-the release to git, publishes and deploys the artifact to its targets, and
-creates the release on the git host. `nerv release` never writes to git. Every
+the release to git, pushes the artifact's images to their registry, creates
+the release on the git host and, when you configure targets, deploys to them.
+Targets are optional: rolling the version out to servers can stay with
+another tool, and then `nerv deploy` connects to no server. `nerv release` never writes to git. Every
 git write happens here, so an artifact that is never deployed leaves no trace
 in the repository.
 
@@ -60,12 +63,20 @@ checks them again in the release commit when it deploys.
 | `tag` | Creates the lightweight tag, as semantic-release does (the artifact's tag, from the project's `tag_format`), so the channel note on the release commit is also the tag's note for semantic-release. |
 | `notes` | Writes semantic-release's channel note on the release commit: ref `refs/notes/semantic-release-<tag>`, content `{"channels":["<channel>"]}` (`[null]` for the default channel). Without it, the next prerelease number of the channel would start over. |
 | `push` | Pushes the branch, the tag and the note in one atomic push. It never force-pushes. |
+| `publish` | Publishes the artifact's images: `docker load -i` for each image tar in `outputs/`, then `docker push` for each image of the manifest (the version, channel and `latest` tags `nerv release` recorded). Skipped when the artifact has no images, or with `deploy.publish: false`. |
+| `release` | The git host's `createRelease`: a prerelease when the release is on a channel. It is skipped when `releaseExists` says the release is there. It runs before any target, so a failing server never leaves the release missing. |
 | `publish:<target>` | Each target's `publish`, in `deploy.targets` order. |
 | `deploy:<target>`, `verify:<target>` | Each target's `deploy`, then its `verify`, in order. |
-| `release` | The git host's `createRelease`: a prerelease when the release is on a channel. It is skipped when `releaseExists` says the release is there. |
 
 The deploy stops at the first failure, and the report gives each step's
 status: `done`, `skipped`, `failed`, `not-run` or `dry-run`.
+
+When the artifact has images to publish, `docker` must be on PATH and the
+docker config (`$DOCKER_CONFIG/config.json`, else `~/.docker/config.json`)
+must hold credentials for each image's registry, in `auths` or
+`credHelpers`, or set a global `credsStore` (which may hold any registry's). Both are checked before anything is cloned or pushed; a
+missing login is refused with the command to run, such as
+`run docker login ghcr.io`.
 
 ### Origin moved
 
@@ -86,6 +97,8 @@ Running the same command again is safe:
   files and message, and a tag with other content is refused;
 - a release commit already on the branch is reused;
 - only the refs origin lacks are pushed;
+- the images are pushed again, which uploads nothing for a tag the
+  registry already has with the same digest;
 - an existing git host release is skipped.
 
 After a partial failure, fix the cause and run the same command again. It
@@ -98,7 +111,8 @@ The `deploy:` section of `.ai-workflow/config.yaml`. Unknown keys are refused.
 ```yaml
 deploy:
   host: github                    # git host provider: deploy-github
-  targets:                        # deployed in this order
+  publish: true                   # push the artifact's images (the default)
+  targets:                        # optional; deployed in this order
     - name: staging
       provider: ssh-compose       # target provider: deploy-ssh-compose
       config:
@@ -118,6 +132,8 @@ deploy:
 | Key | Default | Meaning |
 |---|---|---|
 | `host` | none (no release is created) | The git host provider's name. |
+| `publish` | `true` | Push the artifact's images in the `publish` step. `false` leaves publishing to the targets, as before 5.2.0. |
+| `targets` | none | The servers to deploy to. Without any, `nerv deploy` releases and publishes only; `deploy: { host: github }` is a complete configuration. |
 | `targets[].name` | required | The target's name, which `--target` selects. |
 | `targets[].provider` | required | The target provider's name. |
 | `targets[].config` | the provider's defaults | The provider's config keys. A key the provider does not declare is refused. |
@@ -219,7 +235,10 @@ Slot `target`, requires `docker` and `ssh`.
   the config and answers `sshpass` for `ssh_auth: password` and `infisical`
   for `source: infisical`.
 - `publish` runs `docker load -i` for each image tar of the artifact, then
-  `docker push` for each image. Log in to the registry first.
+  `docker push` for each image. Log in to the registry first. With
+  `deploy.publish: true` (the default) the core `publish` step has already
+  pushed the same images, so this re-push uploads nothing; set
+  `deploy.publish: false` to publish only from the target.
 - `deploy` and `verify` run `nerv provider deploy-ssh-compose deploy|verify`, the
   update-deploy flow of the removed `nerv pipeline deploy`.
   - It reads the environment's deploy data, either from the
@@ -373,7 +392,7 @@ with a local artifact between them.
 | `validate` | A `lint` stage of the project in the `release:` section, run by `nerv release` ([release](release-commands.md)). |
 | `test` | The `build`, `test` and `coverage` stages, with `coverage` floors. |
 | `release` | `nerv release` (version, CHANGELOG section, version files, packages, into the artifact), then `nerv deploy` (release commit, tag, channel note, push, GitHub release with `deploy-github`). |
-| `docker` | Building and saving the images: `nerv release` (`compose` mode, or a script `package` stage). Pushing them: the `publish` operation of the `deploy-ssh-compose` target. |
+| `docker` | Building and saving the images: `nerv release` (`compose` mode, or a script `package` stage). Pushing them: the `publish` step of `nerv deploy`. |
 | `sync` | Not ported. Merge the release back into `develop` and `release/*` by hand; an opt-in `deploy.sync` may come later. |
 | `deploy` | The `deploy` and `verify` operations of the `deploy-ssh-compose` target ([deploy.md](#deploy-ssh-compose)). |
 

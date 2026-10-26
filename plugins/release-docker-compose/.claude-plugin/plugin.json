@@ -1,6 +1,6 @@
 {
   "name": "release-docker-compose",
-  "version": "5.1.0",
+  "version": "5.2.0",
   "description": "Docker compose build for nerv release: docker compose build, the test service with docker compose run, and the images saved into the artifact",
   "author": { "name": "Walter Rodriguez" }
 }
