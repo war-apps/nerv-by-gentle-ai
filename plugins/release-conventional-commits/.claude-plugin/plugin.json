@@ -1,6 +1,6 @@
 {
   "name": "release-conventional-commits",
-  "version": "5.1.0",
+  "version": "5.2.0",
   "description": "Conventional Commits version engine for nerv release: semantic-release 24 with the conventionalcommits preset, natively in Go (no node or npm); installed with release",
   "author": { "name": "Walter Rodriguez" }
 }
