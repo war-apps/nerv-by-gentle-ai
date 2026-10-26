@@ -128,7 +128,8 @@ func TestRun_PublishPreflightRefusesBeforeAnyGitWrite(t *testing.T) {
 }
 
 // Credentials come from auths (any spelling of the registry), credHelpers,
-// and Docker Hub's https://index.docker.io/v1/ entry.
+// Docker Hub's https://index.docker.io/v1/ entry, and a global credsStore
+// (which may hold any registry's, as an ECR helper does without a login).
 func TestRegistryCredentials(t *testing.T) {
 	for _, tt := range []struct{ image, config string }{
 		{"reg.example/app:1", `{"auths":{"https://reg.example":{}}}`},
@@ -136,6 +137,7 @@ func TestRegistryCredentials(t *testing.T) {
 		{"ghcr.io/org/app:1", `{"credHelpers":{"ghcr.io":"gh"}}`},
 		{"org/app:1", `{"auths":{"https://index.docker.io/v1/":{}}}`},
 		{"localhost/app:1", `{"auths":{"localhost":{}}}`},
+		{"123.dkr.ecr.us-east-1.amazonaws.com/app:1", `{"credsStore":"ecr-login"}`},
 	} {
 		dir := t.TempDir()
 		writeFile(t, filepath.Join(dir, "config.json"), tt.config, 0o600)

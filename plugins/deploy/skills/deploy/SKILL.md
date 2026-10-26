@@ -79,7 +79,7 @@ Adding a host or a target, such as GitLab or Gitea, is another `deploy-<name>` p
 nerv deploy --artifact <dir> [--target <name> ...] [--dry-run] [--rebase] [--yes] [--json]
 ```
 
-**Preflight.** Before any push, `nerv deploy` runs every selected target's `preflight` and checks the host's and the targets' `requires` tools plus the tools each preflight answers (for `deploy-ssh-compose`: `sshpass` with `ssh_auth: password`, the `infisical` CLI with `source: infisical`). With images to publish, it also needs `docker` and credentials for each image's registry in the docker config (`auths` or `credHelpers`); without them it refuses with the login to run (`run docker login ghcr.io`). A missing tool or a refused config is a refusal (exit 1) with nothing written.
+**Preflight.** Before any push, `nerv deploy` runs every selected target's `preflight` and checks the host's and the targets' `requires` tools plus the tools each preflight answers (for `deploy-ssh-compose`: `sshpass` with `ssh_auth: password`, the `infisical` CLI with `source: infisical`). With images to publish, it also needs `docker` and credentials for each image's registry in the docker config (`auths`, `credHelpers`, or a global `credsStore`); without them it refuses with the login to run (`run docker login ghcr.io`). A missing tool or a refused config is a refusal (exit 1) with nothing written.
 
 | Step | What happens |
 |---|---|

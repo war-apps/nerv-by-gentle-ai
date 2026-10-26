@@ -107,10 +107,12 @@ func missingCredentials(images, env []string) []string {
 // registriesWithoutCredentials are the registries of images, in order and
 // once each, that the docker config ($DOCKER_CONFIG/config.json, else
 // ~/.docker/config.json) has neither an auths entry nor a credHelpers
-// entry for. A missing config file has none.
+// entry for. A global credsStore may hold credentials for any registry
+// (an ECR helper needs no docker login), so with one nothing is missing.
+// A missing config file has none.
 func registriesWithoutCredentials(images, env []string) ([]string, error) {
-	known, err := dockerCredentialRegistries(env)
-	if err != nil {
+	known, store, err := dockerCredentialRegistries(env)
+	if err != nil || store {
 		return nil, err
 	}
 	var missing []string
@@ -130,30 +132,31 @@ func registriesWithoutCredentials(images, env []string) ([]string, error) {
 }
 
 // dockerCredentialRegistries are the registry hosts the docker config has
-// credentials for.
-func dockerCredentialRegistries(env []string) (map[string]bool, error) {
+// credentials for, and whether it sets a global credsStore.
+func dockerCredentialRegistries(env []string) (map[string]bool, bool, error) {
 	dir := lookupEnv(env, "DOCKER_CONFIG")
 	if dir == "" {
 		home := lookupEnv(env, "HOME")
 		if home == "" {
-			return map[string]bool{}, nil
+			return map[string]bool{}, false, nil
 		}
 		dir = filepath.Join(home, ".docker")
 	}
 	path := filepath.Join(dir, "config.json")
 	data, err := os.ReadFile(path)
 	if errors.Is(err, fs.ErrNotExist) {
-		return map[string]bool{}, nil
+		return map[string]bool{}, false, nil
 	}
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	var cfg struct {
 		Auths       map[string]json.RawMessage `json:"auths"`
 		CredHelpers map[string]string          `json:"credHelpers"`
+		CredsStore  string                     `json:"credsStore"`
 	}
 	if err := json.Unmarshal(data, &cfg); err != nil {
-		return nil, fmt.Errorf("reading %s: %w", path, err)
+		return nil, false, fmt.Errorf("reading %s: %w", path, err)
 	}
 	known := map[string]bool{}
 	for k := range cfg.Auths {
@@ -162,7 +165,7 @@ func dockerCredentialRegistries(env []string) (map[string]bool, error) {
 	for k := range cfg.CredHelpers {
 		known[registryHost(k)] = true
 	}
-	return known, nil
+	return known, cfg.CredsStore != "", nil
 }
 
 // registryHost is the host of a docker config key: "https://ghcr.io",

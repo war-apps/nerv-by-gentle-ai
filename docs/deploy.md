@@ -73,7 +73,7 @@ status: `done`, `skipped`, `failed`, `not-run` or `dry-run`.
 When the artifact has images to publish, `docker` must be on PATH and the
 docker config (`$DOCKER_CONFIG/config.json`, else `~/.docker/config.json`)
 must hold credentials for each image's registry, in `auths` or
-`credHelpers`. Both are checked before anything is cloned or pushed; a
+`credHelpers`, or set a global `credsStore` (which may hold any registry's). Both are checked before anything is cloned or pushed; a
 missing login is refused with the command to run, such as
 `run docker login ghcr.io`.
 
