@@ -12,10 +12,14 @@
 //     <tag>, {"channels":[<channel or null>]}, on the release commit (where
 //     git log --tags reads it, as the version engine does);
 //  6. push: the branch, the tag and the note, atomically, never forced;
-//  7. publish:<target> for every target, then deploy:<target> and
-//     verify:<target> for each, in deploy.targets order;
+//  7. publish: docker load of the artifact's image tars and docker push of
+//     its images (skipped without images, or with deploy.publish: false);
 //  8. release: the git host's release (a prerelease on a channel), unless
-//     it exists.
+//     it exists; it comes before the targets, so a failing server never
+//     leaves the release missing;
+//  9. publish:<target> for every target, then deploy:<target> and
+//     verify:<target> for each, in deploy.targets order. Targets are
+//     optional: without any, the deploy is the release alone.
 //
 // A re-run is idempotent: a tag already on origin whose commit holds the
 // same release is reused, as is a release commit already on the branch;
@@ -113,7 +117,7 @@ func Run(ctx context.Context, o Options) (Report, error) {
 	if err != nil {
 		return rep, err
 	}
-	for _, name := range []string{"verify-artifact", "clone", "commit", "tag", "notes", "push"} {
+	for _, name := range []string{"verify-artifact", "clone", "commit", "tag", "notes", "push", "publish", "release"} {
 		rep.Steps = append(rep.Steps, Step{Name: name, Status: StatusNotRun})
 	}
 	for _, op := range []string{deployprovider.OpPublish, deployprovider.OpDeploy, deployprovider.OpVerify} {
@@ -121,7 +125,6 @@ func Run(ctx context.Context, o Options) (Report, error) {
 			rep.Steps = append(rep.Steps, Step{Name: op + ":" + t.Name, Status: StatusNotRun})
 		}
 	}
-	rep.Steps = append(rep.Steps, Step{Name: "release", Status: StatusNotRun})
 	tr := tracker{report: &rep, out: o.Output}
 	d := &deployer{o: o, tr: tr, rep: &rep}
 	return rep, d.run(ctx, targets)
@@ -383,6 +386,9 @@ func (d *deployer) loadProviders(ctx context.Context, targets []deployconfig.Tar
 		host = &provider{manifest: m, config: cfg}
 		need("deploy.host ("+name+")", m.Requires...)
 	}
+	if d.publishes() {
+		need("deploy.publish", "docker")
+	}
 	var provs []provider
 	for i, t := range targets {
 		at := fmt.Sprintf("deploy.targets[%d] (%s)", i, t.Name)
@@ -417,6 +423,11 @@ func (d *deployer) loadProviders(ctx context.Context, targets []deployconfig.Tar
 	}
 	if len(missing) > 0 {
 		return nil, nil, refuse("%s: install it, or change the target's config, before deploying (nothing was written)", strings.Join(missing, "; "))
+	}
+	if d.publishes() {
+		if err := d.checkCredentials(); err != nil {
+			return nil, nil, err
+		}
 	}
 	return host, provs, nil
 }
@@ -509,9 +520,16 @@ func (d *deployer) env(p provider) (deployprovider.Env, error) {
 	}, nil
 }
 
-// runProviders runs every target's publish, then each target's deploy and
-// verify, then the git host's release, stopping at the first failure.
+// runProviders publishes the artifact's images, creates the git host's
+// release, then runs every target's publish, then each target's deploy and
+// verify, stopping at the first failure.
 func (d *deployer) runProviders(ctx context.Context, host *provider, provs []provider) error {
+	if err := d.publish(ctx); err != nil {
+		return err
+	}
+	if err := d.release(ctx, host); err != nil {
+		return err
+	}
 	tr := d.tr
 	run := func(p provider, op string) error {
 		step := op + ":" + p.target
@@ -547,6 +565,12 @@ func (d *deployer) runProviders(ctx context.Context, host *provider, provs []pro
 			}
 		}
 	}
+	return nil
+}
+
+// release creates the git host's release of the tag, unless it exists.
+func (d *deployer) release(ctx context.Context, host *provider) error {
+	tr := d.tr
 	if host == nil {
 		tr.set("release", StatusSkipped, "deploy.host is not set")
 		return nil

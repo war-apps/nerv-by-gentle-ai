@@ -60,7 +60,7 @@ are providers (`deploy-github`, `deploy-ssh-compose`, `deploy-bash`). Reference:
 
 | Command | What it does |
 |---|---|
-| `/deploy:run` | Release and deploy the latest local artifact, or the one you name: dry run first, then the release commit, tag, push, targets and git host release only after your explicit yes |
+| `/deploy:run` | Release and deploy the latest local artifact, or the one you name: dry run first, then the release commit, tag, push, image publish, git host release and targets only after your explicit yes |
 | `/deploy:ship` | `/release:build`, then `/deploy:run` with the artifact it just packaged: every dry run first, and each real run only after its own explicit yes |
 | `/deploy:setup` | Write the `deploy:` section (host, targets, git) and suggest the providers to install |
 

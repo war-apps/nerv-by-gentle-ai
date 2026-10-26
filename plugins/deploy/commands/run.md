@@ -6,8 +6,9 @@ argument-hint: [<artifact dir> | <project>[@<version>]] [--target <name> ...]
 # /deploy:run
 
 Turn a local artifact that `/release:build` left into a release: the release
-commit, the tag and the channel note pushed to origin, every target's
-publish, deploy and verify, and the git host release. Load the `deploy`
+commit, the tag and the channel note pushed to origin, the artifact's images
+pushed to their registry, the git host release, then every target's publish,
+deploy and verify (targets are optional). Load the `deploy`
 skill first: it is the contract the steps below refer to (§ numbers).
 
 **Arguments.** `$ARGUMENTS` may be empty, or hold one artifact selector and
@@ -49,8 +50,9 @@ part is not accepted and stop without running `nerv`.
 
 4. **Present the plan.** One table, one row per step (`name`, `status`,
    `detail`), then one line: what the real run will push (branch, tag,
-   note) to `deploy.git.remote`, which targets it deploys in order, and
-   whether a git host release is created.
+   note) to `deploy.git.remote`, which images it pushes (or that `publish`
+   is skipped), which targets it deploys in order (or that it connects to
+   no server), and whether a git host release is created.
 
 5. **Ask, and wait.** Ask the user explicitly whether to deploy exactly
    this, naming project, version, tag and targets. Only an explicit yes

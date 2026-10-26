@@ -105,3 +105,20 @@ func TestLoad_RefusesTheOldPipelineSection(t *testing.T) {
 		t.Fatalf("Load without deploy: = %v", err)
 	}
 }
+
+// deploy.publish defaults to true; false is kept; a non-boolean is refused.
+func TestLoad_Publish(t *testing.T) {
+	d, err := load(t, "deploy:\n  host: github\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !d.Publishes() || len(d.Targets) != 0 {
+		t.Errorf("publish %v, targets %v: want the default true and no target", d.Publishes(), d.Targets)
+	}
+	if d, err = load(t, "deploy:\n  host: github\n  publish: false\n"); err != nil || d.Publishes() {
+		t.Errorf("publish: false read as %v (%v)", d != nil && d.Publishes(), err)
+	}
+	if _, err := load(t, "deploy:\n  publish: maybe\n"); err == nil || !strings.Contains(err.Error(), "into bool") {
+		t.Errorf("publish: maybe: %v, want refused", err)
+	}
+}

@@ -5,7 +5,7 @@ description: NERV deploy extension contract. Covers the deploy section of .ai-wo
 
 # NERV Deploy Extension — Contract
 
-The deploy extension turns a local artifact that `nerv release` left (`release:release` skill, §4) into a release. It writes the release to git (release commit, tag, channel note, push), publishes and deploys the artifact to its **targets**, and creates the release on the **git host**. Every git write happens here, so an artifact that is never deployed leaves no trace in the repository. The extension requires `release`.
+The deploy extension turns a local artifact that `nerv release` left (`release:release` skill, §4) into a release. It writes the release to git (release commit, tag, channel note, push), pushes the artifact's images to their registry (the `publish` step), creates the release on the **git host**, and then deploys to its **targets**, which are optional: without any, nothing connects to a server. Every git write happens here, so an artifact that is never deployed leaves no trace in the repository. The extension requires `release`.
 
 Hosts and targets are **providers** named `deploy-<name>`, each with a `provider.yaml` manifest: the shape every provider of every extension shares, checked against the `host` and `target` slots of `plugins/deploy/extension.yaml` (`docs/extensions.md`). The deploy extension talks to no host or target itself: `nerv deploy` runs the provider's operations.
 
@@ -25,7 +25,8 @@ The `deploy:` section of `<repo>/.ai-workflow/config.yaml`. Unknown keys are ref
 ```yaml
 deploy:
   host: github                    # git host provider: deploy-github
-  targets:                        # deployed in this order
+  publish: true                   # push the artifact's images (the default)
+  targets:                        # optional; deployed in this order
     - name: staging
       provider: ssh-compose       # target provider: deploy-ssh-compose
       config:
@@ -38,6 +39,8 @@ deploy:
 | Key | Default | Meaning |
 |---|---|---|
 | `host` | none (no git host release) | The git host provider's name. |
+| `publish` | `true` | Push the artifact's images in the `publish` step; `false` leaves it to the targets' `publish`. |
+| `targets` | none | The servers to deploy to; none releases and publishes only. |
 | `targets[].name` | required | The target's name, which `--target` selects. |
 | `targets[].provider` | required | The target provider's name. |
 | `targets[].config` | the provider's defaults | The provider's config keys. A key the provider does not declare is refused. |
@@ -76,7 +79,7 @@ Adding a host or a target, such as GitLab or Gitea, is another `deploy-<name>` p
 nerv deploy --artifact <dir> [--target <name> ...] [--dry-run] [--rebase] [--yes] [--json]
 ```
 
-**Preflight.** Before any push, `nerv deploy` runs every selected target's `preflight` and checks the host's and the targets' `requires` tools plus the tools each preflight answers (for `deploy-ssh-compose`: `sshpass` with `ssh_auth: password`, the `infisical` CLI with `source: infisical`). A missing tool or a refused config is a refusal (exit 1) with nothing written.
+**Preflight.** Before any push, `nerv deploy` runs every selected target's `preflight` and checks the host's and the targets' `requires` tools plus the tools each preflight answers (for `deploy-ssh-compose`: `sshpass` with `ssh_auth: password`, the `infisical` CLI with `source: infisical`). With images to publish, it also needs `docker` and credentials for each image's registry in the docker config (`auths`, `credHelpers`, or a global `credsStore`); without them it refuses with the login to run (`run docker login ghcr.io`). A missing tool or a refused config is a refusal (exit 1) with nothing written.
 
 | Step | What happens |
 |---|---|
@@ -86,9 +89,10 @@ nerv deploy --artifact <dir> [--target <name> ...] [--dry-run] [--rebase] [--yes
 | `tag` | Creates the lightweight tag, as semantic-release does. |
 | `notes` | Writes the channel note `refs/notes/semantic-release-<tag>`, so the next prerelease number continues. |
 | `push` | Pushes the branch, the tag and the note in one atomic push; never forced. |
-| `publish:<target>` | Each target's `publish`, in `deploy.targets` order. |
+| `publish` | `docker load -i` of each image tar, then `docker push` of each image of the manifest; skipped without images or with `deploy.publish: false`. |
+| `release` | The host's `createRelease` (a prerelease on a channel), skipped when `releaseExists` says it is there. It runs before the targets, so a failing server never leaves it missing. |
+| `publish:<target>` | Each target's `publish`, in `deploy.targets` order (with `deploy.publish: true`, `deploy-ssh-compose`'s re-push uploads nothing). |
 | `deploy:<target>`, `verify:<target>` | Each target's `deploy`, then its `verify`. |
-| `release` | The host's `createRelease` (a prerelease on a channel), skipped when `releaseExists` says it is there. |
 
 - The deploy stops at the first failure. Each step's status is `done`, `skipped`, `failed`, `not-run` or `dry-run`. `not-run` steps are the **pending** ones.
 - A dry run prepares the release in the clone and shows the steps; it pushes nothing and runs no provider operation but the targets' `preflight`.
@@ -99,4 +103,4 @@ nerv deploy --artifact <dir> [--target <name> ...] [--dry-run] [--rebase] [--yes
 
 ## 6. Migration from `pipeline:`
 
-`nerv pipeline` and the `pipeline:` section are removed. Its `docker` push and `deploy` steps are the `deploy-ssh-compose` target (`publish`, `deploy`, `verify`); `release` is `nerv release` then `nerv deploy` with `deploy-github`; the `sync` back-merge is not ported, so merge the release back into `develop` by hand. `nerv migrate` translates the section.
+`nerv pipeline` and the `pipeline:` section are removed. Its `docker` push is the `publish` step of `nerv deploy`, and its `deploy` step is the `deploy-ssh-compose` target (`deploy`, `verify`); `release` is `nerv release` then `nerv deploy` with `deploy-github`; the `sync` back-merge is not ported, so merge the release back into `develop` by hand. `nerv migrate` translates the section.
