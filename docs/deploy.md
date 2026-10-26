@@ -12,6 +12,7 @@ nerv install --with deploy-ssh-compose   # the SSH and compose target
 | Slash command | What it does |
 |---|---|
 | `/deploy:run` | Picks the latest local artifact, or the one you name (`api`, `api@1.4.0`, a directory), runs `nerv deploy --dry-run`, and deploys only after your explicit yes. It reports every step and the pending ones. |
+| `/deploy:ship` | Chains `/release:build` and `/deploy:run`: builds and packages (dry run, then your yes), then deploys each artifact it just packaged (dry run, then a second yes per artifact). It stops at the first refusal, failure or no, and says which artifacts are packaged but not deployed. |
 | `/deploy:setup` | Writes the `deploy:` section (host, targets with their provider config, git), asks only what it cannot detect, and suggests the providers to install. |
 
 The extension's agent, `deploy:deployer`, runs the same dry run and, with your

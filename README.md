@@ -74,7 +74,7 @@ Claude Code plugin:
 | `release-conventional-commits` | no | The release version provider: the native Conventional Commits engine, the `version` slot's default. Installed with `release`. |
 | `release-docker-compose` | no | A release build provider: `docker compose` build, test service and saved images. Installed with `release`. |
 | `release-bash` | no | A release build provider: each stage runs the project's own command. Installed with `release`. |
-| `deploy` | no | The deploy extension (requires `release`): `/deploy:run`, `/deploy:setup` and the `deploy:deployer` agent. It turns an artifact into a release: release commit, tag, push, targets, git host release. |
+| `deploy` | no | The deploy extension (requires `release`): `/deploy:run`, `/deploy:ship` (build and deploy in one go), `/deploy:setup` and the `deploy:deployer` agent. It turns an artifact into a release: release commit, tag, push, targets, git host release. |
 | `deploy-github` | no | A deploy git host provider for GitHub releases (`gh`), with a `provider.yaml` manifest. Installed with `deploy`. |
 | `deploy-ssh-compose` | no | A deploy target provider: pushes the artifact's images and updates the containers over SSH with the host's compose script. Installed with `deploy`. |
 | `deploy-bash` | no | A deploy target provider: runs the repository's own deploy script from the release commit. Installed with `deploy`. |
@@ -91,7 +91,7 @@ The release and deploy extensions are independent of the orchestrator: install
 them with `nerv install --with release,deploy,deploy-github` (add
 `deploy-ssh-compose` for SSH and compose hosts), run `/release:setup` and
 `/deploy:setup` once, then `/release:build` leaves a local artifact in
-`.nerv/artifacts/<project>/<version>/` and `/deploy:run` releases it. Both
+`.nerv/artifacts/<project>/<version>/` and `/deploy:run` releases it (`/deploy:ship` chains the two). Both
 always rehearse with a dry run and act only after your explicit yes. A
 repository set up with nerv 4.2.0 or 5.0.0-alpha.1 (`.ai-workflow.yml`)
 migrates with `nerv migrate` (see [docs/migration.md](docs/migration.md));
