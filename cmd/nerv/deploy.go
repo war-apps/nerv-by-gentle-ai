@@ -34,15 +34,20 @@ origin) in a temporary directory at the artifact's base commit and:
   2. creates the lightweight tag and semantic-release's channel note
      refs/notes/semantic-release-<tag>;
   3. pushes the branch, the tag and the note atomically (never forced);
-  4. runs every target's publish, then each target's deploy and verify, in
-     deploy.targets order;
+  4. publishes the artifact's images: docker load of its image tars, then
+     docker push of every image of its manifest (skipped without images,
+     or with deploy.publish: false);
   5. creates the git host's release (deploy.host), a prerelease for a
-     release on a channel, unless it exists.
+     release on a channel, unless it exists;
+  6. runs every target's publish, then each target's deploy and verify, in
+     deploy.targets order. Targets are optional: without any, the deploy
+     is the release alone and connects to no server.
 
-Before anything is cloned or pushed, each target's preflight checks the
-target's config and that the tools its provider needs are installed
-(deploy-ssh-compose: sshpass for password authentication, infisical for
-source infisical).
+Before anything is cloned or pushed, docker and each image registry's
+credentials in the docker config are checked (when there are images to
+publish), and each target's preflight checks the target's config and that
+the tools its provider needs are installed (deploy-ssh-compose: sshpass for
+password authentication, infisical for source infisical).
 
 Your repository is never modified. When origin's branch moved past the
 artifact's base commit the deploy is refused, unless --rebase re-applies the

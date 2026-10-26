@@ -3,7 +3,8 @@
 //
 //	deploy:
 //	  host: github                 # the git host provider (deploy-<name>)
-//	  targets:                     # deployed in this order
+//	  publish: true                # push the artifact's images (default true)
+//	  targets:                     # optional; deployed in this order
 //	    - name: staging
 //	      provider: ssh-compose    # a target provider (deploy-<name>)
 //	      config: { environment: staging }
@@ -44,10 +45,17 @@ const DefaultRemote = "origin"
 type Deploy struct {
 	// Host is the git host provider's name; empty creates no release.
 	Host string `yaml:"host"`
-	// Targets are deployed in order.
+	// Publish makes nerv deploy push the artifact's images itself, in its
+	// publish step; nil means true (Publishes).
+	Publish *bool `yaml:"publish"`
+	// Targets are deployed in order; none releases without deploying.
 	Targets []Target `yaml:"targets"`
 	Git     Git      `yaml:"git"`
 }
+
+// Publishes reports whether nerv deploy pushes the artifact's images in its
+// own publish step (deploy.publish, default true).
+func (d *Deploy) Publishes() bool { return d.Publish == nil || *d.Publish }
 
 // Target is one deploy target.
 type Target struct {

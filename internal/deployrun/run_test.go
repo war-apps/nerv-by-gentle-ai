@@ -17,8 +17,9 @@ import (
 const tag = "v1.0.0-alpha.1"
 
 // A deploy makes the release commit on the base commit, the lightweight tag,
-// semantic-release's channel note, pushes all three, then runs the target's
-// publish, deploy and verify and creates the GitHub prerelease.
+// semantic-release's channel note, pushes all three, publishes the
+// artifact's images, creates the GitHub prerelease, then runs the target's
+// publish, deploy and verify.
 func TestRun_ReleasesAndDeploysTheArtifact(t *testing.T) {
 	e := newEnv(t)
 	rep, err := e.run(e.options())
@@ -27,7 +28,8 @@ func TestRun_ReleasesAndDeploysTheArtifact(t *testing.T) {
 	}
 	wantStatuses(t, rep, map[string]string{
 		"verify-artifact": StatusDone, "clone": StatusDone, "commit": StatusDone, "tag": StatusDone, "notes": StatusDone,
-		"push": StatusDone, "publish:staging": StatusDone, "deploy:staging": StatusDone, "verify:staging": StatusDone, "release": StatusDone,
+		"push": StatusDone, "publish": StatusDone, "release": StatusDone,
+		"publish:staging": StatusDone, "deploy:staging": StatusDone, "verify:staging": StatusDone,
 	})
 
 	head := git(t, e.origin, "rev-parse", "refs/heads/develop")
@@ -59,10 +61,12 @@ func TestRun_ReleasesAndDeploysTheArtifact(t *testing.T) {
 		preflightCall,
 		"docker [load] [-i] [" + tar + "]",
 		"docker [push] [reg.example/app:1.0.0-alpha.1]",
-		"nerv [provider] [deploy-ssh-compose] [deploy]",
-		"nerv [provider] [deploy-ssh-compose] [verify]",
 		"gh [release] [view] [" + tag + "]",
 		"gh [release] [create] [" + tag + "] [--title] [" + tag + "] [--notes-file] [" + filepath.Join(e.dir, "notes.md") + "] [--prerelease] [--verify-tag]",
+		"docker [load] [-i] [" + tar + "]",
+		"docker [push] [reg.example/app:1.0.0-alpha.1]",
+		"nerv [provider] [deploy-ssh-compose] [deploy]",
+		"nerv [provider] [deploy-ssh-compose] [verify]",
 	}
 	if !slices.Equal(calls, want) {
 		t.Errorf("provider calls:\n%s\nwant:\n%s", strings.Join(calls, "\n"), strings.Join(want, "\n"))
@@ -124,8 +128,8 @@ func TestRun_IsIdempotent(t *testing.T) {
 	}
 }
 
-// A failed target step reports exactly what was done; the re-run resumes:
-// the git steps are skipped and the rest runs.
+// A failed publish reports exactly what was done; the re-run resumes: the
+// git steps are skipped and the rest runs.
 func TestRun_ReportsAPartialFailureAndResumes(t *testing.T) {
 	e := newEnv(t)
 	writeFile(t, filepath.Join(e.fake, "fail-push"), "", 0o644)
@@ -135,7 +139,8 @@ func TestRun_ReportsAPartialFailureAndResumes(t *testing.T) {
 	}
 	wantStatuses(t, rep, map[string]string{
 		"commit": StatusDone, "tag": StatusDone, "notes": StatusDone, "push": StatusDone,
-		"publish:staging": StatusFailed, "deploy:staging": StatusNotRun, "verify:staging": StatusNotRun, "release": StatusNotRun,
+		"publish": StatusFailed, "release": StatusNotRun,
+		"publish:staging": StatusNotRun, "deploy:staging": StatusNotRun, "verify:staging": StatusNotRun,
 	})
 	refs := e.originRefs()
 
@@ -146,7 +151,8 @@ func TestRun_ReportsAPartialFailureAndResumes(t *testing.T) {
 	}
 	wantStatuses(t, rep, map[string]string{
 		"commit": StatusSkipped, "tag": StatusSkipped, "push": StatusSkipped,
-		"publish:staging": StatusDone, "deploy:staging": StatusDone, "verify:staging": StatusDone, "release": StatusDone,
+		"publish": StatusDone, "release": StatusDone,
+		"publish:staging": StatusDone, "deploy:staging": StatusDone, "verify:staging": StatusDone,
 	})
 	if after := e.originRefs(); after != refs {
 		t.Errorf("the resume changed origin's refs")
@@ -212,7 +218,7 @@ func TestRun_DryRunWritesNothing(t *testing.T) {
 		t.Fatal(err)
 	}
 	wantStatuses(t, rep, map[string]string{
-		"commit": StatusDone, "push": StatusDryRun, "publish:staging": StatusDryRun, "release": StatusDryRun,
+		"commit": StatusDone, "push": StatusDryRun, "publish": StatusDryRun, "publish:staging": StatusDryRun, "release": StatusDryRun,
 	})
 	if e.originRefs() != refs || e.effects()[0] != "" || e.log()[0] != preflightCall {
 		t.Errorf("a dry run touched origin or ran a provider (only the preflight): %v", e.log())

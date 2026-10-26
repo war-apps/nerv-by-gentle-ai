@@ -85,10 +85,16 @@ Show the whole `deploy:` section as one YAML block:
   `defaults.deploy`"); never re-copy a default into an existing section on
   later runs unless the user asks.
 - `host`: the git host provider's `name` (`github`).
-- `targets`: one entry per environment, in deploy order (staging before
-  production), each with `name`, `provider` and `config` holding only the
-  `scope: repo` keys of the provider's manifest that differ from their
-  default.
+- `targets`: optional. One entry per environment nerv should deploy to,
+  in deploy order (staging before production), each with `name`,
+  `provider` and `config` holding only the `scope: repo` keys of the
+  provider's manifest that differ from their default. When the servers
+  are rolled out by another tool, leave `targets` out: `nerv deploy` then
+  pushes the release, publishes the artifact's images and creates the git
+  host release, and connects to no server.
+- `publish`: leave it out (the default `true` pushes the artifact's
+  images). Write `publish: false` only when the user wants a target to be
+  the only one that publishes.
 - `git.commit_message` and `git.remote` only when the repository needs
   other values than the defaults (an imported `@semantic-release/git`
   `message` goes here).

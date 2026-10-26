@@ -86,7 +86,8 @@ release:                            # release extension; project scope only, nev
     - { name: api, path: ., images: ["ghcr.io/acme/app:${version}"] }
 deploy:                             # deploy extension; project scope, except its scope: user provider keys; see deploy.md
   host: github
-  targets:
+  publish: true                     # push the artifact's images (default)
+  targets:                          # optional
     - { name: staging, provider: ssh-compose, config: { environment: staging } }
 defaults:                           # user scope only: seeds a project's tasks:, release: and deploy:; never read at run time
   tasks: { provider: teamwork }

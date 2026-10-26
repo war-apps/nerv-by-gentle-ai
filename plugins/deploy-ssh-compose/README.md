@@ -11,7 +11,9 @@ has no commands of its own: `nerv deploy` runs its operations from
 - `preflight` checks the configuration and answers the tools it needs,
   before `nerv deploy` writes anything.
 - `publish` runs `docker load -i` for each image tar of the artifact, then
-  `docker push` for each image. Log in to the registry first.
+  `docker push` for each image. Log in to the registry first. With
+  `deploy.publish: true` (the default) `nerv deploy` has already pushed the
+  same images in its own `publish` step, so this re-push uploads nothing.
 - `deploy` reads the environment's deploy data (the
   `NERV_DEPLOY_<ENVIRONMENT>_<KEY>` variables with `source: env`, or
   Infisical with `source: infisical`) and runs the host's compose script over
