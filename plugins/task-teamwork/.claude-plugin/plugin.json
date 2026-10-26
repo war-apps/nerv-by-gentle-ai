@@ -1,6 +1,6 @@
 {
   "name": "task-teamwork",
-  "version": "5.1.0",
+  "version": "5.2.0",
   "description": "Teamwork provider for the NERV task extension: assigns, moves stages, logs time and creates tasks in Teamwork",
   "author": { "name": "Walter Rodriguez" }
 }
