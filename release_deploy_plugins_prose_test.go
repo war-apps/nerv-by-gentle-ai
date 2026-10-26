@@ -46,7 +46,7 @@ var agentNamePattern = regexp.MustCompile(`(?m)^name: (\S+)$`)
 func TestReleaseDeployPlugins_HaveAgentsAndCommands(t *testing.T) {
 	want := map[string]struct{ agents, commands []string }{
 		"release": {agents: []string{"versioner", "builder"}, commands: []string{"version", "setup", "build"}},
-		"deploy":  {agents: []string{"deployer"}, commands: []string{"run", "setup"}},
+		"deploy":  {agents: []string{"deployer"}, commands: []string{"run", "setup", "ship"}},
 	}
 	for plugin, w := range want {
 		for _, agent := range w.agents {
@@ -96,6 +96,8 @@ func TestReleaseDeployPlugins_SetupNamesImportAndProviders(t *testing.T) {
 		"nerv deploy --artifact", "--dry-run", "--yes")
 	assertContainsAll(t, "release/commands/build.md", read("release/commands/build.md"),
 		"nerv release --dry-run", "--expect", ".nerv/artifacts/")
+	assertContainsAll(t, "deploy/commands/ship.md", read("deploy/commands/ship.md"),
+		"nerv release --dry-run", "--expect", "nerv deploy --artifact", "--dry-run", "--yes")
 }
 
 // semanticReleaseRun matches a command line that runs semantic-release.

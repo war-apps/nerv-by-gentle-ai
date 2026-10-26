@@ -133,6 +133,9 @@ type options struct {
 	HTTPClient          *http.Client
 	ReleaseAPIBase      string
 	ReleaseDownloadBase string
+	// GentleAIAPIBase is where nerv upgrade looks up gentle-ai's newest
+	// release; empty means upgrade.GentleAIAPIBase.
+	GentleAIAPIBase string
 	// Executable locates the running nerv binary nerv upgrade replaces
 	// (symlinks are resolved after it); nil means os.Executable.
 	Executable func() (string, error)

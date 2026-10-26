@@ -49,6 +49,12 @@ type upgradeWorld struct {
 	isTerminal bool
 	// script, when set, is the new nerv binary in every archive.
 	script string
+	// gentleLatest is gentle-ai's latest stable release tag ("" serves 404).
+	gentleLatest string
+	// gentleRequests counts requests to gentle-ai's releases API.
+	gentleRequests int
+	// gentleRC is the exit code of a gentle-ai run, by its arguments.
+	gentleRC map[string]int
 }
 
 const oldBinary = "#!old nerv binary\n"
@@ -75,11 +81,15 @@ func newUpgradeWorld(t *testing.T, current string, releases ...fakeRelease) *upg
 	w.opts.HTTPClient = w.srv.Client()
 	w.opts.ReleaseAPIBase = w.srv.URL + "/api"
 	w.opts.ReleaseDownloadBase = w.srv.URL + "/download"
+	w.opts.GentleAIAPIBase = w.srv.URL + "/gentle"
 	w.opts.Executable = func() (string, error) { return w.exe, nil }
 	w.opts.GOOS, w.opts.GOARCH = "linux", "amd64"
 	w.opts.IsTerminal = func() bool { return w.isTerminal }
 	w.opts.RunBinary = func(_ context.Context, bin string, args []string, stdout, _ io.Writer) (int, error) {
 		w.installs = append(w.installs, installCall{Bin: bin, Args: args})
+		if bin == "gentle-ai" {
+			return w.gentleRC[strings.Join(args, " ")], nil
+		}
 		fmt.Fprintln(stdout, "install output")
 		return w.installRC, nil
 	}
@@ -125,6 +135,13 @@ func (w *upgradeWorld) serve(rw http.ResponseWriter, r *http.Request) {
 		Draft      bool   `json:"draft"`
 	}
 	switch {
+	case r.URL.Path == "/gentle/releases/latest":
+		w.gentleRequests++
+		if w.gentleLatest == "" {
+			http.NotFound(rw, r)
+			return
+		}
+		_ = json.NewEncoder(rw).Encode(apiRelease{TagName: w.gentleLatest})
 	case r.URL.Path == "/api/releases/latest":
 		for _, rel := range w.releases {
 			if !rel.Prerelease {

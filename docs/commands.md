@@ -61,6 +61,7 @@ are providers (`deploy-github`, `deploy-ssh-compose`, `deploy-bash`). Reference:
 | Command | What it does |
 |---|---|
 | `/deploy:run` | Release and deploy the latest local artifact, or the one you name: dry run first, then the release commit, tag, push, image publish, git host release and targets only after your explicit yes |
+| `/deploy:ship` | `/release:build`, then `/deploy:run` with the artifact it just packaged: every dry run first, and each real run only after its own explicit yes |
 | `/deploy:setup` | Write the `deploy:` section (host, targets, git) and suggest the providers to install |
 
 ### /nerv:configure
@@ -120,7 +121,7 @@ isn't taking effect.
 | `nerv deploy` | Release and deploy a release artifact: release commit, tag, push, targets, git host release (deploy extension) |
 | `nerv migrate` | Move a repository (and, with `--user`, the user configuration) from nerv 4.2.0 or 5.0.0-alpha.1 |
 | `nerv doctor` | Check that NERV is in order on this machine and in the repository, and list the steps to take |
-| `nerv upgrade` | Replace the nerv binary with the newest release (`--alpha`, `--rc`), then run its install |
+| `nerv upgrade` | Replace the nerv binary with the newest release (`--alpha`, `--rc`), upgrade gentle-ai within its 4.x major version, then run nerv's install |
 | `nerv configure` | Configure NERV non-interactively (or run the wizard) |
 | `nerv install` | Install NERV (plugin, cache, skills, Engram KB) |
 | `nerv uninstall` | Uninstall NERV |
@@ -342,6 +343,17 @@ over the old one. A prerelease channel also considers stable releases, so
 it never stays on an older prerelease when a newer stable one exists. Then
 it runs the new binary's `nerv install` (`nerv install --no-configure`
 without an interactive terminal) and exits with its exit code.
+
+Before that install, it upgrades gentle-ai when it is on PATH at 4.x and
+its newest GitHub release is newer and still 4.x, the major version NERV
+supports: it runs `gentle-ai upgrade gentle-ai`, then `gentle-ai sync`.
+`gentle-ai upgrade` always installs the newest release, so when that
+release is a new major version (5.x) nerv upgrade says so and leaves
+gentle-ai as it is; a gentle-ai that is missing or not 4.x is not touched
+either. After a gentle-ai upgrade, `nerv install` runs even when nerv was
+already up to date, to lay NERV over the files `gentle-ai sync` rewrote. A
+failed gentle-ai upgrade is reported, the rest of the upgrade still runs,
+and the exit code is 1.
 
 Already on the newest release, or on a newer one (a `dev` build counts as
 older than any release), it says so and changes nothing. A failed

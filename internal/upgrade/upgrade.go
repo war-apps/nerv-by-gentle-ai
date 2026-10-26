@@ -29,6 +29,8 @@ import (
 const (
 	// DefaultAPIBase is the GitHub API base of nerv's repository.
 	DefaultAPIBase = "https://api.github.com/repos/war-apps/nerv-by-gentle-ai"
+	// GentleAIAPIBase is the GitHub API base of gentle-ai's repository.
+	GentleAIAPIBase = "https://api.github.com/repos/Gentleman-Programming/gentle-ai"
 	// DefaultDownloadBase is where nerv's release assets are downloaded.
 	DefaultDownloadBase = "https://github.com/war-apps/nerv-by-gentle-ai/releases/download"
 
