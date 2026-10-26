@@ -60,8 +60,16 @@ func CheckPreflight(ctx context.Context, runner env.Runner) Preflight {
 		return Preflight{Found: true}
 	}
 
-	major := majorOf(match)
-	return Preflight{Found: true, Version: match, OK: major == 4}
+	return Preflight{Found: true, Version: match, OK: Major(match) == SupportedMajor}
+}
+
+// SupportedMajor is the gentle-ai major version NERV supports.
+const SupportedMajor = 4
+
+// Major is the major version of a version such as "4.2.0" or "v4.2.0";
+// 0 when it has none.
+func Major(version string) int {
+	return majorOf(strings.TrimPrefix(version, "v"))
 }
 
 func majorOf(semver string) int {

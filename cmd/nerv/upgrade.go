@@ -11,8 +11,10 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"time"
 
+	"github.com/war-apps/nerv-by-gentle-ai/internal/gentleai"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/upgrade"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/version"
 )
@@ -26,12 +28,18 @@ and checksums.txt from GitHub, verifies the archive's SHA-256, and swaps the
 binary in place; a failed download or checksum leaves the current binary
 untouched. Already on the newest release (or newer), it changes nothing.
 
+It also upgrades gentle-ai (gentle-ai upgrade gentle-ai, then gentle-ai
+sync) when gentle-ai's newest release is newer and still 4.x, the major
+version NERV supports; a new major version is reported, never installed.
+After a gentle-ai upgrade, install runs even when nerv was up to date.
+
 Flags:
   --alpha    Also consider alpha prereleases (the newest of stable and alpha)
   --rc       Also consider release candidates (the newest of stable and rc)
 
 Exit codes: 0 up to date, or the new binary's install exit code;
-1 the upgrade failed or this platform has no prebuilt binary; 2 usage error.
+1 the upgrade failed (nerv's or gentle-ai's) or this platform has no
+prebuilt binary; 2 usage error.
 `
 
 // upgradeHTTPTimeout bounds every request nerv upgrade makes when
@@ -79,10 +87,119 @@ func runUpgrade(args []string, stdout, stderr io.Writer, opts options) int {
 		fmt.Fprintf(stderr, "nerv upgrade: %v\n", err)
 		return 1
 	}
-	if bin == "" {
-		return 0
+	gentleUpgraded, gentleErr := upgradeGentleAI(ctx, stdout, stderr, opts)
+	if gentleErr != nil {
+		fmt.Fprintf(stderr, "nerv upgrade: gentle-ai: %v\n", gentleErr)
 	}
-	return runNewInstall(ctx, bin, stdout, stderr, opts)
+	if bin == "" && gentleUpgraded {
+		// gentle-ai sync rewrote gentle-ai's agent files: install lays NERV
+		// over them again.
+		if bin, err = runningExecutable(opts); err != nil {
+			fmt.Fprintf(stderr, "nerv upgrade: %v\n", err)
+			return 1
+		}
+	}
+	code := 0
+	if bin != "" {
+		code = runNewInstall(ctx, bin, stdout, stderr, opts)
+	}
+	if code == 0 && gentleErr != nil {
+		return 1
+	}
+	return code
+}
+
+// upgradeGentleAI upgrades gentle-ai with "gentle-ai upgrade gentle-ai",
+// then runs "gentle-ai sync", when its newest release is newer than the
+// installed one and of the major version NERV supports; it reports whether
+// it did. gentle-ai upgrade installs the newest release, whatever its
+// major version, so a newer major is never upgraded to.
+func upgradeGentleAI(ctx context.Context, stdout, stderr io.Writer, opts options) (bool, error) {
+	pre := gentleai.CheckPreflight(ctx, opts.Runner)
+	switch {
+	case !pre.Found:
+		fmt.Fprintf(stdout, "gentle-ai is not on PATH; not upgrading it. NERV needs gentle-ai %d.x: %s\n", gentleai.SupportedMajor, gentleAIURL)
+		return false, nil
+	case pre.Version == "":
+		fmt.Fprintln(stdout, "gentle-ai --version printed no version; not upgrading it.")
+		return false, nil
+	case !pre.OK:
+		fmt.Fprintf(stdout, "gentle-ai %s is not %d.x, the major version NERV supports; not upgrading it. Install gentle-ai %d.x: %s\n", pre.Version, gentleai.SupportedMajor, gentleai.SupportedMajor, gentleAIURL)
+		return false, nil
+	}
+
+	client := newUpgradeClient(opts)
+	client.APIBase = opts.GentleAIAPIBase
+	if client.APIBase == "" {
+		client.APIBase = upgrade.GentleAIAPIBase
+	}
+	latest, err := client.Resolve(ctx, upgrade.Stable)
+	if err != nil {
+		return false, err
+	}
+	fmt.Fprintf(stdout, "gentle-ai: installed %s, newest release %s\n", pre.Version, latest)
+	if gentleai.Major(latest) != gentleai.SupportedMajor {
+		fmt.Fprintf(stdout, "gentle-ai %s is a new major version: NERV %s supports gentle-ai %d.x, so gentle-ai stays on %s.\n", latest, version.Binary, gentleai.SupportedMajor, pre.Version)
+		return false, nil
+	}
+	if !upgrade.IsNewer(latest, pre.Version) {
+		fmt.Fprintf(stdout, "gentle-ai %s is up to date.\n", pre.Version)
+		return false, nil
+	}
+
+	runBinary := opts.RunBinary
+	if runBinary == nil {
+		runBinary = execBinary
+	}
+	fmt.Fprintf(stdout, "Upgrading gentle-ai to %s: gentle-ai upgrade gentle-ai\n", latest)
+	for i, args := range [][]string{{"upgrade", "gentle-ai"}, {"sync"}} {
+		if i > 0 {
+			fmt.Fprintf(stdout, "Running: gentle-ai %s\n", strings.Join(args, " "))
+		}
+		code, err := runBinary(ctx, "gentle-ai", args, stdout, stderr)
+		if err != nil {
+			return i > 0, fmt.Errorf("running gentle-ai %s: %w", strings.Join(args, " "), err)
+		}
+		if code != 0 {
+			return i > 0, fmt.Errorf("gentle-ai %s exited %d", strings.Join(args, " "), code)
+		}
+	}
+	return true, nil
+}
+
+// gentleAIURL is where gentle-ai is installed from.
+const gentleAIURL = "https://github.com/Gentleman-Programming/gentle-ai"
+
+// newUpgradeClient is the releases client of nerv's repository, from opts.
+func newUpgradeClient(opts options) upgrade.Client {
+	client := upgrade.Client{HTTP: opts.HTTPClient, APIBase: opts.ReleaseAPIBase, DownloadBase: opts.ReleaseDownloadBase}
+	if client.HTTP == nil {
+		client.HTTP = &http.Client{Timeout: upgradeHTTPTimeout}
+	}
+	if client.APIBase == "" {
+		client.APIBase = upgrade.DefaultAPIBase
+	}
+	if client.DownloadBase == "" {
+		client.DownloadBase = upgrade.DefaultDownloadBase
+	}
+	return client
+}
+
+// runningExecutable is the path of the running nerv binary, symlinks
+// resolved.
+func runningExecutable(opts options) (string, error) {
+	executable := opts.Executable
+	if executable == nil {
+		executable = os.Executable
+	}
+	exe, err := executable()
+	if err != nil {
+		return "", fmt.Errorf("locating the running nerv binary: %w", err)
+	}
+	if exe, err = filepath.EvalSymlinks(exe); err != nil {
+		return "", fmt.Errorf("locating the running nerv binary: %w", err)
+	}
+	return exe, nil
 }
 
 // replaceBinary swaps the running binary for the newest release of channel
@@ -99,16 +216,7 @@ func replaceBinary(ctx context.Context, channel upgrade.Channel, stdout io.Write
 		return "", err
 	}
 
-	client := upgrade.Client{HTTP: opts.HTTPClient, APIBase: opts.ReleaseAPIBase, DownloadBase: opts.ReleaseDownloadBase}
-	if client.HTTP == nil {
-		client.HTTP = &http.Client{Timeout: upgradeHTTPTimeout}
-	}
-	if client.APIBase == "" {
-		client.APIBase = upgrade.DefaultAPIBase
-	}
-	if client.DownloadBase == "" {
-		client.DownloadBase = upgrade.DefaultDownloadBase
-	}
+	client := newUpgradeClient(opts)
 
 	current := version.Binary
 	fmt.Fprintf(stdout, "Current version: %s\n", current)
@@ -122,16 +230,9 @@ func replaceBinary(ctx context.Context, channel upgrade.Channel, stdout io.Write
 		return "", nil
 	}
 
-	executable := opts.Executable
-	if executable == nil {
-		executable = os.Executable
-	}
-	exe, err := executable()
+	exe, err := runningExecutable(opts)
 	if err != nil {
-		return "", fmt.Errorf("locating the running nerv binary: %w", err)
-	}
-	if exe, err = filepath.EvalSymlinks(exe); err != nil {
-		return "", fmt.Errorf("locating the running nerv binary: %w", err)
+		return "", err
 	}
 
 	dir, err := os.MkdirTemp("", "nerv-upgrade-")

@@ -187,7 +187,8 @@ bring every provider they ship with them, unasked; `deploy` requires
 
 On Linux and macOS, run `nerv upgrade` (`--alpha` or `--rc` to follow a
 pre-release channel): it downloads the newest release, verifies its
-checksum, replaces the binary, then runs the new binary's `nerv install`.
+checksum, replaces the binary, upgrades gentle-ai if a newer 4.x release
+exists (never to a new major version), then runs the new binary's `nerv install`.
 See [docs/commands.md](docs/commands.md#nerv-upgrade).
 
 On Windows, re-run `go install ...@latest`, then run `nerv install` again
