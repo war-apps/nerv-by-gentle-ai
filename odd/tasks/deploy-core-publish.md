@@ -20,7 +20,7 @@ Branch: `feat/deploy-core-publish` from `develop`, one PR. Delivery: ask-on-risk
 
 | ID | Specs | Route | Status | Commit |
 |---|---|---|---|---|
-| T1 | S1-S8 | inline (one behavior in internal/deployrun + deployconfig, docs with it) | implemented; RED observed (missing publish step, Publish field), GREEN `go test ./...`, `go vet ./...`; independent verifier running | 73a6112 |
+| T1 | S1-S8 | inline (one behavior in internal/deployrun + deployconfig, docs with it) | done: RED observed, GREEN `go test ./...`, `go vet ./...`; verifier no blockers; native review granted, one correction (credsStore), approved and acknowledged | 4115431, 6fb6838 |
 
 Route evidence: one behavior across `internal/deployrun/run.go` and `internal/deployconfig`, no parallel unit; no writer trigger. Risk: items 3 (the report's steps and their order, consumed by `/deploy:run` and the deployer agent) and 5 (deploy): independent verifier at the end.
 
@@ -29,3 +29,5 @@ Route evidence: one behavior across `internal/deployrun/run.go` and `internal/de
 - **L1** (2026-10-26, user): "si, pero tambien quiero que implementes este plan /home/wal1rod@DIRMAD.COM.AR/projects/docs/nerv-deploy-registry-and-servers-plan-2026-10-26.md"
 - **L2** Exploration: steps are built in `deployrun.Run`; target publish/deploy/verify and the host release run in `runProviders`; tools are checked in `loadProviders` (before clone); `deploy-ssh-compose` publish is `docker load -i {item}` over `image_tars` and `docker push {item}` over `images`; `deployconfig` parses strictly (unknown keys refused).
 - **L3** (2026-10-26) Implemented in 73a6112: `internal/deployrun/publish.go` (core publish, docker credentials check from `auths`/`credHelpers`), step order push, publish, release, then targets; `deploy.publish` (*bool, default true); help, docs/deploy.md, docs/configuration.md, deploy skill, `/deploy:run`, `/deploy:setup`, deployer agent, ssh-compose README updated. Existing tests updated only where the spec changes the order (release before targets) or adds the `publish` step. Suite and vet green.
+- **L4** (2026-10-26) Independent verifier: S1-S8 pass, no blockers; advisories fixed (docs/commands.md order, a resume-after-target-failure test). Commit amended to 4115431.
+- **L5** (2026-10-26) Native review (risk, resilience, readability, reliability), lineage review-853ba30979792a9f: user granted; one correction R3-credsstore-ignored (a global `credsStore` was reported as no credentials, refusing deploys that worked before) fixed in 6fb6838; targeted validation approved; acknowledged. 10 non-blocking advisories left as follow-up.
