@@ -27,11 +27,15 @@ by `release.projects[].build`: `docker-compose` or `bash`). Each provider's
 keys live under `release.providers.<provider>`, and a project overrides a
 build provider's keys under `release.projects[].providers.<provider>`.
 nerv calls them through the common provider contract, and installs all
-three with the release extension.
+three with the release extension, together with its deploy providers
+([deploy.md](deploy.md)).
 
-The extension ships two agents, `release:versioner` (computes and explains the
-next version) and `release:builder` (runs the dry run, and the real build only
-with your approved versions), and the `release` skill, its contract. Install
+The extension ships the agents `release:versioner` (computes and explains the
+next version), `release:builder` (runs the dry run, and the real build only
+with your approved versions) and `release:deployer` ([deploy.md](deploy.md)),
+the `release` skill, the contract of this page, and the `deploy` skill.
+`/release:ship` runs the next version, the build and the deploy in one go
+([deploy.md](deploy.md)). Install
 it with:
 
 ```sh

@@ -1,7 +1,8 @@
-# Migrating from nerv 4.2.0 or 5.0.0-alpha.1
+# Migrating from nerv 4.2.0, 5.0.0-alpha.1 or 5.2.0
 
 `nerv migrate` moves a repository, and your user configuration, from nerv
-4.2.0 or 5.0.0-alpha.1 to this version. You run it once per repository, plus once for the
+4.2.0, 5.0.0-alpha.1 or 5.2.0 (the separate deploy extension) to this
+version. You run it once per repository, plus once for the
 user configuration. It is written in Go and works the same way on Linux,
 macOS and Windows.
 
@@ -146,9 +147,7 @@ the old configuration used (each installs as its own Claude Code
 plugin):
 
 - the `task` extension and its `task-teamwork` provider when `tasks.provider` was `teamwork` (also the 4.2.0 default when nothing set it);
-- the `release` extension when the 4.2.0 `release:` section or the 5.0.0-alpha.1 `ship:` section existed;
-- the `deploy` extension and its `release-github` provider when a git host was written;
-- the `release-ssh-compose` provider when `pipeline.deploy` existed.
+- the `release` extension when the 4.2.0 `release:` section, the 5.0.0-alpha.1 `ship:` section or a `pipeline:` section existed; its providers, the deploy ones (`release-github`, `release-ssh-compose`) included, come with it.
 
 ```
 Next, install the extensions it uses: nerv install --with task,task-teamwork,release
@@ -224,6 +223,39 @@ Artifacts written by `nerv ship` (schema `nerv.ship-artifact/v1`) are not
 converted: `nerv deploy` refuses them with `this artifact was made by nerv
 5.0.0-alpha.1 (nerv ship); rebuild it with nerv release`. Run `nerv
 release` again for the version you want to deploy.
+
+## From 5.2.0: deploy merged into release
+
+Up to 5.2.0 deploying was its own `deploy` extension, with the
+`deploy-github`, `deploy-ssh-compose` and `deploy-bash` providers and the
+`/deploy:run`, `/deploy:setup` and `/deploy:ship` commands. They are now part
+of the `release` extension:
+
+| 5.2.0 | Now |
+|---|---|
+| the `deploy` plugin | part of `release`: `/release:deploy`, `/release:deploy-setup`, `/release:ship`, the `release:deployer` agent and the `release:deploy` skill |
+| `deploy-github`, `deploy-ssh-compose` | `release-github`, `release-ssh-compose`, installed with `release` |
+| `deploy-bash`, `deploy.targets[].provider: bash` | `release-script`, `provider: script` (`release-bash` is the bash build provider) |
+| `.ai-workflow/providers/deploy-<name>/` with `extension: deploy` | `.ai-workflow/providers/release-<name>/` with `extension: release` |
+| the deploy request envelope's `"extension": "deploy"` | `"extension": "release"` |
+
+The `deploy:` section, `defaults.deploy`, the user keys under
+`deploy.providers.<provider>` and `nerv deploy` keep their names.
+
+- `nerv install` removes `deploy@nerv`, `deploy-github@nerv`,
+  `deploy-ssh-compose@nerv` and `deploy-bash@nerv` from `settings.json` and
+  uninstalls them from Claude Code's plugin cache, and refuses `--with
+  deploy` with `deploy was merged into the release extension: install
+  release, which brings every deploy provider`.
+- `nerv migrate` rewrites every `provider: bash` of `deploy.targets` to
+  `provider: script`, comments kept (with `--user`, also in
+  `defaults.deploy`), and moves each project deploy provider to
+  `release-<name>`, its `extension:` rewritten. A `release-<name>` folder
+  that already exists, or a project deploy provider named `bash`, is
+  refused: rename it by hand.
+- Until then `nerv deploy` refuses a `provider: bash` target before any git
+  write, with `the bash deploy target is now named script (release-script):
+  set provider: script, or run nerv migrate (nothing was written)`.
 
 ## Safety
 
