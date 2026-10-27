@@ -7,24 +7,29 @@ contract_version: 1
 runtime: agent
 task_ref_prefix: TW
 
-# The local Teamwork MCP server registered as "teamwork" in ~/.claude.json.
-# The claude.ai Teamwork connector exposes different tool names and does
-# not satisfy this list: the dispatcher reports the missing tools instead.
+# Teamwork's official MCP server (github.com/Teamwork/mcp), registered in
+# Claude Code as "teamwork":
+#   claude mcp add --transport http teamwork https://mcp.ai.teamwork.com \
+#     --header "Authorization: Bearer <token>"
+# (or without the header, then authenticate from /mcp). The claude.ai
+# Teamwork connector serves the same tools under another server name and
+# does not satisfy this list: the dispatcher reports the missing tools.
 mcp:
   server: teamwork
   tools:
-    - teamwork_get_task
-    - teamwork_list_tasks
-    - teamwork_create_task
-    - teamwork_update_task
-    - teamwork_complete_task
-    - teamwork_list_workflow_stages
-    - teamwork_move_task_to_stage
-    - teamwork_log_time
-    - teamwork_update_timelog
-    - teamwork_list_timelogs
-    - teamwork_list_projects
-    - teamwork_list_tasklists
+    - twprojects-get_task
+    - twprojects-list_tasks
+    - twprojects-create_task
+    - twprojects-update_task
+    - twprojects-complete_task
+    - twprojects-create_comment
+    - twprojects-list_workflow_stages
+    - twprojects-move_task_to_workflow_stage
+    - twprojects-create_timelog
+    - twprojects-update_timelog
+    - twprojects-list_timelogs
+    - twprojects-list_projects
+    - twprojects-list_tasklists
 
 # Read from tasks.providers.teamwork.<key>: the scope: repo keys from .ai-workflow/config.yaml only,
 # the scope: user keys from the user config.yaml (the project file still wins when it sets one).

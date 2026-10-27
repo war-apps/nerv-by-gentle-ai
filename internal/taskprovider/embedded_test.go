@@ -3,6 +3,7 @@ package taskprovider_test
 import (
 	"io/fs"
 	"maps"
+	"regexp"
 	"slices"
 	"strings"
 	"testing"
@@ -44,6 +45,44 @@ func TestEmbeddedProviders_AreValid(t *testing.T) {
 	}
 	if providers == 0 {
 		t.Fatal("no embedded provider: the Teamwork provider must ship")
+	}
+}
+
+// mcpToolName matches a tool of Teamwork's official MCP server named in a
+// procedure (twprojects-<operation>).
+var mcpToolName = regexp.MustCompile("`(twprojects-[a-z_]+)`")
+
+// The Teamwork provider calls Teamwork's official MCP server: every tool a
+// procedure names is declared in mcp.tools, every declared tool is used,
+// and no procedure names a tool of the old local server (teamwork_*).
+func TestTeamworkProvider_ProceduresUseTheDeclaredOfficialTools(t *testing.T) {
+	m, err := taskprovider.Load(nerv.ExtensionsFS(), "task-teamwork")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m.MCP.Server != "teamwork" {
+		t.Errorf("mcp.server = %q, want teamwork", m.MCP.Server)
+	}
+	used := map[string]bool{}
+	for op, file := range m.Operations {
+		data, err := fs.ReadFile(nerv.ExtensionsFS(), "task-teamwork/"+file)
+		if err != nil {
+			t.Fatalf("%s: %v", op, err)
+		}
+		if strings.Contains(string(data), "teamwork_") {
+			t.Errorf("%s names a tool of the old local server (teamwork_*)", file)
+		}
+		for _, mt := range mcpToolName.FindAllStringSubmatch(string(data), -1) {
+			used[mt[1]] = true
+			if !slices.Contains(m.MCP.Tools, mt[1]) {
+				t.Errorf("%s calls %s, which mcp.tools does not declare", file, mt[1])
+			}
+		}
+	}
+	for _, tool := range m.MCP.Tools {
+		if !used[tool] {
+			t.Errorf("mcp.tools declares %s, which no procedure calls", tool)
+		}
 	}
 }
 
