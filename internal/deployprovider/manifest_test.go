@@ -9,7 +9,7 @@ import (
 )
 
 const validHost = `name: acme
-extension: deploy
+extension: release
 slot: host
 contract_version: 1
 runtime: exec
@@ -28,7 +28,7 @@ operations:
 `
 
 const validTarget = `name: box
-extension: deploy
+extension: release
 slot: target
 contract_version: 1
 runtime: exec
@@ -82,14 +82,14 @@ func TestParse_RefusesInvalidManifests(t *testing.T) {
 		name, from, to, want string
 	}{
 		{"unknown field", "slot: host", "slot: host\nshell: bash", "field shell not found"},
-		{"unknown slot", "slot: host", "slot: registry", `slot "registry" is not a slot of extension deploy (host, target)`},
+		{"unknown slot", "slot: host", "slot: registry", `slot "registry" is not a slot of extension release (version, build, host, target)`},
 		{"agent runtime", "runtime: exec\nrequires: [acme]", "runtime: agent\nmcp:\n  server: acme\n  tools: [acme_view]", "operations.releaseExists: an agent provider names a procedure .md file"},
 		{"map config", "type: string", "type: map", `config[0].type "map" must be one of string, int, bool`},
 		{"contract", "contract_version: 1", "contract_version: 2", "contract_version 2 is not supported"},
 		{"bad name", "name: acme", "name: Acme", `name "Acme"`},
 		{"missing op", "  createRelease:\n    - argv: [acme, create, \"{tag}\", --notes-file, \"{notes_file}\", {arg: --prerelease, when: prerelease}]\n", "", "operations.createRelease: missing"},
-		{"required op not implemented", "  createRelease:\n    - argv: [acme, create, \"{tag}\", --notes-file, \"{notes_file}\", {arg: --prerelease, when: prerelease}]\n", "  createRelease: not_implemented\n", "operations.createRelease: required by slot deploy.host"},
-		{"foreign op", "  releaseExists:", "  deploy:\n    - argv: [acme]\n  releaseExists:", "operations.deploy is not an operation of slot deploy.host"},
+		{"required op not implemented", "  createRelease:\n    - argv: [acme, create, \"{tag}\", --notes-file, \"{notes_file}\", {arg: --prerelease, when: prerelease}]\n", "  createRelease: not_implemented\n", "operations.createRelease: required by slot release.host"},
+		{"foreign op", "  releaseExists:", "  deploy:\n    - argv: [acme]\n  releaseExists:", "operations.deploy is not an operation of slot release.host"},
 		{"partial variable", `"{notes_file}"`, `"--notes={notes_file}"`, "a variable must be the whole argument"},
 		{"unknown variable", `"{notes_file}"`, `"{notes}"`, `"{notes}": unknown variable`},
 		{"undeclared config", `"{config.repo}"`, `"{config.owner}"`, "config key owner is not declared"},

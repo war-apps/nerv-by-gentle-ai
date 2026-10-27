@@ -2,11 +2,11 @@
 // .ai-workflow/config.yaml, the configuration of `nerv deploy`:
 //
 //	deploy:
-//	  host: github                 # the git host provider (deploy-<name>)
+//	  host: github                 # the git host provider (release-<name>)
 //	  publish: true                # push the artifact's images (default true)
 //	  targets:                     # optional; deployed in this order
 //	    - name: staging
-//	      provider: ssh-compose    # a target provider (deploy-<name>)
+//	      provider: ssh-compose    # a target provider (release-<name>)
 //	      config: { environment: staging }
 //	  git:
 //	    commit_message: "chore(release): ${nextRelease.version} [skip ci]\n\n${nextRelease.notes}"

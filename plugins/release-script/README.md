@@ -1,11 +1,11 @@
-# deploy-bash
+# release-script
 
-The script target for `nerv deploy` (Claude Code plugin `deploy-bash`, provider
+The script target for `nerv deploy` (Claude Code plugin `release-script`, provider
 name `bash`, slot `target`). It has no commands of its own: `nerv deploy`
 runs its operations from `provider.yaml`, the provider contract
-(`docs/extensions.md`) that the `deploy` extension's skill details. It is a
+(`docs/extensions.md`) that the release extension's `deploy` skill details. It is a
 native provider: every operation runs nerv's hidden `nerv provider
-deploy-bash <operation>`.
+release-script <operation>`.
 
 - `preflight` checks, in your repository and before `nerv deploy` writes
   anything, that `script` (and `publish_script` and `verify_script` when
@@ -39,13 +39,13 @@ killed and the operation fails; no limit by default):
 deploy:
   targets:
     - name: docs
-      provider: bash
+      provider: script
       config:
         script: deploy/deploy.sh
         verify_script: deploy/check.sh
 ```
 
-`docs/deploy.md` ("deploy-bash") has the full contract.
+`docs/deploy.md` ("release-script") has the full contract.
 
 ## Install
 

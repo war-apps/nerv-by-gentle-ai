@@ -1,10 +1,11 @@
-// Package deployprovider is the deploy extension's side of the provider
+// Package deployprovider is nerv deploy's side of the provider
 // contract: the slots `nerv deploy` runs (a git host that makes the
 // release on GitHub, GitLab, ...; deploy targets such as a registry or a
 // server), their operations in run order, the step variables and the
 // request payload. The shape every provider shares (name, extension,
 // slot, runtime, requires, config, operations) is internal/extension's;
-// a deploy provider is an exec provider of plugins/deploy/extension.yaml.
+// a deploy provider is an exec provider of a host or target slot of
+// plugins/release/extension.yaml.
 //
 // An operation is one or more argv templates that Go runs directly, never
 // through a shell. A template element is either a literal or exactly one
@@ -24,10 +25,11 @@ const ContractVersion = extension.ContractVersion
 // plugin, the provider.yaml every provider ships.
 const ManifestFile = extension.ProviderFile
 
-// Extension is the deploy extension's name.
-const Extension = "deploy"
+// Extension is the extension the deploy providers belong to: release,
+// whose host and target slots are nerv deploy's.
+const Extension = "release"
 
-// The slots of the deploy extension (plugins/deploy/extension.yaml).
+// The deploy slots of the release extension (plugins/release/extension.yaml).
 const (
 	SlotHost   = "host"
 	SlotTarget = "target"

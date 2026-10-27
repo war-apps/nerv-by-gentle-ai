@@ -61,8 +61,8 @@ activation, and pipeline diagrams.
 
 ## Core and optional extensions
 
-The marketplace ships the core and three optional extensions (`task`,
-`release`, `deploy`) with their providers. Each one is installed as its own
+The marketplace ships the core and two optional extensions (`task` and
+`release`) with their providers. Each one is installed as its own
 Claude Code plugin:
 
 | Plugin | Required | What it does |
@@ -70,14 +70,13 @@ Claude Code plugin:
 | `nerv@nerv` | yes | Core: adapts gentle-ai's agents to the NERV pipeline. It holds no task, timer or tracker logic. |
 | `task` | no | The task extension: the `/task:*` commands, local timers, and the `task:dispatcher` agent that turns pipeline events into tracker operations. |
 | `task-teamwork` | no | A task provider for Teamwork, with a `provider.yaml` manifest. |
-| `release` | no | The release extension: `/release:version`, `/release:setup`, `/release:build`, the `release:versioner` and `release:builder` agents. Its providers come with it: the native `conventional-commits` version engine (no semantic-release) and the `docker-compose` and `bash` builds, which leave a local artifact; it never writes to git. |
+| `release` | no | The release extension: versions, builds and deploys. `/release:version`, `/release:setup`, `/release:build` (a local artifact; it never writes to git), `/release:deploy` and `/release:deploy-setup` (release commit, tag, push, images, targets, git host release), `/release:ship` (the next version, the build with its lint and test stages, and the deploy in one go; the deploy is skipped when none is configured), and the `release:versioner`, `release:builder` and `release:deployer` agents. Its providers come with it: the native `conventional-commits` version engine (no semantic-release), the `docker-compose` and `bash` builds, the `github` git host and the `ssh-compose` and `script` targets. |
 | `release-conventional-commits` | no | The release version provider: the native Conventional Commits engine, the `version` slot's default. Installed with `release`. |
 | `release-docker-compose` | no | A release build provider: `docker compose` build, test service and saved images. Installed with `release`. |
 | `release-bash` | no | A release build provider: each stage runs the project's own command. Installed with `release`. |
-| `deploy` | no | The deploy extension (requires `release`): `/deploy:run`, `/deploy:ship` (build and deploy in one go), `/deploy:setup` and the `deploy:deployer` agent. It turns an artifact into a release: release commit, tag, push, targets, git host release. |
-| `deploy-github` | no | A deploy git host provider for GitHub releases (`gh`), with a `provider.yaml` manifest. Installed with `deploy`. |
-| `deploy-ssh-compose` | no | A deploy target provider: pushes the artifact's images and updates the containers over SSH with the host's compose script. Installed with `deploy`. |
-| `deploy-bash` | no | A deploy target provider: runs the repository's own deploy script from the release commit. Installed with `deploy`. |
+| `release-github` | no | A deploy git host provider for GitHub releases (`gh`), with a `provider.yaml` manifest. Installed with `release`. |
+| `release-ssh-compose` | no | A deploy target provider: pushes the artifact's images and updates the containers over SSH with the host's compose script. Installed with `release`. |
+| `release-script` | no | A deploy target provider: runs the repository's own deploy script from the release commit. Installed with `release`. |
 
 When the task extension is installed, the orchestrator emits pipeline events
 (`run.started`, `verification.started`, `audit.ranked`, `issue.deferred`,
@@ -87,11 +86,12 @@ nothing, asks no task question and logs nothing. See
 [docs/integration.md](docs/integration.md#task-extension) for the event
 table, the envelope, the per-event switches and `/task:replay`.
 
-The release and deploy extensions are independent of the orchestrator: install
-them with `nerv install --with release,deploy,deploy-github` (add
-`deploy-ssh-compose` for SSH and compose hosts), run `/release:setup` and
-`/deploy:setup` once, then `/release:build` leaves a local artifact in
-`.nerv/artifacts/<project>/<version>/` and `/deploy:run` releases it (`/deploy:ship` chains the two). Both
+The release extension is independent of the orchestrator: install it with
+`nerv install --with release` (every provider comes with it), run
+`/release:setup` and `/release:deploy-setup` once, then `/release:build`
+leaves a local artifact in `.nerv/artifacts/<project>/<version>/` and
+`/release:deploy` releases it (`/release:ship` does the version, the build and
+the deploy in one go). Both
 always rehearse with a dry run and act only after your explicit yes. A
 repository set up with nerv 4.2.0 or 5.0.0-alpha.1 (`.ai-workflow.yml`)
 migrates with `nerv migrate` (see [docs/migration.md](docs/migration.md));
@@ -178,10 +178,9 @@ Flags: `--no-configure` (skip the closing wizard/hint entirely),
 `--no-skills` (skip installing skills), `--require-gentle-ai` (fail with
 exit 1 when gentle-ai is missing or not 4.x), `--with <names>` (install
 extensions and providers such as `task,task-teamwork` or
-`release,deploy,deploy-github`; in a terminal, install offers the task extension,
-its providers, the release extension, then the deploy extension; release and deploy
-bring every provider they ship with them, unasked; `deploy` requires
-`release`).
+`release`; in a terminal, install offers the task extension, its providers,
+then the release extension, which brings every provider it ships with it,
+unasked).
 
 ### Updating
 
@@ -387,10 +386,10 @@ example YAML, and how to configure per-role models and effort (wizard,
   origin into a local artifact) and the `release:` section, which
   `/release:setup` writes interactively (importing an existing semantic-release
   config with `nerv release setup --import`).
-- [docs/deploy.md](docs/deploy.md) — the deploy extension: `nerv deploy` /
-  `/deploy:run` (release commit, tag, push, targets, git host release from
-  an artifact), the `deploy:` section (`/deploy:setup`) and the provider
-  contract (`deploy-github`, `deploy-ssh-compose`).
+- [docs/deploy.md](docs/deploy.md) — the release extension's deploy: `nerv deploy` /
+  `/release:deploy` (release commit, tag, push, targets, git host release from
+  an artifact), the `deploy:` section (`/release:deploy-setup`) and the provider
+  contract (`release-github`, `release-ssh-compose`, `release-script`).
 - [docs/extensions.md](docs/extensions.md) — the two contracts of the
   extensions and their providers: `extension.yaml` (an extension and the core) and
   `provider.yaml` (a provider and its extension), with the common

@@ -23,6 +23,9 @@ func moveUserDefaults(p *Plan, u *userState, fsys fs.FS) error {
 	if err := migrateTasks(p, u.doc, "user config"); err != nil {
 		return err
 	}
+	// Both the seeds and a deploy: block that is about to move under them.
+	renameScriptTargets(p, u.doc, "deploy", "user config: deploy")
+	renameScriptTargets(p, u.doc, "defaults", "user config: defaults.deploy")
 	personal, err := workflowconfig.LoadPersonal(fsys)
 	if err != nil {
 		return err

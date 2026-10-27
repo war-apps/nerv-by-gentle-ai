@@ -158,7 +158,7 @@ release:
 		"pipeline: section is no longer read",
 		"validate and test: nerv release",
 		"docker and release: nerv release, then nerv deploy",
-		"deploy: the deploy-ssh-compose target",
+		"deploy: the release-ssh-compose target",
 		"sync: not ported yet",
 		"selection: branches",
 		"nerv migrate",
@@ -224,7 +224,7 @@ func TestRemovedSections_PipelineNamesEveryRealKey(t *testing.T) {
 			t.Errorf("message does not say where pipeline.%s went:\n%s", key, msg)
 		}
 	}
-	for _, want := range []string{"build: bash", "release.providers.conventional-commits.branches", "project's images", "deploy-ssh-compose", "project's version_files", "not ported", "run nerv migrate"} {
+	for _, want := range []string{"build: bash", "release.providers.conventional-commits.branches", "project's images", "release-ssh-compose", "project's version_files", "not ported", "run nerv migrate"} {
 		if !strings.Contains(msg, want) {
 			t.Errorf("message lacks %q:\n%s", want, msg)
 		}

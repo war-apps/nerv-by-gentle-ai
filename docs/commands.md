@@ -51,18 +51,18 @@ agents are `release:versioner` and `release:builder`. Reference:
 | `/release:setup` | Write the `release:` section of `.ai-workflow/config.yaml`: import an existing semantic-release config (`nerv release setup --import`), ask each project's build provider (`docker-compose` or `bash`) and its stage commands or compose file |
 | `/release:build` | Build, test and package origin's code into a local artifact: dry run first, the real run only after your explicit yes; never writes to git |
 
-### Deploy extension commands (`/deploy:*`)
+### Deploy commands of the release extension (`/release:deploy*`, `/release:ship`)
 
-The optional deploy extension (`deploy`, which requires `release`) releases
-an artifact; its agent is `deploy:deployer`, and its git hosts and targets
-are providers (`deploy-github`, `deploy-ssh-compose`, `deploy-bash`). Reference:
-[deploy.md](deploy.md).
+The release extension also releases and deploys an artifact; its agent is
+`release:deployer`, and its git hosts and targets are providers that come
+with it (`release-github`, `release-ssh-compose`, `release-script`).
+Reference: [deploy.md](deploy.md).
 
 | Command | What it does |
 |---|---|
-| `/deploy:run` | Release and deploy the latest local artifact, or the one you name: dry run first, then the release commit, tag, push, image publish, git host release and targets only after your explicit yes |
-| `/deploy:ship` | `/release:build`, then `/deploy:run` with the artifact it just packaged: every dry run first, and each real run only after its own explicit yes |
-| `/deploy:setup` | Write the `deploy:` section (host, targets, git) and suggest the providers to install |
+| `/release:deploy` | Release and deploy the latest local artifact, or the one you name: dry run first, then the release commit, tag, push, image publish, git host release and targets only after your explicit yes |
+| `/release:ship` | The next version, the build with the lint and test stages the build provider configures, then `/release:deploy` with the artifact it just packaged; the deploy is skipped when no deploy provider is configured (no `deploy.host`, no `deploy.targets`). Every dry run first, and each real run only after its own explicit yes |
+| `/release:deploy-setup` | Write the `deploy:` section (host, targets, git) and suggest the providers to install |
 
 ### /nerv:configure
 
@@ -118,7 +118,7 @@ isn't taking effect.
 | `nerv version next` | Compute the next release version with the native engine (release extension) |
 | `nerv release` | Build, test and package origin's code into a local artifact; no git writes (release extension) |
 | `nerv release setup --import` | Import an existing semantic-release config into the `release:` section |
-| `nerv deploy` | Release and deploy a release artifact: release commit, tag, push, targets, git host release (deploy extension) |
+| `nerv deploy` | Release and deploy a release artifact: release commit, tag, push, targets, git host release (release extension) |
 | `nerv migrate` | Move a repository (and, with `--user`, the user configuration) from nerv 4.2.0 or 5.0.0-alpha.1 |
 | `nerv doctor` | Check that NERV is in order on this machine and in the repository, and list the steps to take |
 | `nerv upgrade` | Replace the nerv binary with the newest release (`--alpha`, `--rc`), upgrade gentle-ai within its 4.x major version, then run nerv's install |
@@ -374,21 +374,22 @@ offers the others, in this order:
 1. the task extension (`task`, the `/task:*` commands);
 2. its providers (`task-<name>`, such as `task-teamwork`), only
    once task is installed;
-3. the release extension (`release`: `nerv release`), which brings its
-   providers with it, unasked (`release-conventional-commits`, the
-   version engine, `release-docker-compose` and `release-bash`);
-4. the deploy extension (`deploy`: `nerv deploy`), only once release is
-   installed, which brings its providers with it, unasked
-   (`deploy-bash`, `deploy-github`, `deploy-ssh-compose`).
+3. the release extension (`release`: `nerv release`, `nerv deploy`), which
+   brings its providers with it, unasked (`release-conventional-commits`,
+   the version engine, `release-docker-compose` and `release-bash`, the
+   builds, and `release-github`, `release-ssh-compose` and
+   `release-script`, the deploy).
 
-An extension whose `extension.yaml` says `providers: bundled` (release,
-deploy) installs every provider it ships with it, each listed as `Adding
+An extension whose `extension.yaml` says `providers: bundled` (release)
+installs every provider it ships with it, each listed as `Adding
 <provider> (bundled with <extension>)`; one that says `providers:
 suggested` (task) has each provider offered after it.
 
-Requirements: `deploy` requires `release`, a task provider requires `task`,
-and a deploy provider requires `deploy`; each is offered only once what it
-requires is installed or chosen. An extension or provider named in `--with` brings what it
+Requirements: a task provider requires `task` and a release provider
+`release`; each is offered only once its extension is installed or chosen.
+The `deploy` plugins of 5.2.0 and earlier merged into `release`: install
+removes them from `settings.json`, and `--with deploy` is refused with where
+it went. An extension or provider named in `--with` brings what it
 requires with it, and a requirement this nerv does not ship is refused. Copies of the `/task:*` commands that an older release put in
 `~/.claude/commands/task/` are reported, and removed only after you
 confirm. See the README's "Install" section for the shell one-liners and
@@ -404,7 +405,7 @@ Flags:
   --no-skills           Skip installing skills
   --no-configure        Skip the closing wizard/hint entirely
   --with <names>        Comma-separated extensions and providers to install, such as
-                        task,task-<provider>,release,deploy,deploy-<provider>
+                        task,task-<provider>,release,deploy,release-<provider>
                         (each brings what it requires)
 ```
 
@@ -417,7 +418,7 @@ nerv install --with task-teamwork
 ```
 
 ```
-nerv install --with release,deploy,deploy-github
+nerv install --with release
 ```
 
 ```
@@ -537,7 +538,7 @@ Hyuga, Kaji, and so on). The task extension's `task` skill and its
 `task:dispatcher` agent work the same way: the orchestrator launches the
 dispatcher only when the task extension is installed. The release extension's `release` skill
 with its `release:versioner` and `release:builder` agents, and the deploy
-extension's `deploy` skill with its `deploy:deployer` agent, are loaded and
-launched by their own `/release:*` and `/deploy:*` commands. You never invoke them by name —
+extension's `deploy` skill with its `release:deployer` agent, are loaded and
+launched by their own `/release:*` and `/release:deploy*` commands. You never invoke them by name —
 see [integration.md#roles](integration.md#roles) for what each agent does
 and when it runs.

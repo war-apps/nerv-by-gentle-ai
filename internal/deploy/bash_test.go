@@ -70,7 +70,7 @@ func (r *bashRepo) write(name, content string) {
 	}
 }
 
-// request is the request nerv deploy sends a deploy-bash operation.
+// request is the request nerv deploy sends a release-script operation.
 func bashRequest(op string, config map[string]any, base string) []byte {
 	if base == "" {
 		base = "abc"

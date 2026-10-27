@@ -1,11 +1,11 @@
-# deploy-ssh-compose
+# release-ssh-compose
 
 The SSH and docker compose target for `nerv deploy` (Claude Code plugin
-`deploy-ssh-compose`, provider name `ssh-compose`, slot `target`). It
+`release-ssh-compose`, provider name `ssh-compose`, slot `target`). It
 has no commands of its own: `nerv deploy` runs its operations from
 `provider.yaml`, the provider contract (`docs/extensions.md`) that the
-`deploy` extension's skill details. It is a native provider: `preflight`,
-`deploy` and `verify` run nerv's hidden `nerv provider deploy-ssh-compose
+release extension's `deploy` skill details. It is a native provider: `preflight`,
+`deploy` and `verify` run nerv's hidden `nerv provider release-ssh-compose
 <operation>`.
 
 - `preflight` checks the configuration and answers the tools it needs,
@@ -31,8 +31,8 @@ scopes are in `provider.yaml` and in `docs/deploy.md`.
 ## Install
 
 ```sh
-nerv install --with release,deploy,deploy-ssh-compose
+nerv install --with release
 ```
 
 Then add a `deploy.targets[]` entry with `provider: ssh-compose` to the
-project configuration, or run `/deploy:setup`.
+project configuration, or run `/release:deploy-setup`.

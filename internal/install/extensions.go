@@ -13,9 +13,8 @@ import (
 // order: the requested ones (each after its requirements), then those
 // settings already enables, then the ones the user accepts when
 // deps.ConfirmExtension is set, asked in plugin.SuggestionOrder (task, its
-// providers, release, deploy, the deploy providers) and only when every
-// requirement is already selected: deploy only once release is, a provider
-// only once its extension is. An extension whose providers are bundled brings
+// providers, release) and only when every requirement is already selected:
+// a provider only once its extension is. An extension whose providers are bundled brings
 // them all with it (plugin.Extension.Bundle), never asked.
 func selectExtensions(deps Deps, opts Options, settings *claude.Settings) ([]plugin.Extension, error) {
 	exts, err := plugin.Extensions(deps.ExtensionsFS)
@@ -51,8 +50,8 @@ func selectExtensions(deps Deps, opts Options, settings *claude.Settings) ([]plu
 		}
 	}
 
-	// require adds e after its requirements, transitively (deploy-github
-	// brings deploy, which brings release).
+	// require adds e after its requirements, transitively (release-github
+	// brings release).
 	var require func(e plugin.Extension, by string) error
 	require = func(e plugin.Extension, by string) error {
 		for _, req := range e.Requires {
@@ -75,6 +74,9 @@ func selectExtensions(deps Deps, opts Options, settings *claude.Settings) ([]plu
 	}
 	for _, name := range opts.Extensions {
 		e, ok := byName[name]
+		if !ok && slices.Contains(RetiredPlugins, name) {
+			return nil, &RefusalError{Err: fmt.Errorf("%s was %s: install release, which brings every deploy provider", name, retiredWhy)}
+		}
 		if !ok {
 			available := "none"
 			if len(names) > 0 {

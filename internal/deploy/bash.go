@@ -21,7 +21,7 @@ import (
 	"github.com/war-apps/nerv-by-gentle-ai/internal/proc"
 )
 
-// BashDeps are the effects of the deploy-bash operations.
+// BashDeps are the effects of the release-script operations.
 type BashDeps struct {
 	// Proc runs git and the scripts; nil means proc.ExecRunner.
 	Proc proc.Runner
@@ -39,17 +39,17 @@ type BashDeps struct {
 	TempDir string
 }
 
-// The deploy-bash config keys, one per operation that runs a script.
+// The release-script config keys, one per operation that runs a script.
 var bashScriptKeys = map[string]string{
 	opPublish: "publish_script",
 	opDeploy:  "script",
 	opVerify:  "verify_script",
 }
 
-// opPublish is the deploy-bash operation that runs publish_script.
+// opPublish is the release-script operation that runs publish_script.
 const opPublish = "publish"
 
-// bashPayload is the part of deploy's request payload deploy-bash reads.
+// bashPayload is the part of deploy's request payload release-script reads.
 type bashPayload struct {
 	Target      string `json:"target"`
 	ArtifactDir string `json:"artifact_dir"`
@@ -65,8 +65,8 @@ type bashPayload struct {
 	} `json:"artifact"`
 }
 
-// RunBashOp is `nerv provider deploy-bash <op>`, the native operations of
-// the deploy-bash target, which runs the project's own deploy scripts. It
+// RunBashOp is `nerv provider release-script <op>`, the native operations of
+// the release-script target, which runs the project's own deploy scripts. It
 // reads the request on stdin and prints one JSON response (the common
 // envelope); it returns 0 (ok or skipped) or 1.
 //
@@ -296,13 +296,13 @@ func runBashScript(ctx context.Context, req extension.Request, p bashPayload, ke
 	res, err := git(nil, nil, "rev-parse", "--verify", "--quiet", "refs/tags/"+tag+"^{commit}")
 	commit := strings.TrimSpace(string(res.Stdout))
 	if tag == "" || err != nil || commit == "" {
-		return fail("the release tag %s is not in %s: deploy-bash runs in nerv deploy's clone of the release", orDash(tag), dir)
+		return fail("the release tag %s is not in %s: release-script runs in nerv deploy's clone of the release", orDash(tag), dir)
 	}
 	if err := checkCommitScript(git, commit, "the release commit "+tag, key, raw, clean); err != nil {
 		return fail("%v", err)
 	}
 
-	tmp, err := os.MkdirTemp(deps.TempDir, "nerv-deploy-bash-")
+	tmp, err := os.MkdirTemp(deps.TempDir, "nerv-release-script-")
 	if err != nil {
 		return fail("%v", err)
 	}
@@ -484,7 +484,7 @@ func writeTreeFile(dest string, r io.Reader, mode os.FileMode) error {
 	return out.Close()
 }
 
-// bashVariables are the deploy variables a deploy-bash script finds in its
+// bashVariables are the deploy variables a release-script script finds in its
 // environment, besides the request on its stdin: NERV_DEPLOY_OPERATION,
 // _TARGET, _PROJECT, _VERSION, _TAG, _CHANNEL (empty for a release),
 // _PRERELEASE (true on a channel), _BRANCH, _BASE_COMMIT, _COMMIT (the

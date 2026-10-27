@@ -98,7 +98,7 @@ func TestDoctor_Healthy(t *testing.T) {
 		"  [ok]  origin       git@github.com:acme/widgets.git\n",
 		"  [ok]  base branch  develop\n",
 		": healthy\n",
-		"\nOptional:\n  - Run /deploy:setup in Claude Code to deploy releases with nerv deploy\n")
+		"\nOptional:\n  - Run /release:deploy-setup in Claude Code to deploy releases with nerv deploy\n")
 	lacks(t, "the report", out, "Next steps:", "[!!]", "[xx]")
 }
 

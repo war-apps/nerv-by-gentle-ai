@@ -5,7 +5,7 @@ import (
 	"time"
 )
 
-// Release is the release a deploy-ssh-compose operation deploys: the
+// Release is the release a release-ssh-compose operation deploys: the
 // artifact's version, tag and branch.
 type Release struct {
 	Version string

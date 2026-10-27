@@ -1,15 +1,15 @@
-# Script target of the NERV deploy extension (contract: docs/extensions.md
+# Script target of the NERV release extension (contract: docs/extensions.md
 # and internal/deployprovider): runs the repository's own deploy scripts. A
 # native provider: its operations run nerv's own hidden `nerv provider
-# deploy-bash <operation>`. preflight checks, in the repository and before
+# release-script <operation>`. preflight checks, in the repository and before
 # anything is written, that each configured script is a regular file inside
 # it; publish, deploy and verify run the script from the release commit's
 # tree with bash, the request on its stdin and the NERV_DEPLOY_* variables
 # in its environment, and the script's JSON response (when it prints one)
 # is the operation's. publish and verify without their script are skipped,
 # and config.timeout (a duration) bounds each script run.
-name: bash
-extension: deploy
+name: script
+extension: release
 slot: target
 contract_version: 1
 runtime: exec
@@ -33,10 +33,10 @@ config:
     prompt: The longest each script may run, a Go duration such as 10m (empty means no limit)
 operations:
   preflight:
-    - argv: ["{nerv}", provider, deploy-bash, preflight]
+    - argv: ["{nerv}", provider, release-script, preflight]
   publish:
-    - argv: ["{nerv}", provider, deploy-bash, publish]
+    - argv: ["{nerv}", provider, release-script, publish]
   deploy:
-    - argv: ["{nerv}", provider, deploy-bash, deploy]
+    - argv: ["{nerv}", provider, release-script, deploy]
   verify:
-    - argv: ["{nerv}", provider, deploy-bash, verify]
+    - argv: ["{nerv}", provider, release-script, verify]

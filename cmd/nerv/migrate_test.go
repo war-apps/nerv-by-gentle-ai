@@ -74,7 +74,7 @@ func TestMigrate_DryRunPrintsEveryChangeAndWritesNothing(t *testing.T) {
 		". Move .nerv/nerv.yaml to .nerv/nerv.yaml.migrated: a copy of the old configuration, so an older nerv does not read it\n",
 		"\nHow the configuration changes:\n  - ",
 		"\nCheck by hand:\n  - ", "\n  - semantic-release package.json: @semantic-release/exec",
-		"\nNext, install the extensions it uses: nerv install --with task,task-teamwork,release,deploy,deploy-github\n",
+		"\nNext, install the extensions it uses: nerv install --with task,task-teamwork,release\n",
 		"nerv migrate: dry run: 3 change(s), nothing was written",
 	} {
 		if !strings.Contains(out, want) {
@@ -194,14 +194,14 @@ func TestMigrate_InstallRunsTheInstallStep(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("exit %d\n%s\n%s", code, out, errOut)
 	}
-	for _, plugin := range []string{"task@nerv", "task-teamwork@nerv", "release@nerv", "release-conventional-commits@nerv", "release-docker-compose@nerv", "release-bash@nerv", "deploy@nerv", "deploy-github@nerv"} {
+	for _, plugin := range []string{"task@nerv", "task-teamwork@nerv", "release@nerv", "release-conventional-commits@nerv", "release-docker-compose@nerv", "release-bash@nerv", "release-github@nerv"} {
 		if !strings.Contains(out, "claude plugin install "+plugin) {
 			t.Errorf("%s not installed:\n%s", plugin, out)
 		}
 	}
-	// deploy bundles its providers: deploy-ssh-compose comes with it.
-	if !strings.Contains(out, "claude plugin install deploy-ssh-compose@nerv") {
-		t.Errorf("deploy-ssh-compose not installed with deploy:\n%s", out)
+	// release bundles its deploy providers: release-ssh-compose comes with it.
+	if !strings.Contains(out, "claude plugin install release-ssh-compose@nerv") || strings.Contains(out, "claude plugin install deploy@nerv") {
+		t.Errorf("release-ssh-compose not installed with release, or deploy installed:\n%s", out)
 	}
 }
 

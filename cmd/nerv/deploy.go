@@ -46,7 +46,7 @@ origin) in a temporary directory at the artifact's base commit and:
 Before anything is cloned or pushed, docker and each image registry's
 credentials in the docker config are checked (when there are images to
 publish), and each target's preflight checks the target's config and that
-the tools its provider needs are installed (deploy-ssh-compose: sshpass for
+the tools its provider needs are installed (release-ssh-compose: sshpass for
 password authentication, infisical for source infisical).
 
 Your repository is never modified. When origin's branch moved past the
@@ -277,14 +277,14 @@ func writeDeployReport(w io.Writer, asJSON bool, rep deployrun.Report, runErr er
 // provider.yaml steps run the hidden `nerv provider <plugin> <operation>`
 // with the common request on stdin and the response on stdout.
 var nativeProviders = map[string]func(op string, stdout, stderr io.Writer, opts options) int{
-	"deploy-bash":                   runDeployBash,
-	"deploy-ssh-compose":            runDeploySSHCompose,
+	"release-script":                runDeployBash,
+	"release-ssh-compose":           runDeploySSHCompose,
 	releaseplan.ConventionalCommits: nativeRelease(releaseplan.ConventionalCommits),
 	releaseplan.DockerCompose:       nativeRelease(releaseplan.DockerCompose),
 	releaseplan.Bash:                nativeRelease(releaseplan.Bash),
 }
 
-// runDeployBash runs one operation of the deploy-bash target provider: the
+// runDeployBash runs one operation of the release-script target provider: the
 // project's own deploy script, taken from the release commit.
 func runDeployBash(op string, stdout, stderr io.Writer, opts options) int {
 	stdin := opts.Stdin
@@ -337,13 +337,13 @@ func runProvider(args []string, stdout, stderr io.Writer, opts options) int {
 	return run(args[1], stdout, stderr, opts)
 }
 
-// runDeploySSHCompose runs one operation of the deploy-ssh-compose provider
+// runDeploySSHCompose runs one operation of the release-ssh-compose provider
 // (preflight, deploy or verify): the request on stdin, the JSON response on
 // stdout.
 func runDeploySSHCompose(op string, stdout, stderr io.Writer, opts options) int {
 	home, err := configure.ResolveHome(opts.Home)
 	if err != nil {
-		fmt.Fprintf(stderr, "nerv provider deploy-ssh-compose: %v\n", err)
+		fmt.Fprintf(stderr, "nerv provider release-ssh-compose: %v\n", err)
 		return 2
 	}
 	var runner proc.Runner = proc.ExecRunner{}

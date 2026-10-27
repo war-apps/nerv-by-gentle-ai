@@ -19,10 +19,9 @@ import (
 const (
 	// TaskPlugin is the task extension, whose providers are task trackers.
 	TaskPlugin = "task"
-	// ReleasePlugin is the release extension.
+	// ReleasePlugin is the release extension, whose providers version,
+	// build and deploy a release.
 	ReleasePlugin = "release"
-	// DeployPlugin is the deploy extension, which requires release.
-	DeployPlugin = "deploy"
 )
 
 // Extension is an optional plugin shipped next to the core nerv plugin in

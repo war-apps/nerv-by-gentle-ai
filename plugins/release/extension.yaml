@@ -1,8 +1,10 @@
 # The release extension's contract with the NERV core (docs/extensions.md).
 # The core runs nerv release (and nerv version next, nerv release setup),
-# which calls the providers of its two slots with the common envelope: the
-# payloads and answers are in docs/extensions.md (the release slots) and
-# internal/releaseplan/contract.go.
+# which calls the version and build providers with the common envelope (the
+# payloads and answers are in docs/extensions.md and
+# internal/releaseplan/contract.go), and nerv deploy, which runs the host and
+# target providers as exec steps, with the step variables and the request
+# payload of skills/deploy/SKILL.md.
 name: release
 contract_version: 1
 suggest_order: 2
@@ -29,3 +31,17 @@ slots:
     operations:
       validate: optional
       plan: required
+  # The git host that makes the release of the deployed tag (deploy.host).
+  - name: host
+    cardinality: one
+    operations:
+      releaseExists: required
+      createRelease: required
+  # One provider per deploy.targets entry, run in that order.
+  - name: target
+    cardinality: per-target
+    operations:
+      preflight: optional
+      publish: optional
+      deploy: required
+      verify: optional

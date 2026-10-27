@@ -5,7 +5,7 @@ description: NERV release extension contract. Covers the release section of .ai-
 
 # NERV Release Extension — Contract
 
-The release extension computes the next version of a repository (or of each project of a monorepo), and builds, tests and packages what is on origin into a **local artifact**. It never writes to git and never publishes: the release commit, the tag, the push, the images and the git host release belong to the `deploy` extension (`deploy:deploy` skill).
+The release extension computes the next version of a repository (or of each project of a monorepo), and builds, tests and packages what is on origin into a **local artifact**. It never writes to git and never publishes: the release commit, the tag, the push, the images and the git host release belong to `nerv deploy`, the extension's deploy half (`release:deploy` skill).
 
 The extension drives two `nerv` subcommands and nothing else:
 
@@ -161,5 +161,5 @@ nerv release [--branch <name>] [--project <name>] [--version <semver>] [--dry-ru
 
 - **4.2.0 `release:` section.** It has today's key but 4.2.0 keys (`semantic_release:`, the project presets): commands refuse it, naming each key and `nerv migrate`. `nerv migrate` converts it into today's section; by hand, drop `semantic_release:` (no node runner is left), give every project a build provider (`build: bash` runs the presets' commands as stages), and move the branches and rules from the semantic-release config into `release.providers.conventional-commits` (`nerv release setup --import`).
 - **Presets** (`presets:`, `dotnet:`, `node:`, `docker:`, `nuget:`, `npm:`, a `publish` stage, `publish` or `success` hooks) are removed. Write the stage commands in `script` mode or use `compose`; publishing goes to the `deploy:` section.
-- **`pipeline:` section and `nerv pipeline`.** Removed. `validate` and `test` become release stages; `release` is `nerv release` then `nerv deploy`; `docker` push and `deploy` are the `deploy-ssh-compose` target; the `sync` back-merge is not ported.
+- **`pipeline:` section and `nerv pipeline`.** Removed. `validate` and `test` become release stages; `release` is `nerv release` then `nerv deploy`; `docker` push and `deploy` are the `release-ssh-compose` target; the `sync` back-merge is not ported.
 - **semantic-release config** (`package.json` `release`, `.releaserc.json`, `.releaserc.yaml`/`.yml`). `nerv release setup --import` translates it once and lists what it cannot translate: the `npm` and `exec` plugins, `presetConfig.types`, `extends`, maintenance branches. `@semantic-release/git` and `@semantic-release/github` go to the `deploy:` section. A `.js` config is never imported: it is reported, and the user migrates it by hand. After the import the semantic-release config is no longer used and can be removed.
