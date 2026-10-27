@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [6.1.0] - 2026-10-27
+
+Upgrading from 6.0.0: the Teamwork task provider now uses Teamwork's
+official MCP server and installs it as `teamwork`. After `nerv install`,
+restart Claude Code and sign in to `teamwork` from `/mcp`. A local server
+that exposed the old `teamwork_*` tools no longer satisfies the provider.
+Deleting a timelog still uses Teamwork's REST API with `TEAMWORK_API_KEY`.
+
+### Added
+- task-teamwork: call Teamwork's official MCP server (cf95203)
+- task-teamwork: ship Teamwork's official MCP server with the provider (b389cc9)
+
 ## [6.0.0] - 2026-10-27
 
 Upgrading from 5.2.0: the deploy extension is now part of release. Run
