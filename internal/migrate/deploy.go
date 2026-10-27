@@ -25,7 +25,7 @@ var oldEnvironments = []string{"production-green", "production-blue", "staging",
 // targetNameRe is deployconfig's target name rule.
 var targetNameRe = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]*$`)
 
-// deployTarget is one deploy-ssh-compose target.
+// deployTarget is one release-ssh-compose target.
 type deployTarget struct {
 	name   string
 	config map[string]string
@@ -38,7 +38,7 @@ type deployTranslation struct {
 }
 
 // oldDeploySource maps each 4.2.0 pipeline.deploy key (a dotted path below
-// pipeline.deploy) to its deploy-ssh-compose config key.
+// pipeline.deploy) to its release-ssh-compose config key.
 var oldDeploySource = []struct{ from, to string }{
 	{"source", "source"},
 	{"infisical.project_id", "infisical_project_id"},
@@ -55,13 +55,13 @@ var oldDeploySource = []struct{ from, to string }{
 	{"verify.timeout", "verify_timeout"},
 }
 
-// sshComposeManifest is the deploy-ssh-compose provider's manifest.
+// sshComposeManifest is the release-ssh-compose provider's manifest.
 func sshComposeManifest(fsys fs.FS) (*deployprovider.Manifest, error) {
 	return deployprovider.Load(fsys, deployprovider.Extension+"-"+sshComposeProvider)
 }
 
 // translatePipeline turns the 4.2.0 pipeline: section into deploy targets:
-// one deploy-ssh-compose target per environment of pipeline.deploy, with
+// one release-ssh-compose target per environment of pipeline.deploy, with
 // the settings written there. The user-scope settings go to the user
 // configuration with user, otherwise into each target, reported. What has
 // no equivalent is reported.
@@ -82,14 +82,14 @@ func translatePipeline(p *Plan, data []byte, fsys fs.FS, user *userState) (*depl
 		p.warn("pipeline.branches: the release branches are the release: section's branches (imported from the semantic-release configuration); check them with nerv version next")
 	}
 	if r := value(node, "registry"); r != nil {
-		p.warn("pipeline.registry: deploy-ssh-compose pushes with your docker login: run docker login %s before nerv deploy (username_env and token_env have no equivalent)", orDefault(scalarValue(value(r, "host")), "ghcr.io"))
+		p.warn("pipeline.registry: release-ssh-compose pushes with your docker login: run docker login %s before nerv deploy (username_env and token_env have no equivalent)", orDefault(scalarValue(value(r, "host")), "ghcr.io"))
 	}
 	if imgs := value(node, "images"); imgs != nil && imgs.Kind == yaml.SequenceNode {
 		var names []string
 		for _, img := range imgs.Content {
 			names = append(names, scalarValue(value(img, "name")))
 		}
-		p.warn("pipeline.images (%s): nerv release builds the images now: give the release: project build: docker-compose with its images (or a package stage that docker saves them into $NERV_RELEASE_OUTPUTS_DIR), and deploy-ssh-compose pushes them", strings.Join(names, ", "))
+		p.warn("pipeline.images (%s): nerv release builds the images now: give the release: project build: docker-compose with its images (or a package stage that docker saves them into $NERV_RELEASE_OUTPUTS_DIR), and release-ssh-compose pushes them", strings.Join(names, ", "))
 	}
 	if sync := value(node, "sync"); scalarValue(value(sync, "enabled")) != "false" {
 		p.warn("pipeline.sync (on unless sync.enabled: false): not ported: nerv deploy does no back-merge after a release; merge the released branch back into develop by hand")
@@ -106,7 +106,7 @@ func translatePipeline(p *Plan, data []byte, fsys fs.FS, user *userState) (*depl
 		return nil, err
 	}
 	if sel := scalarValue(value(dep, "selection")); sel == "branches" {
-		p.warn("pipeline.deploy.selection: branches has no equivalent: a deploy-ssh-compose target deploys its environment when the environment's DOCKER_IMAGE_VERSION points at the release; one target is written per environment: choose them with nerv deploy --target")
+		p.warn("pipeline.deploy.selection: branches has no equivalent: a release-ssh-compose target deploys its environment when the environment's DOCKER_IMAGE_VERSION points at the release; one target is written per environment: choose them with nerv deploy --target")
 	}
 	shared := map[string]string{}
 	for _, k := range oldDeploySource {
@@ -158,7 +158,7 @@ func translatePipeline(p *Plan, data []byte, fsys fs.FS, user *userState) (*depl
 		cfg["environment"] = env
 		out.targets = append(out.targets, deployTarget{name: name, config: cfg})
 	}
-	p.note("pipeline.deploy: one deploy-ssh-compose target per environment (%s)", strings.Join(envs, ", "))
+	p.note("pipeline.deploy: one release-ssh-compose target per environment (%s)", strings.Join(envs, ", "))
 	return out, nil
 }
 

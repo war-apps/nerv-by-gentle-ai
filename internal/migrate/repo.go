@@ -327,16 +327,8 @@ func translateConfig(p *Plan, o Options, data []byte, user *userState) (*config.
 		p.note("tasks.provider: teamwork (%s): the task extension and its task-teamwork provider", from)
 	}
 	if hadRelease || dep != nil {
+		// release brings its deploy providers with it (providers: bundled).
 		p.Plugins = append(p.Plugins, "release")
-	}
-	if dep != nil {
-		p.Plugins = append(p.Plugins, "deploy")
-		if dep.host == githubHost {
-			p.Plugins = append(p.Plugins, "deploy-github")
-		}
-		if len(dep.targets) > 0 {
-			p.Plugins = append(p.Plugins, "deploy-ssh-compose")
-		}
 	}
 	p.Plugins = slices.Compact(p.Plugins)
 	return doc, nil

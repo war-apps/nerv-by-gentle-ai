@@ -45,8 +45,8 @@ type Manifest struct {
 }
 
 // Load reads and validates dir/provider.yaml from fsys (the extensions
-// tree): the common contract against the deploy extension's
-// extension.yaml, then the deploy step rules.
+// tree): the common contract against the release extension's
+// extension.yaml, a host or target slot, then the deploy step rules.
 func Load(fsys fs.FS, dir string) (*Manifest, error) {
 	p, ext, err := extension.LoadProvider(fsys, dir)
 	if err != nil {
@@ -54,6 +54,9 @@ func Load(fsys fs.FS, dir string) (*Manifest, error) {
 	}
 	if ext.Name != Extension {
 		return nil, fmt.Errorf("%s: a provider of extension %s, not a deploy provider", dir, ext.Name)
+	}
+	if !slices.Contains(Slots, p.Slot) {
+		return nil, fmt.Errorf("%s: a %s provider, not a deploy provider (want a %s one)", dir, p.Slot, strings.Join(Slots, " or "))
 	}
 	m, err := fromProvider(p)
 	if err != nil {

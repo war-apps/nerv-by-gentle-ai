@@ -22,7 +22,7 @@ var Sections = []string{"tasks", "release", "deploy"}
 // the shape of the project's <section>, never applies at run time, and is
 // copied into a project by the flow that writes that section there
 // (/nerv:init and nerv configure --init-repo for tasks:, /release:setup,
-// /deploy:setup) when the project lacks the key.
+// /release:deploy-setup) when the project lacks the key.
 const DefaultsKey = "defaults"
 
 // PersonalTaskKeys are the task extension's own machine-local keys: a
@@ -64,18 +64,23 @@ func LoadPersonal(fsys fs.FS) (Personal, error) {
 		}
 		for _, c := range prov.Config {
 			if c.Scope == "user" {
-				p.keys[SectionOf(prov.Extension)+".providers."+prov.Name+"."+c.Key] = true
+				p.keys[SectionOf(prov.Extension, prov.Slot)+".providers."+prov.Name+"."+c.Key] = true
 			}
 		}
 	}
 	return p, nil
 }
 
-// SectionOf is the configuration section of an extension: tasks for the
-// task extension, the extension's name otherwise.
-func SectionOf(extensionName string) string {
-	if extensionName == plugin.TaskPlugin {
+// SectionOf is the configuration section of a provider of slot of an
+// extension: tasks for the task extension, deploy for the release
+// extension's host and target slots (nerv deploy's), the extension's name
+// otherwise.
+func SectionOf(extensionName, slot string) string {
+	switch {
+	case extensionName == plugin.TaskPlugin:
 		return "tasks"
+	case extensionName == plugin.ReleasePlugin && (slot == "host" || slot == "target"):
+		return "deploy"
 	}
 	return extensionName
 }

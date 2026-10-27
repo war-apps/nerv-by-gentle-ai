@@ -65,14 +65,14 @@ func TestRun_ReleasesAndDeploysTheArtifact(t *testing.T) {
 		"gh [release] [create] [" + tag + "] [--title] [" + tag + "] [--notes-file] [" + filepath.Join(e.dir, "notes.md") + "] [--prerelease] [--verify-tag]",
 		"docker [load] [-i] [" + tar + "]",
 		"docker [push] [reg.example/app:1.0.0-alpha.1]",
-		"nerv [provider] [deploy-ssh-compose] [deploy]",
-		"nerv [provider] [deploy-ssh-compose] [verify]",
+		"nerv [provider] [release-ssh-compose] [deploy]",
+		"nerv [provider] [release-ssh-compose] [verify]",
 	}
 	if !slices.Equal(calls, want) {
 		t.Errorf("provider calls:\n%s\nwant:\n%s", strings.Join(calls, "\n"), strings.Join(want, "\n"))
 	}
 	stdin, _ := os.ReadFile(filepath.Join(e.fake, "nerv.stdin"))
-	for _, s := range []string{`"contract":1`, `"extension":"deploy"`, `"slot":"target"`, `"provider":"ssh-compose"`, `"operation":"verify"`,
+	for _, s := range []string{`"contract":1`, `"extension":"release"`, `"slot":"target"`, `"provider":"ssh-compose"`, `"operation":"verify"`,
 		`"payload":{"target":"staging"`, `"environment":"staging"`, `"ssh_port":"22"`, `"version":"1.0.0-alpha.1"`} {
 		if !strings.Contains(string(stdin), s) {
 			t.Errorf("verify request lacks %s: %s", s, stdin)

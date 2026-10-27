@@ -3,7 +3,7 @@ description: Release and deploy a release artifact with nerv deploy — the late
 argument-hint: [<artifact dir> | <project>[@<version>]] [--target <name> ...]
 ---
 
-# /deploy:run
+# /release:deploy
 
 Turn a local artifact that `/release:build` left into a release: the release
 commit, the tag and the channel note pushed to origin, the artifact's images
@@ -41,7 +41,7 @@ part is not accepted and stop without running `nerv`.
 
 3. **On a refusal or failure, stop.** Show `error` and the steps as they
    are, with the meaning of the exit code (§5). No `deploy:` section, or a
-   host or target without its provider: suggest `/deploy:setup`. A
+   host or target without its provider: suggest `/release:deploy-setup`. A
    preflight refusal names the missing tool or value; say what to install
    or set. Origin moved: say that `--rebase` re-applies the release on the
    new head but tags code that was never built from it, and that releasing
@@ -60,11 +60,11 @@ part is not accepted and stop without running `nerv`.
 
 6. **Deploy, only after that yes.** Run the same command without
    `--dry-run`, with `--yes` (and `--rebase` only if the user asked for it).
-   The `deploy:deployer` agent can run steps 2 and 6 in the background
+   The `release:deployer` agent can run steps 2 and 6 in the background
    (`MODE: rehearse`, then `MODE: deploy` with `APPROVED: <project>
    <version> <tag>`); the question in step 5 always stays in this session.
 
 7. **Report.** In the user's language: one row per step with its status.
    Name the **pending** steps (`not-run`) and, for a failed one, its
-   `detail` and what to fix. Say that running the same `/deploy:run` again
+   `detail` and what to fix. Say that running the same `/release:deploy` again
    is safe and resumes after the steps that were done.

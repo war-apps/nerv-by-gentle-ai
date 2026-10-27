@@ -8,15 +8,15 @@ import (
 )
 
 // removedCoreCommands are the release commands that moved out of core into
-// the release and deploy extension plugins.
+// the release extension plugin.
 var removedCoreCommands = []string{"/nerv:ship", "/nerv:version", "/nerv:release-setup", "/nerv:pipeline"}
 
 // Core nerv ships no release command and never names one: releasing,
-// versioning and deploying belong to the release and deploy plugins.
+// versioning and deploying belong to the release plugin.
 func TestCorePlugin_HasNoReleaseCommands(t *testing.T) {
 	for _, name := range []string{"release", "version", "release-setup", "pipeline"} {
 		if _, err := fs.Stat(PluginFS(), "commands/"+name+".md"); err == nil {
-			t.Errorf("plugin/commands/%s.md still exists; it moved to the release or deploy plugin", name)
+			t.Errorf("plugin/commands/%s.md still exists; it moved to the release plugin", name)
 		}
 	}
 	err := fs.WalkDir(PluginFS(), ".", func(path string, d fs.DirEntry, err error) error {
@@ -42,11 +42,18 @@ func TestCorePlugin_HasNoReleaseCommands(t *testing.T) {
 // agentNamePattern reads an agent file's frontmatter name.
 var agentNamePattern = regexp.MustCompile(`(?m)^name: (\S+)$`)
 
-// Each plugin ships its own agents, commands and contract skill.
+// The release plugin ships its agents, commands and contract skills,
+// deploy's among them; the deploy plugin is gone.
 func TestReleaseDeployPlugins_HaveAgentsAndCommands(t *testing.T) {
-	want := map[string]struct{ agents, commands []string }{
-		"release": {agents: []string{"versioner", "builder"}, commands: []string{"version", "setup", "build"}},
-		"deploy":  {agents: []string{"deployer"}, commands: []string{"run", "setup", "ship"}},
+	want := map[string]struct{ agents, commands, skills []string }{
+		"release": {
+			agents:   []string{"versioner", "builder", "deployer"},
+			commands: []string{"version", "setup", "build", "deploy", "deploy-setup", "ship"},
+			skills:   []string{"release", "deploy"},
+		},
+	}
+	if _, err := fs.Stat(ExtensionsFS(), "deploy"); err == nil {
+		t.Errorf("plugins/deploy still exists; it merged into plugins/release")
 	}
 	for plugin, w := range want {
 		for _, agent := range w.agents {
@@ -72,9 +79,11 @@ func TestReleaseDeployPlugins_HaveAgentsAndCommands(t *testing.T) {
 				t.Errorf("plugins/%s has no description frontmatter", path)
 			}
 		}
-		skill := plugin + "/skills/" + plugin + "/SKILL.md"
-		if _, err := fs.Stat(ExtensionsFS(), skill); err != nil {
-			t.Errorf("plugins/%s is missing: %v", skill, err)
+		for _, s := range w.skills {
+			skill := plugin + "/skills/" + s + "/SKILL.md"
+			if _, err := fs.Stat(ExtensionsFS(), skill); err != nil {
+				t.Errorf("plugins/%s is missing: %v", skill, err)
+			}
 		}
 	}
 }
@@ -90,23 +99,23 @@ func TestReleaseDeployPlugins_SetupNamesImportAndProviders(t *testing.T) {
 	}
 	assertContainsAll(t, "release/commands/setup.md", read("release/commands/setup.md"),
 		"nerv release setup --import", "build provider", "docker-compose", "bash", "nerv version next")
-	assertContainsAll(t, "deploy/commands/setup.md", read("deploy/commands/setup.md"),
-		"deploy-github", "deploy-ssh-compose", "nerv install --with")
-	assertContainsAll(t, "deploy/commands/run.md", read("deploy/commands/run.md"),
+	assertContainsAll(t, "release/commands/deploy-setup.md", read("release/commands/deploy-setup.md"),
+		"release-github", "release-ssh-compose", "release-script")
+	assertContainsAll(t, "release/commands/deploy.md", read("release/commands/deploy.md"),
 		"nerv deploy --artifact", "--dry-run", "--yes")
 	assertContainsAll(t, "release/commands/build.md", read("release/commands/build.md"),
 		"nerv release --dry-run", "--expect", ".nerv/artifacts/")
-	assertContainsAll(t, "deploy/commands/ship.md", read("deploy/commands/ship.md"),
+	assertContainsAll(t, "release/commands/ship.md", read("release/commands/ship.md"),
 		"nerv release --dry-run", "--expect", "nerv deploy --artifact", "--dry-run", "--yes")
 }
 
 // semanticReleaseRun matches a command line that runs semantic-release.
 var semanticReleaseRun = regexp.MustCompile(`(?im)(^\s*(\$\s*)?|\b(npx|npm\s+exec|pnpm\s+(dlx|exec)|yarn(\s+dlx)?|bunx)\s+)semantic-release(\s|$)`)
 
-// The release and deploy plugins never run semantic-release: the version engine
+// The release plugins never run semantic-release: the version engine
 // is native, and an existing semantic-release config is only imported.
 func TestReleaseDeployPlugins_NeverRunSemanticRelease(t *testing.T) {
-	for _, root := range []string{"release", "release-conventional-commits", "release-docker-compose", "release-bash", "deploy", "deploy-github", "deploy-ssh-compose"} {
+	for _, root := range []string{"release", "release-conventional-commits", "release-docker-compose", "release-bash", "release-github", "release-ssh-compose", "release-script"} {
 		err := fs.WalkDir(ExtensionsFS(), root, func(path string, d fs.DirEntry, err error) error {
 			if err != nil || d.IsDir() || !strings.HasSuffix(path, ".md") {
 				return err

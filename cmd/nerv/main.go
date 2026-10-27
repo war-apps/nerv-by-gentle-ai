@@ -116,7 +116,7 @@ type options struct {
 	// recorder. Nil means a releaserun.Runner.
 	ReleaseSteps func(repoRoot string, output io.Writer) releaseplan.StepRunner
 	// DeployProc runs nerv deploy's provider commands and the native
-	// deploy-ssh-compose operations' infisical, ssh and sshpass, and
+	// release-ssh-compose operations' infisical, ssh and sshpass, and
 	// DeploySleep waits between the health checks; tests inject fakes. Nil
 	// means proc.ExecRunner and a real wait.
 	DeployProc  proc.Runner
@@ -202,7 +202,7 @@ func run(args []string, stdout, stderr io.Writer, opts options) int {
 		return runUpgrade(args[1:], stdout, stderr, opts)
 	case "provider":
 		// Hidden: the operations of nerv's native providers, run by their
-		// extension (nerv deploy runs deploy-ssh-compose's, nerv release
+		// extension (nerv deploy runs release-ssh-compose's, nerv release
 		// the release-* ones).
 		return runProvider(args[1:], stdout, stderr, opts)
 	case "pipeline":
@@ -259,9 +259,9 @@ func runVersion(args []string, stdout, stderr io.Writer, opts options) int {
 const pipelineRemoved = `nerv pipeline was removed. Its steps moved:
   validate and test: nerv release (stages of each project in the release: section)
   docker and release: nerv release, then nerv deploy
-  deploy: the deploy-ssh-compose target of the deploy: section (nerv deploy)
+  deploy: the release-ssh-compose target of the deploy: section (nerv deploy)
   sync: not ported yet
-Move the pipeline: section of .ai-workflow/config.yaml with nerv migrate, or by hand (/release:setup and /deploy:setup).`
+Move the pipeline: section of .ai-workflow/config.yaml with nerv migrate, or by hand (/release:setup and /release:deploy-setup).`
 
 func pluginFS() fs.FS {
 	return nerv.PluginFS()

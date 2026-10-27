@@ -8,8 +8,8 @@ import (
 	"github.com/war-apps/nerv-by-gentle-ai/internal/plugin"
 )
 
-// S1: deploy requires release; the deploy providers require deploy; the task
-// providers require task.
+// S1: the release providers, the deploy ones among them, require release
+// (deploy merged into it); the task providers require task.
 func TestExtensions_EmbeddedRequirements(t *testing.T) {
 	exts, err := plugin.Extensions(nerv.ExtensionsFS())
 	if err != nil {
@@ -18,12 +18,15 @@ func TestExtensions_EmbeddedRequirements(t *testing.T) {
 	want := map[string][]string{
 		"task": nil, "task-teamwork": {"task"},
 		"release": nil, "release-conventional-commits": {"release"}, "release-docker-compose": {"release"}, "release-bash": {"release"},
-		"deploy": {"release"}, "deploy-bash": {"deploy"}, "deploy-github": {"deploy"}, "deploy-ssh-compose": {"deploy"},
+		"release-script": {"release"}, "release-github": {"release"}, "release-ssh-compose": {"release"},
 	}
 	for _, e := range exts {
 		req, ok := want[e.Name]
 		if !ok {
 			continue
+		}
+		if e.Name == "deploy" {
+			t.Errorf("the deploy extension is still shipped; it merged into release")
 		}
 		if !slices.Equal(e.Requires, req) {
 			t.Errorf("%s requires %v, want %v", e.Name, e.Requires, req)
@@ -36,8 +39,7 @@ func TestExtensions_EmbeddedRequirements(t *testing.T) {
 }
 
 // S1: the suggestion order is task and its providers, then release and
-// its providers, then deploy, then the deploy providers; anything else
-// after, by name.
+// its providers; anything else after, by name.
 func TestSuggestionOrder(t *testing.T) {
 	exts, err := plugin.Extensions(nerv.ExtensionsFS())
 	if err != nil {
@@ -47,7 +49,7 @@ func TestSuggestionOrder(t *testing.T) {
 	for _, e := range plugin.SuggestionOrder(exts) {
 		got = append(got, e.Name)
 	}
-	want := []string{"task", "task-teamwork", "release", "release-bash", "release-conventional-commits", "release-docker-compose", "deploy", "deploy-bash", "deploy-github", "deploy-ssh-compose"}
+	want := []string{"task", "task-teamwork", "release", "release-bash", "release-conventional-commits", "release-docker-compose", "release-github", "release-script", "release-ssh-compose"}
 	if !slices.Equal(got, want) {
 		t.Errorf("SuggestionOrder = %v, want %v", got, want)
 	}
@@ -61,16 +63,15 @@ func TestSuggestionOrder(t *testing.T) {
 	}
 }
 
-// S4 (L-change): release and deploy bundle every provider they ship
-// (installed with them, never asked); task's are suggested.
+// S4 (L-change): release bundles every provider it ships, the deploy ones
+// included (installed with it, never asked); task's are suggested.
 func TestExtensions_BundledProviders(t *testing.T) {
 	exts, err := plugin.Extensions(nerv.ExtensionsFS())
 	if err != nil {
 		t.Fatal(err)
 	}
 	want := map[string][]string{
-		"release": {"release-bash", "release-conventional-commits", "release-docker-compose"},
-		"deploy":  {"deploy-bash", "deploy-github", "deploy-ssh-compose"},
+		"release": {"release-bash", "release-conventional-commits", "release-docker-compose", "release-github", "release-script", "release-ssh-compose"},
 	}
 	for _, e := range exts {
 		if !slices.Equal(e.Bundle, want[e.Name]) {

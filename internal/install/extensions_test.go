@@ -417,16 +417,16 @@ func TestInstall_ShippedTreeSelectionOrder(t *testing.T) {
 			adding = append(adding, line)
 		}
 	}
-	if want := []string{"task", "task-teamwork", "release", "deploy"}; !slices.Equal(asked, want) {
+	if want := []string{"task", "task-teamwork", "release"}; !slices.Equal(asked, want) {
 		t.Errorf("asked %v, want %v", asked, want)
 	}
 	want := []string{
 		"Adding release-bash (bundled with release)",
 		"Adding release-conventional-commits (bundled with release)",
 		"Adding release-docker-compose (bundled with release)",
-		"Adding deploy-bash (bundled with deploy)",
-		"Adding deploy-github (bundled with deploy)",
-		"Adding deploy-ssh-compose (bundled with deploy)",
+		"Adding release-github (bundled with release)",
+		"Adding release-script (bundled with release)",
+		"Adding release-ssh-compose (bundled with release)",
 	}
 	if !slices.Equal(adding, want) {
 		t.Errorf("added %q\nwant %q", adding, want)

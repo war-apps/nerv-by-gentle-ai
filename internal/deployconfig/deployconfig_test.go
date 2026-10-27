@@ -97,7 +97,7 @@ func TestCommitMessage_RendersSemanticReleasePlaceholders(t *testing.T) {
 // S9: the old pipeline: section is refused, saying where its deploy went.
 func TestLoad_RefusesTheOldPipelineSection(t *testing.T) {
 	_, err := load(t, "pipeline:\n  deploy:\n    selection: branches\ndeploy:\n  targets: []\n")
-	if err == nil || !strings.Contains(err.Error(), "deploy: the deploy-ssh-compose target") || !strings.Contains(err.Error(), "selection: branches") {
+	if err == nil || !strings.Contains(err.Error(), "deploy: the release-ssh-compose target") || !strings.Contains(err.Error(), "selection: branches") {
 		t.Fatalf("Load = %v", err)
 	}
 	// Without a deploy: section the refusal still comes first.

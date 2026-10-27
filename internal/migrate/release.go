@@ -514,7 +514,7 @@ if [ -z "$NERV_RELEASE_CHANNEL" ] || [ "$NERV_RELEASE_CHANNEL" = default ]; then
 // image with its tags, build arguments and labels. Each image 4.2.0 pushed
 // becomes an images mapping {name, tags} with its 4.2.0 tag kinds:
 // nerv release tags it, saves every tag into the artifact after the package
-// commands and records each reference, and deploy-ssh-compose's publish
+// commands and records each reference, and release-ssh-compose's publish
 // pushes them all. An image 4.2.0 did not push
 // (push: false) is saved by the package commands themselves, so the
 // artifact holds it without a reference to push.
@@ -599,7 +599,7 @@ func dockerPreset(p *Plan, plan *stagePlan, build *yaml.Node, old oldProject, at
 	plan.add("package", step{run: strings.Join(lines, "\n") + "\n"})
 	if len(images.Content) > 0 {
 		addKV(build, "images", images)
-		p.note("%s: the docker images 4.2.0 pushed became the project's images with their 4.2.0 tags: nerv release tags and saves them into the artifact and deploy-ssh-compose pushes every tag", at)
+		p.note("%s: the docker images 4.2.0 pushed became the project's images with their 4.2.0 tags: nerv release tags and saves them into the artifact and release-ssh-compose pushes every tag", at)
 	}
 }
 
