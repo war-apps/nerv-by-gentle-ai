@@ -102,6 +102,16 @@ func (s *Settings) EnablePlugin(id string) bool {
 	return changed
 }
 
+// RemovePlugin deletes enabledPlugins[id], reporting whether it was there.
+func (s *Settings) RemovePlugin(id string) bool {
+	enabled, _ := s.data["enabledPlugins"].(map[string]any)
+	if _, ok := enabled[id]; !ok {
+		return false
+	}
+	delete(enabled, id)
+	return true
+}
+
 // PluginEnabled reports whether enabledPlugins[id] is true.
 func (s *Settings) PluginEnabled(id string) bool {
 	enabled, _ := s.data["enabledPlugins"].(map[string]any)

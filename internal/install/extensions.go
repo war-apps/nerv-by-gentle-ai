@@ -74,6 +74,9 @@ func selectExtensions(deps Deps, opts Options, settings *claude.Settings) ([]plu
 	}
 	for _, name := range opts.Extensions {
 		e, ok := byName[name]
+		if !ok && slices.Contains(RetiredPlugins, name) {
+			return nil, &RefusalError{Err: fmt.Errorf("%s was %s: install release, which brings every deploy provider", name, retiredWhy)}
+		}
 		if !ok {
 			available := "none"
 			if len(names) > 0 {
