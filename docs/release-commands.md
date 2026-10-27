@@ -27,11 +27,15 @@ by `release.projects[].build`: `docker-compose` or `bash`). Each provider's
 keys live under `release.providers.<provider>`, and a project overrides a
 build provider's keys under `release.projects[].providers.<provider>`.
 nerv calls them through the common provider contract, and installs all
-three with the release extension.
+three with the release extension, together with its deploy providers
+([deploy.md](deploy.md)).
 
-The extension ships two agents, `release:versioner` (computes and explains the
-next version) and `release:builder` (runs the dry run, and the real build only
-with your approved versions), and the `release` skill, its contract. Install
+The extension ships the agents `release:versioner` (computes and explains the
+next version), `release:builder` (runs the dry run, and the real build only
+with your approved versions) and `release:deployer` ([deploy.md](deploy.md)),
+the `release` skill, the contract of this page, and the `deploy` skill.
+`/release:ship` runs the next version, the build and the deploy in one go
+([deploy.md](deploy.md)). Install
 it with:
 
 ```sh
@@ -381,7 +385,7 @@ and `coverage` are the project's own, whatever its provider:
 | `build` | project or section | required | `docker-compose` or `bash` ([Build providers](#build-providers)). |
 | `file` | `providers.docker-compose` | required | The compose file, repository-relative: `docker compose -f <file>`. |
 | `test_service` | `providers.docker-compose` | none (no test stage) | The compose service `docker compose -f <file> run --rm <test_service>` runs; its exit code is the test result. |
-| `images` | project | `[]` | The images `docker save` packages into the artifact after the `package` stage, one archive per entry, every reference recorded in the manifest's `images` so the `deploy-ssh-compose` publish pushes them all. An entry is either a plain image reference, which may use `${version}`, `${channel}` (empty on the default channel) and `${tag}`, or a mapping `{name: <repository>, tags: [version, channel, latest]}` ([Image tags](#image-tags)). With `docker-compose` they must be the images the compose file builds; with `bash` the project's own commands (usually `stages.package`) must build them. |
+| `images` | project | `[]` | The images `docker save` packages into the artifact after the `package` stage, one archive per entry, every reference recorded in the manifest's `images` so the `release-ssh-compose` publish pushes them all. An entry is either a plain image reference, which may use `${version}`, `${channel}` (empty on the default channel) and `${tag}`, or a mapping `{name: <repository>, tags: [version, channel, latest]}` ([Image tags](#image-tags)). With `docker-compose` they must be the images the compose file builds; with `bash` the project's own commands (usually `stages.package`) must build them. |
 | `shared_host` | `providers.bash` | `false` | `true` gives the `restore`, `lint`, `build`, `test` and `package` commands the build-server-safe dotnet environment (`MSBUILDDISABLENODEREUSE=1`, `UseSharedCompilation=false`, `DOTNET_CLI_USE_MSBUILD_SERVER=0`) under their own `env`, for shared hosts where reused build servers crash dotnet. A command's own `env` wins key by key; its `run:` is never rewritten. |
 | `version_files` | project | `[]` | MSBuild project files (`.csproj`, `.fsproj`, `.vbproj`, `.props`, `.targets`) that receive `<Version>` and `<PackageReleaseNotes>` in the clone before the pipeline ([Version files](#version-files)). |
 | `coverage` | project | none | Coverage floors checked after the `coverage` stage over every Cobertura report (`*.cobertura.xml`) under `coverage.dir` ([Coverage](#coverage)). |

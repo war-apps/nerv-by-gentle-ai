@@ -51,7 +51,7 @@ Moves a repository (and, with --user, your user configuration) from nerv
     project's providers.docker-compose, shared_host under providers.bash,
     and images, version_files and coverage on the project itself; a file
     with both ship: and release: is refused;
-  - pipeline: becomes deploy: (one deploy-ssh-compose target per
+  - pipeline: becomes deploy: (one release-ssh-compose target per
     environment), with deploy.host github when origin is on GitHub;
   - each in-flight FULL openspec/changes/<change>/ becomes
     odd/tasks/<change>.md and its run files odd/<change>/nerv/; a DIRECT or

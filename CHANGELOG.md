@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [6.0.0] - 2026-10-27
+
+Upgrading from 5.2.0: the deploy extension is now part of release. Run
+`nerv install` (it removes the old `deploy`, `deploy-github`,
+`deploy-ssh-compose` and `deploy-bash` plugins and installs `release` with
+every provider), then `nerv migrate` in each repository (`--user` for your
+user configuration): it rewrites deploy targets' `provider: bash` to
+`provider: script` and moves `.ai-workflow/providers/deploy-<name>` to
+`release-<name>`. `/deploy:run`, `/deploy:setup` and `/deploy:ship` are now
+`/release:deploy`, `/release:deploy-setup` and `/release:ship`; the
+`deploy:` section and `nerv deploy` keep their names. A project deploy
+provider that reads the request's `extension` now gets `release`.
+
+### Breaking
+- release: merge the deploy extension into release (dfca1eb)
+
+### Added
+- migrate: move 5.2.0 deploy settings to the release extension (f1ef759)
+- install: remove the retired deploy plugins (59d8e56)
+- release: /release:ship versions, builds and deploys in one go (859d59e)
+
 ## [5.2.0] - 2026-10-26
 
 Upgrading from 5.1.0: `nerv deploy` now pushes the artifact's images itself,

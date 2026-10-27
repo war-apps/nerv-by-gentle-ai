@@ -48,10 +48,11 @@ func Install(ctx context.Context, deps Deps, opts Options) error {
 	fmt.Fprintf(deps.Stdout, "Plugin materialized at %s (%d written, %d unchanged, %d removed)\n",
 		marketplaceDir, len(matResult.Written), len(matResult.Unchanged), len(matResult.Removed))
 
-	selected, err := registerSettings(deps, opts, marketplaceDir)
+	selected, retired, err := registerSettings(deps, opts, marketplaceDir)
 	if err != nil {
 		return err
 	}
+	uninstallRetired(ctx, deps, retired)
 
 	pluginVersion, err := version.PluginVersion(deps.FS)
 	if err != nil {
@@ -144,19 +145,25 @@ func loadOrInitSettings(path string) (previous []byte, settings *claude.Settings
 
 // registerSettings registers the marketplace and enables nerv@nerv plus
 // the extensions selectExtensions picks, returning those extensions.
-func registerSettings(deps Deps, opts Options, marketplaceDir string) ([]plugin.Extension, error) {
+func registerSettings(deps Deps, opts Options, marketplaceDir string) (selected []plugin.Extension, retired []string, err error) {
 	path := settingsPath(deps)
 	previous, settings, err := loadOrInitSettings(path)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
-	selected, err := selectExtensions(deps, opts, settings)
+	selected, err = selectExtensions(deps, opts, settings)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	changed := settings.RegisterMarketplace(MarketplaceName, marketplaceDir)
+	for _, name := range RetiredPlugins {
+		if id := name + "@" + MarketplaceName; settings.RemovePlugin(id) {
+			retired = append(retired, id)
+			changed = true
+		}
+	}
 	if settings.EnablePlugin(PluginID) {
 		changed = true
 	}
@@ -168,12 +175,12 @@ func registerSettings(deps Deps, opts Options, marketplaceDir string) ([]plugin.
 
 	if !changed {
 		fmt.Fprintln(deps.Stdout, "settings.json already up to date.")
-		return selected, nil
+		return selected, nil, nil
 	}
 
 	written, backup, err := claude.SaveSettings(path, settings, previous, deps.Now())
 	if err != nil {
-		return nil, fmt.Errorf("writing %s: %w", path, err)
+		return nil, nil, fmt.Errorf("writing %s: %w", path, err)
 	}
 	if written {
 		if backup != "" {
@@ -181,7 +188,32 @@ func registerSettings(deps Deps, opts Options, marketplaceDir string) ([]plugin.
 		}
 		fmt.Fprintln(deps.Stdout, "settings.json updated and verified.")
 	}
-	return selected, nil
+	for _, id := range retired {
+		fmt.Fprintf(deps.Stdout, "Removed %s from settings.json (%s)\n", id, retiredWhy)
+	}
+	return selected, retired, nil
+}
+
+// RetiredPlugins are the plugins of the nerv marketplace this nerv no
+// longer ships: the deploy extension and its providers, merged into
+// release (release-github, release-ssh-compose, release-script). Install
+// removes them from enabledPlugins and from Claude Code's plugin cache.
+var RetiredPlugins = []string{"deploy", "deploy-github", "deploy-ssh-compose", "deploy-bash"}
+
+// retiredWhy says where a retired plugin went.
+const retiredWhy = "merged into the release extension"
+
+// uninstallRetired runs "claude plugin uninstall" for each retired plugin
+// id, tolerantly: settings.json no longer enables it, so a failure only
+// leaves a stale cache entry, reported.
+func uninstallRetired(ctx context.Context, deps Deps, ids []string) {
+	cli := claude.PluginCLI{Runner: deps.Runner}
+	for _, id := range ids {
+		fmt.Fprintf(deps.Stdout, "-> claude plugin uninstall %s\n", id)
+		if _, err := cli.Uninstall(ctx, id); err != nil {
+			fmt.Fprintf(deps.Stdout, "Warning: claude plugin uninstall %s failed (%v); remove it with /plugin in Claude Code\n", id, err)
+		}
+	}
 }
 
 // RefreshCache re-registers nerv@nerv in the Claude Code plugin cache

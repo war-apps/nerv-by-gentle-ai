@@ -237,8 +237,8 @@ func TestProjectProvider_DeployDryRunUsesTheProjectTargetProvider(t *testing.T) 
 	marker := filepath.Join(t.TempDir(), "preflight.log")
 	writeProjectFiles(t, work.dir, map[string]string{
 		".ai-workflow/config.yaml": "deploy:\n  targets:\n    - name: lab\n      provider: rsync\n      config:\n        host: lab.example\n",
-		".ai-workflow/providers/deploy-rsync/provider.yaml": `name: rsync
-extension: deploy
+		".ai-workflow/providers/release-rsync/provider.yaml": `name: rsync
+extension: release
 slot: target
 contract_version: 1
 runtime: exec
@@ -256,8 +256,8 @@ operations:
     - argv: [bash, "{provider_dir}/deploy.sh", "{config.host}"]
   verify: not_implemented
 `,
-		".ai-workflow/providers/deploy-rsync/preflight.sh": "cat >/dev/null\necho preflight >> \"" + marker + "\"\necho '{\"status\":\"ok\",\"message\":\"rsync ready\"}'\n",
-		".ai-workflow/providers/deploy-rsync/deploy.sh":    "exit 1\n",
+		".ai-workflow/providers/release-rsync/preflight.sh": "cat >/dev/null\necho preflight >> \"" + marker + "\"\necho '{\"status\":\"ok\",\"message\":\"rsync ready\"}'\n",
+		".ai-workflow/providers/release-rsync/deploy.sh":    "exit 1\n",
 	})
 	src := filepath.Join(t.TempDir(), "out.txt")
 	if err := os.WriteFile(src, []byte("built"), 0o644); err != nil {

@@ -1,6 +1,6 @@
 {
   "name": "release",
-  "version": "5.2.0",
-  "description": "NERV releases and versioning: computes the next version natively (no semantic-release), builds, tests and packages each project in a throwaway clone of origin, and leaves a local artifact for nerv deploy",
+  "version": "6.0.0",
+  "description": "NERV releases, versioning and deploys: computes the next version natively (no semantic-release), builds, tests and packages each project in a throwaway clone of origin into a local artifact, then deploys it: the release commit, tag and push, the images, the targets and the git host's release",
   "author": { "name": "Walter Rodriguez" }
 }

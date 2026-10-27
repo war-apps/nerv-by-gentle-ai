@@ -260,8 +260,8 @@ func TestMaintainerReleaseApply_ListsExtensionsAfterChangelog(t *testing.T) {
 	}
 }
 
-// S1: --with a deploy provider brings deploy and, through it, release.
-func TestRunInstall_WithDeployProvider_BringsDeployAndRelease(t *testing.T) {
+// S1: --with a deploy provider brings release, which bundles it.
+func TestRunInstall_WithDeployProvider_BringsRelease(t *testing.T) {
 	home := t.TempDir()
 	seedReleaseFamilyForCLI(t, home)
 	var stdout, stderr bytes.Buffer
@@ -269,36 +269,33 @@ func TestRunInstall_WithDeployProvider_BringsDeployAndRelease(t *testing.T) {
 	opts.ExtensionsFS = nerv.ExtensionsFS()
 	opts.Runner = baseInstallRunner()
 
-	code := run([]string{"install", "--no-skills", "--no-configure", "--with", "deploy-github"}, &stdout, &stderr, opts)
+	code := run([]string{"install", "--no-skills", "--no-configure", "--with", "release-github"}, &stdout, &stderr, opts)
 
 	if code != 0 {
 		t.Fatalf("exit code = %d, want 0; stdout:\n%s\nstderr:\n%s", code, stdout.String(), stderr.String())
 	}
 	out := stdout.String()
-	release, deploy, github := strings.Index(out, "Adding release (required by deploy)"), strings.Index(out, "Adding deploy (required by deploy-github)"), strings.Index(out, "-> claude plugin install deploy-github@nerv")
-	if release < 0 || deploy < 0 || github < 0 || !(release < deploy) {
-		t.Errorf("want release, then deploy added, then deploy-github installed:\n%s", out)
+	release, github := strings.Index(out, "Adding release (required by release-github)"), strings.Index(out, "-> claude plugin install release-github@nerv")
+	if release < 0 || github < 0 || strings.Contains(out, "Adding deploy") {
+		t.Errorf("want release added, then release-github installed, and no deploy:\n%s", out)
 	}
-	// S4: release and deploy bring every provider they ship, never asked.
-	for _, p := range []string{"release-bash", "release-conventional-commits", "release-docker-compose", "deploy-bash", "deploy-ssh-compose"} {
-		owner, _, _ := strings.Cut(p, "-")
-		if !strings.Contains(out, "Adding "+p+" (bundled with "+owner+")") || !strings.Contains(out, "-> claude plugin install "+p+"@nerv") {
-			t.Errorf("want %s added with %s and installed:\n%s", p, owner, out)
+	// S4: release brings every provider it ships, never asked.
+	for _, p := range []string{"release-bash", "release-conventional-commits", "release-docker-compose", "release-script", "release-ssh-compose"} {
+		if !strings.Contains(out, "Adding "+p+" (bundled with release)") || !strings.Contains(out, "-> claude plugin install "+p+"@nerv") {
+			t.Errorf("want %s added with release and installed:\n%s", p, out)
 		}
 	}
 }
 
-// S1, S4: on a terminal the suggestions are task, its providers, release
-// and deploy (only once release is accepted); release and deploy bring
-// their providers with them, unasked.
+// S1, S4: on a terminal the suggestions are task, its providers and
+// release; release brings its providers, the deploy ones included, unasked.
 func TestRunInstall_Terminal_SuggestionOrder(t *testing.T) {
 	tests := []struct {
 		name, answers string
 		asked         []string
 	}{
-		{"everything accepted", "y\ny\ny\ny\n", []string{"task", "task-teamwork", "release", "deploy"}},
-		{"release declined: no deploy", "n\nn\n", []string{"task", "release"}},
-		{"deploy declined", "n\ny\nn\n", []string{"task", "release", "deploy"}},
+		{"everything accepted", "y\ny\ny\n", []string{"task", "task-teamwork", "release"}},
+		{"task declined", "n\ny\n", []string{"task", "release"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

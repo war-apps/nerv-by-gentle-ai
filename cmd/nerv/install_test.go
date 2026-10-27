@@ -318,7 +318,7 @@ func seedReleaseFamilyForCLI(t *testing.T, home string) {
 		t.Fatal(err)
 	}
 	content := `{"plugins":{"nerv@nerv":[{"installPath":"/c/nerv","version":"` + pv + `"}]`
-	for _, name := range []string{"task", "task-teamwork", "release", "release-conventional-commits", "release-docker-compose", "release-bash", "deploy", "deploy-bash", "deploy-github", "deploy-ssh-compose"} {
+	for _, name := range []string{"task", "task-teamwork", "release", "release-conventional-commits", "release-docker-compose", "release-bash", "deploy", "release-script", "release-github", "release-ssh-compose"} {
 		content += `,"` + name + `@nerv":[{"installPath":"/c/` + name + `","version":"` + pv + `"}]`
 	}
 	if err := os.WriteFile(filepath.Join(home, ".claude", "plugins", "installed_plugins.json"), []byte(content+"}}"), 0o644); err != nil {
@@ -425,14 +425,15 @@ func TestRunInstall_LegacyCommands_AskOnTerminalReportOtherwise(t *testing.T) {
 }
 
 // L21, S8: nerv install --help describes the whole suggestion order, the
-// providers bundled with release and deploy, and the requirements.
+// providers bundled with release (the deploy ones included), and the
+// requirements.
 func TestInstall_HelpDescribesTheSuggestionOrderAndRequirements(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	run([]string{"install", "--help"}, &stdout, &stderr, testOptions(t.TempDir()))
 	help := stdout.String() + stderr.String()
-	order := []string{"task extension", "task-<name>", "release extension", "deploy extension", "providers: bundled",
-		"release-conventional-commits", "release-docker-compose", "release-bash", "deploy-bash", "deploy-github", "deploy-ssh-compose",
-		"task's\nproviders are suggested"}
+	order := []string{"task extension", "task-<name>", "release extension", "nerv deploy", "providers: bundled",
+		"release-conventional-commits", "release-docker-compose", "release-bash", "release-github", "release-ssh-compose", "release-script",
+		"task's providers are suggested"}
 	at := 0
 	for _, want := range order {
 		i := strings.Index(help[at:], want)
@@ -441,7 +442,7 @@ func TestInstall_HelpDescribesTheSuggestionOrderAndRequirements(t *testing.T) {
 		}
 		at += i + len(want)
 	}
-	for _, want := range []string{"deploy requires release", "a provider requires its\nextension", "the task extension (the /task:* commands",
+	for _, want := range []string{"a provider requires its extension", "the task extension (the /task:* commands",
 		"Comma-separated extensions and providers to install"} {
 		if !strings.Contains(help, want) {
 			t.Errorf("help lacks %q:\n%s", want, help)

@@ -18,8 +18,8 @@ import (
 // would for what deploy runs: gh release view/create keep a release per
 // tag in the fake's directory; docker push fails while fail-push exists;
 // a nerv provider operation answers failed while fail-<operation> exists;
-// the fake nerv runs the real deploy-ssh-compose preflight and every real
-// deploy-bash operation (the test binary, see TestMain), and prints an ok
+// the fake nerv runs the real release-ssh-compose preflight and every real
+// release-script operation (the test binary, see TestMain), and prints an ok
 // response for any other operation.
 const fakeTool = `#!/bin/sh
 name=$(basename "$0")
@@ -37,7 +37,7 @@ docker)
   if [ "$1" = push ] && [ -f "$FAKE_DIR/fail-push" ]; then echo "denied: push access" >&2; exit 1; fi
   ;;
 nerv)
-  if [ "$1" = provider ] && { [ "$3" = preflight ] || [ "$2" = deploy-bash ]; }; then
+  if [ "$1" = provider ] && { [ "$3" = preflight ] || [ "$2" = release-script ]; }; then
     NERV_FAKE_PROVIDER=1 exec "$NERV_TEST_BINARY" "$@" < "$FAKE_DIR/nerv.stdin"
   fi
   if [ -f "$FAKE_DIR/fail-$3" ]; then echo '{"status":"failed","message":"'"$3"' broke"}'; exit 0; fi
@@ -191,7 +191,7 @@ func (e *world) log() []string {
 
 // preflightCall is the fake log line of the ssh-compose target's
 // preflight, which checks its config before anything is written.
-const preflightCall = "nerv [provider] [deploy-ssh-compose] [preflight]"
+const preflightCall = "nerv [provider] [release-ssh-compose] [preflight]"
 
 // effects returns the fake tools' calls that act (every call but the
 // preflights); none is [""].

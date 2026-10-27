@@ -3,11 +3,11 @@
 NERV's optional add-ons come in two kinds, and each kind speaks one
 contract. Each one ships as its own Claude Code plugin:
 
-- An **extension** (`task`, `release`, `deploy`) adds a capability to the
+- An **extension** (`task`, `release`) adds a capability to the
   core. It talks to the core through its `extension.yaml`.
 - A **provider** (`task-teamwork`, `release-conventional-commits`,
-  `release-docker-compose`, `release-bash`, `deploy-github`,
-  `deploy-ssh-compose`, `deploy-bash`) implements one slot of an extension: a tracker, a
+  `release-docker-compose`, `release-bash`, `release-github`,
+  `release-ssh-compose`, `release-script`) implements one slot of an extension: a tracker, a
   version engine, a build, a git host, a deploy target. It talks to its extension through its `provider.yaml`.
 
 Every extension uses the same `extension.yaml` schema, and every provider,
@@ -24,14 +24,14 @@ one manifest at its root:
 
 | Folder | Manifest | Example |
 |---|---|---|
-| `<extension>` | `extension.yaml` | `plugins/deploy/extension.yaml` |
-| `<extension>-<provider>` | `provider.yaml` | `plugins/deploy-github/provider.yaml` |
+| `<extension>` | `extension.yaml` | `plugins/release/extension.yaml` |
+| `<extension>-<provider>` | `provider.yaml` | `plugins/release-github/provider.yaml` |
 
-A provider requires its extension: `nerv install --with deploy-github`
-also installs `deploy` (and `release`, which `deploy` requires). An
-extension with `providers: bundled` brings every provider it ships with
-it: installing `release` installs `release-conventional-commits`,
-`release-docker-compose` and `release-bash`, never asked; with
+A provider requires its extension: `nerv install --with release-github`
+also installs `release`. An extension with `providers: bundled` brings
+every provider it ships with it: installing `release` installs
+`release-conventional-commits`, `release-docker-compose`, `release-bash`,
+`release-github`, `release-ssh-compose` and `release-script`, never asked; with
 `providers: suggested` (task) each provider is offered after its
 extension. A provider
 whose extension is not shipped, whose folder is not
@@ -101,8 +101,14 @@ The shipped extensions:
 | Extension | Runtime | Requires | Providers | Events | Slots |
 |---|---|---|---|---|---|
 | `task` | agent, `task:dispatcher` | | suggested | the 7 core events | `provider` (many): the 13 task operations, all optional |
-| `release` | exec, `nerv release` | | bundled | | `version` (one, default `conventional-commits`): `next`, `branch` required, `validate`, `import` optional; `build` (per-target, one per project): `plan` required, `validate` optional |
-| `deploy` | exec, `nerv deploy` | `release` | bundled | | `host` (one): `releaseExists`, `createRelease`; `target` (per-target): `preflight`, `publish`, `verify` optional, `deploy` required |
+| `release` | exec, `nerv release` and `nerv deploy` | | bundled | | `version` (one, default `conventional-commits`): `next`, `branch` required, `validate`, `import` optional; `build` (per-target, one per project): `plan` required, `validate` optional; `host` (one, `nerv deploy`): `releaseExists`, `createRelease`; `target` (per-target, `nerv deploy`): `preflight`, `publish`, `verify` optional, `deploy` required |
+
+`nerv release` runs the `version` and `build` providers, `nerv deploy` the
+`host` and `target` ones, and each refuses a provider of the other half's
+slots. The deploy providers' request envelope says `"extension": "release"`
+(it said `deploy` up to 5.2.0, when they belonged to a separate `deploy`
+extension), and their `scope: user` keys stay under
+`deploy.providers.<provider>` of the user configuration.
 
 ### The release slots
 
@@ -140,7 +146,7 @@ naming the slot's providers.
 
 ```yaml
 name: ssh-compose              # the folder is <extension>-<name>
-extension: deploy
+extension: release
 slot: target                   # a slot of the extension's extension.yaml
 contract_version: 1
 runtime: exec                  # exec or agent
@@ -152,12 +158,12 @@ config:                        # key, scope (user | repo), type, default, prompt
     prompt: The environment
 operations:                    # every slot operation
   preflight:
-    - argv: ["{nerv}", provider, deploy-ssh-compose, preflight]
+    - argv: ["{nerv}", provider, release-ssh-compose, preflight]
   publish:
     - argv: [docker, push, "{item}"]
       for_each: images
   deploy:
-    - argv: ["{nerv}", provider, deploy-ssh-compose, deploy]
+    - argv: ["{nerv}", provider, release-ssh-compose, deploy]
   verify: not_implemented
 ```
 
@@ -213,7 +219,7 @@ events: [run.started]          # the core events it handles, checked against its
 A provider nerv implements itself is an exec provider whose steps run the
 hidden `{nerv} provider <extension>-<name> <operation>`, with the request on
 stdin and the response on stdout. It has no special case in its extension:
-`deploy-ssh-compose`, `deploy-bash` and the three release providers are such
+`release-ssh-compose`, `release-script` and the three release providers are such
 providers.
 
 ## Project extensions and providers
@@ -230,12 +236,14 @@ ships, in its committed `.ai-workflow/` folder:
 
 - Each manifest is checked with exactly the contract and slot rules above,
   and its errors read like a shipped one's, named by the repository path
-  (`.ai-workflow/providers/deploy-rsync/provider.yaml: operations.deploy:
+  (`.ai-workflow/providers/release-rsync/provider.yaml: operations.deploy:
   missing (implement it or declare not_implemented)`).
-- A project provider belongs to a shipped extension (`deploy`, `release`,
-  `task`) or to a project extension.
-- A name nerv already ships is refused (`.ai-workflow/providers/deploy-github:
-  nerv already ships an extension or provider named deploy-github; give the
+- A project provider belongs to a shipped extension (`release`, `task`) or
+  to a project extension. A project deploy provider is
+  `.ai-workflow/providers/release-<name>` with `extension: release`; `nerv
+  migrate` moves a 5.2.0 `deploy-<name>` one there.
+- A name nerv already ships is refused (`.ai-workflow/providers/release-github:
+  nerv already ships an extension or provider named release-github; give the
   project's another name`), and so is a folder that resolves outside the
   repository.
 - They are not Claude Code plugins: `nerv install` does not materialize them. `nerv
@@ -255,9 +263,9 @@ ships, in its committed `.ai-workflow/` folder:
 A deploy target that copies the release with the repository's own script:
 
 ```yaml
-# .ai-workflow/providers/deploy-rsync/provider.yaml
+# .ai-workflow/providers/release-rsync/provider.yaml
 name: rsync
-extension: deploy
+extension: release
 slot: target
 contract_version: 1
 runtime: exec

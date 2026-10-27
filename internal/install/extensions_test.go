@@ -233,6 +233,55 @@ func TestInstall_UnknownExtensionIsRefused(t *testing.T) {
 	}
 }
 
+// The deploy extension and its providers merged into release: install
+// removes them from settings.json and uninstalls them from Claude Code's
+// cache, and keeps release and everything else enabled.
+func TestInstall_RemovesTheRetiredDeployPlugins(t *testing.T) {
+	home := t.TempDir()
+	seedInstalledIDs(t, home, pluginVersion(t), "task@nerv")
+	settings := filepath.Join(home, ".claude", "settings.json")
+	if err := os.WriteFile(settings, []byte(`{"enabledPlugins":{"task@nerv":true,"deploy@nerv":true,"deploy-github@nerv":true,"deploy-bash@nerv":false,"other@market":true}}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	runner := baseRunner()
+	var stdout bytes.Buffer
+	deps := install.Deps{Home: home, FS: nerv.PluginFS(), ExtensionsFS: fakeExtensions(), Runner: runner, Now: fixedNow, LookPath: lookPathAll, Stdout: &stdout}
+	if err := install.Install(context.Background(), deps, install.Options{NoSkills: true}); err != nil {
+		t.Fatalf("Install() error = %v; output:\n%s", err, stdout.String())
+	}
+	enabled := enabledPlugins(t, home)
+	for _, id := range []string{"deploy@nerv", "deploy-github@nerv", "deploy-bash@nerv"} {
+		if _, ok := enabled[id]; ok {
+			t.Errorf("enabledPlugins still has %s: %v", id, enabled)
+		}
+		if !strings.Contains(stdout.String(), "Removed "+id+" from settings.json (merged into the release extension)") {
+			t.Errorf("the removal of %s is not reported:\n%s", id, stdout.String())
+		}
+		if !strings.Contains(runnerLog(runner.Calls), "claude plugin uninstall "+id) {
+			t.Errorf("%s not uninstalled from the cache: %s", id, runnerLog(runner.Calls))
+		}
+	}
+	if !enabled["task@nerv"] || !enabled["other@market"] || !enabled["nerv@nerv"] {
+		t.Errorf("other plugins changed: %v", enabled)
+	}
+	if strings.Contains(runnerLog(runner.Calls), "deploy-ssh-compose") {
+		t.Errorf("a plugin settings.json did not have was uninstalled: %s", runnerLog(runner.Calls))
+	}
+}
+
+// Asking for the merged deploy extension says where it went.
+func TestInstall_RetiredDeployExtensionIsRefusedWithItsReplacement(t *testing.T) {
+	home := t.TempDir()
+	seedInstalledPlugins(t, home, pluginVersion(t))
+	var stdout bytes.Buffer
+	deps := install.Deps{Home: home, FS: nerv.PluginFS(), ExtensionsFS: fakeExtensions(), Runner: baseRunner(), Now: fixedNow, LookPath: lookPathAll, Stdout: &stdout}
+	err := install.Install(context.Background(), deps, install.Options{NoSkills: true, Extensions: []string{"deploy"}})
+	var refused *refusal.Error
+	if !errors.As(err, &refused) || !strings.Contains(err.Error(), "deploy was merged into the release extension: install release, which brings every deploy provider") {
+		t.Fatalf("Install() error = %v, want the merged-into-release refusal", err)
+	}
+}
+
 func TestUninstall_RemovesEnabledExtensions(t *testing.T) {
 	home := t.TempDir()
 	settings := filepath.Join(home, ".claude", "settings.json")
@@ -417,16 +466,16 @@ func TestInstall_ShippedTreeSelectionOrder(t *testing.T) {
 			adding = append(adding, line)
 		}
 	}
-	if want := []string{"task", "task-teamwork", "release", "deploy"}; !slices.Equal(asked, want) {
+	if want := []string{"task", "task-teamwork", "release"}; !slices.Equal(asked, want) {
 		t.Errorf("asked %v, want %v", asked, want)
 	}
 	want := []string{
 		"Adding release-bash (bundled with release)",
 		"Adding release-conventional-commits (bundled with release)",
 		"Adding release-docker-compose (bundled with release)",
-		"Adding deploy-bash (bundled with deploy)",
-		"Adding deploy-github (bundled with deploy)",
-		"Adding deploy-ssh-compose (bundled with deploy)",
+		"Adding release-github (bundled with release)",
+		"Adding release-script (bundled with release)",
+		"Adding release-ssh-compose (bundled with release)",
 	}
 	if !slices.Equal(adding, want) {
 		t.Errorf("added %q\nwant %q", adding, want)

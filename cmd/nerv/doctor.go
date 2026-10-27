@@ -362,18 +362,19 @@ func (d *doctorRun) release(top string) bool {
 	return true
 }
 
-// deploy checks the deploy: section and that the deploy extension is
-// installed, and reports whether the section is there.
+// deploy checks the deploy: section and that the release extension, whose
+// providers nerv deploy runs, is installed, and reports whether the section
+// is there.
 func (d *doctorRun) deploy(top string) bool {
 	dep, err := deployconfig.Load(top)
 	switch {
 	case errors.Is(err, deployconfig.ErrNotConfigured):
-		d.add("deploy", doctor.Info, "not configured", "Run /deploy:setup in Claude Code to deploy releases with nerv deploy")
+		d.add("deploy", doctor.Info, "not configured", "Run /release:deploy-setup in Claude Code to deploy releases with nerv deploy")
 		return false
 	case err != nil:
-		d.add("deploy", doctor.Fail, err.Error(), "Fix the deploy: section of .ai-workflow/config.yaml (/deploy:setup helps)")
-	case !d.extensionEnabled("deploy"):
-		d.add("deploy", doctor.Warn, "configured, but the deploy extension is not installed", "Run nerv install --with deploy")
+		d.add("deploy", doctor.Fail, err.Error(), "Fix the deploy: section of .ai-workflow/config.yaml (/release:deploy-setup helps)")
+	case !d.extensionEnabled("release"):
+		d.add("deploy", doctor.Warn, "configured, but the release extension is not installed", "Run nerv install --with release")
 	default:
 		d.add("deploy", doctor.OK, fmt.Sprintf("%d target(s)", len(dep.Targets)), "")
 	}
