@@ -215,4 +215,14 @@ func TestMissingTools(t *testing.T) {
 	if got := m.MissingTools([]string{"mcp__other__acme_get_task", "acme_move_task"}); len(got) != 1 {
 		t.Fatalf("MissingTools: another server's tool was accepted: %v", got)
 	}
+	// The server the provider's own plugin ships (.mcp.json) counts, with
+	// the plugin name as Claude Code spells it; another plugin's does not.
+	for _, prefix := range []string{"mcp__plugin_task-acme_acme__", "mcp__plugin_task_acme_acme__"} {
+		if got := m.MissingTools([]string{prefix + "acme_get_task", prefix + "acme_move_task"}); len(got) != 0 {
+			t.Errorf("MissingTools with %s: got %v, want none", prefix, got)
+		}
+	}
+	if got := m.MissingTools([]string{"mcp__plugin_task-other_acme__acme_get_task", "acme_move_task"}); len(got) != 1 {
+		t.Errorf("MissingTools: another plugin's server was accepted: %v", got)
+	}
 }
