@@ -2,20 +2,20 @@
 
 The deploy extension (`deploy`) releases what the [release extension](release-commands.md)
 packaged. It requires `release`, and its git hosts and targets are providers
-(`deploy-github`, `deploy-ssh-compose`, `deploy-bash`), installed with it. Install them with:
+(`release-github`, `release-ssh-compose`, `release-script`), installed with it. Install them with:
 
 ```sh
-nerv install --with release,deploy,deploy-github
-nerv install --with deploy-ssh-compose   # the SSH and compose target
+nerv install --with release
+nerv install --with release-ssh-compose   # the SSH and compose target
 ```
 
 | Slash command | What it does |
 |---|---|
-| `/deploy:run` | Picks the latest local artifact, or the one you name (`api`, `api@1.4.0`, a directory), runs `nerv deploy --dry-run`, and deploys only after your explicit yes. It reports every step and the pending ones. |
-| `/deploy:ship` | Chains `/release:build` and `/deploy:run`: builds and packages (dry run, then your yes), then deploys each artifact it just packaged (dry run, then a second yes per artifact). It stops at the first refusal, failure or no, and says which artifacts are packaged but not deployed. |
-| `/deploy:setup` | Writes the `deploy:` section (host, targets with their provider config, git), asks only what it cannot detect, and suggests the providers to install. |
+| `/release:deploy` | Picks the latest local artifact, or the one you name (`api`, `api@1.4.0`, a directory), runs `nerv deploy --dry-run`, and deploys only after your explicit yes. It reports every step and the pending ones. |
+| `/release:ship` | Chains `/release:build` and `/release:deploy`: builds and packages (dry run, then your yes), then deploys each artifact it just packaged (dry run, then a second yes per artifact). It stops at the first refusal, failure or no, and says which artifacts are packaged but not deployed. |
+| `/release:deploy-setup` | Writes the `deploy:` section (host, targets with their provider config, git), asks only what it cannot detect, and suggests the providers to install. |
 
-The extension's agent, `deploy:deployer`, runs the same dry run and, with your
+The extension's agent, `release:deployer`, runs the same dry run and, with your
 approved project, version and tag, the real deploy. Its skill, `deploy`, is
 the contract below.
 
@@ -50,7 +50,7 @@ tag is on origin. The preflight also runs in a dry run.
 The preflight runs in your repository, not in the temporary clone: it runs
 before the clone exists (a refused configuration costs no clone), and the
 clone has no working tree to check anyway. A provider that checks files,
-such as `deploy-bash`'s scripts, therefore checks your working tree; it
+such as `release-script`'s scripts, therefore checks your working tree; it
 checks them again in the release commit when it deploys.
 
 ## What it does
@@ -87,7 +87,7 @@ If origin no longer contains the base commit, release again.
 
 `--rebase` warns that the tag then points at a commit whose code was never
 built: the artifact was built from the base commit. Releasing again is the
-safe path; `/deploy:run` never adds `--rebase` on its own.
+safe path; `/release:deploy` never adds `--rebase` on its own.
 
 ### Re-runs
 
@@ -110,11 +110,11 @@ The `deploy:` section of `.ai-workflow/config.yaml`. Unknown keys are refused.
 
 ```yaml
 deploy:
-  host: github                    # git host provider: deploy-github
+  host: github                    # git host provider: release-github
   publish: true                   # push the artifact's images (the default)
   targets:                        # optional; deployed in this order
     - name: staging
-      provider: ssh-compose       # target provider: deploy-ssh-compose
+      provider: ssh-compose       # target provider: release-ssh-compose
       config:
         environment: staging
     - name: production
@@ -146,13 +146,13 @@ not set it and the manifest declares the key `scope: user`, nerv reads
 (`~/.config/ai-workflow/config.yaml`); a `scope: repo` key there no longer
 applies (`nerv doctor` names it, `nerv migrate --user` moves it under
 `defaults.deploy`). If neither sets it, the manifest's default applies. The
-user file's `defaults.deploy` is only a seed `/deploy:setup` copies into a
+user file's `defaults.deploy` is only a seed `/release:deploy-setup` copies into a
 project; see
 [configuration.md](configuration.md#extension-sections-tasks-release-deploy).
 
 ## Providers
 
-Git hosts and targets are providers named `deploy-<name>`. Each one
+Git hosts and targets are providers named `release-<name>`. Each one
 ships a `provider.yaml` manifest, the shape every provider shares
 ([extensions.md](extensions.md)), checked against the `host` and `target`
 slots of the deploy extension's `extension.yaml`:
@@ -208,9 +208,9 @@ operations:
   `requires`.
 - A step answering a status that is none of these fails the operation: it
   speaks another contract.
-- A native provider, such as `deploy-ssh-compose` or `deploy-bash`, is an
+- A native provider, such as `release-ssh-compose` or `release-script`, is an
   exec provider whose steps run nerv's hidden
-  `{nerv} provider deploy-<name> <operation>`.
+  `{nerv} provider release-<name> <operation>`.
 - Provider steps run in the temporary clone, except `preflight`, which runs
   in your repository (see [Preflight](#preflight)). The clone holds origin's
   commits, the release commit and its tag, but no checked-out files. The
@@ -218,7 +218,7 @@ operations:
   `gh auth login` session.
 - A refused preflight shows the provider's stderr under its message.
 
-### deploy-github
+### release-github
 
 Slot `host`, requires `gh`. `releaseExists` runs `gh release view <tag>`.
 `createRelease` runs:
@@ -227,11 +227,11 @@ Slot `host`, requires `gh`. `releaseExists` runs `gh release view <tag>`.
 gh release create <tag> --title <tag> --notes-file <notes> [--prerelease] --verify-tag
 ```
 
-### deploy-ssh-compose
+### release-ssh-compose
 
 Slot `target`, requires `docker` and `ssh`.
 
-- `preflight` runs `nerv provider deploy-ssh-compose preflight`: it checks
+- `preflight` runs `nerv provider release-ssh-compose preflight`: it checks
   the config and answers `sshpass` for `ssh_auth: password` and `infisical`
   for `source: infisical`.
 - `publish` runs `docker load -i` for each image tar of the artifact, then
@@ -239,7 +239,7 @@ Slot `target`, requires `docker` and `ssh`.
   `deploy.publish: true` (the default) the core `publish` step has already
   pushed the same images, so this re-push uploads nothing; set
   `deploy.publish: false` to publish only from the target.
-- `deploy` and `verify` run `nerv provider deploy-ssh-compose deploy|verify`, the
+- `deploy` and `verify` run `nerv provider release-ssh-compose deploy|verify`, the
   update-deploy flow of the removed `nerv pipeline deploy`.
   - It reads the environment's deploy data, either from the
     `NERV_DEPLOY_<ENVIRONMENT>_<KEY>` variables (`source: env`) or from
@@ -270,10 +270,10 @@ Slot `target`, requires `docker` and `ssh`.
 | `version_label` | repo | `org.opencontainers.image.version` |
 | `verify_timeout` | repo | `120s` |
 
-### deploy-bash
+### release-script
 
 Slot `target`, requires `bash` and `git`. It runs your repository's own
-scripts, through `nerv provider deploy-bash <operation>`:
+scripts, through `nerv provider release-script <operation>`:
 
 | Key | Scope | Default | Meaning |
 |---|---|---|---|
@@ -286,7 +286,7 @@ scripts, through `nerv provider deploy-bash <operation>`:
 deploy:
   targets:
     - name: docs
-      provider: bash
+      provider: script
       config:
         script: deploy/deploy.sh
         verify_script: deploy/check.sh
@@ -322,7 +322,7 @@ deploy:
 
 ## Deploy data
 
-The `deploy-ssh-compose` target reads one environment's deploy data
+The `release-ssh-compose` target reads one environment's deploy data
 (`config.environment`). Both sources provide the same keys per environment. Each environment has
 one Docker host:
 
@@ -391,21 +391,21 @@ with a local artifact between them.
 |---|---|
 | `validate` | A `lint` stage of the project in the `release:` section, run by `nerv release` ([release](release-commands.md)). |
 | `test` | The `build`, `test` and `coverage` stages, with `coverage` floors. |
-| `release` | `nerv release` (version, CHANGELOG section, version files, packages, into the artifact), then `nerv deploy` (release commit, tag, channel note, push, GitHub release with `deploy-github`). |
+| `release` | `nerv release` (version, CHANGELOG section, version files, packages, into the artifact), then `nerv deploy` (release commit, tag, channel note, push, GitHub release with `release-github`). |
 | `docker` | Building and saving the images: `nerv release` (`compose` mode, or a script `package` stage). Pushing them: the `publish` step of `nerv deploy`. |
 | `sync` | Not ported. Merge the release back into `develop` and `release/*` by hand; an opt-in `deploy.sync` may come later. |
-| `deploy` | The `deploy` and `verify` operations of the `deploy-ssh-compose` target ([deploy.md](#deploy-ssh-compose)). |
+| `deploy` | The `deploy` and `verify` operations of the `release-ssh-compose` target ([deploy.md](#release-ssh-compose)). |
 
 A repository that still has a `pipeline:` section is told so: the section
 is no longer read, and the commands point to `/release:setup` and
-`/deploy:setup`.
+`/release:deploy-setup`.
 
 ### Steps
 
 1. **Install the extensions and providers**:
 
    ```sh
-   nerv install --with release,deploy,deploy-github,deploy-ssh-compose
+   nerv install --with release
    ```
 
 2. **See the whole migration** with `nerv migrate --dry-run`: it shows
@@ -416,9 +416,9 @@ is no longer read, and the commands point to `/release:setup` and
 3. **Or migrate by hand** with the two setup commands: `/release:setup`
    (offers `nerv release setup --import` for the semantic-release config in
    `package.json`, and asks each project's build provider), then
-   `/deploy:setup` (the host, the targets, git).
+   `/release:deploy-setup` (the host, the targets, git).
 4. **Rehearse**: `/release:build` (a dry run in a clone, then the artifact on
-   your yes) and `/deploy:run` (a dry run, then the deploy on your yes).
+   your yes) and `/release:deploy` (a dry run, then the deploy on your yes).
 5. **Delete** the `pipeline:` section, and the semantic-release config once
    `/release:version` gives the versions you expect.
 
@@ -490,7 +490,7 @@ pipeline:
 
 The same repository. The images are built by a compose file
 (`docker/compose.release.yml`, building both images with `APP_VERSION`), so
-the docker-compose build saves them into the artifact and `deploy-ssh-compose` pushes
+the docker-compose build saves them into the artifact and `release-ssh-compose` pushes
 them; a script `package` stage running `docker build` and `docker save`
 works too.
 

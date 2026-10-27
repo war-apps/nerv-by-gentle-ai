@@ -71,7 +71,7 @@ image 4.2.0 pushed becomes an `images` entry of the project `{ name, tags }` wit
 4.2.0 tag kinds (`version` always, the channel off the default channel,
 `latest` on it): `nerv release` tags and saves every reference into the
 artifact after the package commands and records them, and the
-`deploy-ssh-compose` publish pushes them all, as 4.2.0 did. An image with
+`release-ssh-compose` publish pushes them all, as 4.2.0 did. An image with
 `push: false` is saved by the package commands themselves, with no
 reference to push. `semantic_release:` is dropped. The `publish` stage and the
 `publish`, `success`, `before_publish` and `after_publish` hooks are dropped
@@ -87,7 +87,7 @@ Where 4.2.0's behaviour has no exact equivalent, the stage gets a
 
 Each environment of `pipeline.deploy` (or 4.2.0's default four:
 `production-green`, `production-blue`, `staging`, `development`) becomes one
-`deploy-ssh-compose` target. It carries the `pipeline.deploy` settings that
+`release-ssh-compose` target. It carries the `pipeline.deploy` settings that
 were written: `source`, `infisical.*`, `update_timeout`, `ssh.*`, `verify.*`.
 
 The user-scope settings (`infisical_domain`, `ssh_auth`, `ssh_key_file`,
@@ -105,7 +105,7 @@ Reported, with no equivalent:
 - `pipeline.sync`: there is no back-merge after a release;
 - `pipeline.deploy.selection: branches`: a target deploys its environment when the environment's `DOCKER_IMAGE_VERSION` points at the release; choose targets with `nerv deploy --target`;
 - `pipeline.registry`'s credential variables: run `docker login` before `nerv deploy`;
-- `pipeline.images`: the project's `images`, saved into the artifact by nerv release and pushed by the `deploy-ssh-compose` publish;
+- `pipeline.images`: the project's `images`, saved into the artifact by nerv release and pushed by the `release-ssh-compose` publish;
 - `pipeline.dotnet`: the release stages already cover validate and test.
 
 ### ODD
@@ -147,11 +147,11 @@ plugin):
 
 - the `task` extension and its `task-teamwork` provider when `tasks.provider` was `teamwork` (also the 4.2.0 default when nothing set it);
 - the `release` extension when the 4.2.0 `release:` section or the 5.0.0-alpha.1 `ship:` section existed;
-- the `deploy` extension and its `deploy-github` provider when a git host was written;
-- the `deploy-ssh-compose` provider when `pipeline.deploy` existed.
+- the `deploy` extension and its `release-github` provider when a git host was written;
+- the `release-ssh-compose` provider when `pipeline.deploy` existed.
 
 ```
-Next, install the extensions it uses: nerv install --with task,task-teamwork,release,deploy,deploy-github
+Next, install the extensions it uses: nerv install --with task,task-teamwork,release
 ```
 
 `--install` runs that line through `nerv install` (without the closing
@@ -242,7 +242,7 @@ release` again for the version you want to deploy.
   Check by hand:
     - deploy.host: the repository has no origin, so no git host is written: set deploy.host when it has one
 
-  Next, install the extensions it uses: nerv install --with task,task-teamwork,release,deploy
+  Next, install the extensions it uses: nerv install --with task,task-teamwork,release
 
   nerv migrate: dry run: 3 change(s), nothing was written
   ```
@@ -267,5 +267,5 @@ for a usage or environment error.
 
 ## Known limits
 
-- The deploy side is checked at the configuration level: the migrated targets load with `deployconfig` and each key and value fits the `deploy-ssh-compose` manifest. A full `nerv deploy --dry-run` needs an artifact, so the tests do not run one.
+- The deploy side is checked at the configuration level: the migrated targets load with `deployconfig` and each key and value fits the `release-ssh-compose` manifest. A full `nerv deploy --dry-run` needs an artifact, so the tests do not run one.
 - `manifest.json` of an artifact is not hashed by its own integrity check. It is a local file, a known limit of the artifact format, not of the migration.

@@ -74,10 +74,10 @@ Claude Code plugin:
 | `release-conventional-commits` | no | The release version provider: the native Conventional Commits engine, the `version` slot's default. Installed with `release`. |
 | `release-docker-compose` | no | A release build provider: `docker compose` build, test service and saved images. Installed with `release`. |
 | `release-bash` | no | A release build provider: each stage runs the project's own command. Installed with `release`. |
-| `deploy` | no | The deploy extension (requires `release`): `/deploy:run`, `/deploy:ship` (build and deploy in one go), `/deploy:setup` and the `deploy:deployer` agent. It turns an artifact into a release: release commit, tag, push, targets, git host release. |
-| `deploy-github` | no | A deploy git host provider for GitHub releases (`gh`), with a `provider.yaml` manifest. Installed with `deploy`. |
-| `deploy-ssh-compose` | no | A deploy target provider: pushes the artifact's images and updates the containers over SSH with the host's compose script. Installed with `deploy`. |
-| `deploy-bash` | no | A deploy target provider: runs the repository's own deploy script from the release commit. Installed with `deploy`. |
+| `deploy` | no | The deploy extension (requires `release`): `/release:deploy`, `/release:ship` (build and deploy in one go), `/release:deploy-setup` and the `release:deployer` agent. It turns an artifact into a release: release commit, tag, push, targets, git host release. |
+| `release-github` | no | A deploy git host provider for GitHub releases (`gh`), with a `provider.yaml` manifest. Installed with `deploy`. |
+| `release-ssh-compose` | no | A deploy target provider: pushes the artifact's images and updates the containers over SSH with the host's compose script. Installed with `deploy`. |
+| `release-script` | no | A deploy target provider: runs the repository's own deploy script from the release commit. Installed with `deploy`. |
 
 When the task extension is installed, the orchestrator emits pipeline events
 (`run.started`, `verification.started`, `audit.ranked`, `issue.deferred`,
@@ -88,10 +88,10 @@ nothing, asks no task question and logs nothing. See
 table, the envelope, the per-event switches and `/task:replay`.
 
 The release and deploy extensions are independent of the orchestrator: install
-them with `nerv install --with release,deploy,deploy-github` (add
-`deploy-ssh-compose` for SSH and compose hosts), run `/release:setup` and
-`/deploy:setup` once, then `/release:build` leaves a local artifact in
-`.nerv/artifacts/<project>/<version>/` and `/deploy:run` releases it (`/deploy:ship` chains the two). Both
+them with `nerv install --with release` (add
+`release-ssh-compose` for SSH and compose hosts), run `/release:setup` and
+`/release:deploy-setup` once, then `/release:build` leaves a local artifact in
+`.nerv/artifacts/<project>/<version>/` and `/release:deploy` releases it (`/release:ship` chains the two). Both
 always rehearse with a dry run and act only after your explicit yes. A
 repository set up with nerv 4.2.0 or 5.0.0-alpha.1 (`.ai-workflow.yml`)
 migrates with `nerv migrate` (see [docs/migration.md](docs/migration.md));
@@ -178,7 +178,7 @@ Flags: `--no-configure` (skip the closing wizard/hint entirely),
 `--no-skills` (skip installing skills), `--require-gentle-ai` (fail with
 exit 1 when gentle-ai is missing or not 4.x), `--with <names>` (install
 extensions and providers such as `task,task-teamwork` or
-`release,deploy,deploy-github`; in a terminal, install offers the task extension,
+`release,deploy,release-github`; in a terminal, install offers the task extension,
 its providers, the release extension, then the deploy extension; release and deploy
 bring every provider they ship with them, unasked; `deploy` requires
 `release`).
@@ -388,9 +388,9 @@ example YAML, and how to configure per-role models and effort (wizard,
   `/release:setup` writes interactively (importing an existing semantic-release
   config with `nerv release setup --import`).
 - [docs/deploy.md](docs/deploy.md) — the deploy extension: `nerv deploy` /
-  `/deploy:run` (release commit, tag, push, targets, git host release from
-  an artifact), the `deploy:` section (`/deploy:setup`) and the provider
-  contract (`deploy-github`, `deploy-ssh-compose`).
+  `/release:deploy` (release commit, tag, push, targets, git host release from
+  an artifact), the `deploy:` section (`/release:deploy-setup`) and the provider
+  contract (`release-github`, `release-ssh-compose`).
 - [docs/extensions.md](docs/extensions.md) — the two contracts of the
   extensions and their providers: `extension.yaml` (an extension and the core) and
   `provider.yaml` (a provider and its extension), with the common

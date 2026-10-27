@@ -6,8 +6,8 @@ contract. Each one ships as its own Claude Code plugin:
 - An **extension** (`task`, `release`, `deploy`) adds a capability to the
   core. It talks to the core through its `extension.yaml`.
 - A **provider** (`task-teamwork`, `release-conventional-commits`,
-  `release-docker-compose`, `release-bash`, `deploy-github`,
-  `deploy-ssh-compose`, `deploy-bash`) implements one slot of an extension: a tracker, a
+  `release-docker-compose`, `release-bash`, `release-github`,
+  `release-ssh-compose`, `release-script`) implements one slot of an extension: a tracker, a
   version engine, a build, a git host, a deploy target. It talks to its extension through its `provider.yaml`.
 
 Every extension uses the same `extension.yaml` schema, and every provider,
@@ -24,10 +24,10 @@ one manifest at its root:
 
 | Folder | Manifest | Example |
 |---|---|---|
-| `<extension>` | `extension.yaml` | `plugins/deploy/extension.yaml` |
-| `<extension>-<provider>` | `provider.yaml` | `plugins/deploy-github/provider.yaml` |
+| `<extension>` | `extension.yaml` | `plugins/release/extension.yaml` |
+| `<extension>-<provider>` | `provider.yaml` | `plugins/release-github/provider.yaml` |
 
-A provider requires its extension: `nerv install --with deploy-github`
+A provider requires its extension: `nerv install --with release-github`
 also installs `deploy` (and `release`, which `deploy` requires). An
 extension with `providers: bundled` brings every provider it ships with
 it: installing `release` installs `release-conventional-commits`,
@@ -152,12 +152,12 @@ config:                        # key, scope (user | repo), type, default, prompt
     prompt: The environment
 operations:                    # every slot operation
   preflight:
-    - argv: ["{nerv}", provider, deploy-ssh-compose, preflight]
+    - argv: ["{nerv}", provider, release-ssh-compose, preflight]
   publish:
     - argv: [docker, push, "{item}"]
       for_each: images
   deploy:
-    - argv: ["{nerv}", provider, deploy-ssh-compose, deploy]
+    - argv: ["{nerv}", provider, release-ssh-compose, deploy]
   verify: not_implemented
 ```
 
@@ -213,7 +213,7 @@ events: [run.started]          # the core events it handles, checked against its
 A provider nerv implements itself is an exec provider whose steps run the
 hidden `{nerv} provider <extension>-<name> <operation>`, with the request on
 stdin and the response on stdout. It has no special case in its extension:
-`deploy-ssh-compose`, `deploy-bash` and the three release providers are such
+`release-ssh-compose`, `release-script` and the three release providers are such
 providers.
 
 ## Project extensions and providers
@@ -234,8 +234,8 @@ ships, in its committed `.ai-workflow/` folder:
   missing (implement it or declare not_implemented)`).
 - A project provider belongs to a shipped extension (`deploy`, `release`,
   `task`) or to a project extension.
-- A name nerv already ships is refused (`.ai-workflow/providers/deploy-github:
-  nerv already ships an extension or provider named deploy-github; give the
+- A name nerv already ships is refused (`.ai-workflow/providers/release-github:
+  nerv already ships an extension or provider named release-github; give the
   project's another name`), and so is a folder that resolves outside the
   repository.
 - They are not Claude Code plugins: `nerv install` does not materialize them. `nerv

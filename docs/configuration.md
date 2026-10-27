@@ -113,7 +113,7 @@ The user file keeps two roles:
   section into a project copies them once, for the keys the project does
   not set, and shows what it copied: `/nerv:init` and `nerv configure
   --init-repo` (and the wizard's repository step) for `tasks:`,
-  `/release:setup` for `release:`, `/deploy:setup` for `deploy:`. The
+  `/release:setup` for `release:`, `/release:deploy-setup` for `deploy:`. The
   project's value always wins, and changing a default later never changes
   a repository already set up. Personal keys are never copied from
   `defaults:` into a project.
@@ -153,8 +153,8 @@ overrides for its build provider under
 dependencies, images, version files, stages, hooks and coverage. Its full reference is
 [release-commands.md](release-commands.md#configuration-release).
 
-`deploy:` configures the deploy extension (`nerv deploy`, `/deploy:run`,
-`/deploy:setup`): the git host provider, the targets with their provider
+`deploy:` configures the deploy extension (`nerv deploy`, `/release:deploy`,
+`/release:deploy-setup`): the git host provider, the targets with their provider
 config, and the release commit's message and remote. Provider keys with
 `scope: user` (credentials, local paths) go in the user file under
 `deploy.providers.<provider>.`; every other deploy key comes from the
@@ -164,7 +164,7 @@ project file only. Its full reference is
 A 4.2.0 `release:` section (told apart by its 4.2.0 keys, `semantic_release:`
 and the project presets) and the old `pipeline:` section are no longer read:
 a command that finds one refuses and points to `nerv migrate` (or
-`/release:setup`, `/deploy:setup`).
+`/release:setup`, `/release:deploy-setup`).
 `nerv migrate` translates them, and `nerv release setup --import` imports a
 semantic-release config; see
 [release-commands.md](release-commands.md#migrating-from-the-420-release-section-and-semantic-release)
