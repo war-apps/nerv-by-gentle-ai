@@ -1,6 +1,6 @@
 {
   "name": "release-ssh-compose",
-  "version": "5.2.0",
+  "version": "6.0.0",
   "description": "SSH and docker compose target for nerv deploy: pushes the artifact's images, updates the container with the host's compose script and verifies its health and version; installed with release",
   "author": { "name": "Walter Rodriguez" }
 }
