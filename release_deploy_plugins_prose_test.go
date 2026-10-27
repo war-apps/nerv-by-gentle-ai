@@ -107,6 +107,12 @@ func TestReleaseDeployPlugins_SetupNamesImportAndProviders(t *testing.T) {
 		"nerv release --dry-run", "--expect", ".nerv/artifacts/")
 	assertContainsAll(t, "release/commands/ship.md", read("release/commands/ship.md"),
 		"nerv release --dry-run", "--expect", "nerv deploy --artifact", "--dry-run", "--yes")
+	// L1 of merge-deploy-into-release: version, build (lint and tests from
+	// the configured build provider) and deploy, the deploy skipped when no
+	// deploy provider is configured.
+	assertContainsAll(t, "release/commands/ship.md", read("release/commands/ship.md"),
+		"`deploy.host`", "`deploy.targets`", "deploy is skipped", "/release:deploy-setup",
+		"`lint`", "`test`", "nerv adds no stage of its own", "the artifacts stay local")
 }
 
 // semanticReleaseRun matches a command line that runs semantic-release.

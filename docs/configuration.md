@@ -84,7 +84,7 @@ release:                            # release extension; project scope only, nev
     docker-compose: { file: docker-compose.yml }
   projects:
     - { name: api, path: ., images: ["ghcr.io/acme/app:${version}"] }
-deploy:                             # deploy extension; project scope, except its scope: user provider keys; see deploy.md
+deploy:                             # release extension's deploy; project scope, except its scope: user provider keys; see deploy.md
   host: github
   publish: true                     # push the artifact's images (default)
   targets:                          # optional
@@ -95,7 +95,8 @@ defaults:                           # user scope only: seeds a project's tasks:,
 
 ## Extension sections (`tasks:`, `release:`, `deploy:`)
 
-The task, release and deploy extensions read their sections from the
+The task and release extensions read their sections (`deploy:` is the
+release extension's too) from the
 project file only, so what one repository uses never depends on who runs it.
 The user file keeps two roles:
 
@@ -153,8 +154,9 @@ overrides for its build provider under
 dependencies, images, version files, stages, hooks and coverage. Its full reference is
 [release-commands.md](release-commands.md#configuration-release).
 
-`deploy:` configures the deploy extension (`nerv deploy`, `/release:deploy`,
-`/release:deploy-setup`): the git host provider, the targets with their provider
+`deploy:` configures the release extension's deploy (`nerv deploy`,
+`/release:deploy`, `/release:deploy-setup`, the deploy half of
+`/release:ship`): the git host provider, the targets with their provider
 config, and the release commit's message and remote. Provider keys with
 `scope: user` (credentials, local paths) go in the user file under
 `deploy.providers.<provider>.`; every other deploy key comes from the

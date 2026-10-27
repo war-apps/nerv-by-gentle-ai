@@ -55,7 +55,7 @@ A provider key's value comes from the target's `config`; when unset, from `deplo
 
 The manifest declares:
 
-- `name`, `extension: deploy`, `slot` (`host`: one git host, `deploy.host`; or `target`: one provider per `deploy.targets` entry), `contract_version` (1) and `runtime: exec`.
+- `name`, `extension: release`, `slot` (`host`: one git host, `deploy.host`; or `target`: one provider per `deploy.targets` entry), `contract_version` (1) and `runtime: exec`.
 - `requires`: the executables that must be on PATH.
 - `config`: `key`, `scope` (`user` or `repo`), `type` (`string`, `int`, `bool`), `default` and the `prompt` `/release:deploy-setup` and `nerv configure` show.
 - `operations`: every operation of its slot. A host implements `releaseExists` and `createRelease`; a target implements `deploy`, and `preflight`, `publish` and `verify` or declares them `not_implemented`.

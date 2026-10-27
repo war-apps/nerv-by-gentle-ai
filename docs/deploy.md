@@ -1,21 +1,26 @@
-# Deploy extension: `nerv deploy`
+# Deploy: `nerv deploy`
 
-The deploy extension (`deploy`) releases what the [release extension](release-commands.md)
-packaged. It requires `release`, and its git hosts and targets are providers
-(`release-github`, `release-ssh-compose`, `release-script`), installed with it. Install them with:
+The release extension's deploy half releases what its build half
+([release-commands.md](release-commands.md)) packaged. Its git hosts and
+targets are providers (`release-github`, `release-ssh-compose`,
+`release-script`) that come with the extension:
 
 ```sh
 nerv install --with release
-nerv install --with release-ssh-compose   # the SSH and compose target
 ```
+
+Up to 5.2.0 this was a separate `deploy` extension, with `deploy-github`,
+`deploy-ssh-compose` and `deploy-bash`. `nerv install` removes those plugins,
+and `nerv migrate` rewrites a target's `provider: bash` to `script` and
+moves a project's `.ai-workflow/providers/deploy-<name>` to `release-<name>`.
 
 | Slash command | What it does |
 |---|---|
 | `/release:deploy` | Picks the latest local artifact, or the one you name (`api`, `api@1.4.0`, a directory), runs `nerv deploy --dry-run`, and deploys only after your explicit yes. It reports every step and the pending ones. |
-| `/release:ship` | Chains `/release:build` and `/release:deploy`: builds and packages (dry run, then your yes), then deploys each artifact it just packaged (dry run, then a second yes per artifact). It stops at the first refusal, failure or no, and says which artifacts are packaged but not deployed. |
-| `/release:deploy-setup` | Writes the `deploy:` section (host, targets with their provider config, git), asks only what it cannot detect, and suggests the providers to install. |
+| `/release:ship` | The whole release in one go: the next version and the build, with the lint and test stages the project's build provider configures (dry run, then your yes), then the deploy of each artifact it just packaged (dry run, then a second yes per artifact). With no deploy provider configured (no `deploy.host` and no `deploy.targets`) the deploy is skipped and the artifacts stay local. It stops at the first refusal, failure or no, and says which artifacts are packaged but not deployed. |
+| `/release:deploy-setup` | Writes the `deploy:` section (host, targets with their provider config, git) and asks only what it cannot detect. |
 
-The extension's agent, `release:deployer`, runs the same dry run and, with your
+The deploy agent, `release:deployer`, runs the same dry run and, with your
 approved project, version and tag, the real deploy. Its skill, `deploy`, is
 the contract below.
 
@@ -155,11 +160,11 @@ project; see
 Git hosts and targets are providers named `release-<name>`. Each one
 ships a `provider.yaml` manifest, the shape every provider shares
 ([extensions.md](extensions.md)), checked against the `host` and `target`
-slots of the deploy extension's `extension.yaml`:
+slots of the release extension's `extension.yaml`:
 
 ```yaml
 name: github
-extension: deploy
+extension: release
 slot: host                  # host (deploy.host) or target (deploy.targets[])
 contract_version: 1
 runtime: exec               # nerv deploy runs exec providers
