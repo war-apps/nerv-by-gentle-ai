@@ -291,10 +291,9 @@ FULL runs.
 Outside the wizard, the plugin stays self-contained apart from these
 requirements: **gentle-ai 4.x** installed and configured (`gentle-ai
 install`), **Claude Code** (plus, for the optional `task-teamwork`
-provider, Teamwork's official MCP server registered as `teamwork`:
-`claude mcp add --transport http teamwork https://mcp.ai.teamwork.com
---header "Authorization: Bearer <token>"`, or without the header and then
-`/mcp` to sign in; the claude.ai Teamwork connector does not count), and **Engram** (optional — used for
+provider, Teamwork's official MCP server, which the provider's plugin
+registers as `teamwork`: sign in once from `/mcp` in Claude Code; the
+claude.ai Teamwork connector does not count), and **Engram** (optional — used for
 the shared `nerv` knowledge base and per-repo memory detection).
 
 ## Manual setup

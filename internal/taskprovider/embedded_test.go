@@ -1,6 +1,7 @@
 package taskprovider_test
 
 import (
+	"encoding/json"
 	"io/fs"
 	"maps"
 	"regexp"
@@ -83,6 +84,23 @@ func TestTeamworkProvider_ProceduresUseTheDeclaredOfficialTools(t *testing.T) {
 		if !used[tool] {
 			t.Errorf("mcp.tools declares %s, which no procedure calls", tool)
 		}
+	}
+	// The plugin ships the server it declares, with no credential: users
+	// sign in with OAuth.
+	data, err := fs.ReadFile(nerv.ExtensionsFS(), "task-teamwork/.mcp.json")
+	if err != nil {
+		t.Fatalf("task-teamwork ships no .mcp.json: %v", err)
+	}
+	var servers map[string]map[string]any
+	if err := json.Unmarshal(data, &servers); err != nil {
+		t.Fatalf(".mcp.json: %v", err)
+	}
+	s, ok := servers[m.MCP.Server]
+	if !ok || len(servers) != 1 || s["type"] != "http" || s["url"] != "https://mcp.ai.teamwork.com" {
+		t.Errorf(".mcp.json = %s, want only %s, http, https://mcp.ai.teamwork.com", data, m.MCP.Server)
+	}
+	if _, ok := s["headers"]; ok {
+		t.Errorf(".mcp.json carries headers; the server is reached with OAuth, no credential in the plugin")
 	}
 }
 
