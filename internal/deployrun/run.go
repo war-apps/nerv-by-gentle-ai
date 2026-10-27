@@ -65,7 +65,7 @@ type Options struct {
 	// pushed or run; an error stops the deploy. Nil proceeds.
 	Confirm func(Report) error
 	// Providers holds the extensions and providers: deploy/extension.yaml and the
-	// providers' deploy-<name>/provider.yaml.
+	// providers' release-<name>/provider.yaml.
 	Providers fs.FS
 	// UserValue returns a provider config key's user-scope value
 	// (deploy.providers.<provider>.<key>); nil has none.
@@ -357,7 +357,7 @@ func (d *deployer) releaseCommit(ctx context.Context, head, message string) (str
 // loadProviders loads the host and the targets' providers, checks their
 // slot, resolves and checks their config, runs each target's preflight
 // (which refuses a bad config and answers the tools that config needs,
-// such as deploy-ssh-compose's sshpass for password authentication), and
+// such as release-ssh-compose's sshpass for password authentication), and
 // checks that every tool they need is on PATH: the providers' requires and
 // the preflights' answers. It runs before anything is cloned or pushed.
 func (d *deployer) loadProviders(ctx context.Context, targets []deployconfig.Target) (*provider, []provider, error) {
@@ -435,6 +435,9 @@ func (d *deployer) loadProviders(ctx context.Context, targets []deployconfig.Tar
 func (d *deployer) manifest(name, slot, at string) (*deployprovider.Manifest, error) {
 	if d.o.Providers == nil {
 		return nil, refuse("%s: no deploy provider is available", at)
+	}
+	if slot == deployprovider.SlotTarget && name == "bash" {
+		return nil, refuse("%s: the bash deploy target is now named script (release-script): set provider: script, or run nerv migrate (nothing was written)", at)
 	}
 	dir := deployprovider.Extension + "-" + name
 	if _, err := fs.Stat(d.o.Providers, dir+"/"+deployprovider.ManifestFile); err != nil {

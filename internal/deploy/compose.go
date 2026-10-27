@@ -16,7 +16,7 @@ import (
 	"github.com/war-apps/nerv-by-gentle-ai/internal/proc"
 )
 
-// ComposeDeps are the effects of the deploy-ssh-compose operations.
+// ComposeDeps are the effects of the release-ssh-compose operations.
 type ComposeDeps struct {
 	// Proc runs infisical, ssh and sshpass.
 	Proc proc.Runner
@@ -47,15 +47,15 @@ type composeRequest struct {
 	} `json:"payload"`
 }
 
-// The operations of the deploy-ssh-compose provider.
+// The operations of the release-ssh-compose provider.
 const (
 	opPreflight = "preflight"
 	opDeploy    = "deploy"
 	opVerify    = "verify"
 )
 
-// RunComposeOp is `nerv provider deploy-ssh-compose <op>`, the native
-// operations of the deploy-ssh-compose provider: it reads the request on
+// RunComposeOp is `nerv provider release-ssh-compose <op>`, the native
+// operations of the release-ssh-compose provider: it reads the request on
 // stdin and prints one JSON response (the common envelope). preflight
 // checks the config before nerv deploy writes anything and answers, in
 // data.requires, the tools it needs on PATH besides the provider's
@@ -231,7 +231,7 @@ func composeConfig(c map[string]string, home string) (composeSettings, error) {
 		}
 	}
 	if len(problems) > 0 {
-		return s, fmt.Errorf("deploy-ssh-compose: %s", strings.Join(problems, "; "))
+		return s, fmt.Errorf("release-ssh-compose: %s", strings.Join(problems, "; "))
 	}
 	return s, nil
 }

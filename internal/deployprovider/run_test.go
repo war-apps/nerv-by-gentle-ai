@@ -118,7 +118,7 @@ func TestRun_SendsTheRequestAndReadsTheResponse(t *testing.T) {
 	if err := json.Unmarshal(f.calls[0].Stdin, &req); err != nil {
 		t.Fatal(err)
 	}
-	if req.Operation != OpDeploy || req.Contract != 1 || req.Extension != "deploy" || req.Slot != SlotTarget || req.Provider != "box" ||
+	if req.Operation != OpDeploy || req.Contract != 1 || req.Extension != "release" || req.Slot != SlotTarget || req.Provider != "box" ||
 		req.Config["repo"] != "acme/api" || req.Payload.ArtifactDir != "" {
 		t.Errorf("request %+v", req)
 	}

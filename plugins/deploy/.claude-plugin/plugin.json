@@ -1,6 +1,0 @@
-{
-  "name": "deploy",
-  "version": "5.2.0",
-  "description": "NERV deploy: takes a release artifact, makes the release commit, tag and push, runs the deploy targets and creates the git host's release (requires release)",
-  "author": { "name": "Walter Rodriguez" }
-}

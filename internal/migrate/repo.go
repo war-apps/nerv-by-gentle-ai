@@ -199,6 +199,7 @@ func planRepo(p *Plan, o Options, user *userState) error {
 			doc.SetScalar("odd.test_runner", tdd.runner)
 		}
 		seedTaskProvider(p, o, doc)
+		renameScriptTargets(p, doc, "deploy", paths.ProjectConfigFile)
 		if err := personalKeys(p, doc, paths.ProjectConfigFile, o.ExtensionsFS, user); err != nil {
 			return err
 		}
@@ -229,6 +230,9 @@ func planRepo(p *Plan, o Options, user *userState) error {
 		}
 	} else if tdd != nil {
 		p.warn("odd.tdd: the repository has no %s to record strict_tdd in; run nerv configure --init, then nerv migrate again", paths.ProjectConfigFile)
+	}
+	if err := moveProjectDeployProviders(p, root); err != nil {
+		return err
 	}
 	ignore := filepath.Join(paths.RuntimeDir(root), ".gitignore")
 	if _, err := os.Lstat(ignore); errors.Is(err, fs.ErrNotExist) {
@@ -327,16 +331,8 @@ func translateConfig(p *Plan, o Options, data []byte, user *userState) (*config.
 		p.note("tasks.provider: teamwork (%s): the task extension and its task-teamwork provider", from)
 	}
 	if hadRelease || dep != nil {
+		// release brings its deploy providers with it (providers: bundled).
 		p.Plugins = append(p.Plugins, "release")
-	}
-	if dep != nil {
-		p.Plugins = append(p.Plugins, "deploy")
-		if dep.host == githubHost {
-			p.Plugins = append(p.Plugins, "deploy-github")
-		}
-		if len(dep.targets) > 0 {
-			p.Plugins = append(p.Plugins, "deploy-ssh-compose")
-		}
 	}
 	p.Plugins = slices.Compact(p.Plugins)
 	return doc, nil

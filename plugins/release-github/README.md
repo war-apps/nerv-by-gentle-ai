@@ -1,9 +1,9 @@
-# deploy-github
+# release-github
 
-The GitHub git host for `nerv deploy` (Claude Code plugin `deploy-github`, provider
+The GitHub git host for `nerv deploy` (Claude Code plugin `release-github`, provider
 name `github`, slot `host`). It has no commands of its own: `nerv deploy`
 runs its operations from `provider.yaml`, the provider contract
-(`docs/extensions.md`) that the `deploy` extension's skill details.
+(`docs/extensions.md`) that the release extension's `deploy` skill details.
 
 - `releaseExists` runs `gh release view <tag>`.
 - `createRelease` runs `gh release create <tag> --title <tag> --notes-file
@@ -17,8 +17,8 @@ on PATH and no configuration keys.
 ## Install
 
 ```sh
-nerv install --with release,deploy,deploy-github
+nerv install --with release
 ```
 
 Then set `deploy.host: github` in the project configuration, or run
-`/deploy:setup`.
+`/release:deploy-setup`.

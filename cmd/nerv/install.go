@@ -24,16 +24,15 @@ extensions and providers named by --with, keeps the ones already enabled up
 to date, and, when stdin is a terminal, offers the others, in this order:
   1. the task extension (the /task:* commands);
   2. its providers (task-<name>), only once task is installed;
-  3. the release extension (nerv release, the version engine);
-  4. the deploy extension (nerv deploy), only once release is installed.
-An extension whose extension.yaml says providers: bundled (release and
-deploy) installs all its providers with it, without asking: release brings
-release-conventional-commits, release-docker-compose and release-bash, and
-deploy brings deploy-bash, deploy-github and deploy-ssh-compose. task's
-providers are suggested: each is offered after task.
-Requirements: deploy requires release, and a provider requires its
-extension; each is offered only once what it requires is installed or
-chosen. An extension or provider named in --with brings what it requires
+  3. the release extension (nerv release, the version engine, nerv deploy).
+An extension whose extension.yaml says providers: bundled (release)
+installs all its providers with it, without asking: release brings
+release-conventional-commits, release-docker-compose and release-bash (the
+version and build), and release-github, release-ssh-compose and
+release-script (the deploy). task's providers are suggested: each is offered
+after task.
+Requirements: a provider requires its extension, and is offered only once
+its extension is installed or chosen. An extension or provider named in --with brings what it requires
 with it; a requirement this nerv does not ship is refused.
 Old /task:* copies in <home>/.claude/commands/task, which shadow the task
 extension's commands, are reported, and removed when you confirm on a terminal.
@@ -46,7 +45,7 @@ Flags:
   --no-skills           Skip installing skills
   --no-configure        Skip the closing wizard/hint entirely
   --with <names>        Comma-separated extensions and providers to install, such as
-                        task,task-<provider>,release,deploy,deploy-<provider>
+                        task,task-<provider>,release,release-<provider>
                         (each brings what it requires)
 `
 

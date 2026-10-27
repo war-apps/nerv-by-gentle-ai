@@ -484,8 +484,8 @@ func TestRelease_ImportsTheSemanticReleaseConfiguration(t *testing.T) {
 	}
 }
 
-// Rule 4: pipeline: becomes deploy-ssh-compose targets plus the
-// deploy-github host, loadable by deployconfig and the provider manifest;
+// Rule 4: pipeline: becomes release-ssh-compose targets plus the
+// release-github host, loadable by deployconfig and the provider manifest;
 // what has no equivalent is reported.
 func TestDeploy_PipelineBecomesTargetsAndHost(t *testing.T) {
 	w := newWorld(t, legacyFull)
@@ -497,7 +497,7 @@ func TestDeploy_PipelineBecomesTargetsAndHost(t *testing.T) {
 	if d.Host != "github" {
 		t.Errorf("host = %q, want github", d.Host)
 	}
-	m, err := deployprovider.Load(nerv.ExtensionsFS(), "deploy-ssh-compose")
+	m, err := deployprovider.Load(nerv.ExtensionsFS(), "release-ssh-compose")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -642,14 +642,14 @@ func TestODD_StrictTDDBecomesTheDefaultMode(t *testing.T) {
 }
 
 // Rule 6: the plugins the old configuration used are named in one nerv
-// install line, in install order.
+// install line, in install order; release brings its deploy providers.
 func TestPlugins_InstallLineNamesWhatTheRepositoryUsed(t *testing.T) {
 	cases := []struct {
 		fixture, origin, want string
 	}{
-		{comprobantes, githubOrigin, "nerv install --with task,task-teamwork,release,deploy,deploy-github"},
-		{legacyFull, githubOrigin, "nerv install --with task,task-teamwork,release,deploy,deploy-github,deploy-ssh-compose"},
-		{comprobantes, "", "nerv install --with task,task-teamwork,release,deploy"},
+		{comprobantes, githubOrigin, "nerv install --with task,task-teamwork,release"},
+		{legacyFull, githubOrigin, "nerv install --with task,task-teamwork,release"},
+		{comprobantes, "", "nerv install --with task,task-teamwork,release"},
 	}
 	for _, c := range cases {
 		w := newWorld(t, c.fixture)
@@ -781,7 +781,7 @@ func TestConflict_BothFilesAreRefused(t *testing.T) {
 
 // L22: the dim fixtures migrate to build: bash with images, and the
 // release plan of the migrated project saves every image after its package
-// commands and records its reference for deploy-ssh-compose to push.
+// commands and records its reference for release-ssh-compose to push.
 func TestRelease_MigratedDockerPresetPlansTheImageSaves(t *testing.T) {
 	for fixture, want := range map[string][]string{
 		comprobantes: {"ghcr.io/dirm-s-a/dim.comprobantes.api", "ghcr.io/dirm-s-a/dim.comprobantes.api-login-broker"},

@@ -13,17 +13,17 @@ import (
 	"github.com/war-apps/nerv-by-gentle-ai/internal/refusal"
 )
 
-// deployScript records what a deploy-bash script receives.
+// deployScript records what a release-script script receives.
 const deployScript = `cat > "$FAKE_DIR/script.stdin"
 env | grep '^NERV_DEPLOY_' | sort > "$FAKE_DIR/script.env"
 echo '{"status":"ok","message":"deployed the docs"}'
 `
 
 func bashTarget(e *world, config map[string]string) {
-	e.cfg.Targets = []deployconfig.Target{{Name: "docs", Provider: "bash", Config: config}}
+	e.cfg.Targets = []deployconfig.Target{{Name: "docs", Provider: "script", Config: config}}
 }
 
-// S5: deploy-bash deploys a target with the repository's own script: the
+// S5: release-script deploys a target with the repository's own script: the
 // request on its stdin, the deploy variables in its environment; publish
 // without a script is skipped and verify runs its own.
 func TestRun_DeploysWithTheBashTarget(t *testing.T) {
@@ -50,7 +50,7 @@ func TestRun_DeploysWithTheBashTarget(t *testing.T) {
 	}
 	var req extension.Request
 	stdin, _ := os.ReadFile(filepath.Join(e.fake, "script.stdin"))
-	if err := json.Unmarshal(stdin, &req); err != nil || req.Operation != "deploy" || req.Provider != "bash" || req.Config["script"] != "deploy/deploy.sh" {
+	if err := json.Unmarshal(stdin, &req); err != nil || req.Operation != "deploy" || req.Provider != "script" || req.Config["script"] != "deploy/deploy.sh" {
 		t.Errorf("script stdin %s: %v", stdin, err)
 	}
 }
@@ -67,7 +67,7 @@ func TestRun_BashScriptFailureStopsTheDeploy(t *testing.T) {
 	wantStatuses(t, rep, map[string]string{"push": StatusDone, "deploy:docs": StatusFailed, "verify:docs": StatusNotRun, "release": StatusDone})
 }
 
-// deploy-bash's preflight refuses a missing or escaping script before any
+// release-script's preflight refuses a missing or escaping script before any
 // git write.
 func TestRun_BashPreflightRefusesBeforeAnyGitWrite(t *testing.T) {
 	for script, want := range map[string]string{"deploy/missing.sh": "no such file in the repository", "../outside.sh": "must be a relative path inside the repository"} {
@@ -83,6 +83,22 @@ func TestRun_BashPreflightRefusesBeforeAnyGitWrite(t *testing.T) {
 				t.Errorf("the refused deploy wrote: clone %q", statuses(rep)["clone"])
 			}
 		})
+	}
+}
+
+// The deploy script target was bash in the deploy extension: a target that
+// still names it is refused before any git write, with what to do, instead
+// of running the release extension's bash build provider.
+func TestRun_BashTargetIsRefusedWithItsNewName(t *testing.T) {
+	e := newEnv(t)
+	e.cfg.Targets = []deployconfig.Target{{Name: "docs", Provider: "bash", Config: map[string]string{"script": "deploy/deploy.sh"}}}
+	before := e.originRefs()
+	rep, err := e.run(e.options())
+	if !refusal.Is(err) || !strings.Contains(err.Error(), "deploy.targets[0] (docs): the bash deploy target is now named script (release-script): set provider: script, or run nerv migrate (nothing was written)") {
+		t.Fatalf("Run: %v, want the renamed-target refusal", err)
+	}
+	if e.originRefs() != before || statuses(rep)["clone"] != StatusNotRun {
+		t.Errorf("the refused deploy wrote: clone %q", statuses(rep)["clone"])
 	}
 }
 

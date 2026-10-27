@@ -1,7 +1,7 @@
-# SSH and docker compose target of the NERV deploy extension (contract:
+# SSH and docker compose target of the NERV release extension (contract:
 # docs/extensions.md and internal/deployprovider): dim's /update-deploy for
 # one environment. A native provider: preflight, deploy and verify run
-# nerv's own hidden `nerv provider deploy-ssh-compose <operation>`.
+# nerv's own hidden `nerv provider release-ssh-compose <operation>`.
 # preflight checks the config before anything is written and answers the
 # tools it needs (sshpass for password authentication, infisical for source
 # infisical); publish loads the artifact's image tars and pushes its images
@@ -11,7 +11,7 @@
 # host's compose script; verify checks that it is healthy and labelled with
 # the version.
 name: ssh-compose
-extension: deploy
+extension: release
 slot: target
 contract_version: 1
 runtime: exec
@@ -84,13 +84,13 @@ config:
     prompt: The bound of the health wait (a Go duration)
 operations:
   preflight:
-    - argv: ["{nerv}", provider, deploy-ssh-compose, preflight]
+    - argv: ["{nerv}", provider, release-ssh-compose, preflight]
   publish:
     - argv: [docker, load, -i, "{item}"]
       for_each: image_tars
     - argv: [docker, push, "{item}"]
       for_each: images
   deploy:
-    - argv: ["{nerv}", provider, deploy-ssh-compose, deploy]
+    - argv: ["{nerv}", provider, release-ssh-compose, deploy]
   verify:
-    - argv: ["{nerv}", provider, deploy-ssh-compose, verify]
+    - argv: ["{nerv}", provider, release-ssh-compose, verify]

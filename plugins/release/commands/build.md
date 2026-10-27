@@ -8,7 +8,7 @@ argument-hint: [--branch <name>] [--project <name>] [--version <semver>] (nothin
 Build, test and package what is on origin from this machine, as the CI
 build would, per project in dependency order, in a throwaway clone, with each
 project's build provider (`docker-compose` or `bash`), and leave a local artifact
-per project in `.nerv/artifacts/<project>/<version>/` for `/deploy:run`.
+per project in `.nerv/artifacts/<project>/<version>/` for `/release:deploy`.
 `nerv release` never writes to git (no commit, no tag, no push) and never
 publishes. Load the `release` skill first: it is the contract the steps below
 refer to (§ numbers).
@@ -42,7 +42,7 @@ which part is not accepted, that `/release:build` takes only `--branch`,
 
 3. **Present the plan.** In the user's language, one short table, one row
    per project: project (`branch`), version (blank for `no-release`),
-   channel, tag (the tag `/deploy:run` will create) and last version. Under
+   channel, tag (the tag `/release:deploy` will create) and last version. Under
    it, for each releasing project, its build provider and its stages in order
    with their steps, condensed from stderr (e.g. `build: compose:build`,
    `test: compose:test`, `package: compose:save ghcr.io/org/api:1.4.0`), and
@@ -78,4 +78,4 @@ which part is not accepted, that `/release:build` takes only `--branch`,
    `error`, then one row per project with `status`, `version`, `tag` and
    `artifact`. For a failed project quote its `error` and its `action`
    without rewording them. Nothing is ever on origin after `nerv release`;
-   the next step for a packaged artifact is `/deploy:run`.
+   the next step for a packaged artifact is `/release:deploy`.

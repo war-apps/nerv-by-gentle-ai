@@ -1,4 +1,4 @@
-// Package deploy is the deploy-ssh-compose provider of nerv deploy: dim's
+// Package deploy is the release-ssh-compose provider of nerv deploy: dim's
 // /update-deploy for one environment. It reads the environment's deploy data
 // (environment variables or Infisical, update-deploy's layout), decides
 // whether the release deploys it, updates its container over SSH with the

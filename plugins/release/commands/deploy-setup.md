@@ -1,9 +1,9 @@
 ---
-description: Set up the deploy section of .ai-workflow/config.yaml interactively — the git host provider, the targets with their provider config, and git (commit message, remote); suggests installing deploy-github and deploy-ssh-compose
+description: Set up the deploy section of .ai-workflow/config.yaml interactively — the git host provider (release-github), the targets with their provider config (release-ssh-compose, release-script), and git (commit message, remote)
 argument-hint: [--target <name>]
 ---
 
-# /deploy:setup
+# /release:deploy-setup
 
 Build the `deploy:` section of `<repo>/.ai-workflow/config.yaml` for `nerv deploy`:
 detect what the repository uses, propose a complete section, ask only what
@@ -33,9 +33,9 @@ English.
    - An old `pipeline:` key: it is no longer read. Say `nerv migrate
      --dry-run` shows its translation, and offer to build `deploy:` here
      from its `pipeline.deploy` environments instead (one
-     `deploy-ssh-compose` target each). Its `pipeline.images` are not a
+     `release-ssh-compose` target each). Its `pipeline.images` are not a
      `deploy:` key: release builds the images now, from the `release:` project's
-     the release project's `images` (`/release:setup` writes them), and `deploy-ssh-compose`
+     the release project's `images` (`/release:setup` writes them), and `release-ssh-compose`
      pushes them.
 
 4. Read the user config (the path `nerv configure --print --json` reports
@@ -52,24 +52,23 @@ other byte stays as it is.
 
 ## 2. Providers
 
-Read `~/.claude/plugins/installed_plugins.json` for `deploy-*@nerv`
-providers. Suggest what is missing, without installing it:
+The deploy providers come with the release extension (`nerv install --with
+release` installs them all; nothing else to install). Pick the ones the
+repository needs:
 
-- **Git host.** `origin` on GitHub (`git remote get-url origin`): suggest
-  `deploy-github` (needs the `gh` CLI and `gh auth login`). Another host:
+- **Git host.** `origin` on GitHub (`git remote get-url origin`): `github`
+  (`release-github`, needs the `gh` CLI and `gh auth login`). Another host:
   say no provider ships for it yet, and leave `host` unset (no host
   release).
 - **Targets.** A compose file with images and a host compose script, an old
-  `pipeline.deploy` section, or Infisical deploy data: suggest
-  `deploy-ssh-compose` (needs `docker`, `ssh`, and `sshpass` or a key, and
-  the `infisical` CLI with `source: infisical`).
+  `pipeline.deploy` section, or Infisical deploy data: `ssh-compose`
+  (`release-ssh-compose`, needs `docker`, `ssh`, and `sshpass` or a key,
+  and the `infisical` CLI with `source: infisical`). The repository's own
+  deploy scripts: `script` (`release-script`, needs `bash`).
+- **None.** When nothing deploys from nerv, the section may be left out
+  altogether: `/release:ship` then stops at the local artifact.
 
-The install line is `nerv install --with deploy,deploy-github,deploy-ssh-compose`
-(only the ones missing; `deploy` requires `release`). After installing, the
-user restarts Claude Code. Continue with the providers the user has or
-will install.
-
-The repository's own deploy providers, `.ai-workflow/providers/deploy-<name>/provider.yaml`
+The repository's own deploy providers, `.ai-workflow/providers/release-<name>/provider.yaml`
 (docs/extensions.md, "Project extensions and providers"), are available too,
 with no install: list them with their `slot` and `config` keys next to the
 installed ones, and offer them for `host` or a target like any other.
@@ -121,12 +120,12 @@ only on an explicit yes.
    <newest> --dry-run --json` and show the steps; a configuration error is
    path-qualified: fix the section and rerun, at most two rounds. A
    preflight refusal names a missing tool or value: say what to install or
-   set. No artifact: say the section is validated by the first `/deploy:run`.
+   set. No artifact: say the section is validated by the first `/release:deploy`.
 
 ## 6. Next steps
 
 Tell the user, without doing any of it: set the user-scope keys with `nerv
-configure`, run `/release:build`, then `/deploy:run`.
+configure`, run `/release:build`, then `/release:deploy`.
 
 Never commit, push, run `nerv deploy` without `--dry-run`, or edit any file
 other than `.ai-workflow/config.yaml`.

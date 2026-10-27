@@ -69,7 +69,7 @@ Look for `package.json` `release`, `.releaserc`, `.releaserc.json`,
   `extends`, maintenance branches, an invalid prerelease branch). Show the
   translation and every warning as they are, and say where each warned part
   goes: `exec` commands become stages or hooks (step 4), `@semantic-release/git`
-  and `@semantic-release/github` go to the `deploy:` section (`/deploy:setup`),
+  and `@semantic-release/github` go to the `deploy:` section (`/release:deploy-setup`),
   `npm` publishing goes to a deploy target. Ask once whether to import it;
   on an explicit yes, run `nerv release setup --import` and continue from the
   section it wrote.
@@ -182,8 +182,9 @@ Tell the user, without doing any of it:
    committed or not. Committing it is recommended so the team shares it.
 2. Run `/release:build`: it always rehearses first and packages the artifact
    only after an explicit yes; it never commits, tags or pushes.
-3. To release the artifact, install the deploy extension (`nerv install --with
-   deploy,deploy-github`) and run `/deploy:setup`.
+3. To release and deploy the artifact, run `/release:deploy-setup` (the
+   deploy providers came with this extension), then `/release:ship` builds
+   and deploys in one go.
 
 Never commit, push, run `nerv release` or edit any file other than
 `.ai-workflow/config.yaml`.
