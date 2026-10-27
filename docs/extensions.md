@@ -177,7 +177,7 @@ contract_version: 1
 runtime: agent
 mcp:                           # agent: the server and the exact tools its procedures call
   server: teamwork
-  tools: [teamwork_get_task]
+  tools: [twprojects-get_task]
 operations:
   getTask: procedures/get-task.md
   comment: not_implemented

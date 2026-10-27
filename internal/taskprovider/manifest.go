@@ -136,14 +136,26 @@ func (m *Manifest) CheckFiles(fsys fs.FS) error {
 }
 
 // MissingTools returns the declared tools absent from available, in
-// declaration order. A tool counts when available holds its bare name or
-// its Claude Code name mcp__<server>__<tool>; the same tool name served by
-// another MCP server does not.
+// declaration order. A tool counts when available holds its bare name, its
+// Claude Code name mcp__<server>__<tool>, or the name Claude Code gives it
+// when the provider's own plugin (task-<name>) ships the server in its
+// .mcp.json, mcp__plugin_task-<name>_<server>__<tool> (the plugin name's
+// dash may read as an underscore). The same tool name served by another
+// MCP server does not count.
 func (m *Manifest) MissingTools(available []string) []string {
+	plugin := Extension + "-" + m.Name
+	prefixes := []string{
+		"mcp__" + m.MCP.Server + "__",
+		"mcp__plugin_" + plugin + "_" + m.MCP.Server + "__",
+		"mcp__plugin_" + strings.ReplaceAll(plugin, "-", "_") + "_" + m.MCP.Server + "__",
+	}
 	var missing []string
 	for _, tool := range m.MCP.Tools {
-		qualified := "mcp__" + m.MCP.Server + "__" + tool
-		if !slices.Contains(available, tool) && !slices.Contains(available, qualified) {
+		found := slices.Contains(available, tool)
+		for _, p := range prefixes {
+			found = found || slices.Contains(available, p+tool)
+		}
+		if !found {
 			missing = append(missing, tool)
 		}
 	}

@@ -58,7 +58,7 @@ And the task fields, which `plugins/task/extension.yaml` allows under `provider_
 
 `nerv` validates every manifest it ships. An operation an event needs can never be `not_implemented`.
 
-**Tool check (S8).** Before the first operation of a dispatch, compare `mcp.tools` against the tools actually available to the running agent. A tool counts when its bare name or `mcp__<server>__<tool>` is available. The same tool name from another server, such as a claude.ai connector, does not count. When a tool is missing, run nothing for that provider and answer `blocked` with `error: "missing MCP tools: <names> (server <server>)"`. Never substitute another server's tools.
+**Tool check (S8).** Before the first operation of a dispatch, compare `mcp.tools` against the tools actually available to the running agent. A tool counts when its bare name, `mcp__<server>__<tool>`, or `mcp__plugin_task-<name>_<server>__<tool>` is available: the last is the server the provider's own plugin ships in its `.mcp.json` (Claude Code may spell the plugin's dash as `_`). The same tool name from another server, such as a claude.ai connector or another plugin, does not count. When a tool is missing, run nothing for that provider and answer `blocked` with `error: "missing MCP tools: <names> (server <server>)"`. Never substitute another server's tools.
 
 ## 3. Operations a provider implements
 
