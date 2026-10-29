@@ -192,6 +192,7 @@ func TestProvider_RefusesInvalidProviders(t *testing.T) {
 		{"agent tools", agentProvider, "tools: [paper_ship]", "tools: []", "mcp.tools must name every tool"},
 		{"empty connector", agentProvider, "tools: [paper_ship]", "tools: [paper_ship]\n  connectors: [\"\"]", "mcp.connectors[0] must name a claude.ai connector"},
 		{"duplicated connector", agentProvider, "tools: [paper_ship]", "tools: [paper_ship]\n  connectors: [Paper.com, Paper.com]", "mcp.connectors: Paper.com: duplicated"},
+		{"padded connector", agentProvider, "tools: [paper_ship]", "tools: [paper_ship]\n  connectors: [\" Paper.com\"]", `mcp.connectors[0] " Paper.com" has leading or trailing spaces`},
 		{"connector spelled alike", agentProvider, "tools: [paper_ship]", "tools: [paper_ship]\n  connectors: [Paper.com, Paper_com]", "mcp.connectors: Paper_com: duplicated (Claude Code names it like Paper.com)"},
 		{"exec connectors", tinProvider, "requires: [tin]", "requires: [tin]\nmcp:\n  connectors: [Tin.com]", "mcp is for runtime agent, not exec"},
 		{"bad runtime", tinProvider, "runtime: exec", "runtime: wasm", `runtime "wasm" must be one of agent, exec`},

@@ -249,6 +249,10 @@ func (p *Provider) problems() []string {
 				add("mcp.connectors[%d] must name a claude.ai connector", i)
 				continue
 			}
+			if strings.TrimSpace(c) != c {
+				add("mcp.connectors[%d] %q has leading or trailing spaces", i, c)
+				continue
+			}
 			for _, prev := range p.MCP.Connectors[:i] {
 				if prev == c {
 					add("mcp.connectors: %s: duplicated", c)
