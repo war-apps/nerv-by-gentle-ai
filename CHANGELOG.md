@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [6.2.1] - 2026-10-29
+
+Upgrading from 6.2.0: run `nerv install`, then restart Claude Code. NERV is
+now tested against gentle-ai 4.3.1 (any 4.x still works): the orchestrator
+mirrors its narrower high-risk item 1, so a dev or test database a seed or
+backup rebuilds no longer launches the independent verifier.
+
+### Fixed
+- orchestrator: align with gentle-ai 4.3.1 (8e418cf)
+
 ## [6.2.0] - 2026-10-29
 
 Upgrading from 6.1.0: run `nerv install`, then restart Claude Code. The
