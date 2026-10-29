@@ -23,7 +23,7 @@ import (
 // Found means "gentle-ai --version" produced any non-blank output at all
 // — even when that output has no parseable MAJOR.MINOR.PATCH token, in
 // which case Version stays empty. OK means the parsed major version is 4
-// (NERV requires gentle-ai 4.x; tested against 4.0.0).
+// (NERV requires gentle-ai 4.x; tested against 4.3.1).
 type Preflight struct {
 	Found   bool
 	Version string

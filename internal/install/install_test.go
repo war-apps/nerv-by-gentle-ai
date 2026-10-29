@@ -267,7 +267,7 @@ func TestInstall_GentleAIVersionNote(t *testing.T) {
 	if err := install.Install(context.Background(), deps, install.Options{RequireGentleAI: true, NoSkills: true}); err != nil {
 		t.Fatalf("Install() error = %v", err)
 	}
-	if !strings.Contains(stdout.String(), "gentle-ai version : 4.0.0 (tested against 4.0.0)") {
+	if !strings.Contains(stdout.String(), "gentle-ai version : 4.0.0 (tested against 4.3.1)") {
 		t.Errorf("output lacks the tested-against line:\n%s", stdout.String())
 	}
 	if strings.Contains(stdout.String(), "in progress") {
