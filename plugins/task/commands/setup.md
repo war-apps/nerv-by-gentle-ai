@@ -45,12 +45,17 @@ List the task providers the skill's §2 finds: the installed ones
 repository's own (`.ai-workflow/providers/task-<name>/provider.yaml`), each
 with its `name`, its `task_ref_prefix` and where it comes from.
 
+- `$ARGUMENTS` names a provider that is not in the list: say it is not
+  installed, list the ones that are, give the install line
+  `nerv install --with task,task-<provider>`, and stop. Never fall back to
+  another provider.
 - None: say no task provider is installed, give the install line
   `nerv install --with task,task-<provider>` (`task-teamwork` ships with
   nerv), and stop.
+- The one `$ARGUMENTS` names: pick it.
 - One: propose it.
-- Several: the one `$ARGUMENTS` or `defaults.tasks.provider` names, else
-  ask which one. Stop and wait.
+- Several: the one `defaults.tasks.provider` names, else ask which one.
+  Stop and wait.
 
 ## 3. Propose the section
 

@@ -18,5 +18,8 @@ func TestTaskSetupCommand_ConfiguresTheTasksSectionOnly(t *testing.T) {
 		"`tasks:`", ".ai-workflow/config.yaml", "provider.yaml", "`scope: repo`", "`scope: user`",
 		"defaults.tasks", "installed_plugins.json", ".ai-workflow/providers/task-",
 		"tool check", "README.md", "one question at a time", "explicit yes",
-		"Never commit")
+		"Never commit",
+		// A provider named in the arguments but not installed stops the
+		// command; it never falls back to the installed one.
+		"names a provider that is not in the list", "Never fall back to\n  another provider")
 }
