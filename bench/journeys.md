@@ -6,7 +6,7 @@ outcomes that must hold. Run them after every phase and before any push.
 
 ## Common setup
 
-- gentle-ai 4.x installed (tested against 4.0.0); plugin `nerv@nerv` installed from the committed
+- gentle-ai 4.x installed (tested against 4.3.1); plugin `nerv@nerv` installed from the committed
   HEAD under test (`claude plugin uninstall nerv@nerv && claude plugin install nerv@nerv`).
   The task extension (`task@nerv`) is **not** installed, except where J5 and its variants say so, so no
   task event runs.

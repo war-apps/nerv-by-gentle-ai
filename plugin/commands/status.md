@@ -23,7 +23,7 @@ short and imperative — this is a status check, not a narrative.
 
 3. **gentle-ai version check.** Run `gentle-ai --version` and parse the
    first token as `MAJOR.MINOR.PATCH` (e.g. `4.0.0`). Compare against the
-   version this NERV release was tested against — `4.0.0`, as stated in
+   version this NERV release was tested against — `4.3.1`, as stated in
    this plugin's `README.md`. Print both versions.
    - Major `!= 4`: print "NERV requires gentle-ai 4.x; found X.Y.Z" and
      mark status degraded.

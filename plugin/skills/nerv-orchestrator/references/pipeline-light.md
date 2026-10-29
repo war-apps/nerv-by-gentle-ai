@@ -47,7 +47,9 @@ off. After the pilot returns, Ikari runs `gentle-ai review assess --cwd
   model or effort the pilot ran on.
 - **Independent verifier**: Maya runs as the independent verifier when,
   and only when, the change touches one of gentle-ai's Task Size high-risk
-  items — (1) data or irreversible effects, (2) security, (3) contracts
+  items — (1) data or irreversible effects that cannot be rebuilt (not
+  saving new records, nor a dev or test database a seed or backup
+  rebuilds), (2) security, (3) contracts
   others consume, (4) concurrency, (5) delivery or environment, (6) no test
   would catch a regression — and Ikari names it by adding `--escalate-item
   <1-6> --escalate-reason "<one line>"` to that assessment. A native `high`
