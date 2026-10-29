@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io/fs"
 	"path"
+	"regexp"
 	"slices"
 	"strings"
 
@@ -54,6 +55,18 @@ type MCP struct {
 	Server     string   `yaml:"server"`
 	Tools      []string `yaml:"tools"`
 	Connectors []string `yaml:"connectors"`
+}
+
+// connectorNameChar matches the characters Claude Code replaces with _ in a
+// claude.ai connector's tool names.
+var connectorNameChar = regexp.MustCompile(`[^A-Za-z0-9_-]`)
+
+// ConnectorToolPrefix is the prefix Claude Code gives the tools of the
+// claude.ai connector name: mcp__claude_ai_<name>__, every character of the
+// name but letters, digits, _ and - read as _ (Teamwork.com is
+// mcp__claude_ai_Teamwork_com__).
+func ConnectorToolPrefix(name string) string {
+	return "mcp__claude_ai_" + connectorNameChar.ReplaceAllString(name, "_") + "__"
 }
 
 // Operation is one slot operation of a provider: NotImplemented, a
@@ -232,11 +245,19 @@ func (p *Provider) problems() []string {
 			}
 		}
 		for i, c := range p.MCP.Connectors {
-			switch {
-			case strings.TrimSpace(c) == "":
+			if strings.TrimSpace(c) == "" {
 				add("mcp.connectors[%d] must name a claude.ai connector", i)
-			case slices.Contains(p.MCP.Connectors[:i], c):
-				add("mcp.connectors: %s: duplicated", c)
+				continue
+			}
+			for _, prev := range p.MCP.Connectors[:i] {
+				if prev == c {
+					add("mcp.connectors: %s: duplicated", c)
+					break
+				}
+				if ConnectorToolPrefix(prev) == ConnectorToolPrefix(c) {
+					add("mcp.connectors: %s: duplicated (Claude Code names it like %s)", c, prev)
+					break
+				}
 			}
 		}
 	case RuntimeExec:

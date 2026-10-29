@@ -14,7 +14,7 @@ task_ref_prefix: TW
 #   claude mcp add --transport http teamwork https://mcp.ai.teamwork.com \
 #     --header "Authorization: Bearer <token>"
 # The claude.ai Teamwork connector (Teamwork.com) serves the same tools and
-# counts too; any other server's tools do not (see README.md, Sign in).
+# counts too; any other server's tools do not (see README.md, Connect to Teamwork).
 mcp:
   server: teamwork
   connectors: [Teamwork.com]

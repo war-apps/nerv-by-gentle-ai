@@ -22,10 +22,6 @@ var (
 
 var prefixRe = regexp.MustCompile(`^[A-Z][A-Z0-9]*$`)
 
-// connectorName matches the characters Claude Code replaces with _ in a
-// claude.ai connector's tool names.
-var connectorName = regexp.MustCompile(`[^A-Za-z0-9_-]`)
-
 // ConfigKey is one setting the provider needs, with what the configure
 // wizard shows for it.
 type ConfigKey = extension.ConfigKey
@@ -157,7 +153,7 @@ func (m *Manifest) MissingTools(available []string) []string {
 		"mcp__plugin_" + strings.ReplaceAll(plugin, "-", "_") + "_" + m.MCP.Server + "__",
 	}
 	for _, c := range m.MCP.Connectors {
-		prefixes = append(prefixes, "mcp__claude_ai_"+connectorName.ReplaceAllString(c, "_")+"__")
+		prefixes = append(prefixes, extension.ConnectorToolPrefix(c))
 	}
 	var missing []string
 	for _, tool := range m.MCP.Tools {

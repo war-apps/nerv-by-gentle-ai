@@ -87,11 +87,18 @@ only on an explicit yes.
 ## 5. Write
 
 - No `.ai-workflow/config.yaml`: create it with the `tasks:` section only.
-- Otherwise add or replace only the `tasks:` block, from the `tasks:` line
-  up to the next column-0 key; every other byte stays as it is.
+- Otherwise add or replace only the `tasks:` block: from the `tasks:` line
+  up to the next column-0 key, leaving out the blank and column-0 comment
+  lines just above that key (they belong to it). With no `tasks:` key,
+  append the section at the end. Every other byte stays as it is.
+- A `tasks:` key that is not a plain block (flow style such as
+  `tasks: { ... }`, a quoted key, an anchor or an alias): do not rewrite it;
+  show the section to paste and stop.
 
-Then read the file back and check it parses as YAML and that `tasks:`
-holds what was shown.
+Then read the file back and check that it parses as YAML, that `tasks:`
+holds what was shown, and that every line outside the `tasks:` block is
+identical, in the same order, to the file before the write. On any
+difference, restore the previous content and say what went wrong.
 
 ## 6. Connection
 
