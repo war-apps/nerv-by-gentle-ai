@@ -111,7 +111,7 @@ func preflightGentleAI(ctx context.Context, deps Deps, require bool) error {
 			return &RefusalError{Err: fmt.Errorf("NERV requires gentle-ai 4.x; found %s", preflight.Version)}
 		}
 	default:
-		fmt.Fprintf(deps.Stdout, "gentle-ai version : %s (tested against 4.0.0)\n", preflight.Version)
+		fmt.Fprintf(deps.Stdout, "gentle-ai version : %s (tested against 4.3.1)\n", preflight.Version)
 	}
 	return nil
 }

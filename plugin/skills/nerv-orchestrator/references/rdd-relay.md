@@ -13,7 +13,10 @@ exactly as gentle-ai's native review lifecycle prescribes — relay any
 never on their behalf. When `review_due` is false, record the reason
 (`passive`, `under_budget`, `already_reviewed`) and continue; the reviewed
 boundary advances to this commit only once its review is acknowledged, or
-immediately for `passive`. A failed or unavailable assessment is always
+immediately for `passive`. A STATUS that stops with
+`acknowledged_boundary_reaches_head` means the reviewed boundary already
+reaches HEAD: nothing is left to review, and a later commit is offered
+again. A failed or unavailable assessment is always
 treated as due — never inferred as low risk. Log every assessment and every
 receipt as `rdd_assess` / `rdd_receipt` events in `deliberation-log.md`. The
 first boundary of a run is its branch point.
@@ -26,7 +29,7 @@ folder the run has not committed yet (`odd/tasks/{feature}.md`,
 `odd/{feature}/`; see `artifacts.commit` in `delivery.md`) — trip it on
 every run.
 Ikari excludes them itself and never asks the user to edit
-`.git/info/exclude`. gentle-ai 4.2 has no per-path exclude flag: the scope
+`.git/info/exclude`. gentle-ai 4.x has no per-path exclude flag: the scope
 is all-or-declared, so Ikari declares it:
 
 1. Run the read-only status command the refusal names, `gentle-ai review

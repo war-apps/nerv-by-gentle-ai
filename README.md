@@ -100,7 +100,7 @@ until then nerv refuses to run on the old file.
 ## Requirements
 
 - **gentle-ai 4.x** — major version 4 is required; minor and
-  patch are free. Tested against 4.2.0. On 3.x, upgrade with
+  patch are free. Tested against 4.3.1. On 3.x, upgrade with
   `go install github.com/gentleman-programming/gentle-ai/v4/cmd/gentle-ai@latest`
   or `brew upgrade gentle-ai`, then `gentle-ai sync` (`gentle-ai upgrade`
   from 3.x cannot reach 4.x on go installs).
