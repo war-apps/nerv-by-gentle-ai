@@ -16,7 +16,7 @@ Everything lives under `tasks:`, and it is read from the repository's `<repo>/.a
 - each `tasks.providers.<name>.<key>` whose provider manifest declares `scope: user` (such as `assignee_id` or `billable`);
 - `tasks.timer_store`, `tasks.stale_after_hours` and the older `tasks.rounding_minutes`, which belong to the machine (an assumption of this contract: they are personal, like the `scope: user` keys).
 
-Any other `tasks.*` key of the user config is ignored, `tasks.provider` included. The user config's `defaults.tasks` (same shape as `tasks:`) is never read here either: it is the seed that `/nerv:init` and `nerv configure --init-repo` copy into a repository being set up. `nerv doctor` warns about user keys that no longer apply, and `nerv migrate --user` moves them under `defaults.tasks`.
+Any other `tasks.*` key of the user config is ignored, `tasks.provider` included. The user config's `defaults.tasks` (same shape as `tasks:`) is never read here either: it is the seed that `/nerv:init`, `nerv configure --init-repo` and `/task:setup` copy into a repository being set up. `nerv doctor` warns about user keys that no longer apply, and `nerv migrate --user` moves them under `defaults.tasks`.
 
 | Key | Default | Meaning |
 |---|---|---|
