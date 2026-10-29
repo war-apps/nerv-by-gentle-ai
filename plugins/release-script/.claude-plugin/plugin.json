@@ -1,6 +1,6 @@
 {
   "name": "release-script",
-  "version": "6.1.0",
+  "version": "6.2.0",
   "description": "Script target for nerv deploy: runs the repository's own deploy script (and optional publish and verify scripts) from the release commit, with the request on stdin and the deploy variables in its environment; installed with release",
   "author": { "name": "Walter Rodriguez" }
 }
