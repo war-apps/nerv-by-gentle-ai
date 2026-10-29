@@ -225,4 +225,18 @@ func TestMissingTools(t *testing.T) {
 	if got := m.MissingTools([]string{"mcp__plugin_task-other_acme__acme_get_task", "acme_move_task"}); len(got) != 1 {
 		t.Errorf("MissingTools: another plugin's server was accepted: %v", got)
 	}
+	// A claude.ai connector counts only when mcp.connectors names it, with
+	// the name as Claude Code spells it (every character but letters,
+	// digits, _ and - read as _).
+	connector := []string{"mcp__claude_ai_Acme_io__acme_get_task", "mcp__claude_ai_Acme_io__acme_move_task"}
+	if got := m.MissingTools(connector); len(got) != 2 {
+		t.Errorf("MissingTools: an undeclared connector was accepted: %v", got)
+	}
+	m.MCP.Connectors = []string{"Acme.io"}
+	if got := m.MissingTools(connector); len(got) != 0 {
+		t.Errorf("MissingTools with the declared connector: got %v, want none", got)
+	}
+	if got := m.MissingTools([]string{"mcp__claude_ai_Other_io__acme_get_task", "acme_move_task"}); len(got) != 1 {
+		t.Errorf("MissingTools: another connector was accepted: %v", got)
+	}
 }
