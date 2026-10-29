@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [6.2.0] - 2026-10-29
+
+Upgrading from 6.1.0: run `nerv install`, then restart Claude Code. The
+Teamwork task provider now also accepts the claude.ai Teamwork connector,
+or a `teamwork` server registered with a fixed bearer token; signing in to
+the plugin's own server from `/mcp` currently fails on Teamwork's side
+(`invalid_redirect_uri`). `plugins/task-teamwork/README.md` lists the three
+ways to connect. `/task:setup` writes a repository's `tasks:` section
+without `nerv configure`'s wizard.
+
+### Added
+- task: accept a provider's declared claude.ai connectors in the tool check (220b765)
+- task: add /task:setup to configure a repository's tasks section (fb91de1)
+
+### Fixed
+- task: refuse connectors Claude Code names alike and keep /task:setup's write exact (65c5638)
+- task: refuse padded connector names and unknown /task:setup providers (b858322)
+
 ## [6.1.0] - 2026-10-27
 
 Upgrading from 6.0.0: the Teamwork task provider now uses Teamwork's

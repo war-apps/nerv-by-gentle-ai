@@ -1,6 +1,6 @@
 {
   "name": "release-bash",
-  "version": "6.1.0",
+  "version": "6.2.0",
   "description": "Script build for nerv release: each pipeline stage runs the project's own command (bash, pwsh or node), and the images it builds are saved into the artifact",
   "author": { "name": "Walter Rodriguez" }
 }
