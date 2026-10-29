@@ -13,11 +13,11 @@ task_ref_prefix: TW
 # A server registered by hand under the same name works too:
 #   claude mcp add --transport http teamwork https://mcp.ai.teamwork.com \
 #     --header "Authorization: Bearer <token>"
-# The claude.ai Teamwork connector serves the same tools under another
-# server name and does not satisfy this list: the dispatcher reports the
-# missing tools.
+# The claude.ai Teamwork connector (Teamwork.com) serves the same tools and
+# counts too; any other server's tools do not (see README.md, Sign in).
 mcp:
   server: teamwork
+  connectors: [Teamwork.com]
   tools:
     - twprojects-get_task
     - twprojects-list_tasks

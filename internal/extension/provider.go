@@ -48,9 +48,12 @@ var commonProviderFields = map[string]bool{
 
 // MCP names the server and the exact tools an agent provider calls, so its
 // extension can tell a missing connector from a provider failure.
+// Connectors names the claude.ai connectors (as claude.ai lists them, such
+// as Teamwork.com) that serve the same tools and count as well.
 type MCP struct {
-	Server string   `yaml:"server"`
-	Tools  []string `yaml:"tools"`
+	Server     string   `yaml:"server"`
+	Tools      []string `yaml:"tools"`
+	Connectors []string `yaml:"connectors"`
 }
 
 // Operation is one slot operation of a provider: NotImplemented, a
@@ -228,8 +231,16 @@ func (p *Provider) problems() []string {
 				add("mcp.tools: %s: duplicated", tool)
 			}
 		}
+		for i, c := range p.MCP.Connectors {
+			switch {
+			case strings.TrimSpace(c) == "":
+				add("mcp.connectors[%d] must name a claude.ai connector", i)
+			case slices.Contains(p.MCP.Connectors[:i], c):
+				add("mcp.connectors: %s: duplicated", c)
+			}
+		}
 	case RuntimeExec:
-		if p.MCP.Server != "" || len(p.MCP.Tools) > 0 {
+		if p.MCP.Server != "" || len(p.MCP.Tools) > 0 || len(p.MCP.Connectors) > 0 {
 			add("mcp is for runtime agent, not exec")
 		}
 		for i, tool := range p.Requires {

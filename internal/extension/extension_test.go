@@ -190,6 +190,9 @@ func TestProvider_RefusesInvalidProviders(t *testing.T) {
 		{"agent requires", agentProvider, "runtime: agent", "runtime: agent\nrequires: [paper]", "requires is for runtime exec"},
 		{"agent procedure path", agentProvider, "procedures/ship.md", "../ship.md", `operations.ship: "../ship.md" must be a relative .md path`},
 		{"agent tools", agentProvider, "tools: [paper_ship]", "tools: []", "mcp.tools must name every tool"},
+		{"empty connector", agentProvider, "tools: [paper_ship]", "tools: [paper_ship]\n  connectors: [\"\"]", "mcp.connectors[0] must name a claude.ai connector"},
+		{"duplicated connector", agentProvider, "tools: [paper_ship]", "tools: [paper_ship]\n  connectors: [Paper.com, Paper.com]", "mcp.connectors: Paper.com: duplicated"},
+		{"exec connectors", tinProvider, "requires: [tin]", "requires: [tin]\nmcp:\n  connectors: [Tin.com]", "mcp is for runtime agent, not exec"},
 		{"bad runtime", tinProvider, "runtime: exec", "runtime: wasm", `runtime "wasm" must be one of agent, exec`},
 	}
 	for _, tt := range tests {

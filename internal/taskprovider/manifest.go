@@ -22,6 +22,10 @@ var (
 
 var prefixRe = regexp.MustCompile(`^[A-Z][A-Z0-9]*$`)
 
+// connectorName matches the characters Claude Code replaces with _ in a
+// claude.ai connector's tool names.
+var connectorName = regexp.MustCompile(`[^A-Za-z0-9_-]`)
+
 // ConfigKey is one setting the provider needs, with what the configure
 // wizard shows for it.
 type ConfigKey = extension.ConfigKey
@@ -140,14 +144,20 @@ func (m *Manifest) CheckFiles(fsys fs.FS) error {
 // Claude Code name mcp__<server>__<tool>, or the name Claude Code gives it
 // when the provider's own plugin (task-<name>) ships the server in its
 // .mcp.json, mcp__plugin_task-<name>_<server>__<tool> (the plugin name's
-// dash may read as an underscore). The same tool name served by another
-// MCP server does not count.
+// dash may read as an underscore), or, for each claude.ai connector
+// mcp.connectors names, mcp__claude_ai_<connector>__<tool> (every
+// character of the connector name but letters, digits, _ and - read as _).
+// The same tool name served by another MCP server or connector does not
+// count.
 func (m *Manifest) MissingTools(available []string) []string {
 	plugin := Extension + "-" + m.Name
 	prefixes := []string{
 		"mcp__" + m.MCP.Server + "__",
 		"mcp__plugin_" + plugin + "_" + m.MCP.Server + "__",
 		"mcp__plugin_" + strings.ReplaceAll(plugin, "-", "_") + "_" + m.MCP.Server + "__",
+	}
+	for _, c := range m.MCP.Connectors {
+		prefixes = append(prefixes, "mcp__claude_ai_"+connectorName.ReplaceAllString(c, "_")+"__")
 	}
 	var missing []string
 	for _, tool := range m.MCP.Tools {
