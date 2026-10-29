@@ -178,6 +178,7 @@ runtime: agent
 mcp:                           # agent: the server and the exact tools its procedures call
   server: teamwork
   tools: [twprojects-get_task]
+  connectors: [Teamwork.com]   # optional: claude.ai connectors that serve the same tools
 operations:
   getTask: procedures/get-task.md
   comment: not_implemented
@@ -193,7 +194,8 @@ events: [run.started]          # the core events it handles, checked against its
   [deploy.md](deploy.md#providers)). `requires` is exec only.
 - **Runtime `agent`**: each operation is a relative `.md` procedure inside
   the provider, which the extension's agent follows with the MCP tools
-  `mcp` names. `mcp` is agent only.
+  `mcp` names: from `mcp.server`, or from a claude.ai connector that
+  `mcp.connectors` lists by its claude.ai name. `mcp` is agent only.
 - **`config`**: the key schema shared with `extension.yaml`. `type` is
   `string`, `int`, `bool`, `map` or `list`; a scalar key needs a `prompt`
   (what `nerv configure` asks); its `default` is optional and, when set,

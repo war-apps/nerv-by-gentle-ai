@@ -64,6 +64,14 @@ func TestTeamworkProvider_ProceduresUseTheDeclaredOfficialTools(t *testing.T) {
 	if m.MCP.Server != "teamwork" {
 		t.Errorf("mcp.server = %q, want teamwork", m.MCP.Server)
 	}
+	// The claude.ai Teamwork connector serves the same tools and counts.
+	var viaConnector []string
+	for _, tool := range m.MCP.Tools {
+		viaConnector = append(viaConnector, "mcp__claude_ai_Teamwork_com__"+tool)
+	}
+	if missing := m.MissingTools(viaConnector); len(missing) != 0 {
+		t.Errorf("the claude.ai Teamwork.com connector lacks %v", missing)
+	}
 	used := map[string]bool{}
 	for op, file := range m.Operations {
 		data, err := fs.ReadFile(nerv.ExtensionsFS(), "task-teamwork/"+file)

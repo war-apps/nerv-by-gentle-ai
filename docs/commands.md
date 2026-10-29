@@ -32,6 +32,7 @@ contract against the configured providers.
 | `/task:pending` | Move a task to the pending stage |
 | `/task:priority` | Change a task's priority (High, Medium or Low) |
 | `/task:replay` | Re-dispatch the task events a NERV run could not deliver (blocked or failed with replay: true) |
+| `/task:setup` | Set up the tasks section of this repository's .ai-workflow/config.yaml interactively — the task provider, its repository keys and the connection check — without nerv configure's wizard |
 | `/task:start` | Start working on a task - local timer, assigns it to me, moves it to the inDev stage, offers a worktree (creates the task if needed) |
 | `/task:stop` | Stop working on a task and log its time (coupled blocks merge into one timelog; a gap starts a fresh timelog dated at the new block) |
 | `/task:stopAll` | Stop tracking on ALL started tasks - stops every timer and logs time as /task:stop would for each |
