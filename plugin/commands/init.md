@@ -1,11 +1,12 @@
 ---
-description: Bootstrap NERV for this repository — writes .ai-workflow/config.yaml and the skill registry
+description: Bootstrap NERV for this repository — writes .ai-workflow/config.yaml and the skill registry, then offers the configuration flows (NERV, tasks, release, deploy)
 ---
 
 # /nerv:init
 
 Set up NERV in the current repository. Asks only for what is missing, never
-overwrites silently, and bootstraps the skill registry itself. Work is
+overwrites silently, bootstraps the skill registry itself, and then offers
+every configuration flow installed on this machine. Work is
 tracked on gentle-ai's ODD feature documents (`odd/tasks/{feature}.md`),
 which the orchestrator creates for FULL runs only (DIRECT and LIGHT runs
 keep their files in the runtime folder `.nerv/runs/`); this command
@@ -97,11 +98,37 @@ creates no `odd/` file.
    from what the repo really has and records them in the ODD document's
    header (`skills/nerv-orchestrator/references/odd-document.md`).
 
-6. **Summarize.** Print what was written (`.ai-workflow/config.yaml` path and its
-   resolved keys, marking the ones copied from `defaults.tasks`) and remind the user that no restart is required for the
+6. **Offer the setup flows.** Ask one multi-select blocking prompt (native
+   `AskUserQuestion` when representable, plain-text fallback otherwise, per
+   the Lossless Blocking Prompts contract): which configuration to run now.
+   The options, in this order, each with its command's one-line purpose:
+   - `/nerv:configure` — NERV's user configuration: git, skills, models,
+     repository. Always offered.
+   - `/task:setup` — the `tasks:` section: task provider and connection
+     check. Offered only when the task extension is installed (the
+     `/task:setup` command is available in this session).
+   - `/release:setup` — the `release:` section: projects, build providers,
+     version engine. Offered only when the release extension is installed.
+   - `/release:deploy-setup` — the `deploy:` section: git host and
+     targets. Offered only when the release extension is installed.
+
+   A flow whose extension is not installed is not offered; say once which
+   extensions are missing and that `nerv install` adds them. STOP after
+   asking and wait. Selecting none skips this step. Run each selected flow
+   in the order above, one after the other: Follow the selected command's
+   file from its first step, with no arguments (`/nerv:configure` with
+   `all`), and let it ask its own questions. `/release:deploy-setup` stops
+   when the `release:` section is missing, so it runs after
+   `/release:setup`. A flow that stops or fails is reported and the next
+   selected flow still runs.
+
+7. **Summarize.** Print what was written (`.ai-workflow/config.yaml` path and its
+   resolved keys, marking the ones copied from `defaults.tasks`), which
+   setup flows ran and their result, and remind the user that no restart is required for the
    file itself, but the SessionStart hook only prints the activation
    header that loads the `nerv-orchestrator` skill on the **next** session
    start — this session keeps running under whatever routing was already
    active.
 
-Do not modify any file this command does not own. Do not launch any agent.
+Do not modify any file this command or a selected setup flow does not own.
+Do not launch any agent.

@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [6.3.0] - 2026-11-02
+
+Upgrading from 6.2.1: run `nerv upgrade` (on Windows, which has no prebuilt
+binary, `go install github.com/war-apps/nerv-by-gentle-ai/cmd/nerv@latest`
+then `nerv install`), then restart Claude Code. From now on `nerv install`
+and `nerv upgrade` also keep gentle-ai on its newest 4.x release with
+`gentle-ai upgrade`. `/nerv:init` now offers `/nerv:configure`,
+`/task:setup`, `/release:setup` and `/release:deploy-setup` after
+bootstrapping the repository.
+
+### Added
+- init: offer the configuration flows after bootstrapping the repository (fac81d7)
+- task-teamwork: record a stage change as a comment when the task has no workflow (d19ecea)
+
+### Fixed
+- upgrade: upgrade gentle-ai on install and when the binary can't be replaced (1e51d18)
+
 ## [6.2.1] - 2026-10-29
 
 Upgrading from 6.2.0: run `nerv install`, then restart Claude Code. NERV is

@@ -2,9 +2,15 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"errors"
+	"fmt"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -421,6 +427,146 @@ func TestRunInstall_LegacyCommands_AskOnTerminalReportOtherwise(t *testing.T) {
 		if !terminal && (asked || statErr != nil || !strings.Contains(stdout.String(), "can be removed")) {
 			t.Errorf("not a terminal: asked=%v, stat=%v; stdout:\n%s", asked, statErr, stdout.String())
 		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// S4: nerv install upgrades gentle-ai to its newest 4.x release before
+// laying NERV's own files over it (the gentle-ai sync in that upgrade step
+// rewrites gentle-ai's managed files).
+// ---------------------------------------------------------------------------
+
+// gentleAIReleaseServer serves gentle-ai's "latest release" lookup
+// (GitHub's API shape) with tag; an empty tag serves 404, simulating a
+// failed lookup.
+func gentleAIReleaseServer(t *testing.T, tag string) *httptest.Server {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if tag == "" {
+			http.NotFound(w, r)
+			return
+		}
+		fmt.Fprintf(w, `{"tag_name": %q}`, tag)
+	}))
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+// gentleAIRunBinaryRecorder records every "gentle-ai" run (nerv install's
+// own install/materialize runs go through opts.Runner, never RunBinary).
+func gentleAIRunBinaryRecorder() (func(context.Context, string, []string, io.Writer, io.Writer) (int, error), *[]string) {
+	var calls []string
+	run := func(_ context.Context, bin string, args []string, _, _ io.Writer) (int, error) {
+		if bin == "gentle-ai" {
+			calls = append(calls, strings.Join(args, " "))
+		}
+		return 0, nil
+	}
+	return run, &calls
+}
+
+func TestRunInstall_UpgradesGentleAIBeforeLayingFiles(t *testing.T) {
+	home := t.TempDir()
+	seedInstalledPluginsForCLI(t, home)
+	var stdout, stderr bytes.Buffer
+	opts := testOptions(home)
+	opts.Runner = baseInstallRunner() // gentle-ai --version -> 4.0.0
+	srv := gentleAIReleaseServer(t, "v4.3.0")
+	opts.HTTPClient = srv.Client()
+	opts.GentleAIAPIBase = srv.URL
+	runBinary, gentleCalls := gentleAIRunBinaryRecorder()
+	opts.RunBinary = runBinary
+
+	code := run([]string{"install", "--no-skills", "--no-configure"}, &stdout, &stderr, opts)
+
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0; stdout:\n%s\nstderr:\n%s", code, stdout.String(), stderr.String())
+	}
+	want := []string{"upgrade gentle-ai", "sync"}
+	if !reflect.DeepEqual(*gentleCalls, want) {
+		t.Errorf("gentle-ai runs = %v, want %v", *gentleCalls, want)
+	}
+	out := stdout.String()
+	gi := strings.Index(out, "Upgrading gentle-ai to v4.3.0")
+	pi := strings.Index(out, "Plugin materialized")
+	if gi < 0 || pi < 0 || gi > pi {
+		t.Errorf("gentle-ai was not upgraded before materializing NERV's files:\n%s", out)
+	}
+}
+
+func TestRunInstall_GentleAIUpgradeFailure_WarnsAndContinues(t *testing.T) {
+	home := t.TempDir()
+	seedInstalledPluginsForCLI(t, home)
+	var stdout, stderr bytes.Buffer
+	opts := testOptions(home)
+	opts.Runner = baseInstallRunner()
+	srv := gentleAIReleaseServer(t, "") // the release lookup 404s
+	opts.HTTPClient = srv.Client()
+	opts.GentleAIAPIBase = srv.URL
+
+	code := run([]string{"install", "--no-skills", "--no-configure"}, &stdout, &stderr, opts)
+
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0 (a failed lookup is only a warning); stdout:\n%s\nstderr:\n%s", code, stdout.String(), stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "Warning: gentle-ai:") {
+		t.Errorf("stdout lacks the gentle-ai warning:\n%s", stdout.String())
+	}
+	if !strings.Contains(stdout.String(), "Restart Claude Code") {
+		t.Errorf("install did not continue to completion:\n%s", stdout.String())
+	}
+}
+
+func TestRunInstall_GentleAINewMajor_NotUpgraded(t *testing.T) {
+	home := t.TempDir()
+	seedInstalledPluginsForCLI(t, home)
+	var stdout, stderr bytes.Buffer
+	opts := testOptions(home)
+	opts.Runner = baseInstallRunner() // 4.0.0
+	srv := gentleAIReleaseServer(t, "v5.0.0")
+	opts.HTTPClient = srv.Client()
+	opts.GentleAIAPIBase = srv.URL
+	runBinary, gentleCalls := gentleAIRunBinaryRecorder()
+	opts.RunBinary = runBinary
+
+	code := run([]string{"install", "--no-skills", "--no-configure"}, &stdout, &stderr, opts)
+
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0; stdout:\n%s\nstderr:\n%s", code, stdout.String(), stderr.String())
+	}
+	if len(*gentleCalls) != 0 {
+		t.Errorf("gentle-ai runs = %v, want none", *gentleCalls)
+	}
+	if !strings.Contains(stdout.String(), "is a new major version") {
+		t.Errorf("stdout lacks the new-major message:\n%s", stdout.String())
+	}
+}
+
+// S5: the install nerv upgrade launches passes --skip-gentle-ai-upgrade,
+// since upgradeGentleAI already ran once for that upgrade; this is the
+// mechanism that keeps gentle-ai from being upgraded twice.
+func TestRunInstall_SkipGentleAIUpgradeFlag_DoesNotUpgrade(t *testing.T) {
+	home := t.TempDir()
+	seedInstalledPluginsForCLI(t, home)
+	var stdout, stderr bytes.Buffer
+	opts := testOptions(home)
+	opts.Runner = baseInstallRunner()
+	srv := gentleAIReleaseServer(t, "v4.3.0")
+	opts.HTTPClient = srv.Client()
+	opts.GentleAIAPIBase = srv.URL
+	runBinary, gentleCalls := gentleAIRunBinaryRecorder()
+	opts.RunBinary = runBinary
+
+	code := run([]string{"install", "--no-skills", "--no-configure", "--skip-gentle-ai-upgrade"}, &stdout, &stderr, opts)
+
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0; stdout:\n%s\nstderr:\n%s", code, stdout.String(), stderr.String())
+	}
+	if len(*gentleCalls) != 0 {
+		t.Errorf("gentle-ai runs = %v, want none (--skip-gentle-ai-upgrade)", *gentleCalls)
+	}
+	if strings.Contains(stdout.String(), "Upgrading gentle-ai") {
+		t.Errorf("stdout shows a gentle-ai upgrade despite --skip-gentle-ai-upgrade:\n%s", stdout.String())
 	}
 }
 

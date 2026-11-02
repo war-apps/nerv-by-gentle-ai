@@ -56,8 +56,9 @@ func TestUpgrade_GentleAISameMajorIsUpgraded(t *testing.T) {
 	if got := w.gentleCalls(); !reflect.DeepEqual(got, gentleUpgradeCalls) {
 		t.Errorf("gentle-ai runs = %v, want %v", got, gentleUpgradeCalls)
 	}
-	if got := w.nervInstalls(); len(got) != 1 || got[0].Bin != w.exe || !reflect.DeepEqual(got[0].Args, []string{"install", "--no-configure"}) {
-		t.Errorf("nerv installs = %+v, want one %s install --no-configure", got, w.exe)
+	want := []installCall{skippingGentleAIInstall(w.exe, "--no-configure")}
+	if got := w.nervInstalls(); len(got) != 1 || got[0].Bin != w.exe || !reflect.DeepEqual(got, want) {
+		t.Errorf("nerv installs = %+v, want %+v", got, want)
 	}
 	if w.binary() != oldBinary {
 		t.Errorf("nerv binary changed although it is up to date")
@@ -82,12 +83,28 @@ func TestUpgrade_GentleAIUpgradedBeforeNewInstall(t *testing.T) {
 	if code != 0 || errOut != "" {
 		t.Fatalf("exit %d, stderr %q\n%s", code, errOut, out)
 	}
-	want := []installCall{{Bin: "gentle-ai", Args: []string{"upgrade", "gentle-ai"}}, {Bin: "gentle-ai", Args: []string{"sync"}}, {Bin: w.exe, Args: []string{"install", "--no-configure"}}}
+	want := []installCall{{Bin: "gentle-ai", Args: []string{"upgrade", "gentle-ai"}}, {Bin: "gentle-ai", Args: []string{"sync"}}, skippingGentleAIInstall(w.exe, "--no-configure")}
 	if !reflect.DeepEqual(w.installs, want) {
 		t.Errorf("runs = %+v, want %+v", w.installs, want)
 	}
 	if got := w.binary(); got != newBinaryFor("v5.1.0") {
 		t.Errorf("binary = %q, want v5.1.0", got)
+	}
+}
+
+// S5: gentle-ai is upgraded exactly once per nerv upgrade, even though the
+// install this launches (S4) would otherwise upgrade it again on its own
+// — --skip-gentle-ai-upgrade (asserted above via skippingGentleAIInstall)
+// is what prevents that second run.
+func TestUpgrade_GentleAIUpgradedExactlyOnce(t *testing.T) {
+	w := newUpgradeWorld(t, "v5.0.0", defaultReleases...)
+	w.withGentleAI("4.2.0", "v4.3.0")
+	code, out, errOut := w.upgrade()
+	if code != 0 || errOut != "" {
+		t.Fatalf("exit %d, stderr %q\n%s", code, errOut, out)
+	}
+	if got := w.gentleCalls(); !reflect.DeepEqual(got, gentleUpgradeCalls) {
+		t.Errorf("gentle-ai runs = %v, want exactly one upgrade and sync (no double upgrade): %v", got, gentleUpgradeCalls)
 	}
 }
 

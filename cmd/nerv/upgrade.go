@@ -31,7 +31,13 @@ untouched. Already on the newest release (or newer), it changes nothing.
 It also upgrades gentle-ai (gentle-ai upgrade gentle-ai, then gentle-ai
 sync) when gentle-ai's newest release is newer and still 4.x, the major
 version NERV supports; a new major version is reported, never installed.
-After a gentle-ai upgrade, install runs even when nerv was up to date.
+
+Install still runs, with the running executable, even when nerv itself
+was up to date (gentle-ai sync rewrote NERV's managed files) or could not
+be replaced at all (an unsupported platform, a failed download or
+checksum) — so gentle-ai keeps getting its chance and NERV stays laid
+over it either way. That install is told not to upgrade gentle-ai again
+(it already ran once, right here).
 
 Flags:
   --alpha    Also consider alpha prereleases (the newest of stable and alpha)
@@ -82,28 +88,32 @@ func runUpgrade(args []string, stdout, stderr io.Writer, opts options) int {
 	ctx, stop, _ := signalCtx(context.Background())
 	defer stop()
 
-	bin, err := replaceBinary(ctx, channel, stdout, opts)
-	if err != nil {
-		fmt.Fprintf(stderr, "nerv upgrade: %v\n", err)
-		return 1
+	bin, replaceErr := replaceBinary(ctx, channel, stdout, opts)
+	if replaceErr != nil {
+		fmt.Fprintf(stderr, "nerv upgrade: %v\n", replaceErr)
 	}
 	gentleUpgraded, gentleErr := upgradeGentleAI(ctx, stdout, stderr, opts)
 	if gentleErr != nil {
 		fmt.Fprintf(stderr, "nerv upgrade: gentle-ai: %v\n", gentleErr)
 	}
-	if bin == "" && gentleUpgraded {
-		// gentle-ai sync rewrote gentle-ai's agent files: install lays NERV
-		// over them again.
+	// Install still needs to run when: nerv itself could not be replaced
+	// (S5 — gentle-ai already got its chance above, and NERV still needs
+	// laying over with the running executable); gentle-ai sync rewrote
+	// NERV's managed files even though nerv was up to date; or nerv was
+	// replaced. Up to date with nothing upgraded runs nothing, as before.
+	runInstall := replaceErr != nil || bin != "" || gentleUpgraded
+	if bin == "" && runInstall {
+		var err error
 		if bin, err = runningExecutable(opts); err != nil {
 			fmt.Fprintf(stderr, "nerv upgrade: %v\n", err)
 			return 1
 		}
 	}
 	code := 0
-	if bin != "" {
+	if runInstall {
 		code = runNewInstall(ctx, bin, stdout, stderr, opts)
 	}
-	if code == 0 && gentleErr != nil {
+	if code == 0 && (replaceErr != nil || gentleErr != nil) {
 		return 1
 	}
 	return code
@@ -265,6 +275,10 @@ func runNewInstall(ctx context.Context, bin string, stdout, stderr io.Writer, op
 		args = append(args, "--no-configure")
 		fmt.Fprintf(stdout, "No interactive terminal available; running: %s install --no-configure\n", bin)
 	}
+	// upgradeGentleAI already ran gentle-ai's upgrade once for this nerv
+	// upgrade (whether or not it actually upgraded anything): the install
+	// this spawns must not run it again.
+	args = append(args, "--skip-gentle-ai-upgrade")
 	runBinary := opts.RunBinary
 	if runBinary == nil {
 		runBinary = execBinary
