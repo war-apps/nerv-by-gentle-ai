@@ -9,7 +9,7 @@ Nerv by Gentle-AI has two command surfaces: Claude Code slash commands
 | Command | What it does |
 |---|---|
 | `/nerv:configure` | Configure NERV through guided questions (git, skills, models, repo) |
-| `/nerv:init` | Bootstrap NERV for the current repository (writes `.ai-workflow/config.yaml`) |
+| `/nerv:init` | Bootstrap NERV for the current repository (writes `.ai-workflow/config.yaml`), then offer the configuration flows |
 | `/nerv:status` | Show NERV activation, config resolution, and change status (read-only) |
 
 ### Task extension commands (`/task:*`)
@@ -91,8 +91,11 @@ keys that aren't already resolved (the base branch), writes `.ai-workflow/config
 and `.nerv/.gitignore`, and refreshes the skill registry with `gentle-ai
 skill-registry refresh`. It creates no `odd/` file: the orchestrator
 creates each feature's ODD document and run folder when a run starts, and
-resolves the TDD mode and test runner per feature. Use it once per
-repository.
+resolves the TDD mode and test runner per feature. It then offers, in one
+multi-select question, the configuration flows installed on the machine:
+`/nerv:configure`, and `/task:setup`, `/release:setup` and
+`/release:deploy-setup` when their extension is installed. It runs the
+selected ones in that order. Use it once per repository.
 
 ```
 /nerv:init
