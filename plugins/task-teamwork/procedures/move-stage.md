@@ -6,7 +6,8 @@ This implements the `moveStage` operation of the task contract (`task:task` skil
 
 1. **Target.** The target substring is `stages.<stageKey>`, falling back to the manifest's `stages`. Also accept any `stage_variants.<stageKey>` entries.
 2. **Already there.** Read the task with `twprojects-get_task` (`fields: [workflowStages, tasklist]`). When its current stage's name contains the target (case- and accent-insensitive), return `{stage}` without moving it.
-3. **Find the stage.** `twprojects-list_workflow_stages` for the task's workflow (`workflowStages[].workflowId`). Pick the first stage whose name contains the target.
-4. **Move.** `twprojects-move_task_to_workflow_stage` with that `workflow_id`, the `stage_id` and `task_ids: [<id>]`.
+3. **No workflow.** When the task has no workflow (`workflowStages` is empty), there is no stage to move it to: record the change on the task instead. Call `twprojects-create_comment` with `object: {type: tasks, id: <id>}`, `body` `<label>: <target>` and `content_type: TEXT`, where `<label>` is `comment_labels.stage` (default `ESTADO`) and `<target>` is the target substring of step 1, e.g. `ESTADO: DESARROLLO`. Return `{stage: <target>}`, noting it was recorded as a comment. Stop here.
+4. **Find the stage.** `twprojects-list_workflow_stages` for the task's workflow (`workflowStages[].workflowId`). Pick the first stage whose name contains the target.
+5. **Move.** `twprojects-move_task_to_workflow_stage` with that `workflow_id`, the `stage_id` and `task_ids: [<id>]`.
 
-When the task has no workflow, or no stage matches, the result is `skipped` with `no stage matching <target> in project <projectId>`. That is not a failure.
+When the task has a workflow but no stage matches, the result is `skipped` with `no stage matching <target> in project <projectId>`. That is not a failure.

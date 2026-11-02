@@ -100,7 +100,10 @@ until then nerv refuses to run on the old file.
 ## Requirements
 
 - **gentle-ai 4.x** — major version 4 is required; minor and
-  patch are free. Tested against 4.3.1. On 3.x, upgrade with
+  patch are free. Tested against 4.3.1. Within 4.x, `nerv install` and
+  `nerv upgrade` keep gentle-ai on its newest 4.x release automatically
+  (`gentle-ai upgrade gentle-ai`, then `gentle-ai sync`); on 3.x, upgrade
+  by hand with
   `go install github.com/gentleman-programming/gentle-ai/v4/cmd/gentle-ai@latest`
   or `brew upgrade gentle-ai`, then `gentle-ai sync` (`gentle-ai upgrade`
   from 3.x cannot reach 4.x on go installs).
@@ -158,20 +161,26 @@ Requires Go 1.26+ (see "Requirements" above).
 
 1. Runs a gentle-ai preflight check (warns if missing or not 4.x; refuses
    with `--require-gentle-ai`).
-2. Materializes the embedded core plugin, and the extensions and providers
+2. Upgrades gentle-ai to its newest 4.x release when it is on PATH at
+   4.x and that release is newer (`gentle-ai upgrade gentle-ai`, then
+   `gentle-ai sync`), before laying NERV's own files over it below. A
+   newer major version is reported and left alone; a failed release
+   lookup or upgrade is only a warning (install continues with the
+   gentle-ai it found).
+3. Materializes the embedded core plugin, and the extensions and providers
    you install, under `~/.nerv/marketplace`.
-3. Registers that directory marketplace in Claude Code's `settings.json`.
-4. Refreshes the plugin cache (`claude plugin uninstall`/`install`).
-5. Applies model/effort assignments to the cached agents.
-6. Ensures the Engram `nerv` knowledge-base project exists (skipped when
+4. Registers that directory marketplace in Claude Code's `settings.json`.
+5. Refreshes the plugin cache (`claude plugin uninstall`/`install`).
+6. Applies model/effort assignments to the cached agents.
+7. Ensures the Engram `nerv` knowledge-base project exists (skipped when
    `engram` is not on PATH).
-7. Installs the skills the plugin defaults reference. Missing external
+8. Installs the skills the plugin defaults reference. Missing external
    skills go through `npx skills add`. Missing gentle-ai skills need
    `gentle-ai sync --agents claude-code --skills ...`; in a terminal
    `nerv install` asks first (default No), because that sync also rewrites
    gentle-ai's own managed files (e.g. `~/.claude/CLAUDE.md`). Without a
    terminal it never runs and a remedy line per missing skill is printed.
-8. Runs the interactive configuration wizard when stdin is a terminal, or
+9. Runs the interactive configuration wizard when stdin is a terminal, or
    prints the `nerv configure` hint otherwise.
 
 Flags: `--no-configure` (skip the closing wizard/hint entirely),
@@ -188,10 +197,18 @@ On Linux and macOS, run `nerv upgrade` (`--alpha` or `--rc` to follow a
 pre-release channel): it downloads the newest release, verifies its
 checksum, replaces the binary, upgrades gentle-ai if a newer 4.x release
 exists (never to a new major version), then runs the new binary's `nerv install`.
-See [docs/commands.md](docs/commands.md#nerv-upgrade).
+Even when the binary cannot be replaced (see Windows below) or the
+download/checksum fails, gentle-ai still gets its upgrade attempt and
+`nerv install` still runs with the running executable, so NERV's files
+stay laid over gentle-ai's; `nerv upgrade` still exits 1 for the failed
+replace. See [docs/commands.md](docs/commands.md#nerv-upgrade).
 
-On Windows, re-run `go install ...@latest`, then run `nerv install` again
-to refresh the plugin cache and re-apply configuration.
+On Windows, there is no prebuilt binary to replace the running one with,
+so `nerv upgrade` reports that and exits 1, but it still upgrades
+gentle-ai and reruns `nerv install` with the running binary first; re-run
+`go install ...@latest` to actually update the `nerv` binary itself, then
+run `nerv install` again to refresh the plugin cache and re-apply
+configuration.
 
 **Upgrading from a release with built-in tasks.** An existing `tasks:`
 block in `.ai-workflow/config.yaml` keeps working once the task extension is

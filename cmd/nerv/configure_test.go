@@ -3,6 +3,8 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -15,6 +17,17 @@ import (
 	"github.com/war-apps/nerv-by-gentle-ai/internal/paths"
 )
 
+// noNetworkTransport fails every request immediately, with no real
+// connection attempt: a test must opt in to a real HTTP call (nerv
+// upgrade's or nerv install's gentle-ai release lookup) by injecting its
+// own opts.HTTPClient, typically an httptest.Server's, instead of ever
+// reaching the network by omission.
+type noNetworkTransport struct{}
+
+func (noNetworkTransport) RoundTrip(*http.Request) (*http.Response, error) {
+	return nil, errors.New("network disabled in tests; inject opts.HTTPClient")
+}
+
 func testOptions(home string) options {
 	return options{
 		PluginFS:   nerv.PluginFS(),
@@ -24,6 +37,7 @@ func testOptions(home string) options {
 		Stdin:      strings.NewReader(""),
 		Home:       home,
 		IsTerminal: func() bool { return false },
+		HTTPClient: &http.Client{Transport: noNetworkTransport{}},
 	}
 }
 

@@ -68,7 +68,7 @@ And the task fields, which `plugins/task/extension.yaml` allows under `provider_
 |---|---|---|
 | `getTask` | taskRef | `{taskRef, name, open, assignees, stage, projectId, tasklistId, priority, url}` |
 | `assign` | taskRef | `{assigned: bool}`: adds the configured user and keeps the other assignees. No-op when already assigned. |
-| `moveStage` | taskRef, stageKey | `{stage}`: no-op when already there. When the provider has no matching stage, the result is `skipped` with the reason. |
+| `moveStage` | taskRef, stageKey | `{stage}`: no-op when already there. When the task has no stages at all (no workflow), the provider may record the change as a task comment `<stage label>: <target>` instead; the result is `{stage}`, recorded as a comment. When the provider has no matching stage, the result is `skipped` with the reason. |
 | `logTime` | taskRef, start, end, minutes, description, billable | `{timelogRef}`: real start time, never a bare duration. |
 | `updateTimelog` | timelogRef, minutes, description | `{timelogRef}` |
 | `deleteTimelog` | timelogRef | none |
@@ -223,7 +223,7 @@ The orchestrator appends every envelope to the run folder's `task-events.yaml`, 
 | `close(taskRef)` | stop → `moveStage(implemented)` → `complete`. |
 | `stopAll` | Stop every timer **this session** holds, with one grouped question for the missing summaries. Other sessions' timers are listed, never touched. |
 
-The comment labels come from `tasks.providers.<name>.comment_labels` and default to `BLOQUEADA` and `CANCELADA`.
+The comment labels come from `tasks.providers.<name>.comment_labels` and default to `BLOQUEADA` and `CANCELADA`, and `ESTADO` for a stage change recorded as a comment.
 
 ## 8. Listing table
 
