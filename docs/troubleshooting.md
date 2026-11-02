@@ -52,10 +52,12 @@ lists the steps to take ([commands.md](commands.md#nerv-doctor)).
   `PATH`, or re-run with `NERV_INSTALL_DIR` pointed at a directory already
   on `PATH`.
 - **`nerv upgrade` says "Unsupported OS" or fails to replace the binary.**
-  Prebuilt binaries exist for Linux and macOS on amd64 and arm64 only;
-  elsewhere use `go install ...@latest`. The binary is replaced in its own
-  directory, so that directory must be writable by you; on any failure
-  the current binary is left as it was. Even then, `nerv upgrade` still
+  Prebuilt binaries exist for Linux, macOS and Windows on amd64 and arm64
+  only; elsewhere use `go install ...@latest`. The binary is replaced in
+  its own directory, so that directory must be writable by you; on any
+  failure the current binary is left as it was (on Windows, a leftover
+  `nerv.exe.old` next to it is harmless — it is cleaned up on the next
+  `nerv upgrade`). Even then, `nerv upgrade` still
   upgrades gentle-ai (`gentle-ai upgrade gentle-ai`, then `gentle-ai sync`)
   and reruns `nerv install` with the running binary before exiting 1, so
   gentle-ai and NERV's managed files stay current; only the `nerv` binary

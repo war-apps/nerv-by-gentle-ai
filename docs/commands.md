@@ -341,12 +341,17 @@ nerv upgrade --alpha  # newest of stable and vX.Y.Z-alpha.N
 
 Replaces the running `nerv` binary (symlinks resolved) with the newest
 release of the channel, the way `scripts/install.sh` installs one: it
-downloads `nerv_<version>_<os>_<arch>.tar.gz` and `checksums.txt` from the
-GitHub release, verifies the archive's SHA-256, and renames the new binary
-over the old one. A prerelease channel also considers stable releases, so
-it never stays on an older prerelease when a newer stable one exists. Then
-it runs the new binary's `nerv install` (`nerv install --no-configure`
-without an interactive terminal) and exits with its exit code.
+downloads `nerv_<version>_<os>_<arch>.tar.gz` (`.zip` on Windows) and
+`checksums.txt` from the GitHub release, verifies the archive's SHA-256,
+and installs the new binary over the old one — renamed directly over it
+on Linux and macOS, or, on Windows, renamed aside to `nerv.exe.old` first
+since Windows refuses to replace a running executable in place; a stale
+`nerv.exe.old` left over from an earlier upgrade is removed, best-effort,
+at the start of the next `nerv upgrade`. A prerelease channel also
+considers stable releases, so it never stays on an older prerelease when a
+newer stable one exists. Then it runs the new binary's `nerv install`
+(`nerv install --no-configure` without an interactive terminal) and exits
+with its exit code.
 
 Before that install, it upgrades gentle-ai when it is on PATH at 4.x and
 its newest GitHub release is newer and still 4.x, the major version NERV
@@ -366,8 +371,8 @@ above and is never upgraded twice.
 
 Already on the newest release, or on a newer one (a `dev` build counts as
 older than any release), it says so and changes nothing. A failed
-download or checksum — or an unsupported platform (only Linux and macOS
-on amd64 or arm64 have prebuilt binaries; elsewhere use
+download or checksum — or an unsupported platform (only Linux, macOS and
+Windows on amd64 or arm64 have prebuilt binaries; elsewhere use
 `go install ...@latest`) — leaves the current binary untouched, but
 gentle-ai still gets its upgrade attempt and `nerv install` still runs
 with the running executable, so NERV's own files stay laid over
