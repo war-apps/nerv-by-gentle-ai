@@ -25,7 +25,7 @@ nothing to run by hand:
 |---|---|
 | `develop` | `vX.Y.Z-alpha.N` pre-release — version computed from Conventional Commits since the last stable tag; nothing is published when there is nothing releasable. |
 | `release/*` | `vX.Y.Z-rc.N` pre-release — version taken from `plugin.json` on that branch. |
-| `main` (merge) | Stable `vX.Y.Z` release — the matching `CHANGELOG.md` section becomes the release notes, and goreleaser publishes the linux/darwin amd64/arm64 binaries and their checksums. |
+| `main` (merge) | Stable `vX.Y.Z` release — the matching `CHANGELOG.md` section becomes the release notes, and goreleaser publishes the linux/darwin/windows amd64/arm64 binaries and their checksums. |
 
 **Cutting a release (Gitflow).**
 

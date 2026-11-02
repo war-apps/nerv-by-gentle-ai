@@ -1,13 +1,16 @@
 // Package upgrade replaces the running nerv binary with a newer GitHub
 // release: it resolves the newest release of a channel, downloads the
 // platform's archive and checksums.txt, verifies the archive's SHA-256,
-// extracts the nerv binary and renames it over the running one. It mirrors
+// extracts the nerv binary and installs it over the running one — renamed
+// directly over it on Linux and macOS, or renamed aside first on Windows,
+// which refuses that while the binary is running (see Replace). It mirrors
 // scripts/install.sh: the same release lookup, asset names, checksum check
-// and supported platforms.
+// and supported platforms (Windows included).
 package upgrade
 
 import (
 	"archive/tar"
+	"archive/zip"
 	"bufio"
 	"compress/gzip"
 	"context"
@@ -49,12 +52,12 @@ const (
 )
 
 // CheckPlatform refuses an OS or architecture goreleaser builds no nerv
-// binary for (only linux|darwin and amd64|arm64).
+// binary for (only linux|darwin|windows and amd64|arm64).
 func CheckPlatform(goos, goarch string) error {
 	switch goos {
-	case "linux", "darwin":
+	case "linux", "darwin", "windows":
 	default:
-		return &refusal.Error{Err: fmt.Errorf("Unsupported OS: %s. Only Linux and macOS have prebuilt nerv binaries.\n%s", goos, goInstallHint)}
+		return &refusal.Error{Err: fmt.Errorf("Unsupported OS: %s. Only Linux, macOS and Windows have prebuilt nerv binaries.\n%s", goos, goInstallHint)}
 	}
 	switch goarch {
 	case "amd64", "arm64":
@@ -138,9 +141,14 @@ func (c Client) Resolve(ctx context.Context, channel Channel) (string, error) {
 	return best, nil
 }
 
-// ArchiveName is the release archive of tag for a platform.
+// ArchiveName is the release archive of tag for a platform: a .zip on
+// windows (goreleaser's format_overrides), a .tar.gz everywhere else.
 func ArchiveName(tag, goos, goarch string) string {
-	return "nerv_" + strings.TrimPrefix(tag, "v") + "_" + goos + "_" + goarch + ".tar.gz"
+	ext := ".tar.gz"
+	if goos == "windows" {
+		ext = ".zip"
+	}
+	return "nerv_" + strings.TrimPrefix(tag, "v") + "_" + goos + "_" + goarch + ext
 }
 
 // Download fetches the archive of tag for a platform and checksums.txt into
@@ -202,11 +210,20 @@ func VerifyChecksum(archive, checksums string) error {
 	return nil
 }
 
-// Replace extracts the nerv binary from archive and renames it over exe
-// atomically, with mode 0755: it is written to a temporary file next to exe
-// first, so any failure leaves exe untouched (the temporary file is
-// removed).
-func Replace(archive, exe string) (err error) {
+// Replace extracts the nerv binary from archive (a tar.gz's "nerv", or a
+// windows .zip's "nerv.exe") and installs it over exe, with mode 0755: it
+// is written to a temporary file next to exe first, so any failure before
+// placement leaves exe untouched (the temporary file is removed). goos
+// selects how the extracted binary is placed: see writeOver.
+func Replace(archive, exe, goos string) error {
+	if strings.HasSuffix(archive, ".zip") {
+		return replaceFromZip(archive, exe, goos)
+	}
+	return replaceFromTarGz(archive, exe, goos)
+}
+
+// replaceFromTarGz extracts "nerv" from a tar.gz archive.
+func replaceFromTarGz(archive, exe, goos string) error {
 	f, err := os.Open(archive)
 	if err != nil {
 		return err
@@ -226,14 +243,39 @@ func Replace(archive, exe string) (err error) {
 			return fmt.Errorf("reading %s: %w", filepath.Base(archive), err)
 		}
 		if hdr.Typeflag == tar.TypeReg && filepath.Clean(hdr.Name) == "nerv" {
-			return writeOver(tr, exe)
+			return writeOver(tr, exe, goos)
 		}
 	}
 }
 
-// writeOver writes r to a temporary file next to exe and renames it over
-// exe with mode 0755.
-func writeOver(r io.Reader, exe string) (err error) {
+// replaceFromZip extracts "nerv.exe" from a windows .zip archive.
+func replaceFromZip(archive, exe, goos string) error {
+	zr, err := zip.OpenReader(archive)
+	if err != nil {
+		return fmt.Errorf("reading %s: %w", filepath.Base(archive), err)
+	}
+	defer zr.Close()
+	for _, zf := range zr.File {
+		if filepath.Clean(zf.Name) != "nerv.exe" {
+			continue
+		}
+		rc, err := zf.Open()
+		if err != nil {
+			return fmt.Errorf("reading %s: %w", filepath.Base(archive), err)
+		}
+		defer rc.Close()
+		return writeOver(rc, exe, goos)
+	}
+	return fmt.Errorf("nerv binary not found inside %s.", filepath.Base(archive))
+}
+
+// writeOver writes r to a temporary file next to exe with mode 0755, then
+// places it at exe: on windows (goos == "windows") exe cannot be renamed
+// or removed while it is the running process's image, so it is renamed
+// aside to exe+".old" first and the temporary file takes its place (see
+// placeWindows); every other goos renames the temporary file directly over
+// exe, atomically, as before.
+func writeOver(r io.Reader, exe, goos string) (err error) {
 	tmp, err := os.CreateTemp(filepath.Dir(exe), ".nerv-upgrade-*")
 	if err != nil {
 		return err
@@ -257,7 +299,43 @@ func writeOver(r io.Reader, exe string) (err error) {
 	if err = tmp.Close(); err != nil {
 		return err
 	}
+	if goos == "windows" {
+		return placeWindows(tmp.Name(), exe)
+	}
 	return os.Rename(tmp.Name(), exe)
+}
+
+// placeWindows installs tmp over exe the way Windows allows while exe is
+// the running process's image: it cannot be renamed or removed in place,
+// so it is renamed aside to exe+".old" first (a stale one left by an
+// earlier upgrade is removed first, best-effort, so it never blocks this
+// rename), then tmp is renamed into exe's now-free name. If that second
+// rename fails, the original is renamed back from exe+".old" so exe is
+// never left missing; exe+".old" itself is left for CleanupStaleReplacement
+// to remove on a later run, once it is no longer the running image.
+func placeWindows(tmp, exe string) error {
+	old := exe + ".old"
+	_ = os.Remove(old)
+	if err := os.Rename(exe, old); err != nil {
+		return fmt.Errorf("renaming the running binary aside: %w", err)
+	}
+	if err := os.Rename(tmp, exe); err != nil {
+		if restoreErr := os.Rename(old, exe); restoreErr != nil {
+			return fmt.Errorf("placing the new binary failed (%w), and restoring the original failed too: %w", err, restoreErr)
+		}
+		return fmt.Errorf("placing the new binary: %w", err)
+	}
+	return nil
+}
+
+// CleanupStaleReplacement best-effort removes exe+".old": a leftover from
+// an earlier windows replacement (see placeWindows) that could not be
+// deleted while it was still the running process's image. Call it early
+// on a later run, once that process has exited and the file is no longer
+// locked. Any failure (including there being nothing to remove, or
+// running on a goos where Replace never creates one) is silently ignored.
+func CleanupStaleReplacement(exe string) {
+	_ = os.Remove(exe + ".old")
 }
 
 func (c Client) client() *http.Client {

@@ -81,6 +81,14 @@ func runUpgrade(args []string, stdout, stderr io.Writer, opts options) int {
 		channel = upgrade.RC
 	}
 
+	if exe, err := runningExecutable(opts); err == nil {
+		// Best-effort: a leftover <exe>.old from an earlier windows
+		// replacement (internal/upgrade.Replace) that could not be
+		// removed while it was still that run's image. Harmless on
+		// every other goos, where Replace never creates one.
+		upgrade.CleanupStaleReplacement(exe)
+	}
+
 	signalCtx := opts.SignalContext
 	if signalCtx == nil {
 		signalCtx = signalContext
@@ -256,7 +264,7 @@ func replaceBinary(ctx context.Context, channel upgrade.Channel, stdout io.Write
 		return "", err
 	}
 	fmt.Fprintln(stdout, "Checksum verified.")
-	if err := upgrade.Replace(archive, exe); err != nil {
+	if err := upgrade.Replace(archive, exe, goos); err != nil {
 		return "", err
 	}
 	fmt.Fprintf(stdout, "Replaced %s\n", exe)
