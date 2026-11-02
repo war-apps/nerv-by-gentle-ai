@@ -14,6 +14,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"reflect"
 	"runtime"
 	"strings"
 	"testing"
@@ -198,7 +199,12 @@ func (w *upgradeWorld) binary() string {
 	return string(data)
 }
 
-func (w *upgradeWorld) assertUntouched() {
+// assertBinaryUntouched checks the nerv binary itself was not replaced:
+// its content is unchanged and its directory holds nothing besides it (no
+// leftover temporary file). It says nothing about whether gentle-ai was
+// attempted or install ran, since S5 has both run even when the binary
+// replace fails.
+func (w *upgradeWorld) assertBinaryUntouched() {
 	w.t.Helper()
 	if got := w.binary(); got != oldBinary {
 		w.t.Errorf("binary = %q, want it untouched (%q)", got, oldBinary)
@@ -214,9 +220,25 @@ func (w *upgradeWorld) assertUntouched() {
 		}
 		w.t.Errorf("executable dir holds %v, want only nerv", names)
 	}
+}
+
+// assertUntouched checks the binary is untouched (assertBinaryUntouched)
+// and that nothing ran at all. Valid only when replaceBinary itself did
+// not fail and gentle-ai was not upgraded (both skip install entirely).
+func (w *upgradeWorld) assertUntouched() {
+	w.t.Helper()
+	w.assertBinaryUntouched()
 	if len(w.installs) != 0 {
 		w.t.Errorf("install ran: %+v", w.installs)
 	}
+}
+
+// skippingGentleAIInstall is the install call nerv upgrade launches with
+// the running executable when it did not need (or could not finish)
+// replacing itself: --skip-gentle-ai-upgrade tells that install not to
+// upgrade gentle-ai again, since upgradeGentleAI above already did (S5).
+func skippingGentleAIInstall(bin string, extra ...string) installCall {
+	return installCall{Bin: bin, Args: append([]string{"install"}, append(extra, "--skip-gentle-ai-upgrade")...)}
 }
 
 var defaultReleases = []fakeRelease{
@@ -268,7 +290,7 @@ func TestUpgrade_StableReplacesBinaryAndRunsInstall(t *testing.T) {
 	if len(entries) != 1 {
 		t.Errorf("executable dir holds %d entries, want only nerv", len(entries))
 	}
-	want := []installCall{{Bin: w.exe, Args: []string{"install", "--no-configure"}}}
+	want := []installCall{skippingGentleAIInstall(w.exe, "--no-configure")}
 	if fmt.Sprint(w.installs) != fmt.Sprint(want) {
 		t.Errorf("installs = %+v, want %+v", w.installs, want)
 	}
@@ -300,7 +322,7 @@ func TestUpgrade_TerminalRunsInstallAndResolvesSymlink(t *testing.T) {
 	if target, err := os.Readlink(link); err != nil || target != w.exe {
 		t.Errorf("link = %q, %v; want it kept, pointing at %s", target, err, w.exe)
 	}
-	want := []installCall{{Bin: w.exe, Args: []string{"install"}}}
+	want := []installCall{skippingGentleAIInstall(w.exe)}
 	if fmt.Sprint(w.installs) != fmt.Sprint(want) {
 		t.Errorf("installs = %+v, want %+v", w.installs, want)
 	}
@@ -319,7 +341,7 @@ func TestUpgrade_RunsTheNewBinary(t *testing.T) {
 	if code != 4 {
 		t.Fatalf("exit %d, want 4; stderr %q\n%s", code, errOut, out)
 	}
-	if !strings.Contains(out, "\nnew nerv install --no-configure\n") || errOut != "oops\n" {
+	if !strings.Contains(out, "\nnew nerv install --no-configure --skip-gentle-ai-upgrade\n") || errOut != "oops\n" {
 		t.Errorf("stdout:\n%s\nstderr %q", out, errOut)
 	}
 	if got := w.binary(); got != w.script {
@@ -399,7 +421,9 @@ func TestUpgrade_UpToDate(t *testing.T) {
 }
 
 // A checksum mismatch or a failed download leaves the binary untouched,
-// runs nothing, and exits 1 with the error.
+// but S5 still upgrades gentle-ai and relays NERV with the running
+// executable (--skip-gentle-ai-upgrade so install does not try again),
+// and exits 1 with the replace error.
 func TestUpgrade_FailuresLeaveBinaryUntouched(t *testing.T) {
 	t.Run("checksum mismatch", func(t *testing.T) {
 		w := newUpgradeWorld(t, "v5.0.0", defaultReleases...)
@@ -414,7 +438,11 @@ func TestUpgrade_FailuresLeaveBinaryUntouched(t *testing.T) {
 		if strings.Contains(out, "Replaced") {
 			t.Errorf("stdout claims a replacement:\n%s", out)
 		}
-		w.assertUntouched()
+		w.assertBinaryUntouched()
+		want := []installCall{skippingGentleAIInstall(w.exe, "--no-configure")}
+		if !reflect.DeepEqual(w.nervInstalls(), want) {
+			t.Errorf("nerv installs = %+v, want %+v", w.nervInstalls(), want)
+		}
 	})
 	t.Run("missing archive", func(t *testing.T) {
 		w := newUpgradeWorld(t, "v5.0.0", defaultReleases...)
@@ -427,7 +455,11 @@ func TestUpgrade_FailuresLeaveBinaryUntouched(t *testing.T) {
 		if errOut != "nerv upgrade: downloading "+wantURL+": 404 Not Found\n" {
 			t.Errorf("stderr = %q", errOut)
 		}
-		w.assertUntouched()
+		w.assertBinaryUntouched()
+		want := []installCall{skippingGentleAIInstall(w.exe, "--no-configure")}
+		if !reflect.DeepEqual(w.nervInstalls(), want) {
+			t.Errorf("nerv installs = %+v, want %+v", w.nervInstalls(), want)
+		}
 	})
 	t.Run("no prerelease of the channel", func(t *testing.T) {
 		w := newUpgradeWorld(t, "v5.0.0", fakeRelease{Tag: "v5.2.0-rc.1", Prerelease: true})
@@ -438,7 +470,11 @@ func TestUpgrade_FailuresLeaveBinaryUntouched(t *testing.T) {
 		if errOut != "nerv upgrade: No alpha release published yet.\n" {
 			t.Errorf("stderr = %q", errOut)
 		}
-		w.assertUntouched()
+		w.assertBinaryUntouched()
+		want := []installCall{skippingGentleAIInstall(w.exe, "--no-configure")}
+		if !reflect.DeepEqual(w.nervInstalls(), want) {
+			t.Errorf("nerv installs = %+v, want %+v", w.nervInstalls(), want)
+		}
 	})
 	t.Run("latest stable tag is not a version", func(t *testing.T) {
 		w := newUpgradeWorld(t, "v5.0.0", fakeRelease{Tag: "v9.9.9/../../x"})
@@ -452,11 +488,17 @@ func TestUpgrade_FailuresLeaveBinaryUntouched(t *testing.T) {
 		if len(w.downloads) != 0 {
 			t.Errorf("downloads = %v, want none", w.downloads)
 		}
-		w.assertUntouched()
+		w.assertBinaryUntouched()
+		want := []installCall{skippingGentleAIInstall(w.exe, "--no-configure")}
+		if !reflect.DeepEqual(w.nervInstalls(), want) {
+			t.Errorf("nerv installs = %+v, want %+v", w.nervInstalls(), want)
+		}
 	})
 }
 
-// A platform without a prebuilt binary is refused before any request.
+// A platform without a prebuilt binary is refused before any request, but
+// S5 still gives gentle-ai its upgrade attempt and relays NERV with the
+// running executable, exiting 1 for the failed replace.
 func TestUpgrade_UnsupportedPlatformIsRefused(t *testing.T) {
 	tests := []struct{ goos, goarch, want string }{
 		{"windows", "amd64", "nerv upgrade: Unsupported OS: windows. Only Linux and macOS have prebuilt nerv binaries.\nInstall with: go install github.com/war-apps/nerv-by-gentle-ai/cmd/nerv@latest\n"},
@@ -473,15 +515,48 @@ func TestUpgrade_UnsupportedPlatformIsRefused(t *testing.T) {
 			if errOut != tt.want {
 				t.Errorf("stderr = %q, want %q", errOut, tt.want)
 			}
-			if out != "" {
-				t.Errorf("stdout = %q, want empty", out)
+			if !strings.Contains(out, "gentle-ai is not on PATH") {
+				t.Errorf("stdout lacks the gentle-ai preflight message:\n%s", out)
 			}
-			w.assertUntouched()
+			w.assertBinaryUntouched()
+			want := []installCall{skippingGentleAIInstall(w.exe, "--no-configure")}
+			if !reflect.DeepEqual(w.nervInstalls(), want) {
+				t.Errorf("nerv installs = %+v, want %+v", w.nervInstalls(), want)
+			}
 			if len(w.downloads) != 0 {
 				t.Errorf("downloads = %v, want none", w.downloads)
 			}
 		})
 	}
+}
+
+// S5: on an unsupported platform, gentle-ai still gets upgraded exactly
+// once (not twice: the install this launches carries
+// --skip-gentle-ai-upgrade), before NERV is relaid with the running
+// executable, and nerv upgrade exits 1 for the failed replace.
+func TestUpgrade_UnsupportedPlatformStillUpgradesGentleAIOnce(t *testing.T) {
+	w := newUpgradeWorld(t, "v5.0.0", defaultReleases...)
+	w.opts.GOOS, w.opts.GOARCH = "windows", "amd64"
+	w.withGentleAI("4.2.0", "v4.3.0")
+	code, out, errOut := w.upgrade()
+	if code != 1 {
+		t.Fatalf("exit %d, want 1\n%s", code, out)
+	}
+	if !strings.HasPrefix(errOut, "nerv upgrade: Unsupported OS: windows.") {
+		t.Errorf("stderr = %q, want the platform error", errOut)
+	}
+	if got := w.gentleCalls(); !reflect.DeepEqual(got, gentleUpgradeCalls) {
+		t.Errorf("gentle-ai runs = %v, want exactly one upgrade and sync: %v", got, gentleUpgradeCalls)
+	}
+	want := []installCall{
+		{Bin: "gentle-ai", Args: []string{"upgrade", "gentle-ai"}},
+		{Bin: "gentle-ai", Args: []string{"sync"}},
+		skippingGentleAIInstall(w.exe, "--no-configure"),
+	}
+	if !reflect.DeepEqual(w.installs, want) {
+		t.Errorf("runs = %+v, want %+v", w.installs, want)
+	}
+	w.assertBinaryUntouched()
 }
 
 // --alpha with --rc, an unknown flag or an argument is a usage error;

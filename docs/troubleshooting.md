@@ -55,7 +55,11 @@ lists the steps to take ([commands.md](commands.md#nerv-doctor)).
   Prebuilt binaries exist for Linux and macOS on amd64 and arm64 only;
   elsewhere use `go install ...@latest`. The binary is replaced in its own
   directory, so that directory must be writable by you; on any failure
-  the current binary is left as it was.
+  the current binary is left as it was. Even then, `nerv upgrade` still
+  upgrades gentle-ai (`gentle-ai upgrade gentle-ai`, then `gentle-ai sync`)
+  and reruns `nerv install` with the running binary before exiting 1, so
+  gentle-ai and NERV's managed files stay current; only the `nerv` binary
+  itself is left unreplaced (`go install ...@latest` updates that).
 - **Plugin cache version does not match.** Run
   `nerv install --no-configure --no-skills` to re-materialize the plugin,
   re-register it, and refresh the Claude Code cache without touching

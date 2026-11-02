@@ -125,7 +125,7 @@ isn't taking effect.
 | `nerv deploy` | Release and deploy a release artifact: release commit, tag, push, targets, git host release (release extension) |
 | `nerv migrate` | Move a repository (and, with `--user`, the user configuration) from nerv 4.2.0 or 5.0.0-alpha.1 |
 | `nerv doctor` | Check that NERV is in order on this machine and in the repository, and list the steps to take |
-| `nerv upgrade` | Replace the nerv binary with the newest release (`--alpha`, `--rc`), upgrade gentle-ai within its 4.x major version, then run nerv's install |
+| `nerv upgrade` | Replace the nerv binary with the newest release (`--alpha`, `--rc`), upgrade gentle-ai within its 4.x major version, then run nerv's install — gentle-ai still gets upgraded and install still runs, with the running executable, when nerv itself cannot be replaced |
 | `nerv configure` | Configure NERV non-interactively (or run the wizard) |
 | `nerv install` | Install NERV (plugin, cache, skills, Engram KB) |
 | `nerv uninstall` | Uninstall NERV |
@@ -359,14 +359,30 @@ already up to date, to lay NERV over the files `gentle-ai sync` rewrote. A
 failed gentle-ai upgrade is reported, the rest of the upgrade still runs,
 and the exit code is 1.
 
+`nerv install` also upgrades gentle-ai on its own (see "nerv install"
+below), so the install `nerv upgrade` runs here is told
+`--skip-gentle-ai-upgrade`: gentle-ai already got its one upgrade attempt
+above and is never upgraded twice.
+
 Already on the newest release, or on a newer one (a `dev` build counts as
 older than any release), it says so and changes nothing. A failed
-download or checksum leaves the current binary untouched and exits 1;
-only Linux and macOS on amd64 or arm64 have prebuilt binaries (anywhere
-else, use `go install ...@latest`). `--alpha` with `--rc` is a usage
-error (exit 2).
+download or checksum — or an unsupported platform (only Linux and macOS
+on amd64 or arm64 have prebuilt binaries; elsewhere use
+`go install ...@latest`) — leaves the current binary untouched, but
+gentle-ai still gets its upgrade attempt and `nerv install` still runs
+with the running executable, so NERV's own files stay laid over
+gentle-ai's; nerv upgrade still exits 1 for the failed replace.
+`--alpha` with `--rc` is a usage error (exit 2).
 
 ### nerv install
+
+Before any of that, when gentle-ai is on PATH and already 4.x, it
+upgrades gentle-ai to its newest 4.x release the same way `nerv upgrade`
+does (`gentle-ai upgrade gentle-ai`, then `gentle-ai sync`), so NERV's own
+files below get laid over the newest gentle-ai; a newer major version is
+reported and left alone, and a failed release lookup or upgrade is only a
+warning — install continues with the gentle-ai it found, and the exit
+code is unaffected.
 
 Materializes the embedded core plugin, registers it in Claude Code's
 `settings.json`, refreshes the plugin cache, applies model/effort

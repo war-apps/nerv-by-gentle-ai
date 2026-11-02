@@ -16,6 +16,13 @@ import (
 
 const installUsage = `Usage: nerv install [flags]
 
+Before anything else, when gentle-ai is on PATH and already 4.x, it
+upgrades gentle-ai to its newest 4.x release (gentle-ai upgrade gentle-ai,
+then gentle-ai sync), so NERV's own files below are laid over the newest
+gentle-ai. A newer major version is reported and left alone; a failed
+release lookup or upgrade is only a warning, and install continues with
+the gentle-ai it found.
+
 Materializes the embedded NERV plugin under <home>/.nerv/marketplace,
 registers it in Claude Code's settings.json, refreshes the plugin cache,
 applies model/effort assignments to the cached agents, ensures the Engram
@@ -70,6 +77,10 @@ func runInstall(args []string, stdout, stderr io.Writer, opts options) int {
 	noSkills := fs.Bool("no-skills", false, "")
 	noConfigure := fs.Bool("no-configure", false, "")
 	with := fs.String("with", "", "")
+	// skipGentleAIUpgrade is internal: only nerv upgrade's own install run
+	// sets it, since upgradeGentleAI already upgraded gentle-ai once for
+	// that upgrade (S5) and this run must not upgrade it again.
+	skipGentleAIUpgrade := fs.Bool("skip-gentle-ai-upgrade", false, "")
 
 	if err := fs.Parse(args); err != nil {
 		fmt.Fprint(stderr, installUsage)
@@ -84,6 +95,17 @@ func runInstall(args []string, stdout, stderr io.Writer, opts options) int {
 	workflowconfig.PrintHints(stderr, home, "")
 	if refusedPreviousUser(stderr, "install", home) {
 		return 1
+	}
+
+	// S4: upgrade gentle-ai to its newest 4.x release before laying NERV's
+	// own files over it (install.Install, below), since gentle-ai sync
+	// rewrites gentle-ai's managed files. A failed release lookup or
+	// upgrade is only a warning: install continues with the gentle-ai it
+	// found, and this does not change the exit code.
+	if !*skipGentleAIUpgrade {
+		if _, gentleErr := upgradeGentleAI(context.Background(), stdout, stderr, opts); gentleErr != nil {
+			fmt.Fprintf(stdout, "Warning: gentle-ai: %v\n", gentleErr)
+		}
 	}
 
 	deps := install.Deps{
