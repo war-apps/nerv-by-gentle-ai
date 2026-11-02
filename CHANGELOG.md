@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [6.4.0] - 2026-11-02
+
+Upgrading from 6.3.0: on Linux and macOS run `nerv upgrade`, then restart
+Claude Code. On Windows, 6.4.0 is the first release with prebuilt binaries
+and the 6.3.0 binary still refuses Windows, so install it by hand once:
+download `nerv_6.4.0_windows_amd64.zip` (or `_arm64`) from the release,
+replace your `nerv.exe` with the one inside, run `nerv install` and restart
+Claude Code. From then on `nerv upgrade` works on Windows too.
+
+### Added
+- upgrade: publish Windows binaries and upgrade a running nerv.exe (5b7d03d)
+
 ## [6.3.0] - 2026-11-02
 
 Upgrading from 6.2.1: run `nerv upgrade` (on Windows, which has no prebuilt
