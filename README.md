@@ -114,8 +114,9 @@ until then nerv refuses to run on the old file.
 - bash available to hooks (Git Bash on Windows).
 - **PowerShell is no longer required on any platform** — the `nerv` binary
   replaces every PowerShell script.
-- Go 1.26+ — only when installing on Windows with `go install` (see
-  "Install" below).
+- Go 1.26+ — only needed to install with `go install` instead of
+  downloading a prebuilt binary (optional on every platform; see "Install"
+  below).
 - Engram (`engram` on PATH) is optional — without it `nerv install` skips
   the "nerv" knowledge-base check (see [docs/integration.md](docs/integration.md#operations)).
 
@@ -142,12 +143,23 @@ resolution entirely).
 
 **Windows:**
 
+Download `nerv_<version>_windows_<amd64|arm64>.zip` from the
+[latest release](https://github.com/war-apps/nerv-by-gentle-ai/releases/latest),
+extract `nerv.exe` onto `PATH`, then run:
+
+```bash
+nerv install
+```
+
+or install with `go install` instead (requires Go 1.26+):
+
 ```bash
 go install github.com/war-apps/nerv-by-gentle-ai/cmd/nerv@latest
 nerv install
 ```
 
-Requires Go 1.26+ (see "Requirements" above).
+From then on, `nerv upgrade` keeps it current, the same as on Linux and
+macOS (see "Updating" below).
 
 ### Channels
 
@@ -193,22 +205,18 @@ unasked).
 
 ### Updating
 
-On Linux and macOS, run `nerv upgrade` (`--alpha` or `--rc` to follow a
-pre-release channel): it downloads the newest release, verifies its
-checksum, replaces the binary, upgrades gentle-ai if a newer 4.x release
-exists (never to a new major version), then runs the new binary's `nerv install`.
-Even when the binary cannot be replaced (see Windows below) or the
-download/checksum fails, gentle-ai still gets its upgrade attempt and
-`nerv install` still runs with the running executable, so NERV's files
-stay laid over gentle-ai's; `nerv upgrade` still exits 1 for the failed
-replace. See [docs/commands.md](docs/commands.md#nerv-upgrade).
-
-On Windows, there is no prebuilt binary to replace the running one with,
-so `nerv upgrade` reports that and exits 1, but it still upgrades
-gentle-ai and reruns `nerv install` with the running binary first; re-run
-`go install ...@latest` to actually update the `nerv` binary itself, then
-run `nerv install` again to refresh the plugin cache and re-apply
-configuration.
+On Linux, macOS and Windows, run `nerv upgrade` (`--alpha` or `--rc` to
+follow a pre-release channel): it downloads the newest release, verifies
+its checksum, replaces the binary (on Windows, by renaming the running
+`nerv.exe` aside to `nerv.exe.old` first, since Windows refuses to replace
+it in place — a stale `.old` from an earlier upgrade is cleaned up on the
+next run), upgrades gentle-ai if a newer 4.x release exists (never to a
+new major version), then runs the new binary's `nerv install`. Even when
+the binary cannot be replaced or the download/checksum fails, gentle-ai
+still gets its upgrade attempt and `nerv install` still runs with the
+running executable, so NERV's files stay laid over gentle-ai's; `nerv
+upgrade` still exits 1 for the failed replace. See
+[docs/commands.md](docs/commands.md#nerv-upgrade).
 
 **Upgrading from a release with built-in tasks.** An existing `tasks:`
 block in `.ai-workflow/config.yaml` keeps working once the task extension is

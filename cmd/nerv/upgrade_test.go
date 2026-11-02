@@ -2,6 +2,7 @@ package main
 
 import (
 	"archive/tar"
+	"archive/zip"
 	"bytes"
 	"compress/gzip"
 	"context"
@@ -98,17 +99,27 @@ func newUpgradeWorld(t *testing.T, current string, releases ...fakeRelease) *upg
 }
 
 func archiveName(tag, goos, goarch string) string {
-	return "nerv_" + strings.TrimPrefix(tag, "v") + "_" + goos + "_" + goarch + ".tar.gz"
+	ext := ".tar.gz"
+	if goos == "windows" {
+		ext = ".zip"
+	}
+	return "nerv_" + strings.TrimPrefix(tag, "v") + "_" + goos + "_" + goarch + ext
+}
+
+// newBinaryBody is the new nerv binary's content for tag, inside every
+// archive w serves (script, when set, replaces it).
+func (w *upgradeWorld) newBinaryBody(tag string) string {
+	if w.script != "" {
+		return w.script
+	}
+	return newBinaryFor(tag)
 }
 
 // archive builds the release archive of tag: a tar.gz holding nerv.
 func (w *upgradeWorld) archive(tag string) []byte {
 	t := w.t
 	t.Helper()
-	body := newBinaryFor(tag)
-	if w.script != "" {
-		body = w.script
-	}
+	body := w.newBinaryBody(tag)
 	var buf bytes.Buffer
 	gz := gzip.NewWriter(&buf)
 	tw := tar.NewWriter(gz)
@@ -124,6 +135,27 @@ func (w *upgradeWorld) archive(tag string) []byte {
 		t.Fatal(err)
 	}
 	if err := gz.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return buf.Bytes()
+}
+
+// zipArchive builds the windows release archive of tag: a .zip holding
+// nerv.exe.
+func (w *upgradeWorld) zipArchive(tag string) []byte {
+	t := w.t
+	t.Helper()
+	body := w.newBinaryBody(tag)
+	var buf bytes.Buffer
+	zw := zip.NewWriter(&buf)
+	f, err := zw.Create("nerv.exe")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.Write([]byte(body)); err != nil {
+		t.Fatal(err)
+	}
+	if err := zw.Close(); err != nil {
 		t.Fatal(err)
 	}
 	return buf.Bytes()
@@ -168,13 +200,18 @@ func (w *upgradeWorld) serve(rw http.ResponseWriter, r *http.Request) {
 		switch file {
 		case archiveName(tag, "linux", "amd64"):
 			_, _ = rw.Write(w.archive(tag))
+		case archiveName(tag, "windows", "amd64"):
+			_, _ = rw.Write(w.zipArchive(tag))
 		case "checksums.txt":
-			sum := sha256.Sum256(w.archive(tag))
-			hexSum := hex.EncodeToString(sum[:])
+			linuxSum := sha256.Sum256(w.archive(tag))
+			linuxHex := hex.EncodeToString(linuxSum[:])
+			windowsSum := sha256.Sum256(w.zipArchive(tag))
+			windowsHex := hex.EncodeToString(windowsSum[:])
 			if w.corrupt {
-				hexSum = strings.Repeat("0", 64)
+				linuxHex = strings.Repeat("0", 64)
+				windowsHex = strings.Repeat("0", 64)
 			}
-			fmt.Fprintf(rw, "%s  %s\n%s  %s\n", strings.Repeat("a", 64), archiveName(tag, "darwin", "arm64"), hexSum, archiveName(tag, "linux", "amd64"))
+			fmt.Fprintf(rw, "%s  %s\n%s  %s\n%s  %s\n", strings.Repeat("a", 64), archiveName(tag, "darwin", "arm64"), linuxHex, archiveName(tag, "linux", "amd64"), windowsHex, archiveName(tag, "windows", "amd64"))
 		default:
 			http.NotFound(rw, r)
 		}
@@ -296,6 +333,58 @@ func TestUpgrade_StableReplacesBinaryAndRunsInstall(t *testing.T) {
 	}
 	if fmt.Sprint(w.downloads) != fmt.Sprint([]string{"v5.1.0/nerv_5.1.0_linux_amd64.tar.gz", "v5.1.0/checksums.txt"}) {
 		t.Errorf("downloads = %v", w.downloads)
+	}
+}
+
+// On windows, the release archive is a .zip holding nerv.exe, and the
+// running binary cannot be renamed over directly: it is renamed aside to
+// <exe>.old (kept, for CleanupStaleReplacement to remove on a later run)
+// while the new one takes its place.
+func TestUpgrade_WindowsPlacesNewBinaryAsideOld(t *testing.T) {
+	w := newUpgradeWorld(t, "v5.0.0", defaultReleases...)
+	w.opts.GOOS, w.opts.GOARCH = "windows", "amd64"
+	code, out, errOut := w.upgrade()
+	if code != 0 || errOut != "" {
+		t.Fatalf("exit %d, stderr %q\n%s", code, errOut, out)
+	}
+	for _, want := range []string{
+		"Downloading nerv_5.1.0_windows_amd64.zip\n",
+		"Checksum verified.\n",
+		"Replaced " + w.exe + "\n",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("stdout lacks %q:\n%s", want, out)
+		}
+	}
+	if got := w.binary(); got != newBinaryFor("v5.1.0") {
+		t.Errorf("binary = %q, want the v5.1.0 one", got)
+	}
+	old, err := os.ReadFile(w.exe + ".old")
+	if err != nil {
+		t.Fatalf("exe.old: %v", err)
+	}
+	if string(old) != oldBinary {
+		t.Errorf("exe.old = %q, want the original %q", old, oldBinary)
+	}
+	if fmt.Sprint(w.downloads) != fmt.Sprint([]string{"v5.1.0/nerv_5.1.0_windows_amd64.zip", "v5.1.0/checksums.txt"}) {
+		t.Errorf("downloads = %v", w.downloads)
+	}
+}
+
+// A leftover <exe>.old from an earlier windows replacement is removed,
+// best-effort, at the start of a later nerv upgrade run.
+func TestUpgrade_WindowsCleansStaleOldOnStartup(t *testing.T) {
+	w := newUpgradeWorld(t, "v5.1.0", defaultReleases...)
+	w.opts.GOOS, w.opts.GOARCH = "windows", "amd64"
+	if err := os.WriteFile(w.exe+".old", []byte("stale"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	code, out, errOut := w.upgrade()
+	if code != 0 || errOut != "" {
+		t.Fatalf("exit %d, stderr %q\n%s", code, errOut, out)
+	}
+	if _, err := os.Stat(w.exe + ".old"); !os.IsNotExist(err) {
+		t.Errorf("exe.old still present: %v", err)
 	}
 }
 
@@ -501,7 +590,7 @@ func TestUpgrade_FailuresLeaveBinaryUntouched(t *testing.T) {
 // running executable, exiting 1 for the failed replace.
 func TestUpgrade_UnsupportedPlatformIsRefused(t *testing.T) {
 	tests := []struct{ goos, goarch, want string }{
-		{"windows", "amd64", "nerv upgrade: Unsupported OS: windows. Only Linux and macOS have prebuilt nerv binaries.\nInstall with: go install github.com/war-apps/nerv-by-gentle-ai/cmd/nerv@latest\n"},
+		{"freebsd", "amd64", "nerv upgrade: Unsupported OS: freebsd. Only Linux, macOS and Windows have prebuilt nerv binaries.\nInstall with: go install github.com/war-apps/nerv-by-gentle-ai/cmd/nerv@latest\n"},
 		{"linux", "386", "nerv upgrade: Unsupported architecture: 386. Only amd64 and arm64 have prebuilt nerv binaries.\nInstall with: go install github.com/war-apps/nerv-by-gentle-ai/cmd/nerv@latest\n"},
 	}
 	for _, tt := range tests {
@@ -536,13 +625,13 @@ func TestUpgrade_UnsupportedPlatformIsRefused(t *testing.T) {
 // executable, and nerv upgrade exits 1 for the failed replace.
 func TestUpgrade_UnsupportedPlatformStillUpgradesGentleAIOnce(t *testing.T) {
 	w := newUpgradeWorld(t, "v5.0.0", defaultReleases...)
-	w.opts.GOOS, w.opts.GOARCH = "windows", "amd64"
+	w.opts.GOOS, w.opts.GOARCH = "freebsd", "amd64"
 	w.withGentleAI("4.2.0", "v4.3.0")
 	code, out, errOut := w.upgrade()
 	if code != 1 {
 		t.Fatalf("exit %d, want 1\n%s", code, out)
 	}
-	if !strings.HasPrefix(errOut, "nerv upgrade: Unsupported OS: windows.") {
+	if !strings.HasPrefix(errOut, "nerv upgrade: Unsupported OS: freebsd.") {
 		t.Errorf("stderr = %q, want the platform error", errOut)
 	}
 	if got := w.gentleCalls(); !reflect.DeepEqual(got, gentleUpgradeCalls) {
