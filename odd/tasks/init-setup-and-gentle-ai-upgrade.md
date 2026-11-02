@@ -19,7 +19,7 @@ Branch: `feat/init-setup-and-gentle-ai-upgrade` from `develop`, one PR. Delivery
 |---|---|---|---|---|
 | T1 | S1, S2, S6 | inline (one command file plus docs) | done: RED observed (init_setup_prose_test), GREEN root package, `go vet ./...`; releaseplan/releaserun failures pre-exist on develop (Windows paths, pwsh) | fac81d7 |
 | T3 | S7 | inline (move-stage procedure, task skill contract row) | done: RED observed (teamwork_stage_comment_prose_test), GREEN root package | d19ecea |
-| T2 | S3, S4, S5, S6 | delegated writer (cmd/nerv upgrade + install, internal/install, tests) | pending | |
+| T2 | S3, S4, S5, S6 | delegated writer (cmd/nerv upgrade + install, tests, docs) | done: RED observed (TestRunInstall_UpgradesGentleAIBeforeLayingFiles, TestUpgrade_UnsupportedPlatformStillUpgradesGentleAIOnce, ...), GREEN; `go vet`, `go build` clean; parent spot check reran `go test ./...` | 1e51d18 |
 
 Route evidence: T1 touches `plugin/commands/init.md` and docs only, mechanical once the chaining pattern (`plugins/release/commands/ship.md`) is known. T2 touches 2+ non-trivial Go files with tests: writer trigger.
 
@@ -30,3 +30,5 @@ Route evidence: T1 touches `plugin/commands/init.md` and docs only, mechanical o
 - **L3** (2026-11-02) T1 committed fac81d7. Known environmental failures on Windows, also on develop: internal/releaseplan (absolute `\tmp` paths), internal/releaserun (pwsh real-exec tests).
 - **L4** (2026-11-02, user) Adds S7 mid-run (Teamwork stage change as a comment without a workflow).
 - **L5** (2026-11-02) T3 committed d19ecea.
+- **L6** (2026-11-02) T2 committed 1e51d18: `nerv install` runs the shared `upgradeGentleAI` before laying files; `nerv upgrade` no longer returns before it on a replace failure, upgrades gentle-ai itself and passes the hidden `--skip-gentle-ai-upgrade` to the install it runs (one upgrade per run); exit 1 when the replace or the gentle-ai upgrade failed. `testOptions` now uses a no-network HTTP transport.
+- **L7** (2026-11-02) Verification: failures in cmd/nerv (TestIntegration_Release*, TestUpgrade_StableReplacesBinaryAndRunsInstall chmod mode), internal/artifact, atomicfile, deploy, deployrun, releaseplan, releaserun also fail on develop on this Windows machine (parent reran them in a develop worktree); internal/artifact showed a transient `Access is denied` on the test binary. RDD off (global); assess: risk medium, review_due false (under_budget). No native review.
