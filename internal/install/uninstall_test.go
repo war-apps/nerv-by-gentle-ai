@@ -11,8 +11,8 @@ import (
 	"testing"
 
 	nerv "github.com/war-apps/nerv-by-gentle-ai"
-	"github.com/war-apps/nerv-by-gentle-ai/internal/env/envtest"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/install"
+	"github.com/war-apps/nerv-kit-by-gentle-ai/runner/runnertest"
 )
 
 func TestUninstall_RemovesSettingsKeysAndMarketplaceDir(t *testing.T) {
@@ -35,8 +35,8 @@ func TestUninstall_RemovesSettingsKeysAndMarketplaceDir(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	runner := &envtest.FakeRunner{
-		Responses: map[string]envtest.Response{
+	runner := &runnertest.FakeRunner{
+		Responses: map[string]runnertest.Response{
 			"claude plugin uninstall nerv@nerv": {Stdout: "uninstalled\n", ExitCode: 0},
 		},
 	}
@@ -86,8 +86,8 @@ func TestUninstall_RemovesSettingsKeysAndMarketplaceDir(t *testing.T) {
 
 func TestUninstall_TolerantWhenNothingWasInstalled(t *testing.T) {
 	home := t.TempDir()
-	runner := &envtest.FakeRunner{
-		Responses: map[string]envtest.Response{
+	runner := &runnertest.FakeRunner{
+		Responses: map[string]runnertest.Response{
 			"claude plugin uninstall nerv@nerv": {Stderr: "not installed\n", ExitCode: 1},
 		},
 	}
@@ -101,7 +101,7 @@ func TestUninstall_TolerantWhenNothingWasInstalled(t *testing.T) {
 
 func TestUninstall_RemovesMarketplaceRegistrationAfterPluginUninstall(t *testing.T) {
 	home := t.TempDir()
-	runner := &envtest.FakeRunner{}
+	runner := &runnertest.FakeRunner{}
 	var stdout bytes.Buffer
 	deps := install.Deps{Home: home, FS: nerv.PluginFS(), Runner: runner, Now: fixedNow, LookPath: lookPathAll, Stdout: &stdout}
 
@@ -124,8 +124,8 @@ func TestUninstall_RemovesMarketplaceRegistrationAfterPluginUninstall(t *testing
 
 func TestUninstall_TolerantWhenMarketplaceNotRegistered(t *testing.T) {
 	home := t.TempDir()
-	runner := &envtest.FakeRunner{
-		Responses: map[string]envtest.Response{
+	runner := &runnertest.FakeRunner{
+		Responses: map[string]runnertest.Response{
 			"claude plugin marketplace remove nerv": {Stderr: "✘ Failed to remove marketplace: Marketplace 'nerv' not found\n", ExitCode: 1},
 		},
 	}
@@ -139,8 +139,8 @@ func TestUninstall_TolerantWhenMarketplaceNotRegistered(t *testing.T) {
 
 func TestUninstall_MarketplaceRemoveFailureErrors(t *testing.T) {
 	home := t.TempDir()
-	runner := &envtest.FakeRunner{
-		Responses: map[string]envtest.Response{
+	runner := &runnertest.FakeRunner{
+		Responses: map[string]runnertest.Response{
 			"claude plugin marketplace remove nerv": {Stderr: "boom\n", ExitCode: 1},
 		},
 	}

@@ -7,7 +7,7 @@ import (
 	"io/fs"
 	"strings"
 
-	"github.com/war-apps/nerv-by-gentle-ai/internal/env"
+	"github.com/war-apps/nerv-kit-by-gentle-ai/runner"
 )
 
 // Options configures one Run invocation.
@@ -54,7 +54,7 @@ func (e *ErrManifest) Unwrap() error { return e.Err }
 // agrees, one gentle-ai sync for the missing gentle-ai skills, whose remedies
 // survive only for the skills still missing afterwards. Every caller renders Report into its own
 // output shape.
-func Run(ctx context.Context, runner env.Runner, fsys fs.FS, skillsDir string, opts Options) (Report, error) {
+func Run(ctx context.Context, runner runner.Runner, fsys fs.FS, skillsDir string, opts Options) (Report, error) {
 	manifest, err := LoadManifestFS(fsys)
 	if err != nil {
 		return Report{}, &ErrManifest{Err: err}

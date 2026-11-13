@@ -15,13 +15,13 @@ import (
 	"testing"
 
 	nerv "github.com/war-apps/nerv-by-gentle-ai"
-	"github.com/war-apps/nerv-by-gentle-ai/internal/env/envtest"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/version"
+	"github.com/war-apps/nerv-kit-by-gentle-ai/runner/runnertest"
 )
 
-func baseInstallRunner() *envtest.FakeRunner {
-	return &envtest.FakeRunner{
-		Responses: map[string]envtest.Response{
+func baseInstallRunner() *runnertest.FakeRunner {
+	return &runnertest.FakeRunner{
+		Responses: map[string]runnertest.Response{
 			"gentle-ai --version":               {Stdout: "gentle-ai version 4.0.0\n", ExitCode: 0},
 			"claude plugin uninstall nerv@nerv": {Stdout: "uninstalled\n", ExitCode: 0},
 			"claude plugin install nerv@nerv":   {Stdout: "installed\n", ExitCode: 0},
@@ -71,7 +71,7 @@ func TestRunInstall_RequireGentleAIMissing_Exits1(t *testing.T) {
 	home := t.TempDir()
 	var stdout, stderr bytes.Buffer
 	opts := testOptions(home)
-	opts.Runner = &envtest.FakeRunner{Default: envtest.Response{Err: errors.New("not found")}}
+	opts.Runner = &runnertest.FakeRunner{Default: runnertest.Response{Err: errors.New("not found")}}
 
 	code := run([]string{"install", "--require-gentle-ai", "--no-skills", "--no-configure"}, &stdout, &stderr, opts)
 
@@ -84,8 +84,8 @@ func TestRunUninstall_HappyPath_Exits0(t *testing.T) {
 	home := t.TempDir()
 	var stdout, stderr bytes.Buffer
 	opts := testOptions(home)
-	opts.Runner = &envtest.FakeRunner{
-		Responses: map[string]envtest.Response{
+	opts.Runner = &runnertest.FakeRunner{
+		Responses: map[string]runnertest.Response{
 			"claude plugin uninstall nerv@nerv": {Stderr: "not installed\n", ExitCode: 1},
 		},
 	}

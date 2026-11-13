@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/war-apps/nerv-by-gentle-ai/internal/env"
+	"github.com/war-apps/nerv-kit-by-gentle-ai/runner"
 )
 
 const gitLogFormat = "%H%x1f%h%x1f%s%x1f%b%x1e"
@@ -15,7 +15,7 @@ const gitLogFormat = "%H%x1f%h%x1f%s%x1f%b%x1e"
 // applied here -- LastReleaseTag does the semantic-version ordering). This
 // is the thin git access half of Get-NervLastReleaseTag
 // ("git tag -l <pattern>").
-func Tags(ctx context.Context, runner env.Runner, repoDir, pattern string) ([]string, error) {
+func Tags(ctx context.Context, runner runner.Runner, repoDir, pattern string) ([]string, error) {
 	stdout, stderr, exitCode, err := runner.Run(ctx, "git", "-C", repoDir, "tag", "-l", pattern)
 	if err != nil {
 		return nil, fmt.Errorf("launching git tag in %q: %w", repoDir, err)
@@ -38,7 +38,7 @@ func Tags(ctx context.Context, runner env.Runner, repoDir, pattern string) ([]st
 // whole history when tag is ""), oldest first, merge commits excluded.
 // Ports the git-access half of Get-NervCommitsSince; ParseCommits does the
 // record parsing.
-func CommitsSince(ctx context.Context, runner env.Runner, repoDir, tag string) ([]Commit, error) {
+func CommitsSince(ctx context.Context, runner runner.Runner, repoDir, tag string) ([]Commit, error) {
 	args := []string{"-C", repoDir, "log", "--no-merges", "--reverse", "--pretty=format:" + gitLogFormat}
 	if tag != "" {
 		args = append(args, tag+"..HEAD")

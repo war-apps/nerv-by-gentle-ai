@@ -17,8 +17,8 @@ import (
 	nerv "github.com/war-apps/nerv-by-gentle-ai"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/config"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/configure"
-	"github.com/war-apps/nerv-by-gentle-ai/internal/env/envtest"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/wizard"
+	"github.com/war-apps/nerv-kit-by-gentle-ai/runner/runnertest"
 )
 
 // fixtureLF mirrors the real config.yml shape (every managed key at its
@@ -101,7 +101,7 @@ func writeHerdrConfig(t *testing.T, home, appData, content string) {
 	}
 }
 
-func noRunner() *envtest.FakeRunner { return &envtest.FakeRunner{} }
+func noRunner() *runnertest.FakeRunner { return &runnertest.FakeRunner{} }
 
 func testPaths(root, home string) configure.Paths {
 	return configure.Paths{
@@ -196,7 +196,7 @@ func TestRun_ReaderEndsAtFirstPrompt_AbortsWithoutWriteOrRunnerCall(t *testing.T
 	home := t.TempDir()
 	writeFixture(t, filepath.Join(root, "config.yml"))
 	paths := testPaths(root, home)
-	runner := &envtest.FakeRunner{}
+	runner := &runnertest.FakeRunner{}
 	deps := configure.Deps{Home: home, FS: nerv.PluginFS(), Runner: runner, Now: fixedNow, LookPath: lookPathNone}
 
 	opts := skipAll()
@@ -239,7 +239,7 @@ func TestRun_ReaderEndsAtApplyAndRefreshPrompt_AbortsWithoutRunnerCall(t *testin
 	home := t.TempDir()
 	writeFixture(t, filepath.Join(root, "config.yml"))
 	paths := testPaths(root, home)
-	runner := &envtest.FakeRunner{}
+	runner := &runnertest.FakeRunner{}
 	deps := configure.Deps{Home: home, FS: nerv.PluginFS(), Runner: runner, Now: fixedNow, LookPath: lookPathNone}
 
 	opts := wizard.Options{Paths: paths, SkipSkills: true, SkipModels: true, SkipRepos: true}
@@ -284,7 +284,7 @@ func TestRun_ModelsSection_CustomModelID_EOFAfterPrompt_AbortsWithoutWriteOrRunn
 	home := t.TempDir()
 	writeFixture(t, filepath.Join(root, "config.yml"))
 	paths := testPaths(root, home)
-	runner := &envtest.FakeRunner{}
+	runner := &runnertest.FakeRunner{}
 	deps := configure.Deps{Home: home, FS: nerv.PluginFS(), Runner: runner, Now: fixedNow, LookPath: lookPathNone}
 
 	opts := wizard.Options{Paths: paths, SkipSkills: true, SkipRepos: true, NoRefresh: true}
@@ -386,8 +386,8 @@ func TestRun_BaseBranchChange_RepoInit(t *testing.T) {
 	if err := os.MkdirAll(repoDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	runner := &envtest.FakeRunner{
-		Responses: map[string]envtest.Response{
+	runner := &runnertest.FakeRunner{
+		Responses: map[string]runnertest.Response{
 			"git -C " + repoDir + " rev-parse --show-toplevel": {Stdout: repoDir + "\n", ExitCode: 0},
 		},
 	}
@@ -1054,7 +1054,7 @@ func TestRun_Prerequisites_UnsupportedMajorWarnsAndNamesSupportedMajors(t *testi
 	root := t.TempDir()
 	home := t.TempDir()
 	writeFixture(t, filepath.Join(root, "config.yml"))
-	runner := &envtest.FakeRunner{Responses: map[string]envtest.Response{
+	runner := &runnertest.FakeRunner{Responses: map[string]runnertest.Response{
 		"gentle-ai --version": {Stdout: "gentle-ai version 2.9.0\n"},
 	}}
 	deps := configure.Deps{Home: home, FS: nerv.PluginFS(), Runner: runner, Now: fixedNow, LookPath: lookPathNone}
@@ -1073,8 +1073,8 @@ func TestRun_Prerequisites_UnsupportedMajorWarnsAndNamesSupportedMajors(t *testi
 // any prompt, and it never mutates anything) so EOF-abort tests can
 // assert on the calls the 2026-09-29 incident actually cared about:
 // `claude plugin uninstall/install` and `npx skills add -g`.
-func mutatingCalls(calls []envtest.Call) []envtest.Call {
-	var out []envtest.Call
+func mutatingCalls(calls []runnertest.Call) []runnertest.Call {
+	var out []runnertest.Call
 	for _, c := range calls {
 		if c.Name == "gentle-ai" {
 			continue

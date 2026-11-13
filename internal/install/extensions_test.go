@@ -15,11 +15,11 @@ import (
 	"testing/fstest"
 
 	nerv "github.com/war-apps/nerv-by-gentle-ai"
-	"github.com/war-apps/nerv-by-gentle-ai/internal/env/envtest"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/extension/extensiontest"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/install"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/refusal"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/version"
+	"github.com/war-apps/nerv-kit-by-gentle-ai/runner/runnertest"
 )
 
 // seedInstalledIDs extends seedInstalledPlugins' installed_plugins.json
@@ -63,7 +63,7 @@ func fakeExtensions() fstest.MapFS {
 	}
 }
 
-func runnerLog(calls []envtest.Call) string {
+func runnerLog(calls []runnertest.Call) string {
 	var lines []string
 	for _, c := range calls {
 		lines = append(lines, c.Name+" "+strings.Join(c.Args, " "))

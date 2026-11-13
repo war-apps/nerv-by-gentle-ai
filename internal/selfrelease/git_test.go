@@ -6,9 +6,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/war-apps/nerv-by-gentle-ai/internal/env"
-	"github.com/war-apps/nerv-by-gentle-ai/internal/env/envtest"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/selfrelease"
+	"github.com/war-apps/nerv-kit-by-gentle-ai/runner"
+	"github.com/war-apps/nerv-kit-by-gentle-ai/runner/runnertest"
 )
 
 // ---------------------------------------------------------------------------
@@ -17,8 +17,8 @@ import (
 // ---------------------------------------------------------------------------
 
 func TestTags_ParsesLines(t *testing.T) {
-	runner := &envtest.FakeRunner{
-		Responses: map[string]envtest.Response{
+	runner := &runnertest.FakeRunner{
+		Responses: map[string]runnertest.Response{
 			"git -C /repo tag -l v*": {Stdout: "v0.1.0\nv0.2.0\nv1.0.0-rc.1\n", ExitCode: 0},
 		},
 	}
@@ -39,7 +39,7 @@ func TestTags_ParsesLines(t *testing.T) {
 }
 
 func TestTags_EmptyOutputIsEmptySlice(t *testing.T) {
-	runner := &envtest.FakeRunner{}
+	runner := &runnertest.FakeRunner{}
 	tags, err := selfrelease.Tags(context.Background(), runner, "/repo", "v*")
 	if err != nil {
 		t.Fatalf("Tags() error = %v", err)
@@ -50,8 +50,8 @@ func TestTags_EmptyOutputIsEmptySlice(t *testing.T) {
 }
 
 func TestTags_NonZeroExitIsError(t *testing.T) {
-	runner := &envtest.FakeRunner{
-		Default: envtest.Response{ExitCode: 128, Stderr: "fatal: not a git repository"},
+	runner := &runnertest.FakeRunner{
+		Default: runnertest.Response{ExitCode: 128, Stderr: "fatal: not a git repository"},
 	}
 	if _, err := selfrelease.Tags(context.Background(), runner, "/repo", "v*"); err == nil {
 		t.Fatal("expected an error for a non-zero git exit code")
@@ -59,8 +59,8 @@ func TestTags_NonZeroExitIsError(t *testing.T) {
 }
 
 func TestTags_LaunchFailureIsError(t *testing.T) {
-	runner := &envtest.FakeRunner{
-		Default: envtest.Response{Err: exec.ErrNotFound},
+	runner := &runnertest.FakeRunner{
+		Default: runnertest.Response{Err: exec.ErrNotFound},
 	}
 	if _, err := selfrelease.Tags(context.Background(), runner, "/repo", "v*"); err == nil {
 		t.Fatal("expected an error when git cannot be launched")
@@ -72,8 +72,8 @@ func TestTags_LaunchFailureIsError(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestCommitsSince_WholeHistoryWhenTagEmpty(t *testing.T) {
-	runner := &envtest.FakeRunner{
-		Responses: map[string]envtest.Response{
+	runner := &runnertest.FakeRunner{
+		Responses: map[string]runnertest.Response{
 			"git -C /repo log --no-merges --reverse --pretty=format:%H%x1f%h%x1f%s%x1f%b%x1e": {
 				Stdout: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\x1faaaaaaa\x1ffeat: first\x1f\x1e",
 			},
@@ -89,8 +89,8 @@ func TestCommitsSince_WholeHistoryWhenTagEmpty(t *testing.T) {
 }
 
 func TestCommitsSince_RangeWhenTagGiven(t *testing.T) {
-	runner := &envtest.FakeRunner{
-		Responses: map[string]envtest.Response{
+	runner := &runnertest.FakeRunner{
+		Responses: map[string]runnertest.Response{
 			"git -C /repo log --no-merges --reverse --pretty=format:%H%x1f%h%x1f%s%x1f%b%x1e v0.2.0..HEAD": {
 				Stdout: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\x1fbbbbbbb\x1ffix: second\x1f\x1e",
 			},
@@ -106,8 +106,8 @@ func TestCommitsSince_RangeWhenTagGiven(t *testing.T) {
 }
 
 func TestCommitsSince_NonZeroExitIsError(t *testing.T) {
-	runner := &envtest.FakeRunner{
-		Default: envtest.Response{ExitCode: 128},
+	runner := &runnertest.FakeRunner{
+		Default: runnertest.Response{ExitCode: 128},
 	}
 	if _, err := selfrelease.CommitsSince(context.Background(), runner, "/repo", ""); err == nil {
 		t.Fatal("expected an error for a non-zero git exit code")
@@ -145,7 +145,7 @@ func TestGitIntegration_TagsAndCommitsSince(t *testing.T) {
 	runGit(t, dir, "tag", "v0.1.0")
 	runGit(t, dir, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--allow-empty", "-m", "fix: a fix")
 
-	runner := env.ExecRunner{}
+	runner := runner.ExecRunner{}
 
 	tags, err := selfrelease.Tags(context.Background(), runner, dir, "v*")
 	if err != nil {
@@ -185,7 +185,7 @@ func TestGitIntegration_NotAGitRepoErrors(t *testing.T) {
 	requireGit(t)
 	dir := t.TempDir()
 
-	runner := env.ExecRunner{}
+	runner := runner.ExecRunner{}
 	if _, err := selfrelease.Tags(context.Background(), runner, dir, "v*"); err == nil {
 		t.Fatal("expected an error for a non-git directory")
 	}

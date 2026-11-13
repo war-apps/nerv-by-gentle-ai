@@ -10,9 +10,9 @@ import (
 	"testing"
 
 	nerv "github.com/war-apps/nerv-by-gentle-ai"
-	"github.com/war-apps/nerv-by-gentle-ai/internal/env/envtest"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/install"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/paths"
+	"github.com/war-apps/nerv-kit-by-gentle-ai/runner/runnertest"
 )
 
 func TestApplyModels_AppliesOverridesAndRestoresDefaults(t *testing.T) {
@@ -30,7 +30,7 @@ func TestApplyModels_AppliesOverridesAndRestoresDefaults(t *testing.T) {
 	}
 
 	var stdout bytes.Buffer
-	deps := install.Deps{Home: home, FS: nerv.PluginFS(), Runner: &envtest.FakeRunner{}, Now: fixedNow, LookPath: lookPathAll, Stdout: &stdout}
+	deps := install.Deps{Home: home, FS: nerv.PluginFS(), Runner: &runnertest.FakeRunner{}, Now: fixedNow, LookPath: lookPathAll, Stdout: &stdout}
 
 	if err := install.ApplyModels(context.Background(), deps); err != nil {
 		t.Fatalf("ApplyModels() error = %v; output:\n%s", err, stdout.String())
@@ -93,7 +93,7 @@ func TestApplyModels_LegacyRoleKeysApplyToRenamedAgents(t *testing.T) {
 			}
 
 			var stdout bytes.Buffer
-			deps := install.Deps{Home: home, FS: nerv.PluginFS(), Runner: &envtest.FakeRunner{}, Now: fixedNow, LookPath: lookPathAll, Stdout: &stdout}
+			deps := install.Deps{Home: home, FS: nerv.PluginFS(), Runner: &runnertest.FakeRunner{}, Now: fixedNow, LookPath: lookPathAll, Stdout: &stdout}
 			if err := install.ApplyModels(context.Background(), deps); err != nil {
 				t.Fatalf("ApplyModels() error = %v; output:\n%s", err, stdout.String())
 			}
@@ -115,7 +115,7 @@ func TestApplyModels_LegacyRoleKeysApplyToRenamedAgents(t *testing.T) {
 func TestApplyModels_MissingCacheDir_WarnsWithoutError(t *testing.T) {
 	home := t.TempDir()
 	var stdout bytes.Buffer
-	deps := install.Deps{Home: home, FS: nerv.PluginFS(), Runner: &envtest.FakeRunner{}, Now: fixedNow, LookPath: lookPathAll, Stdout: &stdout}
+	deps := install.Deps{Home: home, FS: nerv.PluginFS(), Runner: &runnertest.FakeRunner{}, Now: fixedNow, LookPath: lookPathAll, Stdout: &stdout}
 
 	if err := install.ApplyModels(context.Background(), deps); err != nil {
 		t.Fatalf("ApplyModels() error = %v, want nil (missing cache is informational)", err)
@@ -144,7 +144,7 @@ func TestApplyModels_NoOverrides_AppliesPluginDefaults(t *testing.T) {
 	}
 
 	var stdout bytes.Buffer
-	deps := install.Deps{Home: home, FS: nerv.PluginFS(), Runner: &envtest.FakeRunner{}, Now: fixedNow, LookPath: lookPathAll, Stdout: &stdout}
+	deps := install.Deps{Home: home, FS: nerv.PluginFS(), Runner: &runnertest.FakeRunner{}, Now: fixedNow, LookPath: lookPathAll, Stdout: &stdout}
 
 	if err := install.ApplyModels(context.Background(), deps); err != nil {
 		t.Fatalf("ApplyModels() error = %v", err)

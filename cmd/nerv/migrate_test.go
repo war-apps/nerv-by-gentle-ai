@@ -10,11 +10,11 @@ import (
 	"testing"
 
 	nerv "github.com/war-apps/nerv-by-gentle-ai"
-	"github.com/war-apps/nerv-by-gentle-ai/internal/env/envtest"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/migrate"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/paths"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/releaserun"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/versioning"
+	"github.com/war-apps/nerv-kit-by-gentle-ai/runner/runnertest"
 )
 
 // migrateRepo is a repository holding a 4.2.0 fixture of
@@ -48,7 +48,7 @@ func migrateRepo(t *testing.T, fixture string) (top string, opts options) {
 	}
 	opts = testOptions(t.TempDir())
 	opts.ExtensionsFS = nerv.ExtensionsFS()
-	opts.Runner = &envtest.FakeRunner{Responses: map[string]envtest.Response{
+	opts.Runner = &runnertest.FakeRunner{Responses: map[string]runnertest.Response{
 		"git -C . rev-parse --show-toplevel":       {Stdout: top + "\n"},
 		"git -C " + top + " remote get-url origin": {Stdout: "git@github.com:dirm-s-a/dim.comprobantes.api.git\n"},
 	}}
@@ -121,7 +121,7 @@ func TestMigrate_WritesThenASecondRunHasNothingToDo(t *testing.T) {
 func TestMigrate_OutsideARepositoryRefusesUnlessUser(t *testing.T) {
 	opts := testOptions(t.TempDir())
 	opts.ExtensionsFS = nerv.ExtensionsFS()
-	opts.Runner = &envtest.FakeRunner{Responses: map[string]envtest.Response{
+	opts.Runner = &runnertest.FakeRunner{Responses: map[string]runnertest.Response{
 		"git -C . rev-parse --show-toplevel": {Stderr: "fatal: not a git repository", ExitCode: 128},
 	}}
 	if code, out, errOut := runMigrateCLI(t, opts); code != 1 || !strings.Contains(errOut, "not inside a git repository") {
@@ -140,7 +140,7 @@ func TestMigrate_UserRunTimeKeysMoveUnderDefaults(t *testing.T) {
 	home := t.TempDir()
 	opts := testOptions(home)
 	opts.ExtensionsFS = nerv.ExtensionsFS()
-	opts.Runner = &envtest.FakeRunner{Responses: map[string]envtest.Response{
+	opts.Runner = &runnertest.FakeRunner{Responses: map[string]runnertest.Response{
 		"git -C . rev-parse --show-toplevel": {Stderr: "fatal: not a git repository", ExitCode: 128},
 	}}
 	user := paths.Resolve(home).UserConfig
@@ -186,7 +186,7 @@ func TestMigrate_UsageErrors(t *testing.T) {
 func TestMigrate_InstallRunsTheInstallStep(t *testing.T) {
 	_, opts := migrateRepo(t, "dim.comprobantes.api")
 	seedReleaseFamilyForCLI(t, opts.Home)
-	runner := opts.Runner.(*envtest.FakeRunner)
+	runner := opts.Runner.(*runnertest.FakeRunner)
 	for k, v := range baseInstallRunner().Responses {
 		runner.Responses[k] = v
 	}

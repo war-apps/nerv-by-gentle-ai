@@ -13,14 +13,14 @@ import (
 	"io/fs"
 	"time"
 
-	"github.com/war-apps/nerv-by-gentle-ai/internal/env"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/refusal"
+	"github.com/war-apps/nerv-kit-by-gentle-ai/runner"
 )
 
 // Deps bundles every external effect Install/Uninstall/ApplyModels need,
 // so tests inject fakes and a real home directory is never touched
 // outside this package's own tests (the 2026-09-28 installer incident
-// rule, see internal/env's doc comment).
+// rule, see nerv-kit's runner package doc comment).
 type Deps struct {
 	// Home is the resolved home directory; every path this package reads
 	// or writes (settings.json, the marketplace, the plugin cache, the
@@ -38,7 +38,7 @@ type Deps struct {
 	ExtensionsFS fs.FS
 	// Runner launches "gentle-ai", "claude plugin ...", "engram ...",
 	// and "npx ..." (skills installs).
-	Runner env.Runner
+	Runner runner.Runner
 	// Now supplies the clock used to name settings.json's backup file.
 	Now func() time.Time
 	// LookPath resolves a tool's presence on PATH (engram detection).

@@ -13,7 +13,6 @@ import (
 	"time"
 
 	nerv "github.com/war-apps/nerv-by-gentle-ai"
-	"github.com/war-apps/nerv-by-gentle-ai/internal/env"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/extension"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/proc"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/refusal"
@@ -21,6 +20,7 @@ import (
 	"github.com/war-apps/nerv-by-gentle-ai/internal/releaseplan"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/version"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/versioning"
+	"github.com/war-apps/nerv-kit-by-gentle-ai/runner"
 )
 
 const usage = `Usage: nerv <command> [flags]
@@ -67,7 +67,7 @@ type options struct {
 	// ExtensionsFS holds the optional extension plugins (the task plugin
 	// and its providers). Nil ships none.
 	ExtensionsFS fs.FS
-	Runner       env.Runner
+	Runner       runner.Runner
 	Now          func() time.Time
 	LookPath     func(string) (string, error)
 	// Getenv resolves an environment variable (the wizard's herdr
@@ -77,7 +77,7 @@ type options struct {
 	// scripted reader instead of the real os.Stdin.
 	Stdin io.Reader
 	// Home overrides the resolved home directory. Empty means
-	// env.HomeDir() decides, exactly as configure.ResolveHome documents.
+	// runner.HomeDir() decides, exactly as configure.ResolveHome documents.
 	//
 	// There is deliberately no public "--home" flag: a fake home never
 	// sandboxes the global commands every subcommand can still reach
@@ -129,12 +129,12 @@ type options struct {
 	// HTTPClient, ReleaseAPIBase and ReleaseDownloadBase are where nerv
 	// upgrade looks up and downloads releases; tests point them at an
 	// httptest.Server. Nil or empty means a client with a timeout,
-	// upgrade.DefaultAPIBase and upgrade.DefaultDownloadBase.
+	// defaultAPIBase and defaultDownloadBase.
 	HTTPClient          *http.Client
 	ReleaseAPIBase      string
 	ReleaseDownloadBase string
 	// GentleAIAPIBase is where nerv upgrade looks up gentle-ai's newest
-	// release; empty means upgrade.GentleAIAPIBase.
+	// release; empty means gentleAIAPIBase.
 	GentleAIAPIBase string
 	// Executable locates the running nerv binary nerv upgrade replaces
 	// (symlinks are resolved after it); nil means os.Executable.
@@ -152,9 +152,9 @@ func defaultOptions() options {
 	return options{
 		PluginFS:        pluginFS(),
 		ExtensionsFS:    nerv.ExtensionsFS(),
-		Runner:          env.ExecRunner{},
+		Runner:          runner.ExecRunner{},
 		Now:             time.Now,
-		LookPath:        env.LookPath,
+		LookPath:        runner.LookPath,
 		Getenv:          os.Getenv,
 		Stdin:           os.Stdin,
 		IsTerminal:      stdinIsTerminal,

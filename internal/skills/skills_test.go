@@ -10,8 +10,8 @@ import (
 	"testing/fstest"
 
 	nerv "github.com/war-apps/nerv-by-gentle-ai"
-	"github.com/war-apps/nerv-by-gentle-ai/internal/env/envtest"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/skills"
+	"github.com/war-apps/nerv-kit-by-gentle-ai/runner/runnertest"
 )
 
 // ---------------------------------------------------------------------------
@@ -276,11 +276,11 @@ func contains(s, substr string) bool {
 }
 
 // ---------------------------------------------------------------------------
-// Install — executes external installs through env.Runner (FakeRunner).
+// Install — executes external installs through runner.Runner (FakeRunner).
 // ---------------------------------------------------------------------------
 
 func TestInstall_RunsNpxForEachInstallStep(t *testing.T) {
-	runner := &envtest.FakeRunner{Responses: map[string]envtest.Response{
+	runner := &runnertest.FakeRunner{Responses: map[string]runnertest.Response{
 		"npx": {ExitCode: 0},
 	}}
 	plan := skills.Plan{Installs: []skills.InstallStep{
@@ -301,7 +301,7 @@ func TestInstall_RunsNpxForEachInstallStep(t *testing.T) {
 }
 
 func TestInstall_CountsNonZeroExitAsFailure(t *testing.T) {
-	runner := &envtest.FakeRunner{Responses: map[string]envtest.Response{
+	runner := &runnertest.FakeRunner{Responses: map[string]runnertest.Response{
 		"npx": {ExitCode: 1},
 	}}
 	plan := skills.Plan{Installs: []skills.InstallStep{
@@ -349,7 +349,7 @@ func writeSkill(t *testing.T, dir, name string) {
 // syncRunner wraps FakeRunner and simulates what a successful
 // "gentle-ai sync" does on disk: it writes SKILL.md for each name in provide.
 type syncRunner struct {
-	*envtest.FakeRunner
+	*runnertest.FakeRunner
 	t       *testing.T
 	dir     string
 	provide []string
@@ -365,7 +365,7 @@ func (r *syncRunner) Run(ctx context.Context, name string, args ...string) (stri
 	return stdout, stderr, code, err
 }
 
-func callLines(runner *envtest.FakeRunner) []string {
+func callLines(runner *runnertest.FakeRunner) []string {
 	var lines []string
 	for _, c := range runner.Calls {
 		lines = append(lines, c.Name+" "+strings.Join(c.Args, " "))
@@ -373,7 +373,7 @@ func callLines(runner *envtest.FakeRunner) []string {
 	return lines
 }
 
-func countCalls(runner *envtest.FakeRunner, line string) int {
+func countCalls(runner *runnertest.FakeRunner, line string) int {
 	n := 0
 	for _, l := range callLines(runner) {
 		if l == line {
@@ -386,7 +386,7 @@ func countCalls(runner *envtest.FakeRunner, line string) int {
 func TestRun_MissingGentleAISkills_RunsSyncOnceWithManifestOrder(t *testing.T) {
 	dir := t.TempDir()
 	writeSkill(t, dir, "tdd")
-	fake := &envtest.FakeRunner{}
+	fake := &runnertest.FakeRunner{}
 	runner := &syncRunner{FakeRunner: fake, t: t, dir: dir, provide: []string{"branch-pr", "work-unit-commits"}}
 
 	report, err := skills.Run(context.Background(), runner, syncFS(), dir, skills.Options{ConfirmSync: confirmYes})
@@ -405,7 +405,7 @@ func TestRun_MissingGentleAISkills_RunsSyncOnceWithManifestOrder(t *testing.T) {
 func TestRun_SyncProvidesOnlyOneSkill_KeepsRemedyForTheOther(t *testing.T) {
 	dir := t.TempDir()
 	writeSkill(t, dir, "tdd")
-	fake := &envtest.FakeRunner{}
+	fake := &runnertest.FakeRunner{}
 	runner := &syncRunner{FakeRunner: fake, t: t, dir: dir, provide: []string{"branch-pr"}}
 
 	report, err := skills.Run(context.Background(), runner, syncFS(), dir, skills.Options{ConfirmSync: confirmYes})
@@ -421,7 +421,7 @@ func TestRun_SyncProvidesOnlyOneSkill_KeepsRemedyForTheOther(t *testing.T) {
 func TestRun_AfterSync_StatusesReflectWhatSyncProvided(t *testing.T) {
 	dir := t.TempDir()
 	writeSkill(t, dir, "tdd")
-	fake := &envtest.FakeRunner{}
+	fake := &runnertest.FakeRunner{}
 	runner := &syncRunner{FakeRunner: fake, t: t, dir: dir, provide: []string{"branch-pr"}}
 
 	report, err := skills.Run(context.Background(), runner, syncFS(), dir, skills.Options{ConfirmSync: confirmYes})
@@ -444,7 +444,7 @@ func TestRun_AfterSync_StatusesReflectWhatSyncProvided(t *testing.T) {
 func TestRun_FailedSync_KeepsStatusesMissing(t *testing.T) {
 	dir := t.TempDir()
 	writeSkill(t, dir, "tdd")
-	fake := &envtest.FakeRunner{Responses: map[string]envtest.Response{"gentle-ai": {ExitCode: 1}}}
+	fake := &runnertest.FakeRunner{Responses: map[string]runnertest.Response{"gentle-ai": {ExitCode: 1}}}
 
 	report, err := skills.Run(context.Background(), fake, syncFS(), dir, skills.Options{ConfirmSync: confirmYes})
 	if err != nil {
@@ -460,18 +460,18 @@ func TestRun_FailedSync_KeepsStatusesMissing(t *testing.T) {
 
 func TestRun_FailedSync_CarriesDiagnosticOutput(t *testing.T) {
 	cases := map[string]struct {
-		resp envtest.Response
+		resp runnertest.Response
 		want string
 	}{
-		"stderr of a non-zero exit": {envtest.Response{ExitCode: 1, Stderr: "boom: no such agent\n"}, "boom: no such agent"},
-		"stdout when stderr empty":  {envtest.Response{ExitCode: 1, Stdout: "sync refused\n"}, "sync refused"},
-		"launch error":              {envtest.Response{Err: errors.New("executable file not found")}, "executable file not found"},
+		"stderr of a non-zero exit": {runnertest.Response{ExitCode: 1, Stderr: "boom: no such agent\n"}, "boom: no such agent"},
+		"stdout when stderr empty":  {runnertest.Response{ExitCode: 1, Stdout: "sync refused\n"}, "sync refused"},
+		"launch error":              {runnertest.Response{Err: errors.New("executable file not found")}, "executable file not found"},
 	}
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
 			dir := t.TempDir()
 			writeSkill(t, dir, "tdd")
-			fake := &envtest.FakeRunner{Responses: map[string]envtest.Response{"gentle-ai": tc.resp}}
+			fake := &runnertest.FakeRunner{Responses: map[string]runnertest.Response{"gentle-ai": tc.resp}}
 
 			report, err := skills.Run(context.Background(), fake, syncFS(), dir, skills.Options{ConfirmSync: confirmYes})
 			if err != nil {
@@ -486,7 +486,7 @@ func TestRun_FailedSync_CarriesDiagnosticOutput(t *testing.T) {
 }
 
 func TestSync_LongFailureOutput_KeepsOnlyTheLastTwoLines(t *testing.T) {
-	fake := &envtest.FakeRunner{Responses: map[string]envtest.Response{
+	fake := &runnertest.FakeRunner{Responses: map[string]runnertest.Response{
 		"gentle-ai": {ExitCode: 1, Stderr: "one\ntwo\n\nthree\nfour\n"},
 	}}
 
@@ -498,7 +498,7 @@ func TestSync_LongFailureOutput_KeepsOnlyTheLastTwoLines(t *testing.T) {
 }
 
 func TestSync_Success_HasNoOutput(t *testing.T) {
-	fake := &envtest.FakeRunner{Default: envtest.Response{Stdout: "all good\n"}}
+	fake := &runnertest.FakeRunner{Default: runnertest.Response{Stdout: "all good\n"}}
 
 	result := skills.Sync(context.Background(), fake, &skills.SyncStep{Skills: []string{"a"}, Args: skills.SyncArgs([]string{"a"})})
 
@@ -508,7 +508,7 @@ func TestSync_Success_HasNoOutput(t *testing.T) {
 }
 
 func TestRun_FailedSync_KeepsRemediesWithoutError(t *testing.T) {
-	cases := map[string]envtest.Response{
+	cases := map[string]runnertest.Response{
 		"non-zero exit": {ExitCode: 1, Stderr: "boom"},
 		"launch error":  {Err: os.ErrNotExist},
 	}
@@ -516,7 +516,7 @@ func TestRun_FailedSync_KeepsRemediesWithoutError(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			dir := t.TempDir()
 			writeSkill(t, dir, "tdd")
-			fake := &envtest.FakeRunner{Responses: map[string]envtest.Response{"gentle-ai": resp}}
+			fake := &runnertest.FakeRunner{Responses: map[string]runnertest.Response{"gentle-ai": resp}}
 
 			report, err := skills.Run(context.Background(), fake, syncFS(), dir, skills.Options{ConfirmSync: confirmYes})
 			if err != nil {
@@ -539,7 +539,7 @@ func TestRun_FailedSync_KeepsRemediesWithoutError(t *testing.T) {
 func TestRun_SuccessfulSync_ReportsRanWithoutFailure(t *testing.T) {
 	dir := t.TempDir()
 	writeSkill(t, dir, "tdd")
-	fake := &envtest.FakeRunner{}
+	fake := &runnertest.FakeRunner{}
 	runner := &syncRunner{FakeRunner: fake, t: t, dir: dir, provide: []string{"branch-pr", "work-unit-commits"}}
 
 	report, err := skills.Run(context.Background(), runner, syncFS(), dir, skills.Options{ConfirmSync: confirmYes})
@@ -557,7 +557,7 @@ func TestRun_NothingMissing_NoSync(t *testing.T) {
 	for _, n := range []string{"tdd", "branch-pr", "work-unit-commits"} {
 		writeSkill(t, dir, n)
 	}
-	fake := &envtest.FakeRunner{}
+	fake := &runnertest.FakeRunner{}
 
 	report, err := skills.Run(context.Background(), fake, syncFS(), dir, skills.Options{ConfirmSync: confirmYes})
 	if err != nil {
@@ -578,7 +578,7 @@ func TestRun_OnlyExternalMissing_NoSync(t *testing.T) {
 	dir := t.TempDir()
 	writeSkill(t, dir, "branch-pr")
 	writeSkill(t, dir, "work-unit-commits")
-	fake := &envtest.FakeRunner{}
+	fake := &runnertest.FakeRunner{}
 
 	if _, err := skills.Run(context.Background(), fake, syncFS(), dir, skills.Options{ConfirmSync: confirmYes}); err != nil {
 		t.Fatalf("Run() error = %v", err)
@@ -596,7 +596,7 @@ func TestRun_OnlyExternalMissing_NoSync(t *testing.T) {
 
 func TestRun_OnlyRestrictsSyncToSelectedSkills(t *testing.T) {
 	dir := t.TempDir()
-	fake := &envtest.FakeRunner{}
+	fake := &runnertest.FakeRunner{}
 
 	report, err := skills.Run(context.Background(), fake, syncFS(), dir, skills.Options{Only: []string{"work-unit-commits"}, ConfirmSync: confirmYes})
 	if err != nil {
@@ -614,7 +614,7 @@ func TestRun_OnlyRestrictsSyncToSelectedSkills(t *testing.T) {
 func TestRun_DryRun_PlansSyncWithoutRunningIt(t *testing.T) {
 	dir := t.TempDir()
 	writeSkill(t, dir, "tdd")
-	fake := &envtest.FakeRunner{}
+	fake := &runnertest.FakeRunner{}
 
 	report, err := skills.Run(context.Background(), fake, syncFS(), dir, skills.Options{DryRun: true})
 	if err != nil {
@@ -644,7 +644,7 @@ func confirmYes([]string) bool { return true }
 func TestRun_NilConfirmSync_NeverSyncs_KeepsRemedies(t *testing.T) {
 	dir := t.TempDir()
 	writeSkill(t, dir, "tdd")
-	fake := &envtest.FakeRunner{}
+	fake := &runnertest.FakeRunner{}
 
 	report, err := skills.Run(context.Background(), fake, syncFS(), dir, skills.Options{})
 	if err != nil {
@@ -665,7 +665,7 @@ func TestRun_NilConfirmSync_NeverSyncs_KeepsRemedies(t *testing.T) {
 func TestRun_DeclinedConfirmSync_SkipsSyncAndReportsDeclined(t *testing.T) {
 	dir := t.TempDir()
 	writeSkill(t, dir, "tdd")
-	fake := &envtest.FakeRunner{}
+	fake := &runnertest.FakeRunner{}
 	var asked []string
 	decline := func(names []string) bool {
 		asked = names
@@ -698,7 +698,7 @@ func TestRun_NothingMissing_NeverAsksForConfirmation(t *testing.T) {
 	}
 	asked := false
 
-	_, err := skills.Run(context.Background(), &envtest.FakeRunner{}, syncFS(), dir, skills.Options{ConfirmSync: func([]string) bool {
+	_, err := skills.Run(context.Background(), &runnertest.FakeRunner{}, syncFS(), dir, skills.Options{ConfirmSync: func([]string) bool {
 		asked = true
 		return true
 	}})
@@ -714,7 +714,7 @@ func TestRun_DryRun_NeverAsksForConfirmation(t *testing.T) {
 	dir := t.TempDir()
 	asked := false
 
-	_, err := skills.Run(context.Background(), &envtest.FakeRunner{}, syncFS(), dir, skills.Options{DryRun: true, ConfirmSync: func([]string) bool {
+	_, err := skills.Run(context.Background(), &runnertest.FakeRunner{}, syncFS(), dir, skills.Options{DryRun: true, ConfirmSync: func([]string) bool {
 		asked = true
 		return true
 	}})
