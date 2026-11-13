@@ -15,8 +15,19 @@ import (
 	"time"
 
 	"github.com/war-apps/nerv-by-gentle-ai/internal/gentleai"
-	"github.com/war-apps/nerv-by-gentle-ai/internal/upgrade"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/version"
+	"github.com/war-apps/nerv-kit-by-gentle-ai/selfupgrade"
+)
+
+const (
+	// defaultAPIBase is the GitHub API base of nerv's own repository.
+	defaultAPIBase = "https://api.github.com/repos/war-apps/nerv-by-gentle-ai"
+	// gentleAIAPIBase is the GitHub API base of gentle-ai's repository.
+	gentleAIAPIBase = "https://api.github.com/repos/Gentleman-Programming/gentle-ai"
+	// defaultDownloadBase is where nerv's release assets are downloaded.
+	defaultDownloadBase = "https://github.com/war-apps/nerv-by-gentle-ai/releases/download"
+
+	goInstallHint = "Install with: go install github.com/war-apps/nerv-by-gentle-ai/cmd/nerv@latest"
 )
 
 const upgradeUsage = `Usage: nerv upgrade [--alpha | --rc]
@@ -73,20 +84,20 @@ func runUpgrade(args []string, stdout, stderr io.Writer, opts options) int {
 		fmt.Fprintf(stderr, "nerv upgrade: --alpha and --rc cannot be used together\n\n%s", upgradeUsage)
 		return 2
 	}
-	channel := upgrade.Stable
+	channel := selfupgrade.Stable
 	switch {
 	case *alpha:
-		channel = upgrade.Alpha
+		channel = selfupgrade.Alpha
 	case *rc:
-		channel = upgrade.RC
+		channel = selfupgrade.RC
 	}
 
 	if exe, err := runningExecutable(opts); err == nil {
 		// Best-effort: a leftover <exe>.old from an earlier windows
-		// replacement (internal/upgrade.Replace) that could not be
+		// replacement (selfupgrade.Replace) that could not be
 		// removed while it was still that run's image. Harmless on
 		// every other goos, where Replace never creates one.
-		upgrade.CleanupStaleReplacement(exe)
+		selfupgrade.CleanupStaleReplacement(exe)
 	}
 
 	signalCtx := opts.SignalContext
@@ -149,9 +160,9 @@ func upgradeGentleAI(ctx context.Context, stdout, stderr io.Writer, opts options
 	client := newUpgradeClient(opts)
 	client.APIBase = opts.GentleAIAPIBase
 	if client.APIBase == "" {
-		client.APIBase = upgrade.GentleAIAPIBase
+		client.APIBase = gentleAIAPIBase
 	}
-	latest, err := client.Resolve(ctx, upgrade.Stable)
+	latest, err := client.Resolve(ctx, selfupgrade.Stable)
 	if err != nil {
 		return false, err
 	}
@@ -160,7 +171,7 @@ func upgradeGentleAI(ctx context.Context, stdout, stderr io.Writer, opts options
 		fmt.Fprintf(stdout, "gentle-ai %s is a new major version: NERV %s supports gentle-ai %d.x, so gentle-ai stays on %s.\n", latest, version.Binary, gentleai.SupportedMajor, pre.Version)
 		return false, nil
 	}
-	if !upgrade.IsNewer(latest, pre.Version) {
+	if !selfupgrade.IsNewer(latest, pre.Version) {
 		fmt.Fprintf(stdout, "gentle-ai %s is up to date.\n", pre.Version)
 		return false, nil
 	}
@@ -189,16 +200,16 @@ func upgradeGentleAI(ctx context.Context, stdout, stderr io.Writer, opts options
 const gentleAIURL = "https://github.com/Gentleman-Programming/gentle-ai"
 
 // newUpgradeClient is the releases client of nerv's repository, from opts.
-func newUpgradeClient(opts options) upgrade.Client {
-	client := upgrade.Client{HTTP: opts.HTTPClient, APIBase: opts.ReleaseAPIBase, DownloadBase: opts.ReleaseDownloadBase}
+func newUpgradeClient(opts options) selfupgrade.Client {
+	client := selfupgrade.Client{HTTP: opts.HTTPClient, APIBase: opts.ReleaseAPIBase, DownloadBase: opts.ReleaseDownloadBase, BinaryName: "nerv"}
 	if client.HTTP == nil {
 		client.HTTP = &http.Client{Timeout: upgradeHTTPTimeout}
 	}
 	if client.APIBase == "" {
-		client.APIBase = upgrade.DefaultAPIBase
+		client.APIBase = defaultAPIBase
 	}
 	if client.DownloadBase == "" {
-		client.DownloadBase = upgrade.DefaultDownloadBase
+		client.DownloadBase = defaultDownloadBase
 	}
 	return client
 }
@@ -222,7 +233,7 @@ func runningExecutable(opts options) (string, error) {
 
 // replaceBinary swaps the running binary for the newest release of channel
 // and returns its path, or "" when it is already up to date.
-func replaceBinary(ctx context.Context, channel upgrade.Channel, stdout io.Writer, opts options) (string, error) {
+func replaceBinary(ctx context.Context, channel selfupgrade.Channel, stdout io.Writer, opts options) (string, error) {
 	goos, goarch := opts.GOOS, opts.GOARCH
 	if goos == "" {
 		goos = runtime.GOOS
@@ -230,7 +241,7 @@ func replaceBinary(ctx context.Context, channel upgrade.Channel, stdout io.Write
 	if goarch == "" {
 		goarch = runtime.GOARCH
 	}
-	if err := upgrade.CheckPlatform(goos, goarch); err != nil {
+	if err := selfupgrade.CheckPlatform(goos, goarch, "nerv", goInstallHint); err != nil {
 		return "", err
 	}
 
@@ -243,7 +254,7 @@ func replaceBinary(ctx context.Context, channel upgrade.Channel, stdout io.Write
 		return "", err
 	}
 	fmt.Fprintf(stdout, "Newest release on the %s channel: %s\n", channel, tag)
-	if !upgrade.IsNewer(tag, current) {
+	if !selfupgrade.IsNewer(tag, current) {
 		fmt.Fprintf(stdout, "nerv %s is up to date (newest on the %s channel: %s).\n", current, channel, tag)
 		return "", nil
 	}
@@ -258,13 +269,13 @@ func replaceBinary(ctx context.Context, channel upgrade.Channel, stdout io.Write
 		return "", err
 	}
 	defer os.RemoveAll(dir)
-	fmt.Fprintf(stdout, "Downloading %s\n", upgrade.ArchiveName(tag, goos, goarch))
+	fmt.Fprintf(stdout, "Downloading %s\n", selfupgrade.ArchiveName("nerv", tag, goos, goarch))
 	archive, err := client.Download(ctx, tag, goos, goarch, dir)
 	if err != nil {
 		return "", err
 	}
 	fmt.Fprintln(stdout, "Checksum verified.")
-	if err := upgrade.Replace(archive, exe, goos); err != nil {
+	if err := selfupgrade.Replace(archive, exe, goos, "nerv"); err != nil {
 		return "", err
 	}
 	fmt.Fprintf(stdout, "Replaced %s\n", exe)
