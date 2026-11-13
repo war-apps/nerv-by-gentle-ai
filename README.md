@@ -438,3 +438,7 @@ checks and CI that gate a release.
 
 See [docs/releases.md](docs/releases.md) for versioning, channels, cutting
 a release, pre-releases, the release guard, CI, and marketplace notes.
+
+## License
+
+NERV is dedicated to the public domain under [CC0 1.0 Universal](LICENSE).
