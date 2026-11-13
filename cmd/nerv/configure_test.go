@@ -341,21 +341,13 @@ func TestRunConfigure_RoundTrip_PreservesTasksBlock(t *testing.T) {
 	if err := os.WriteFile(answersPath, []byte("release\n"+strings.Repeat("\n", 30)), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	for i, args := range [][]string{
+	for _, args := range [][]string{
 		{"configure", "--set", "git.base_branch=main"},
 		{"configure", "--set-model", "hyuga=opus/xhigh"},
 		{"configure", "--answers", answersPath, "--skip-skills", "--skip-models", "--skip-repos", "--no-refresh"},
 	} {
 		var stdout, stderr bytes.Buffer
-		// Each round advances the clock a second: three saves of the same
-		// file at the exact same frozen timestamp would otherwise name the
-		// same backup path three times, which nerv-kit's atomicfile now
-		// refuses (O_EXCL) instead of silently overwriting the earlier one.
-		opts := testOptions(home)
-		opts.Now = func() time.Time {
-			return time.Date(2026, 9, 29, 12, 0, 0, 0, time.UTC).Add(time.Duration(i) * time.Second)
-		}
-		if code := run(args, &stdout, &stderr, opts); code != 0 {
+		if code := run(args, &stdout, &stderr, testOptions(home)); code != 0 {
 			t.Fatalf("%v: exit code = %d, want 0 (stdout=%q)", args, code, stdout.String())
 		}
 		if got := tasksBlock(t, configPath); got != want {
