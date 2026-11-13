@@ -8,15 +8,15 @@ import (
 
 	nerv "github.com/war-apps/nerv-by-gentle-ai"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/configure"
-	"github.com/war-apps/nerv-by-gentle-ai/internal/env/envtest"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/wizard"
+	"github.com/war-apps/nerv-kit-by-gentle-ai/runner/runnertest"
 )
 
 // runSkillsSection drives the wizard through the required-skills section only
 // (every later section skipped, the 12 user-config prompts kept blank) with the
 // given scripted answers for the skills prompts, against an empty skills
 // directory so every gentle-ai skill is missing.
-func runSkillsSection(t *testing.T, runner *envtest.FakeRunner, answers ...string) string {
+func runSkillsSection(t *testing.T, runner *runnertest.FakeRunner, answers ...string) string {
 	t.Helper()
 	root, home := t.TempDir(), t.TempDir()
 	writeFixture(t, testPaths(root, home).Config)
@@ -31,7 +31,7 @@ func runSkillsSection(t *testing.T, runner *envtest.FakeRunner, answers ...strin
 	return out.String()
 }
 
-func syncCalls(runner *envtest.FakeRunner) int {
+func syncCalls(runner *runnertest.FakeRunner) int {
 	n := 0
 	for _, c := range runner.Calls {
 		if c.Name == "gentle-ai" && len(c.Args) > 0 && c.Args[0] == "sync" {
@@ -42,7 +42,7 @@ func syncCalls(runner *envtest.FakeRunner) int {
 }
 
 func TestRun_SkillsSection_ConfirmYes_RunsSyncAndPrintsItsLine(t *testing.T) {
-	runner := &envtest.FakeRunner{}
+	runner := &runnertest.FakeRunner{}
 
 	out := runSkillsSection(t, runner, "y", "y")
 
@@ -57,7 +57,7 @@ func TestRun_SkillsSection_ConfirmYes_RunsSyncAndPrintsItsLine(t *testing.T) {
 }
 
 func TestRun_SkillsSection_ConfirmYes_FailedSync_PrintsWarningWithDiagnostic(t *testing.T) {
-	runner := &envtest.FakeRunner{Responses: map[string]envtest.Response{"gentle-ai": {ExitCode: 1, Stderr: "boom: no such agent\n"}}}
+	runner := &runnertest.FakeRunner{Responses: map[string]runnertest.Response{"gentle-ai": {ExitCode: 1, Stderr: "boom: no such agent\n"}}}
 
 	out := runSkillsSection(t, runner, "y", "y")
 
@@ -73,7 +73,7 @@ func TestRun_SkillsSection_ConfirmYes_FailedSync_PrintsWarningWithDiagnostic(t *
 func TestRun_SkillsSection_ConfirmDefaultNo_SkipsSyncKeepsRemedies(t *testing.T) {
 	for name, answer := range map[string]string{"blank": "", "no": "n"} {
 		t.Run(name, func(t *testing.T) {
-			runner := &envtest.FakeRunner{}
+			runner := &runnertest.FakeRunner{}
 
 			out := runSkillsSection(t, runner, "y", answer)
 

@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/war-apps/nerv-by-gentle-ai/internal/env/envtest"
+	"github.com/war-apps/nerv-kit-by-gentle-ai/runner/runnertest"
 )
 
 // TestStdinIsTerminal_SeamFalse_RefusesWithoutTouchingRunner is fix
@@ -25,7 +25,7 @@ func TestStdinIsTerminal_SeamFalse_RefusesWithoutTouchingRunner(t *testing.T) {
 	home := t.TempDir()
 	var stdout, stderr bytes.Buffer
 	opts := testOptions(home)
-	runner := &envtest.FakeRunner{}
+	runner := &runnertest.FakeRunner{}
 	opts.Runner = runner
 
 	code := run([]string{"configure"}, &stdout, &stderr, opts)

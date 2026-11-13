@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/war-apps/nerv-by-gentle-ai/internal/env"
+	"github.com/war-apps/nerv-kit-by-gentle-ai/runner"
 )
 
 // This file ports semantic-release 24.2's run (index.js) for a dry run:
@@ -23,9 +23,9 @@ import (
 // A branch that matches no configured branch gives results without a
 // release, with a reason; configuration and git problems are errors.
 func Compute(ctx context.Context, req Request) ([]Result, error) {
-	runner := req.Runner
-	if runner == nil {
-		runner = env.ExecRunner{}
+	r := req.Runner
+	if r == nil {
+		r = runner.ExecRunner{}
 	}
 	now := req.Now
 	if now == nil {
@@ -41,7 +41,7 @@ func Compute(ctx context.Context, req Request) ([]Result, error) {
 		}
 	}
 
-	g := gitReader{runner: runner, dir: req.RepoDir}
+	g := gitReader{runner: r, dir: req.RepoDir}
 	top, err := g.trimmed(ctx, "rev-parse", "--show-toplevel")
 	if err != nil {
 		return nil, fmt.Errorf("not a git repository: %w", err)

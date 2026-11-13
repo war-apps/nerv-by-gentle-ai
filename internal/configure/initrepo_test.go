@@ -11,11 +11,11 @@ import (
 	nerv "github.com/war-apps/nerv-by-gentle-ai"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/config"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/configure"
-	"github.com/war-apps/nerv-by-gentle-ai/internal/env/envtest"
+	"github.com/war-apps/nerv-kit-by-gentle-ai/runner/runnertest"
 )
 
-func gitToplevelRunner(repoPath string) *envtest.FakeRunner {
-	return &envtest.FakeRunner{Responses: map[string]envtest.Response{
+func gitToplevelRunner(repoPath string) *runnertest.FakeRunner {
+	return &runnertest.FakeRunner{Responses: map[string]runnertest.Response{
 		"git -C " + repoPath + " rev-parse --show-toplevel": {Stdout: repoPath + "\n"},
 	}}
 }
@@ -142,7 +142,7 @@ func TestInitRepo_AlreadyInitialized_WarnsNoOverwrite(t *testing.T) {
 func TestInitRepo_NotGitRepo_Refused(t *testing.T) {
 	dir := t.TempDir()
 	deps := configure.Deps{
-		Runner: &envtest.FakeRunner{}, // no scripted response -> exit 0, empty stdout
+		Runner: &runnertest.FakeRunner{}, // no scripted response -> exit 0, empty stdout
 		Now:    func() time.Time { return time.Now() },
 	}
 
@@ -165,7 +165,7 @@ func TestInitRepo_NotGitRepo_Refused(t *testing.T) {
 
 func TestInitRepo_PathNotFound_Refused(t *testing.T) {
 	missing := filepath.Join(t.TempDir(), "does-not-exist")
-	deps := configure.Deps{Runner: &envtest.FakeRunner{}, Now: func() time.Time { return time.Now() }}
+	deps := configure.Deps{Runner: &runnertest.FakeRunner{}, Now: func() time.Time { return time.Now() }}
 
 	_, err := configure.InitRepo(deps, configure.InitRepoRequest{Path: missing})
 	if err == nil {

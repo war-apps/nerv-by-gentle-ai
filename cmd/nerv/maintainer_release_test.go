@@ -12,13 +12,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/war-apps/nerv-by-gentle-ai/internal/env/envtest"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/version"
+	"github.com/war-apps/nerv-kit-by-gentle-ai/runner/runnertest"
 )
 
 // ---------------------------------------------------------------------------
 // Fixture helpers. Files are real (os.WriteFile into t.TempDir()); git is
-// always faked through envtest.FakeRunner, scripted with the exact command
+// always faked through runnertest.FakeRunner, scripted with the exact command
 // lines internal/selfrelease.Tags/CommitsSince issue.
 // ---------------------------------------------------------------------------
 
@@ -63,7 +63,7 @@ func commitRecord(n int, subject, body string) string {
 	return sha + "\x1f" + short + "\x1f" + subject + "\x1f" + body + "\x1e\n"
 }
 
-func maintainerReleaseOptions(t *testing.T, home string, runner *envtest.FakeRunner) options {
+func maintainerReleaseOptions(t *testing.T, home string, runner *runnertest.FakeRunner) options {
 	t.Helper()
 	return options{
 		PluginFS: mustPluginFS(t),
@@ -90,7 +90,7 @@ func parseJSON(t *testing.T, data []byte) map[string]any {
 
 func TestMaintainerReleasePreview_TextOutput(t *testing.T) {
 	repo := maintainerReleaseFixtureRepo(t, "0.1.0")
-	runner := &envtest.FakeRunner{Responses: map[string]envtest.Response{
+	runner := &runnertest.FakeRunner{Responses: map[string]runnertest.Response{
 		gitTagsKey(repo, "v*"): {Stdout: ""},
 		gitLogKey(repo, ""):    {Stdout: commitRecord(1, "feat: add cool feature", "")},
 	}}
@@ -129,7 +129,7 @@ func TestMaintainerReleasePreview_TextOutput(t *testing.T) {
 
 func TestMaintainerReleasePreview_JSONShape(t *testing.T) {
 	repo := maintainerReleaseFixtureRepo(t, "0.1.0")
-	runner := &envtest.FakeRunner{Responses: map[string]envtest.Response{
+	runner := &runnertest.FakeRunner{Responses: map[string]runnertest.Response{
 		gitTagsKey(repo, "v*"): {Stdout: ""},
 		gitLogKey(repo, ""):    {Stdout: commitRecord(2, "fix: patch something", "")},
 	}}
@@ -171,7 +171,7 @@ func TestMaintainerReleasePreview_JSONShape(t *testing.T) {
 
 func TestMaintainerReleaseApply_WritesPluginJSONAndChangelog(t *testing.T) {
 	repo := maintainerReleaseFixtureRepo(t, "0.1.0")
-	runner := &envtest.FakeRunner{Responses: map[string]envtest.Response{
+	runner := &runnertest.FakeRunner{Responses: map[string]runnertest.Response{
 		gitTagsKey(repo, "v*"): {Stdout: ""},
 		gitLogKey(repo, ""):    {Stdout: commitRecord(3, "feat: add applied feature", "")},
 	}}
@@ -218,7 +218,7 @@ func TestMaintainerReleaseApply_WritesPluginJSONAndChangelog(t *testing.T) {
 func TestMaintainerReleaseApply_AgainAfterTag_NothingToRelease(t *testing.T) {
 	repo := maintainerReleaseFixtureRepo(t, "0.2.0")
 	writeChangelog(t, repo, "# Changelog\n\n## [Unreleased]\n\n## [0.2.0] - 2026-09-28\n\n### Added\n- add applied feature (3333333)\n")
-	runner := &envtest.FakeRunner{Responses: map[string]envtest.Response{
+	runner := &runnertest.FakeRunner{Responses: map[string]runnertest.Response{
 		gitTagsKey(repo, "v*"):    {Stdout: "v0.2.0"},
 		gitLogKey(repo, "v0.2.0"): {Stdout: ""},
 	}}
@@ -236,7 +236,7 @@ func TestMaintainerReleaseApply_AgainAfterTag_NothingToRelease(t *testing.T) {
 
 func TestMaintainerReleaseVersionOverride_SucceedsEvenWhenBumpIsNone(t *testing.T) {
 	repo := maintainerReleaseFixtureRepo(t, "0.1.0")
-	runner := &envtest.FakeRunner{Responses: map[string]envtest.Response{
+	runner := &runnertest.FakeRunner{Responses: map[string]runnertest.Response{
 		gitTagsKey(repo, "v*"): {Stdout: ""},
 		gitLogKey(repo, ""):    {Stdout: commitRecord(4, "docs: update readme only", "")},
 	}}
@@ -257,7 +257,7 @@ func TestMaintainerReleaseVersionOverride_SucceedsEvenWhenBumpIsNone(t *testing.
 
 func TestMaintainerReleaseVersionOverride_InvalidSemver(t *testing.T) {
 	repo := maintainerReleaseFixtureRepo(t, "0.1.0")
-	runner := &envtest.FakeRunner{Responses: map[string]envtest.Response{
+	runner := &runnertest.FakeRunner{Responses: map[string]runnertest.Response{
 		gitTagsKey(repo, "v*"): {Stdout: ""},
 		gitLogKey(repo, ""):    {Stdout: ""},
 	}}
@@ -270,7 +270,7 @@ func TestMaintainerReleaseVersionOverride_InvalidSemver(t *testing.T) {
 
 func TestMaintainerReleaseVersionOverride_NotGreaterThanCurrent(t *testing.T) {
 	repo := maintainerReleaseFixtureRepo(t, "0.5.0")
-	runner := &envtest.FakeRunner{Responses: map[string]envtest.Response{
+	runner := &runnertest.FakeRunner{Responses: map[string]runnertest.Response{
 		gitTagsKey(repo, "v*"): {Stdout: ""},
 		gitLogKey(repo, ""):    {Stdout: ""},
 	}}
@@ -291,7 +291,7 @@ func TestMaintainerReleaseVersionOverride_NotGreaterThanCurrent(t *testing.T) {
 
 func TestMaintainerReleasePreview_NothingToRelease(t *testing.T) {
 	repo := maintainerReleaseFixtureRepo(t, "0.1.0")
-	runner := &envtest.FakeRunner{Responses: map[string]envtest.Response{
+	runner := &runnertest.FakeRunner{Responses: map[string]runnertest.Response{
 		gitTagsKey(repo, "v*"): {Stdout: ""},
 		gitLogKey(repo, ""):    {Stdout: commitRecord(5, "docs: tweak docs", "") + commitRecord(6, "chore: tidy up", "")},
 	}}
@@ -334,7 +334,7 @@ func TestMaintainerReleasePreview_NothingToRelease(t *testing.T) {
 
 func TestMaintainerReleasePreview_MissingPluginJSON_Exit2(t *testing.T) {
 	dir := t.TempDir()
-	runner := &envtest.FakeRunner{}
+	runner := &runnertest.FakeRunner{}
 	var stdout, stderr bytes.Buffer
 	code := run([]string{"maintainer-release", "preview", "--repo", dir}, &stdout, &stderr, maintainerReleaseOptions(t, t.TempDir(), runner))
 	if code != 2 {
@@ -344,7 +344,7 @@ func TestMaintainerReleasePreview_MissingPluginJSON_Exit2(t *testing.T) {
 
 func TestMaintainerReleasePreview_NotAGitRepository_Exit2(t *testing.T) {
 	repo := maintainerReleaseFixtureRepo(t, "0.1.0")
-	runner := &envtest.FakeRunner{Default: envtest.Response{ExitCode: 128, Stderr: "fatal: not a git repository"}}
+	runner := &runnertest.FakeRunner{Default: runnertest.Response{ExitCode: 128, Stderr: "fatal: not a git repository"}}
 	var stdout, stderr bytes.Buffer
 	code := run([]string{"maintainer-release", "preview", "--repo", repo}, &stdout, &stderr, maintainerReleaseOptions(t, t.TempDir(), runner))
 	if code != 2 {
@@ -353,7 +353,7 @@ func TestMaintainerReleasePreview_NotAGitRepository_Exit2(t *testing.T) {
 }
 
 func TestMaintainerReleasePreview_RepoPathNotFound_Exit2(t *testing.T) {
-	runner := &envtest.FakeRunner{}
+	runner := &runnertest.FakeRunner{}
 	var stdout, stderr bytes.Buffer
 	code := run([]string{"maintainer-release", "preview", "--repo", filepath.Join(t.TempDir(), "does-not-exist")}, &stdout, &stderr, maintainerReleaseOptions(t, t.TempDir(), runner))
 	if code != 2 {
@@ -367,7 +367,7 @@ func TestMaintainerReleasePreview_RepoPathNotFound_Exit2(t *testing.T) {
 
 func TestMaintainerReleasePreRelease_EndToEnd(t *testing.T) {
 	repo := maintainerReleaseFixtureRepo(t, "0.1.0")
-	runner := &envtest.FakeRunner{Responses: map[string]envtest.Response{
+	runner := &runnertest.FakeRunner{Responses: map[string]runnertest.Response{
 		gitTagsKey(repo, "v*"): {Stdout: ""},
 		gitLogKey(repo, ""):    {Stdout: commitRecord(7, "feat: prerelease-worthy feature", "")},
 	}}
@@ -394,7 +394,7 @@ func TestMaintainerReleasePreRelease_EndToEnd(t *testing.T) {
 
 func TestMaintainerReleasePlain_JSONHasTagAndBase(t *testing.T) {
 	repo := maintainerReleaseFixtureRepo(t, "0.1.0")
-	runner := &envtest.FakeRunner{Responses: map[string]envtest.Response{
+	runner := &runnertest.FakeRunner{Responses: map[string]runnertest.Response{
 		gitTagsKey(repo, "v*"): {Stdout: ""},
 		gitLogKey(repo, ""):    {Stdout: commitRecord(8, "feat: add cool feature", "")},
 	}}
@@ -415,7 +415,7 @@ func TestMaintainerReleasePlain_JSONHasTagAndBase(t *testing.T) {
 
 func TestMaintainerReleasePreRelease_InvalidLabel_Exit1(t *testing.T) {
 	repo := maintainerReleaseFixtureRepo(t, "0.1.0")
-	runner := &envtest.FakeRunner{Responses: map[string]envtest.Response{
+	runner := &runnertest.FakeRunner{Responses: map[string]runnertest.Response{
 		gitTagsKey(repo, "v*"): {Stdout: ""},
 		gitLogKey(repo, ""):    {Stdout: commitRecord(9, "feat: add cool feature", "")},
 	}}
@@ -431,7 +431,7 @@ func TestMaintainerReleasePreRelease_InvalidLabel_Exit1(t *testing.T) {
 
 func TestMaintainerReleasePreReleaseBase_WithoutPreRelease_Exit1(t *testing.T) {
 	repo := maintainerReleaseFixtureRepo(t, "0.1.0")
-	runner := &envtest.FakeRunner{}
+	runner := &runnertest.FakeRunner{}
 	var stdout, stderr bytes.Buffer
 	code := run([]string{"maintainer-release", "preview", "--repo", repo, "--pre-release-base", "current"}, &stdout, &stderr, maintainerReleaseOptions(t, t.TempDir(), runner))
 	if code != 1 {
@@ -441,7 +441,7 @@ func TestMaintainerReleasePreReleaseBase_WithoutPreRelease_Exit1(t *testing.T) {
 
 func TestMaintainerReleaseApply_WithPreRelease_Exit1_WritesNothing(t *testing.T) {
 	repo := maintainerReleaseFixtureRepo(t, "0.1.0")
-	runner := &envtest.FakeRunner{Responses: map[string]envtest.Response{
+	runner := &runnertest.FakeRunner{Responses: map[string]runnertest.Response{
 		gitTagsKey(repo, "v*"): {Stdout: ""},
 		gitLogKey(repo, ""):    {Stdout: commitRecord(1, "feat: add cool feature", "")},
 	}}
@@ -470,7 +470,7 @@ func TestMaintainerReleaseApply_WithPreRelease_Exit1_WritesNothing(t *testing.T)
 
 func TestMaintainerReleasePreReleaseBaseCurrent_EndToEnd(t *testing.T) {
 	repo := maintainerReleaseFixtureRepo(t, "0.2.0")
-	runner := &envtest.FakeRunner{Responses: map[string]envtest.Response{
+	runner := &runnertest.FakeRunner{Responses: map[string]runnertest.Response{
 		gitTagsKey(repo, "v*"):    {Stdout: "v0.1.0\nv0.2.0-rc.1"},
 		gitLogKey(repo, "v0.1.0"): {Stdout: ""},
 	}}
@@ -493,7 +493,7 @@ func TestMaintainerReleasePreReleaseBaseCurrent_EndToEnd(t *testing.T) {
 
 func TestMaintainerReleasePreReleaseBaseCurrent_NoReleasableCommitRequired(t *testing.T) {
 	repo := maintainerReleaseFixtureRepo(t, "0.2.0")
-	runner := &envtest.FakeRunner{Responses: map[string]envtest.Response{
+	runner := &runnertest.FakeRunner{Responses: map[string]runnertest.Response{
 		gitTagsKey(repo, "v*"):    {Stdout: "v0.1.0"},
 		gitLogKey(repo, "v0.1.0"): {Stdout: commitRecord(1, "docs: only docs since last stable tag", "")},
 	}}
@@ -516,7 +516,7 @@ func TestMaintainerReleaseGuard_OkWithNotesFile(t *testing.T) {
 	repo := maintainerReleaseFixtureRepo(t, "0.2.0")
 	changelog := "# Changelog\n\n## [Unreleased]\n\n## [0.2.0] - 2026-09-28\n\n### Added\n- cli: add --json flag (abc1234)\n\n### Fixed\n- handle null path (def5678)\n\n## [0.1.0] - 2026-09-01\n\n### Added\n- initial release (0000001)\n"
 	writeChangelog(t, repo, changelog)
-	runner := &envtest.FakeRunner{Responses: map[string]envtest.Response{
+	runner := &runnertest.FakeRunner{Responses: map[string]runnertest.Response{
 		gitTagsKey(repo, "v0.2.0"): {Stdout: ""},
 	}}
 	notesPath := filepath.Join(t.TempDir(), "notes.md")
@@ -547,7 +547,7 @@ func TestMaintainerReleaseGuard_OkWithNotesFile(t *testing.T) {
 func TestMaintainerReleaseGuard_JSONShapeOnSuccess(t *testing.T) {
 	repo := maintainerReleaseFixtureRepo(t, "0.2.0")
 	writeChangelog(t, repo, "# Changelog\n\n## [Unreleased]\n\n## [0.2.0] - 2026-09-28\n\n### Added\n- x (abc1234)\n")
-	runner := &envtest.FakeRunner{Responses: map[string]envtest.Response{
+	runner := &runnertest.FakeRunner{Responses: map[string]runnertest.Response{
 		gitTagsKey(repo, "v0.2.0"): {Stdout: ""},
 	}}
 	var stdout, stderr bytes.Buffer
@@ -570,7 +570,7 @@ func TestMaintainerReleaseGuard_JSONShapeOnSuccess(t *testing.T) {
 func TestMaintainerReleaseGuard_TagAlreadyExists(t *testing.T) {
 	repo := maintainerReleaseFixtureRepo(t, "0.2.0")
 	writeChangelog(t, repo, "# Changelog\n\n## [Unreleased]\n\n## [0.2.0] - 2026-09-28\n\n### Added\n- x (abc1234)\n")
-	runner := &envtest.FakeRunner{Responses: map[string]envtest.Response{
+	runner := &runnertest.FakeRunner{Responses: map[string]runnertest.Response{
 		gitTagsKey(repo, "v0.2.0"): {Stdout: "v0.2.0"},
 	}}
 
@@ -592,7 +592,7 @@ func TestMaintainerReleaseGuard_TagAlreadyExists(t *testing.T) {
 
 func TestMaintainerReleaseGuard_MissingChangelog_Exit1(t *testing.T) {
 	repo := maintainerReleaseFixtureRepo(t, "0.2.0")
-	runner := &envtest.FakeRunner{Responses: map[string]envtest.Response{
+	runner := &runnertest.FakeRunner{Responses: map[string]runnertest.Response{
 		gitTagsKey(repo, "v0.2.0"): {Stdout: ""},
 	}}
 	var stdout, stderr bytes.Buffer
@@ -604,7 +604,7 @@ func TestMaintainerReleaseGuard_MissingChangelog_Exit1(t *testing.T) {
 func TestMaintainerReleaseGuard_NoMatchingSection_Exit1(t *testing.T) {
 	repo := maintainerReleaseFixtureRepo(t, "0.3.0")
 	writeChangelog(t, repo, "# Changelog\n\n## [Unreleased]\n\n## [0.2.0] - 2026-09-28\n\n### Added\n- x (abc1234)\n")
-	runner := &envtest.FakeRunner{Responses: map[string]envtest.Response{
+	runner := &runnertest.FakeRunner{Responses: map[string]runnertest.Response{
 		gitTagsKey(repo, "v0.3.0"): {Stdout: ""},
 	}}
 	var stdout, stderr bytes.Buffer
@@ -615,7 +615,7 @@ func TestMaintainerReleaseGuard_NoMatchingSection_Exit1(t *testing.T) {
 
 func TestMaintainerReleaseGuard_MissingPluginJSON_Exit2(t *testing.T) {
 	dir := t.TempDir()
-	runner := &envtest.FakeRunner{}
+	runner := &runnertest.FakeRunner{}
 	var stdout, stderr bytes.Buffer
 	if code := run([]string{"maintainer-release", "guard", "--repo", dir}, &stdout, &stderr, maintainerReleaseOptions(t, t.TempDir(), runner)); code != 2 {
 		t.Fatalf("exit code = %d, want 2", code)
@@ -625,7 +625,7 @@ func TestMaintainerReleaseGuard_MissingPluginJSON_Exit2(t *testing.T) {
 func TestMaintainerReleaseGuard_NotAGitRepository_Exit2(t *testing.T) {
 	repo := maintainerReleaseFixtureRepo(t, "0.2.0")
 	writeChangelog(t, repo, "# Changelog\n\n## [Unreleased]\n\n## [0.2.0] - 2026-09-28\n\n### Added\n- x (abc1234)\n")
-	runner := &envtest.FakeRunner{Default: envtest.Response{ExitCode: 128}}
+	runner := &runnertest.FakeRunner{Default: runnertest.Response{ExitCode: 128}}
 	var stdout, stderr bytes.Buffer
 	if code := run([]string{"maintainer-release", "guard", "--repo", repo}, &stdout, &stderr, maintainerReleaseOptions(t, t.TempDir(), runner)); code != 2 {
 		t.Fatalf("exit code = %d, want 2", code)
@@ -633,7 +633,7 @@ func TestMaintainerReleaseGuard_NotAGitRepository_Exit2(t *testing.T) {
 }
 
 func TestMaintainerReleaseGuard_RepoPathNotFound_Exit2(t *testing.T) {
-	runner := &envtest.FakeRunner{}
+	runner := &runnertest.FakeRunner{}
 	var stdout, stderr bytes.Buffer
 	code := run([]string{"maintainer-release", "guard", "--repo", filepath.Join(t.TempDir(), "does-not-exist")}, &stdout, &stderr, maintainerReleaseOptions(t, t.TempDir(), runner))
 	if code != 2 {
@@ -643,7 +643,7 @@ func TestMaintainerReleaseGuard_RepoPathNotFound_Exit2(t *testing.T) {
 
 func TestMaintainerReleaseGuard_FailurePath_NotesFileNotWritten(t *testing.T) {
 	repo := maintainerReleaseFixtureRepo(t, "0.2.0")
-	runner := &envtest.FakeRunner{Responses: map[string]envtest.Response{
+	runner := &runnertest.FakeRunner{Responses: map[string]runnertest.Response{
 		gitTagsKey(repo, "v0.2.0"): {Stdout: ""},
 	}}
 	notesPath := filepath.Join(t.TempDir(), "notes-fail.md")
@@ -666,7 +666,7 @@ func TestMaintainerReleaseGuard_BinaryConsistency_SkippedForDevBuild(t *testing.
 	}
 	repo := maintainerReleaseFixtureRepo(t, "0.2.0")
 	writeChangelog(t, repo, "# Changelog\n\n## [Unreleased]\n\n## [0.2.0] - 2026-09-28\n\n### Added\n- x (abc1234)\n")
-	runner := &envtest.FakeRunner{Responses: map[string]envtest.Response{
+	runner := &runnertest.FakeRunner{Responses: map[string]runnertest.Response{
 		gitTagsKey(repo, "v0.2.0"): {Stdout: ""},
 	}}
 	var stdout, stderr bytes.Buffer
@@ -687,7 +687,7 @@ func TestMaintainerReleaseGuard_BinaryConsistency_MismatchFailsForNonDevBuild(t 
 
 	repo := maintainerReleaseFixtureRepo(t, "9.9.9")
 	writeChangelog(t, repo, "# Changelog\n\n## [Unreleased]\n\n## [9.9.9] - 2026-09-28\n\n### Added\n- x (abc1234)\n")
-	runner := &envtest.FakeRunner{Responses: map[string]envtest.Response{
+	runner := &runnertest.FakeRunner{Responses: map[string]runnertest.Response{
 		gitTagsKey(repo, "v9.9.9"): {Stdout: ""},
 	}}
 	var stdout, stderr bytes.Buffer
@@ -709,7 +709,7 @@ func TestMaintainerReleaseGuard_BinaryConsistency_MismatchFailsForNonDevBuild(t 
 // ---------------------------------------------------------------------------
 
 func TestMaintainerRelease_HelpAndUnknownSubcommand(t *testing.T) {
-	runner := &envtest.FakeRunner{}
+	runner := &runnertest.FakeRunner{}
 
 	var helpOut, helpErr bytes.Buffer
 	if code := run([]string{"maintainer-release", "--help"}, &helpOut, &helpErr, maintainerReleaseOptions(t, t.TempDir(), runner)); code != 0 {
@@ -732,7 +732,7 @@ func TestMaintainerRelease_HelpAndUnknownSubcommand(t *testing.T) {
 
 func TestMaintainerRelease_HiddenFromTopLevelUsage(t *testing.T) {
 	var stdout, stderr bytes.Buffer
-	run([]string{}, &stdout, &stderr, maintainerReleaseOptions(t, t.TempDir(), &envtest.FakeRunner{}))
+	run([]string{}, &stdout, &stderr, maintainerReleaseOptions(t, t.TempDir(), &runnertest.FakeRunner{}))
 	// "release" must still be reachable, just not listed among the primary
 	// user-facing commands at the very top: this only checks it is not
 	// advertised as equal-billing with "install"/"configure" etc, so we

@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/war-apps/nerv-by-gentle-ai/internal/env"
+	"github.com/war-apps/nerv-kit-by-gentle-ai/runner"
 )
 
 // fixedNow is the release date of every test.
@@ -104,7 +104,7 @@ func (r *testRepo) compute(req Request) []Result {
 func (r *testRepo) computeErr(req Request) ([]Result, error) {
 	req.RepoDir = r.dir
 	req.Offline = true
-	req.Runner = env.ExecRunner{}
+	req.Runner = runner.ExecRunner{}
 	req.Now = fixedNow
 	return Compute(context.Background(), req)
 }

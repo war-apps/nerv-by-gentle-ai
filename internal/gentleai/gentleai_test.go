@@ -7,8 +7,8 @@ import (
 	"testing"
 
 	"github.com/war-apps/nerv-by-gentle-ai/internal/config"
-	"github.com/war-apps/nerv-by-gentle-ai/internal/env/envtest"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/gentleai"
+	"github.com/war-apps/nerv-kit-by-gentle-ai/runner/runnertest"
 )
 
 // ---------------------------------------------------------------------------
@@ -30,7 +30,7 @@ func TestCheckPreflight_MajorGate(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			runner := &envtest.FakeRunner{Responses: map[string]envtest.Response{
+			runner := &runnertest.FakeRunner{Responses: map[string]runnertest.Response{
 				"gentle-ai --version": {Stdout: tt.output},
 			}}
 
@@ -44,7 +44,7 @@ func TestCheckPreflight_MajorGate(t *testing.T) {
 }
 
 func TestCheckPreflight_NotFoundWhenLaunchFails(t *testing.T) {
-	runner := &envtest.FakeRunner{} // no scripted response, no Default -> empty output, no error
+	runner := &runnertest.FakeRunner{} // no scripted response, no Default -> empty output, no error
 
 	got := gentleai.CheckPreflight(context.Background(), runner)
 
@@ -56,7 +56,7 @@ func TestCheckPreflight_NotFoundWhenLaunchFails(t *testing.T) {
 func TestCheckPreflight_FoundButUnparseableVersion(t *testing.T) {
 	// Mirrors the PS rule: any non-blank output means "found", even when
 	// no MAJOR.MINOR.PATCH token is present.
-	runner := &envtest.FakeRunner{Responses: map[string]envtest.Response{
+	runner := &runnertest.FakeRunner{Responses: map[string]runnertest.Response{
 		"gentle-ai --version": {Stdout: "not a version string\n"},
 	}}
 
@@ -124,7 +124,7 @@ func TestPhaseAssignments_MalformedFileErrors(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestPrerequisites_ComputesAllThreeTools(t *testing.T) {
-	runner := &envtest.FakeRunner{Responses: map[string]envtest.Response{
+	runner := &runnertest.FakeRunner{Responses: map[string]runnertest.Response{
 		"gentle-ai --version": {Stdout: "gentle-ai 4.0.0\n"},
 	}}
 	lookPath := func(name string) (string, error) {

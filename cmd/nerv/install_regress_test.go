@@ -8,7 +8,7 @@ import (
 	"testing"
 
 	nerv "github.com/war-apps/nerv-by-gentle-ai"
-	"github.com/war-apps/nerv-by-gentle-ai/internal/env/envtest"
+	"github.com/war-apps/nerv-kit-by-gentle-ai/runner/runnertest"
 )
 
 func TestRunInstall_Terminal_DecliningTaskOffersNoProvider(t *testing.T) {
@@ -143,7 +143,7 @@ func TestRunUninstall_KeepsOtherMarketplacesPlugins(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	opts := testOptions(home)
 	opts.ExtensionsFS = nerv.ExtensionsFS()
-	runner := &envtest.FakeRunner{}
+	runner := &runnertest.FakeRunner{}
 	opts.Runner = runner
 
 	code := run([]string{"uninstall"}, &stdout, &stderr, opts)
@@ -176,21 +176,21 @@ func TestRunUninstall_RerunAfterExtensionFailure_StillUninstallsIt(t *testing.T)
 	if err := os.WriteFile(filepath.Join(home, ".claude", "settings.json"), []byte(seed), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	uninstall := func(runner *envtest.FakeRunner) int {
+	uninstall := func(runner *runnertest.FakeRunner) int {
 		var stdout, stderr bytes.Buffer
 		opts := testOptions(home)
 		opts.ExtensionsFS = nerv.ExtensionsFS()
 		opts.Runner = runner
 		return run([]string{"uninstall"}, &stdout, &stderr, opts)
 	}
-	failing := &envtest.FakeRunner{Responses: map[string]envtest.Response{
+	failing := &runnertest.FakeRunner{Responses: map[string]runnertest.Response{
 		"claude plugin uninstall task@nerv": {Stderr: "boom", ExitCode: 3},
 	}}
 	if code := uninstall(failing); code == 0 {
 		t.Fatal("first uninstall should fail")
 	}
 
-	rerun := &envtest.FakeRunner{}
+	rerun := &runnertest.FakeRunner{}
 	if code := uninstall(rerun); code != 0 {
 		t.Fatalf("rerun exit code = %d, want 0", code)
 	}
@@ -211,7 +211,7 @@ func TestMaintainerReleaseApply_ExtensionWithoutVersion_WritesNothing(t *testing
 	if err := os.WriteFile(ext, []byte("{\n  \"name\": \"task\"\n}\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	runner := &envtest.FakeRunner{Responses: map[string]envtest.Response{
+	runner := &runnertest.FakeRunner{Responses: map[string]runnertest.Response{
 		gitTagsKey(repo, "v*"): {Stdout: ""},
 		gitLogKey(repo, ""):    {Stdout: commitRecord(3, "feat: add applied feature", "")},
 	}}
@@ -239,7 +239,7 @@ func TestMaintainerReleaseApply_ListsExtensionsAfterChangelog(t *testing.T) {
 	if err := os.WriteFile(ext, []byte("{\n  \"name\": \"task\",\n  \"version\": \"0.1.0\"\n}\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	runner := &envtest.FakeRunner{Responses: map[string]envtest.Response{
+	runner := &runnertest.FakeRunner{Responses: map[string]runnertest.Response{
 		gitTagsKey(repo, "v*"): {Stdout: ""},
 		gitLogKey(repo, ""):    {Stdout: commitRecord(3, "feat: add applied feature", "")},
 	}}

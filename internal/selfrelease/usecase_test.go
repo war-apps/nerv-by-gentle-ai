@@ -9,14 +9,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/war-apps/nerv-by-gentle-ai/internal/env/envtest"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/refusal"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/selfrelease"
+	"github.com/war-apps/nerv-kit-by-gentle-ai/runner/runnertest"
 )
 
 // ---------------------------------------------------------------------------
 // Fixture helpers, mirroring cmd/nerv/release_test.go's: real files under
-// t.TempDir(), git always faked through envtest.FakeRunner.
+// t.TempDir(), git always faked through runnertest.FakeRunner.
 // ---------------------------------------------------------------------------
 
 func fixtureRepo(t *testing.T, pluginVersion string) string {
@@ -50,7 +50,7 @@ func oneCommit(n int, subject string) string {
 	return sha + "\x1f" + sha[:7] + "\x1f" + subject + "\x1f" + "\x1e\n"
 }
 
-func testDeps(repo string, runner *envtest.FakeRunner) selfrelease.Deps {
+func testDeps(repo string, runner *runnertest.FakeRunner) selfrelease.Deps {
 	return selfrelease.Deps{
 		Repo:   repo,
 		Runner: runner,
@@ -64,7 +64,7 @@ func testDeps(repo string, runner *envtest.FakeRunner) selfrelease.Deps {
 
 func TestPreview_ComputesMinorBumpAndTag(t *testing.T) {
 	repo := fixtureRepo(t, "0.1.0")
-	runner := &envtest.FakeRunner{Responses: map[string]envtest.Response{
+	runner := &runnertest.FakeRunner{Responses: map[string]runnertest.Response{
 		tagsKey(repo, "v*"): {Stdout: ""},
 		logKey(repo, ""):    {Stdout: oneCommit(1, "feat: add cool feature")},
 	}}
@@ -89,7 +89,7 @@ func TestPreview_ComputesMinorBumpAndTag(t *testing.T) {
 
 func TestPreview_NothingReleasable_ReportsInspectedCount(t *testing.T) {
 	repo := fixtureRepo(t, "0.1.0")
-	runner := &envtest.FakeRunner{Responses: map[string]envtest.Response{
+	runner := &runnertest.FakeRunner{Responses: map[string]runnertest.Response{
 		tagsKey(repo, "v*"): {Stdout: ""},
 		logKey(repo, ""):    {Stdout: oneCommit(1, "docs: tweak docs") + oneCommit(2, "chore: tidy up")},
 	}}
@@ -111,7 +111,7 @@ func TestPreview_NothingReleasable_ReportsInspectedCount(t *testing.T) {
 
 func TestPreview_VersionOverride_MustBeGreater(t *testing.T) {
 	repo := fixtureRepo(t, "0.5.0")
-	runner := &envtest.FakeRunner{Responses: map[string]envtest.Response{
+	runner := &runnertest.FakeRunner{Responses: map[string]runnertest.Response{
 		tagsKey(repo, "v*"): {Stdout: ""},
 		logKey(repo, ""):    {Stdout: ""},
 	}}
@@ -127,7 +127,7 @@ func TestPreview_VersionOverride_MustBeGreater(t *testing.T) {
 
 func TestPreview_PreReleaseLabel_ComputesRcOne(t *testing.T) {
 	repo := fixtureRepo(t, "0.1.0")
-	runner := &envtest.FakeRunner{Responses: map[string]envtest.Response{
+	runner := &runnertest.FakeRunner{Responses: map[string]runnertest.Response{
 		tagsKey(repo, "v*"): {Stdout: ""},
 		logKey(repo, ""):    {Stdout: oneCommit(1, "feat: prerelease-worthy feature")},
 	}}
@@ -145,7 +145,7 @@ func TestPreview_PreReleaseLabel_ComputesRcOne(t *testing.T) {
 }
 
 func TestPreview_RepositoryPathNotFound(t *testing.T) {
-	runner := &envtest.FakeRunner{}
+	runner := &runnertest.FakeRunner{}
 	_, err := selfrelease.Preview(testDeps(filepath.Join(t.TempDir(), "missing"), runner), selfrelease.PreviewOptions{})
 	if err == nil {
 		t.Fatal("expected an error for a missing repository path")
@@ -161,7 +161,7 @@ func TestPreview_RepositoryPathNotFound(t *testing.T) {
 
 func TestApply_WritesPluginJSONAndChangelog(t *testing.T) {
 	repo := fixtureRepo(t, "0.1.0")
-	runner := &envtest.FakeRunner{Responses: map[string]envtest.Response{
+	runner := &runnertest.FakeRunner{Responses: map[string]runnertest.Response{
 		tagsKey(repo, "v*"): {Stdout: ""},
 		logKey(repo, ""):    {Stdout: oneCommit(1, "feat: add applied feature")},
 	}}
@@ -200,7 +200,7 @@ func TestApply_WritesPluginJSONAndChangelog(t *testing.T) {
 func TestApply_NothingReleasable_WritesNothing(t *testing.T) {
 	repo := fixtureRepo(t, "0.2.0")
 	writeChangelogFixture(t, repo, "# Changelog\n\n## [Unreleased]\n\n## [0.2.0] - 2026-09-28\n\n### Added\n- x (0000000)\n")
-	runner := &envtest.FakeRunner{Responses: map[string]envtest.Response{
+	runner := &runnertest.FakeRunner{Responses: map[string]runnertest.Response{
 		tagsKey(repo, "v*"):    {Stdout: "v0.2.0"},
 		logKey(repo, "v0.2.0"): {Stdout: ""},
 	}}
@@ -228,7 +228,7 @@ func writeChangelogFixture(t *testing.T, repo, text string) {
 func TestGuard_OkWritesNotesFile(t *testing.T) {
 	repo := fixtureRepo(t, "0.2.0")
 	writeChangelogFixture(t, repo, "# Changelog\n\n## [Unreleased]\n\n## [0.2.0] - 2026-09-28\n\n### Added\n- cli: add --json flag (abc1234)\n")
-	runner := &envtest.FakeRunner{Responses: map[string]envtest.Response{
+	runner := &runnertest.FakeRunner{Responses: map[string]runnertest.Response{
 		tagsKey(repo, "v0.2.0"): {Stdout: ""},
 	}}
 	notesPath := filepath.Join(t.TempDir(), "notes.md")
@@ -252,7 +252,7 @@ func TestGuard_OkWritesNotesFile(t *testing.T) {
 func TestGuard_TagAlreadyExists_NotOkNoNotesFile(t *testing.T) {
 	repo := fixtureRepo(t, "0.2.0")
 	writeChangelogFixture(t, repo, "# Changelog\n\n## [Unreleased]\n\n## [0.2.0] - 2026-09-28\n\n### Added\n- x (abc1234)\n")
-	runner := &envtest.FakeRunner{Responses: map[string]envtest.Response{
+	runner := &runnertest.FakeRunner{Responses: map[string]runnertest.Response{
 		tagsKey(repo, "v0.2.0"): {Stdout: "v0.2.0"},
 	}}
 	notesPath := filepath.Join(t.TempDir(), "notes.md")
@@ -274,7 +274,7 @@ func TestGuard_TagAlreadyExists_NotOkNoNotesFile(t *testing.T) {
 
 func TestGuard_MissingPluginJSON_ReturnsEnvironmentError(t *testing.T) {
 	dir := t.TempDir()
-	runner := &envtest.FakeRunner{}
+	runner := &runnertest.FakeRunner{}
 	_, err := selfrelease.Guard(testDeps(dir, runner), selfrelease.GuardOptions{})
 	if err == nil {
 		t.Fatal("expected an error for a missing plugin.json")
@@ -293,7 +293,7 @@ func TestApply_BumpsEveryExtensionPluginToTheSameVersion(t *testing.T) {
 	if err := os.WriteFile(extJSON, []byte("{\n  \"name\": \"task\",\n  \"version\": \"0.1.0\"\n}\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	runner := &envtest.FakeRunner{Responses: map[string]envtest.Response{
+	runner := &runnertest.FakeRunner{Responses: map[string]runnertest.Response{
 		tagsKey(repo, "v*"): {Stdout: ""},
 		logKey(repo, ""):    {Stdout: oneCommit(1, "feat: add applied feature")},
 	}}

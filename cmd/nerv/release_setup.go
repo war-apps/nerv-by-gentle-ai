@@ -10,13 +10,13 @@ import (
 
 	"gopkg.in/yaml.v3"
 
-	"github.com/war-apps/nerv-by-gentle-ai/internal/atomicfile"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/config"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/paths"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/refusal"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/releaseconfig"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/releaseconfig/yamlsection"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/releaseplan"
+	"github.com/war-apps/nerv-kit-by-gentle-ai/atomicfile"
 )
 
 // sectionVersion is the release.version of a .ai-workflow/config.yaml text, read

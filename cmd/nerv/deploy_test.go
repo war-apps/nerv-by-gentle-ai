@@ -10,8 +10,8 @@ import (
 
 	nerv "github.com/war-apps/nerv-by-gentle-ai"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/config"
-	"github.com/war-apps/nerv-by-gentle-ai/internal/env"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/workflowconfig"
+	"github.com/war-apps/nerv-kit-by-gentle-ai/runner"
 )
 
 // A deploy provider key comes from the user file only when its manifest
@@ -73,7 +73,7 @@ func TestRunDeploy_RefusesAnUnconfiguredRepository(t *testing.T) {
 		t.Fatalf("%v %s", err, out)
 	}
 	opts := testOptions(t.TempDir())
-	opts.Runner = env.ExecRunner{}
+	opts.Runner = runner.ExecRunner{}
 	opts.ExtensionsFS = nerv.ExtensionsFS()
 	var stdout, stderr bytes.Buffer
 	code := run([]string{"deploy", "--cwd", repo, "--artifact", filepath.Join(repo, "x"), "--json"}, &stdout, &stderr, opts)

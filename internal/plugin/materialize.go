@@ -3,358 +3,43 @@
 package plugin
 
 import (
-	"bytes"
-	"encoding/json"
-	"fmt"
 	"io/fs"
-	"os"
-	"path/filepath"
-	"sort"
-	"strings"
+
+	"github.com/war-apps/nerv-kit-by-gentle-ai/claudeplugin"
 )
 
-const (
-	filePerm = 0o644
-	dirPerm  = 0o755
+// pluginManifestPath is every plugin's own manifest, relative to its root;
+// Extensions (extensions.go) reads it to discover and describe each
+// extension and provider folder.
+const pluginManifestPath = ".claude-plugin/plugin.json"
 
-	pluginManifestPath     = ".claude-plugin/plugin.json"
-	marketplaceManifestRel = ".claude-plugin/marketplace.json"
-)
+// marketplace identifies nerv's own directory marketplace: the core
+// plugin's name and this repository's maintainer, exactly as nerv always
+// registered it before Materialize moved to nerv-kit.
+var marketplace = claudeplugin.Marketplace{Name: "nerv", OwnerName: "Walter Rodriguez"}
 
-// Result reports what Materialize did, as paths relative to dest.
-type Result struct {
-	// Written lists files that were created or whose content changed.
-	Written []string
-	// Unchanged lists files whose on-disk bytes already matched the source.
-	Unchanged []string
-	// Removed lists stale files under dest/plugin that are not present in
-	// src anymore.
-	Removed []string
-}
-
-type marketplaceManifest struct {
-	Name    string              `json:"name"`
-	Owner   marketplaceOwner    `json:"owner"`
-	Plugins []marketplacePlugin `json:"plugins"`
-}
-
-type marketplaceOwner struct {
-	Name string `json:"name"`
-}
-
-type marketplacePlugin struct {
-	Name        string `json:"name"`
-	Source      string `json:"source"`
-	Description string `json:"description"`
-}
+// Result reports what Materialize did, as paths relative to dest. It is
+// claudeplugin.Result, re-exported so callers keep importing this package
+// instead of the kit directly.
+type Result = claudeplugin.Result
 
 // Materialize writes the whole tree from src under dest/plugin, byte-exact,
 // and writes dest/.claude-plugin/marketplace.json registering it as a
 // directory marketplace named "nerv". It is MaterializeBundle with no
 // extensions and providers.
 func Materialize(src fs.FS, dest string) (Result, error) {
-	return MaterializeBundle(src, nil, dest)
+	return claudeplugin.Materialize(src, dest, marketplace)
 }
 
 // MaterializeBundle writes the core plugin tree from core under
-// dest/plugin and every extension and provider in extensions (one folder per
-// plugin, see Extensions) under dest/plugins/<name>, byte-exact, then
-// writes dest/.claude-plugin/marketplace.json listing the core plugin
+// dest/plugin and every extension and provider folder of extensions (one
+// folder per plugin, see Extensions) under dest/plugins/<name>, byte-exact,
+// then writes dest/.claude-plugin/marketplace.json listing the core plugin
 // first and the extensions in name order. It is idempotent: a file whose
 // bytes already match the source is left untouched, and files under
 // dest/plugin or dest/plugins that are no longer present in a source are
 // removed. It never writes or removes anything outside dest/plugin,
 // dest/plugins and dest/.claude-plugin. A nil extensions writes none.
 func MaterializeBundle(core, extensions fs.FS, dest string) (Result, error) {
-	var result Result
-
-	if err := ensureDestIsUsable(dest); err != nil {
-		return result, err
-	}
-
-	exts, err := Extensions(extensions)
-	if err != nil {
-		return result, err
-	}
-
-	knownFiles := make(map[string]struct{})
-	destPluginRoot := filepath.Join(dest, "plugin")
-	if err := writeTree(core, destPluginRoot, "plugin/", knownFiles, &result); err != nil {
-		return result, err
-	}
-	destExtRoot := filepath.Join(dest, "plugins")
-	for _, ext := range exts {
-		sub, err := fs.Sub(extensions, ext.Name)
-		if err != nil {
-			return result, err
-		}
-		root := filepath.Join(destExtRoot, ext.Name)
-		if err := writeTree(sub, root, "plugins/"+ext.Name+"/", knownFiles, &result); err != nil {
-			return result, err
-		}
-	}
-
-	for _, root := range []string{destPluginRoot, destExtRoot} {
-		if _, err := os.Stat(root); os.IsNotExist(err) {
-			continue
-		}
-		removed, err := removeStaleFiles(root, knownFiles)
-		if err != nil {
-			return result, err
-		}
-		result.Removed = append(result.Removed, removed...)
-	}
-
-	description, err := readPluginDescription(core)
-	if err != nil {
-		return result, err
-	}
-	plugins := []marketplacePlugin{{Name: "nerv", Source: "./plugin", Description: description}}
-	for _, ext := range exts {
-		plugins = append(plugins, marketplacePlugin{Name: ext.Name, Source: "./plugins/" + ext.Name, Description: ext.Description})
-	}
-
-	if err := writeMarketplaceManifest(dest, plugins, &result); err != nil {
-		return result, err
-	}
-
-	sort.Strings(result.Written)
-	sort.Strings(result.Unchanged)
-	sort.Strings(result.Removed)
-
-	return result, nil
-}
-
-// writeTree copies every file of src under destRoot, recording each one in
-// knownFiles and result as relPrefix + its path.
-func writeTree(src fs.FS, destRoot, relPrefix string, knownFiles map[string]struct{}, result *Result) error {
-	if err := os.MkdirAll(destRoot, dirPerm); err != nil {
-		return fmt.Errorf("creating %s: %w", destRoot, err)
-	}
-
-	return fs.WalkDir(src, ".", func(path string, d fs.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			return fmt.Errorf("walking source at %q: %w", path, walkErr)
-		}
-		if path == "." {
-			return nil
-		}
-		if err := checkSafeRelPath(path); err != nil {
-			return err
-		}
-
-		destPath := filepath.Join(destRoot, filepath.FromSlash(path))
-		if err := checkWithinRoot(destRoot, destPath); err != nil {
-			return err
-		}
-
-		if d.IsDir() {
-			if err := os.MkdirAll(destPath, dirPerm); err != nil {
-				return fmt.Errorf("creating directory %s: %w", destPath, err)
-			}
-			return nil
-		}
-
-		data, err := fs.ReadFile(src, path)
-		if err != nil {
-			return fmt.Errorf("reading %s: %w", path, err)
-		}
-
-		relDest := relPrefix + path
-		knownFiles[relDest] = struct{}{}
-
-		changed, err := writeIfChanged(destPath, data)
-		if err != nil {
-			return err
-		}
-		if changed {
-			result.Written = append(result.Written, relDest)
-		} else {
-			result.Unchanged = append(result.Unchanged, relDest)
-		}
-		return nil
-	})
-}
-
-func ensureDestIsUsable(dest string) error {
-	info, err := os.Stat(dest)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil
-		}
-		return fmt.Errorf("checking dest %s: %w", dest, err)
-	}
-	if !info.IsDir() {
-		return fmt.Errorf("dest %s exists and is not a directory", dest)
-	}
-	return nil
-}
-
-// checkSafeRelPath refuses any fs entry whose path escapes the source root,
-// either through a ".." segment or an absolute path.
-func checkSafeRelPath(path string) error {
-	if filepath.IsAbs(path) || strings.HasPrefix(path, "/") {
-		return fmt.Errorf("refusing absolute path from source filesystem: %q", path)
-	}
-	for _, segment := range strings.Split(path, "/") {
-		if segment == ".." {
-			return fmt.Errorf("refusing path traversal from source filesystem: %q", path)
-		}
-	}
-	return nil
-}
-
-// checkWithinRoot is a defense-in-depth guard ensuring the resolved
-// destination path still lives under root.
-func checkWithinRoot(root, target string) error {
-	rel, err := filepath.Rel(root, target)
-	if err != nil {
-		return fmt.Errorf("resolving %s relative to %s: %w", target, root, err)
-	}
-	if rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
-		return fmt.Errorf("refusing to write outside %s: %s", root, target)
-	}
-	return nil
-}
-
-// writeIfChanged writes data to destPath only when the existing content
-// differs, creating parent directories as needed. It reports whether it
-// wrote a new file or new content.
-func writeIfChanged(destPath string, data []byte) (bool, error) {
-	if err := os.MkdirAll(filepath.Dir(destPath), dirPerm); err != nil {
-		return false, fmt.Errorf("creating directory for %s: %w", destPath, err)
-	}
-
-	existing, err := os.ReadFile(destPath)
-	if err == nil && bytes.Equal(existing, data) {
-		return false, nil
-	}
-	if err != nil && !os.IsNotExist(err) {
-		return false, fmt.Errorf("reading %s: %w", destPath, err)
-	}
-
-	if err := os.WriteFile(destPath, data, filePerm); err != nil {
-		return false, fmt.Errorf("writing %s: %w", destPath, err)
-	}
-	return true, nil
-}
-
-// removeStaleFiles deletes files under root that are not present in
-// knownFiles (keyed by their path relative to root's parent, such as
-// "plugin/<relative path>"), then removes any directories left empty by
-// that cleanup.
-func removeStaleFiles(root string, knownFiles map[string]struct{}) ([]string, error) {
-	var removed []string
-
-	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		if path == root || d.IsDir() {
-			return nil
-		}
-
-		rel, err := filepath.Rel(filepath.Dir(root), path)
-		if err != nil {
-			return err
-		}
-		relSlash := filepath.ToSlash(rel)
-
-		if _, ok := knownFiles[relSlash]; ok {
-			return nil
-		}
-
-		if err := os.Remove(path); err != nil {
-			return fmt.Errorf("removing stale file %s: %w", path, err)
-		}
-		removed = append(removed, relSlash)
-		return nil
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	if err := removeEmptyDirs(root); err != nil {
-		return nil, err
-	}
-
-	return removed, nil
-}
-
-// removeEmptyDirs prunes directories under root left empty after stale-file
-// removal, without ever removing root itself.
-func removeEmptyDirs(root string) error {
-	var dirs []string
-	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		if d.IsDir() && path != root {
-			dirs = append(dirs, path)
-		}
-		return nil
-	})
-	if err != nil {
-		return err
-	}
-
-	// Remove deepest directories first so parents become empty in turn.
-	sort.Sort(sort.Reverse(sort.StringSlice(dirs)))
-	for _, dir := range dirs {
-		entries, err := os.ReadDir(dir)
-		if err != nil {
-			return fmt.Errorf("reading directory %s: %w", dir, err)
-		}
-		if len(entries) == 0 {
-			if err := os.Remove(dir); err != nil {
-				return fmt.Errorf("removing empty directory %s: %w", dir, err)
-			}
-		}
-	}
-	return nil
-}
-
-func readPluginDescription(src fs.FS) (string, error) {
-	data, err := fs.ReadFile(src, pluginManifestPath)
-	if err != nil {
-		return "", fmt.Errorf("reading %s: %w", pluginManifestPath, err)
-	}
-	var manifest struct {
-		Description string `json:"description"`
-	}
-	if err := json.Unmarshal(data, &manifest); err != nil {
-		return "", fmt.Errorf("parsing %s: %w", pluginManifestPath, err)
-	}
-	return manifest.Description, nil
-}
-
-func writeMarketplaceManifest(dest string, plugins []marketplacePlugin, result *Result) error {
-	manifest := marketplaceManifest{
-		Name:    "nerv",
-		Owner:   marketplaceOwner{Name: "Walter Rodriguez"},
-		Plugins: plugins,
-	}
-
-	encoded, err := json.MarshalIndent(manifest, "", "  ")
-	if err != nil {
-		return fmt.Errorf("encoding marketplace.json: %w", err)
-	}
-	encoded = append(encoded, '\n')
-
-	claudePluginDir := filepath.Join(dest, ".claude-plugin")
-	if err := os.MkdirAll(claudePluginDir, dirPerm); err != nil {
-		return fmt.Errorf("creating %s: %w", claudePluginDir, err)
-	}
-
-	destPath := filepath.Join(claudePluginDir, "marketplace.json")
-	changed, err := writeIfChanged(destPath, encoded)
-	if err != nil {
-		return err
-	}
-	if changed {
-		result.Written = append(result.Written, marketplaceManifestRel)
-	} else {
-		result.Unchanged = append(result.Unchanged, marketplaceManifestRel)
-	}
-	return nil
+	return claudeplugin.MaterializeBundle(core, extensions, dest, marketplace)
 }

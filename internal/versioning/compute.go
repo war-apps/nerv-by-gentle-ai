@@ -9,14 +9,14 @@
 // @semantic-release/commit-analyzer 13, @semantic-release/release-notes-
 // generator 14, conventional-commits-parser 6, conventional-changelog-writer
 // 8 and conventional-changelog-conventionalcommits 8; each file names the
-// parts it ports. Git is only read, through an injectable env.Runner.
+// parts it ports. Git is only read, through an injectable runner.Runner.
 package versioning
 
 import (
 	"strconv"
 	"time"
 
-	"github.com/war-apps/nerv-by-gentle-ai/internal/env"
+	"github.com/war-apps/nerv-kit-by-gentle-ai/runner"
 )
 
 // Request selects what Compute computes.
@@ -43,8 +43,8 @@ type Request struct {
 	// exist yet. Checking that it fits the branch and is newer than the
 	// last release is the caller's.
 	Version string
-	// Runner runs git; nil means env.ExecRunner.
-	Runner env.Runner
+	// Runner runs git; nil means runner.ExecRunner.
+	Runner runner.Runner
 	// Now is the clock of the release date in the notes; nil means
 	// time.Now. The date is written in UTC.
 	Now func() time.Time

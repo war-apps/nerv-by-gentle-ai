@@ -12,8 +12,8 @@ import (
 	nerv "github.com/war-apps/nerv-by-gentle-ai"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/config"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/configure"
-	"github.com/war-apps/nerv-by-gentle-ai/internal/env/envtest"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/wizard"
+	"github.com/war-apps/nerv-kit-by-gentle-ai/runner/runnertest"
 )
 
 // writeSettings writes a settings.json enabling ids and returns its path.
@@ -211,7 +211,7 @@ func TestRun_RepoInit_PromptsRepoScopeProviderKeys(t *testing.T) {
 	home := t.TempDir()
 	writeFixture(t, filepath.Join(root, "config.yml"))
 	repoDir := t.TempDir()
-	runner := &envtest.FakeRunner{Responses: map[string]envtest.Response{
+	runner := &runnertest.FakeRunner{Responses: map[string]runnertest.Response{
 		"git -C " + repoDir + " rev-parse --show-toplevel": {Stdout: repoDir + "\n"},
 	}}
 	deps := configure.Deps{Home: home, FS: nerv.PluginFS(), ExtensionsFS: nerv.ExtensionsFS(), Runner: runner, Now: fixedNow, LookPath: lookPathNone}
@@ -248,7 +248,7 @@ func TestRun_RepoInit_SeedsTasksFromTheUserDefaults(t *testing.T) {
 	home := t.TempDir()
 	writeFixture(t, filepath.Join(root, "config.yml"))
 	repoDir := t.TempDir()
-	runner := &envtest.FakeRunner{Responses: map[string]envtest.Response{
+	runner := &runnertest.FakeRunner{Responses: map[string]runnertest.Response{
 		"git -C " + repoDir + " rev-parse --show-toplevel": {Stdout: repoDir + "\n"},
 	}}
 	deps := configure.Deps{Home: home, FS: nerv.PluginFS(), ExtensionsFS: nerv.ExtensionsFS(), Runner: runner, Now: fixedNow, LookPath: lookPathNone}
@@ -309,7 +309,7 @@ func TestRun_RepoInit_PromptsProjectTaskProviderKeys(t *testing.T) {
 	if err := os.WriteFile(manifest, []byte("name: tracker\nextension: task\nslot: provider\ncontract_version: 1\nruntime: agent\ntask_ref_prefix: TR\nmcp:\n  server: tracker\n  tools: [tracker_get]\nconfig:\n  - key: board\n    scope: repo\n    type: string\n    prompt: The tracker board of this repository\noperations:\n"+ops), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	runner := &envtest.FakeRunner{Responses: map[string]envtest.Response{
+	runner := &runnertest.FakeRunner{Responses: map[string]runnertest.Response{
 		"git -C " + repoDir + " rev-parse --show-toplevel": {Stdout: repoDir + "\n"},
 	}}
 	deps := configure.Deps{Home: home, FS: nerv.PluginFS(), ExtensionsFS: nerv.ExtensionsFS(), Runner: runner, Now: fixedNow, LookPath: lookPathNone}
