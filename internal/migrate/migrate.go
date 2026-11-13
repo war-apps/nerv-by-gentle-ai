@@ -23,10 +23,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/war-apps/nerv-by-gentle-ai/internal/atomicfile"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/config"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/paths"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/refusal"
+	"github.com/war-apps/nerv-kit-by-gentle-ai/atomicfile"
 )
 
 // MigratedSuffix is appended to an old configuration file once it has been

@@ -13,8 +13,8 @@ import (
 
 	nerv "github.com/war-apps/nerv-by-gentle-ai"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/config"
-	"github.com/war-apps/nerv-by-gentle-ai/internal/env/envtest"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/paths"
+	"github.com/war-apps/nerv-kit-by-gentle-ai/runner/runnertest"
 )
 
 // noNetworkTransport fails every request immediately, with no real
@@ -31,7 +31,7 @@ func (noNetworkTransport) RoundTrip(*http.Request) (*http.Response, error) {
 func testOptions(home string) options {
 	return options{
 		PluginFS:   nerv.PluginFS(),
-		Runner:     &envtest.FakeRunner{},
+		Runner:     &runnertest.FakeRunner{},
 		Now:        func() time.Time { return time.Date(2026, 9, 29, 12, 0, 0, 0, time.UTC) },
 		LookPath:   func(string) (string, error) { return "", os.ErrNotExist },
 		Stdin:      strings.NewReader(""),
@@ -277,7 +277,7 @@ func TestRunConfigure_HomeResolutionFailure_Exit2(t *testing.T) {
 // P3.1.3: "--home" is no longer a public flag on "nerv configure" — a fake
 // home never sandboxes the global commands it can still reach (claude
 // plugin, npx -g); the home directory comes only from options.Home
-// (tests) or env.HomeDir() (production). Passing it is now an unknown
+// (tests) or runner.HomeDir() (production). Passing it is now an unknown
 // flag, which fails the flag.ContinueOnError parse and exits 2.
 // ---------------------------------------------------------------------------
 
@@ -341,13 +341,21 @@ func TestRunConfigure_RoundTrip_PreservesTasksBlock(t *testing.T) {
 	if err := os.WriteFile(answersPath, []byte("release\n"+strings.Repeat("\n", 30)), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	for _, args := range [][]string{
+	for i, args := range [][]string{
 		{"configure", "--set", "git.base_branch=main"},
 		{"configure", "--set-model", "hyuga=opus/xhigh"},
 		{"configure", "--answers", answersPath, "--skip-skills", "--skip-models", "--skip-repos", "--no-refresh"},
 	} {
 		var stdout, stderr bytes.Buffer
-		if code := run(args, &stdout, &stderr, testOptions(home)); code != 0 {
+		// Each round advances the clock a second: three saves of the same
+		// file at the exact same frozen timestamp would otherwise name the
+		// same backup path three times, which nerv-kit's atomicfile now
+		// refuses (O_EXCL) instead of silently overwriting the earlier one.
+		opts := testOptions(home)
+		opts.Now = func() time.Time {
+			return time.Date(2026, 9, 29, 12, 0, 0, 0, time.UTC).Add(time.Duration(i) * time.Second)
+		}
+		if code := run(args, &stdout, &stderr, opts); code != 0 {
 			t.Fatalf("%v: exit code = %d, want 0 (stdout=%q)", args, code, stdout.String())
 		}
 		if got := tasksBlock(t, configPath); got != want {
@@ -367,7 +375,7 @@ func TestRunConfigure_RoundTrip_PreservesTasksBlock(t *testing.T) {
 		t.Fatal(err)
 	}
 	opts := testOptions(home)
-	opts.Runner = &envtest.FakeRunner{Responses: map[string]envtest.Response{
+	opts.Runner = &runnertest.FakeRunner{Responses: map[string]runnertest.Response{
 		"git -C " + repo + " rev-parse --show-toplevel": {Stdout: repo + "\n"},
 	}}
 	var stdout, stderr bytes.Buffer
@@ -413,7 +421,7 @@ func TestRunConfigure_RemovedTaskFlags_Exit2(t *testing.T) {
 func initRepoOptions(home, repo string) options {
 	opts := testOptions(home)
 	opts.ExtensionsFS = nerv.ExtensionsFS()
-	opts.Runner = &envtest.FakeRunner{Responses: map[string]envtest.Response{
+	opts.Runner = &runnertest.FakeRunner{Responses: map[string]runnertest.Response{
 		"git -C " + repo + " rev-parse --show-toplevel": {Stdout: repo + "\n"},
 	}}
 	return opts

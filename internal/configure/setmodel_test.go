@@ -54,14 +54,18 @@ func TestSetModel_ClearRemovesRole(t *testing.T) {
 	configPath := filepath.Join(dir, "config.yml")
 	writeFixture(t, configPath, richFixtureLF)
 
-	deps := newTestDeps(dir, time.Now())
+	now := time.Now()
 	paths := configure.Paths{Config: configPath}
 
-	if _, err := configure.SetModel(deps, paths, []string{"hyuga=opus/xhigh"}); err != nil {
+	if _, err := configure.SetModel(newTestDeps(dir, now), paths, []string{"hyuga=opus/xhigh"}); err != nil {
 		t.Fatalf("SetModel() (add) error = %v", err)
 	}
 
-	result, err := configure.SetModel(deps, paths, []string{"hyuga=default"})
+	// A second, later timestamp: back-to-back saves of the same file within
+	// the same wall-clock second would otherwise name the same timestamped
+	// backup path twice, which nerv-kit's atomicfile now refuses (O_EXCL)
+	// instead of silently overwriting the earlier backup.
+	result, err := configure.SetModel(newTestDeps(dir, now.Add(time.Second)), paths, []string{"hyuga=default"})
 	if err != nil {
 		t.Fatalf("SetModel() (clear) error = %v", err)
 	}
