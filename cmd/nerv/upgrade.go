@@ -141,7 +141,7 @@ func runUpgrade(args []string, stdout, stderr io.Writer, opts options) int {
 	}
 
 	if home, homeErr := configure.ResolveHome(opts.Home); homeErr == nil {
-		if ecoErr := offerEcosystemTools(ctx, stdout, opts, home, "upgrade", *tools, *noTools); ecoErr != nil {
+		if _, ecoErr := offerEcosystemTools(ctx, stdout, opts, home, "upgrade", *tools, *noTools); ecoErr != nil {
 			fmt.Fprintf(stdout, "nerv upgrade: %v\n", ecoErr)
 			if code == 0 {
 				code = exitCodeFor(ecoErr)

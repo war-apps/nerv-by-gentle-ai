@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/war-apps/nerv-by-gentle-ai/internal/configure"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/ecosystem"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/install"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/wizard"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/workflowconfig"
@@ -23,7 +24,14 @@ gentle-ai. A newer major version is reported and left alone; a failed
 release lookup or upgrade is only a warning, and install continues with
 the gentle-ai it found.
 
-Materializes the embedded NERV plugin under <home>/.nerv/marketplace,
+First offers the NERV-ecosystem tools (nerv-task today): on a terminal with
+neither --tools nor --no-tools, each tool's state (not installed, its
+version, or outdated against its latest release) is shown and confirmed
+one by one, before anything about NERV's own extensions is asked; a
+confirmed tool's official install script then runs (install.sh on
+Linux/macOS, install.ps1 on Windows).
+
+Then materializes the embedded NERV plugin under <home>/.nerv/marketplace,
 registers it in Claude Code's settings.json, refreshes the plugin cache,
 applies model/effort assignments to the cached agents, ensures the Engram
 "nerv" knowledge base, and installs skills. It also installs the optional
@@ -44,13 +52,9 @@ with it; a requirement this nerv does not ship is refused.
 Old /task:* copies in <home>/.claude/commands/task, which shadow the task
 extension's commands, are reported, and removed when you confirm on a terminal.
 
-Then offers the NERV-ecosystem tools (nerv-task today): on a terminal with
-neither --tools nor --no-tools, each tool's state (not installed, its
-version, or outdated against its latest release) is shown and confirmed
-one by one; a confirmed tool's official install script runs (install.sh on
-Linux/macOS, install.ps1 on Windows). An extension a tool replaces (task,
-task-teamwork for nerv-task) is never offered, selected or re-enabled once
-that tool is installed, or chosen in this run.
+An extension a tool replaces (task, task-teamwork for nerv-task) is never
+offered, selected or re-enabled once that tool is installed, or chosen in
+this run's ecosystem-tools step above.
 
 Unless --no-configure is given,
 it then runs the interactive setup wizard when stdin is a terminal, or
@@ -123,6 +127,21 @@ func runInstall(args []string, stdout, stderr io.Writer, opts options) int {
 		}
 	}
 
+	// S11/F2: the ecosystem tools are offered before NERV's own
+	// extensions, so a tool chosen in this run (not only one already
+	// installed on this machine) also suppresses the extensions it
+	// replaces (task, task-teamwork for nerv-task) -- a user who accepts
+	// nerv-task is never also asked about them.
+	var selectedTools []ecosystem.Tool
+	if !*skipEcosystemTools {
+		var ecoErr error
+		selectedTools, ecoErr = offerEcosystemTools(context.Background(), stdout, opts, home, "install", *tools, *noTools)
+		if ecoErr != nil {
+			fmt.Fprintf(stdout, "nerv install: %v\n", ecoErr)
+			return exitCodeFor(ecoErr)
+		}
+	}
+
 	deps := install.Deps{
 		Home:                        home,
 		SettingsPath:                opts.Settings,
@@ -141,17 +160,10 @@ func runInstall(args []string, stdout, stderr io.Writer, opts options) int {
 		RequireGentleAI:      *requireGentleAI,
 		NoSkills:             *noSkills,
 		Extensions:           splitList(*with),
-		SuppressedExtensions: suppressedExtensions(context.Background(), opts, home, *tools, *noTools),
+		SuppressedExtensions: suppressedExtensions(context.Background(), opts, home, selectedTools),
 	})
 	if code := mapInstallError(stdout, err); code != 0 {
 		return code
-	}
-
-	if !*skipEcosystemTools {
-		if ecoErr := offerEcosystemTools(context.Background(), stdout, opts, home, "install", *tools, *noTools); ecoErr != nil {
-			fmt.Fprintf(stdout, "nerv install: %v\n", ecoErr)
-			return exitCodeFor(ecoErr)
-		}
 	}
 
 	if *noConfigure {

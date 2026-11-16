@@ -18,7 +18,7 @@ func TestOfferEcosystemTools_NotATerminal_NoFlags_PrintsHintOnly(t *testing.T) {
 	run := &runnertest.FakeRunner{}
 	opts.Runner = run
 
-	if err := offerEcosystemTools(context.Background(), &stdout, opts, home, "install", "", false); err != nil {
+	if _, err := offerEcosystemTools(context.Background(), &stdout, opts, home, "install", "", false); err != nil {
 		t.Fatalf("offerEcosystemTools() error = %v", err)
 	}
 	if !strings.Contains(stdout.String(), "--tools") || !strings.Contains(stdout.String(), "nerv-task") {
@@ -37,7 +37,7 @@ func TestOfferEcosystemTools_NoTools_SkipsEntirely(t *testing.T) {
 	run := &runnertest.FakeRunner{}
 	opts.Runner = run
 
-	if err := offerEcosystemTools(context.Background(), &stdout, opts, home, "install", "", true); err != nil {
+	if _, err := offerEcosystemTools(context.Background(), &stdout, opts, home, "install", "", true); err != nil {
 		t.Fatalf("offerEcosystemTools() error = %v", err)
 	}
 	if len(run.Calls) != 0 {
@@ -53,7 +53,7 @@ func TestOfferEcosystemTools_ExplicitToolsRunsInstallScript(t *testing.T) {
 	opts.Runner = run
 	opts.GOOS = "linux"
 
-	if err := offerEcosystemTools(context.Background(), &stdout, opts, home, "install", "nerv-task", false); err != nil {
+	if _, err := offerEcosystemTools(context.Background(), &stdout, opts, home, "install", "nerv-task", false); err != nil {
 		t.Fatalf("offerEcosystemTools() error = %v", err)
 	}
 	if len(run.Calls) != 1 || run.Calls[0].Name != "sh" {
@@ -70,7 +70,7 @@ func TestOfferEcosystemTools_ExplicitUnknownTool_ReturnsRefusal(t *testing.T) {
 	home := t.TempDir()
 	opts := testOptions(home)
 
-	err := offerEcosystemTools(context.Background(), &stdout, opts, home, "install", "not-a-tool", false)
+	_, err := offerEcosystemTools(context.Background(), &stdout, opts, home, "install", "not-a-tool", false)
 	if err == nil {
 		t.Fatal("offerEcosystemTools() error = nil, want a refusal for an unknown tool name")
 	}
@@ -83,7 +83,7 @@ func TestOfferEcosystemTools_UpgradeActionRunsToolUpgrade(t *testing.T) {
 	run := &runnertest.FakeRunner{}
 	opts.Runner = run
 
-	if err := offerEcosystemTools(context.Background(), &stdout, opts, home, "upgrade", "nerv-task", false); err != nil {
+	if _, err := offerEcosystemTools(context.Background(), &stdout, opts, home, "upgrade", "nerv-task", false); err != nil {
 		t.Fatalf("offerEcosystemTools() error = %v", err)
 	}
 	if len(run.Calls) != 1 || run.Calls[0].Name != "nerv-task" || len(run.Calls[0].Args) != 1 || run.Calls[0].Args[0] != "upgrade" {
@@ -109,7 +109,7 @@ func TestOfferEcosystemTools_Interactive_ConfirmedYes_ShowsStateAndInstalls(t *t
 	opts.HTTPClient = srv.Client()
 	opts.EcosystemAPIBase = map[string]string{"nerv-task": srv.URL}
 
-	if err := offerEcosystemTools(context.Background(), &stdout, opts, home, "install", "", false); err != nil {
+	if _, err := offerEcosystemTools(context.Background(), &stdout, opts, home, "install", "", false); err != nil {
 		t.Fatalf("offerEcosystemTools() error = %v", err)
 	}
 	if !strings.Contains(stdout.String(), "not installed") {
@@ -130,7 +130,7 @@ func TestOfferEcosystemTools_Interactive_ConfirmedNo_InstallsNothing(t *testing.
 	run := &runnertest.FakeRunner{}
 	opts.Runner = run
 
-	if err := offerEcosystemTools(context.Background(), &stdout, opts, home, "install", "", false); err != nil {
+	if _, err := offerEcosystemTools(context.Background(), &stdout, opts, home, "install", "", false); err != nil {
 		t.Fatalf("offerEcosystemTools() error = %v", err)
 	}
 	if len(run.Calls) != 0 {

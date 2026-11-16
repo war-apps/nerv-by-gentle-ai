@@ -21,18 +21,20 @@ func ecosystemToolsFlagsUsage(verb string) string {
 }
 
 // offerEcosystemTools runs the ecosystem-tools step of "nerv install"/
-// "nerv upgrade" (S11), after nerv's own work: detects every catalogue
-// tool's state, then runs action ("install": the tool's official script;
-// "upgrade": "<tool> upgrade") for the tools toolsFlag names (an unknown
-// name is a *refusal.Error), noTools skips entirely, or, on a terminal
-// with neither flag, the ones confirmed from a one-by-one [y/N] prompt
-// showing each tool's state and, best-effort, its latest release. Without
-// a terminal and neither flag, it only prints a hint naming
-// --tools/--no-tools.
-func offerEcosystemTools(ctx context.Context, stdout io.Writer, opts options, home, action, toolsFlag string, noTools bool) error {
+// "nerv upgrade" (S11): detects every catalogue tool's state, then runs
+// action ("install": the tool's official script; "upgrade": "<tool>
+// upgrade") for the tools toolsFlag names (an unknown name is a
+// *refusal.Error), noTools skips entirely, or, on a terminal with neither
+// flag, the ones confirmed from a one-by-one [y/N] prompt showing each
+// tool's state and, best-effort, its latest release. Without a terminal
+// and neither flag, it only prints a hint naming --tools/--no-tools. It
+// returns the tools this run installed or upgraded (F2: install calls
+// this before offering its own extensions, so a tool chosen here also
+// suppresses the extensions it replaces).
+func offerEcosystemTools(ctx context.Context, stdout io.Writer, opts options, home, action, toolsFlag string, noTools bool) ([]ecosystem.Tool, error) {
 	catalogue := ecosystem.Catalogue()
 	if len(catalogue) == 0 {
-		return nil
+		return nil, nil
 	}
 	offerOpts := ecosystem.OfferOptions{Tools: splitList(toolsFlag), NoTools: noTools}
 	interactive := !offerOpts.NoTools && len(offerOpts.Tools) == 0
@@ -44,7 +46,7 @@ func offerEcosystemTools(ctx context.Context, stdout io.Writer, opts options, ho
 		}
 		fmt.Fprintf(stdout, "\nRun `nerv %s --tools <name,...>` to %s a NERV-ecosystem tool (%s); --no-tools skips this.\n",
 			action, action, strings.Join(names, ", "))
-		return nil
+		return nil, nil
 	}
 
 	states := map[string]ecosystem.State{}
@@ -81,7 +83,7 @@ func offerEcosystemTools(ctx context.Context, stdout io.Writer, opts options, ho
 
 	selected, err := ecosystem.Selected(catalogue, offerOpts, confirm, states)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	goos := opts.GOOS
 	if goos == "" {
@@ -90,7 +92,7 @@ func offerEcosystemTools(ctx context.Context, stdout io.Writer, opts options, ho
 	for _, t := range selected {
 		runEcosystemAction(ctx, stdout, opts, action, t, states[t.Name].Path, goos)
 	}
-	return nil
+	return selected, nil
 }
 
 // runEcosystemAction runs action ("install" or "upgrade") for t through
@@ -132,25 +134,23 @@ func ecosystemLatest(ctx context.Context, opts options, t ecosystem.Tool) (strin
 }
 
 // suppressedExtensions is the nerv extension names this run must never
-// offer, select or re-enable (U2/S11): every catalogue tool's Replaces,
-// for a tool already installed on this machine, or named by toolsFlag
-// (--tools) in this same run — not noTools, which selects nothing.
-func suppressedExtensions(ctx context.Context, opts options, home, toolsFlag string, noTools bool) []string {
+// offer, select or re-enable (U2/S11/F2): every catalogue tool's
+// Replaces, for a tool already installed on this machine, or selected
+// (installed or upgraded) in this same run by offerEcosystemTools.
+func suppressedExtensions(ctx context.Context, opts options, home string, selected []ecosystem.Tool) []string {
 	catalogue := ecosystem.Catalogue()
 	installedOrSelected := map[string]bool{}
-	if !noTools {
-		goos := opts.GOOS
-		if goos == "" {
-			goos = runtime.GOOS
+	goos := opts.GOOS
+	if goos == "" {
+		goos = runtime.GOOS
+	}
+	for _, t := range catalogue {
+		if ecosystem.Detect(ctx, t, opts.Runner, opts.LookPath, goos, home, opts.Getenv).Installed {
+			installedOrSelected[t.Name] = true
 		}
-		for _, t := range catalogue {
-			if ecosystem.Detect(ctx, t, opts.Runner, opts.LookPath, goos, home, opts.Getenv).Installed {
-				installedOrSelected[t.Name] = true
-			}
-		}
-		for _, name := range splitList(toolsFlag) {
-			installedOrSelected[name] = true
-		}
+	}
+	for _, t := range selected {
+		installedOrSelected[t.Name] = true
 	}
 	return ecosystem.ReplacedExtensions(catalogue, installedOrSelected)
 }
