@@ -92,10 +92,13 @@ and `.nerv/.gitignore`, and refreshes the skill registry with `gentle-ai
 skill-registry refresh`. It creates no `odd/` file: the orchestrator
 creates each feature's ODD document and run folder when a run starts, and
 resolves the TDD mode and test runner per feature. It then offers, in one
-multi-select question, the configuration flows installed on the machine:
-`/nerv:configure`, and `/task:setup`, `/release:setup` and
-`/release:deploy-setup` when their extension is installed. It runs the
-selected ones in that order. Use it once per repository.
+multi-select question, the configuration flows available on the machine:
+`/nerv:configure` (always); the tasks repository setup, `nerv-task init`
+when nerv-task is installed or `/task:setup` when the task extension is
+installed without nerv-task (never both); `/release:setup` and
+`/release:deploy-setup` when the release extension is installed; and
+"None" to skip this step. It runs each selected flow in that order. Use
+it once per repository.
 
 ```
 /nerv:init
@@ -282,6 +285,14 @@ Moves a repository from nerv 4.2.0 or 5.0.0-alpha.1 to this version, once:
 - a project file without `tasks.provider` gets the user's
   (`defaults.tasks.provider`, or the older user `tasks.provider`), since
   `tasks:` is read from the project only;
+- when nerv-task is installed (on `PATH` or in its default install
+  directory), `tasks:` moves to nerv-task's own `task.yaml` files instead
+  of staying in nerv's own configuration: the project file's `tasks:` to
+  `.ai-workflow/task.yaml` (its repository keys), and, with `--user`, the
+  user config's personal `tasks:` keys and its `defaults.tasks:` seed to
+  the global `task.yaml` (`~/.config/ai-workflow/task.yaml`,
+  `%AppData%\ai-workflow\task.yaml` on Windows), both keyed without the
+  `tasks.`/`defaults.tasks.` prefix;
 - `.nerv/.gitignore` is created.
 
 `--user` also moves `~/.claude/nerv/nerv.yaml`, or the user `config.yml`,
@@ -293,6 +304,16 @@ run-time `tasks:`, `release:` and `deploy:` keys under
 it would take and writes nothing. `--install` installs the extensions and
 providers the repository used. Every changed or removed file is backed up first, and a
 second run changes nothing. See [migration.md](migration.md).
+
+**The task.yaml step.** A key already set in nerv-task's `task.yaml` is
+never overwritten: it is left where it is (the project file, or the user
+config) and reported as a conflict instead, the same way every other
+already-set key is. The step is idempotent (a second run moves nothing
+already moved) and one-directional — only `--user` ever writes the global
+`task.yaml`, from the user config; a repository's `tasks:` never becomes a
+global value. `--dry-run` lists this step like every other, and every
+`task.yaml` it writes is backed up first, next to the rest of the run's
+backups.
 
 ```
 nerv migrate --dry-run
@@ -379,6 +400,16 @@ with the running executable, so NERV's own files stay laid over
 gentle-ai's; nerv upgrade still exits 1 for the failed replace.
 `--alpha` with `--rc` is a usage error (exit 2).
 
+After that install (whether or not it actually ran anything), it offers
+the NERV-ecosystem tools the same way `nerv install` does — every
+catalogue tool's state shown and confirmed one by one on a terminal,
+`--tools <names>` / `--no-tools` controlling the step the same way — but
+running `<tool> upgrade` for each confirmed or named tool instead of its
+install script. A failed individual tool upgrade is only a warning and
+never stops the others; naming an unknown tool in `--tools` refuses and
+sets `nerv upgrade`'s own exit code to 1, when nothing else already set
+it to a non-zero value.
+
 ### nerv install
 
 Before any of that, when gentle-ai is on PATH and already 4.x, it
@@ -388,6 +419,22 @@ files below get laid over the newest gentle-ai; a newer major version is
 reported and left alone, and a failed release lookup or upgrade is only a
 warning — install continues with the gentle-ai it found, and the exit
 code is unaffected.
+
+Next, it offers the NERV-ecosystem tools (`nerv-task` today; see the
+README's "NERV ecosystem" section): on a terminal with neither `--tools`
+nor `--no-tools`, every catalogue tool's state (not installed, installed
+with its version, or outdated against its latest release) is shown and
+confirmed one by one, before anything about NERV's own extensions is
+asked; a confirmed tool's official install script then runs (`install.sh`
+on Linux/macOS, `install.ps1` on Windows). `--tools <names>`
+(comma-separated) installs those tools outright, skipping the prompt;
+`--no-tools` skips the step entirely; without a terminal and neither
+flag, a hint naming both flags is printed instead. A tool confirmed or
+named here, or already installed on this machine, also stops the steps
+below from ever offering, selecting or re-enabling the extension it
+replaces (`task`, `task-teamwork` for `nerv-task`) — an extension already
+enabled is left exactly as found, since disabling it is the replacing
+tool's own install, never nerv's.
 
 Materializes the embedded core plugin, registers it in Claude Code's
 `settings.json`, refreshes the plugin cache, applies model/effort
@@ -435,6 +482,9 @@ Flags:
   --with <names>        Comma-separated extensions and providers to install, such as
                         task,task-<provider>,release,deploy,release-<provider>
                         (each brings what it requires)
+  --tools <names>       Comma-separated NERV-ecosystem tools to install (such as
+                        nerv-task), skipping the confirm prompt
+  --no-tools            Skip the NERV-ecosystem tools step entirely
 ```
 
 ```

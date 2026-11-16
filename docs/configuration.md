@@ -237,6 +237,19 @@ full key reference is in the task extension's contract
   `~/.claude/commands/task/` are reported by `nerv install` and removed only
   after you confirm. The `task` extension now serves those commands itself.
 
+**Once [nerv-task](https://github.com/war-apps/nerv-task-by-gentle-ai) is
+installed**, `tasks:` stops being the task extension's section: nerv-task
+reads its own repository keys from `.ai-workflow/task.yaml`, next to this
+file, and its own personal/global keys from `~/.config/ai-workflow/task.yaml`
+(`%AppData%\ai-workflow\task.yaml` on Windows), instead of from the files
+on this page. `nerv migrate` moves an existing `tasks:` section into those
+files the first time it runs with nerv-task installed (see
+[commands.md](commands.md#nerv-migrate)); from then on, configure task
+settings through nerv-task's own commands (`nerv-task configure`,
+`nerv-task init`) and see its own documentation for the full `task.yaml`
+schema — this page, and the task extension's contract it points to, only
+describe the (now replaced) `tasks:` section.
+
 ### Roles and their gentle-ai equivalents
 
 Every role below can be overridden under `models:`. A role is keyed by its
