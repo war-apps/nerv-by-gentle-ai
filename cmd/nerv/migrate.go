@@ -6,12 +6,14 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"path/filepath"
 	"runtime"
 	"strings"
 
 	"github.com/war-apps/nerv-by-gentle-ai/internal/configure"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/ecosystem"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/migrate"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/paths"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/refusal"
 	"github.com/war-apps/nerv-kit-by-gentle-ai/aiworkflow"
 )
@@ -179,11 +181,11 @@ func migrateRun(ctx context.Context, cwd string, dryRun, user, install, force bo
 			o.TaskYAMLRepo = aiworkflow.ProjectConfigPath(top, taskYAMLTool)
 		}
 		if user {
-			goos := opts.GOOS
-			if goos == "" {
-				goos = runtime.GOOS
-			}
-			o.TaskYAMLHome = aiworkflow.UserConfigPath(home, goos, taskYAMLTool)
+			// The global task.yaml sits next to the user config.yaml nerv
+			// migrates, in the directory paths.Resolve already chose: the
+			// real environment (XDG_CONFIG_HOME, %AppData%) applies to the
+			// real home only, never to a fake one.
+			o.TaskYAMLHome = filepath.Join(filepath.Dir(paths.Resolve(home).UserConfig), taskYAMLTool+".yaml")
 		}
 	}
 	plan, err := migrate.Compute(o)

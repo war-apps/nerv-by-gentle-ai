@@ -13,9 +13,9 @@ import (
 
 // nervTaskInstalledOpts fakes nerv-task as found on PATH (ecosystem.Detect
 // resolves any LookPath hit as Installed, regardless of its "version
-// --json" response), on a fixed goos so the global task.yaml path stays
-// under the test's fake home (aiworkflow.UserConfigPath's POSIX branch
-// reads XDG_CONFIG_HOME, never the fake home's Windows AppData env var).
+// --json" response). The global task.yaml goes next to the user config
+// nerv migrates (paths.Resolve), so a fake home never reaches the real
+// XDG_CONFIG_HOME or %AppData%.
 func nervTaskInstalledOpts(home string) options {
 	opts := testOptions(home)
 	opts.ExtensionsFS = nerv.ExtensionsFS()
@@ -51,7 +51,7 @@ func TestMigrate_TaskYAMLMovesWhenNervTaskIsInstalled(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("exit %d\n%s\n%s", code, out, errOut)
 	}
-	taskYAML := filepath.Join(home, ".config", "ai-workflow", "task.yaml")
+	taskYAML := filepath.Join(filepath.Dir(user), "task.yaml")
 	data, err := os.ReadFile(taskYAML)
 	if err != nil {
 		t.Fatalf("task.yaml was not written: %v\n%s", err, out)
@@ -88,7 +88,7 @@ func TestMigrate_TaskYAMLUntouchedWhenNervTaskNotInstalled(t *testing.T) {
 	if code != 0 || !strings.Contains(out, "nothing to migrate") {
 		t.Fatalf("exit %d\n%s\n%s", code, out, errOut)
 	}
-	if _, err := os.Stat(filepath.Join(home, ".config", "ai-workflow", "task.yaml")); err == nil {
+	if _, err := os.Stat(filepath.Join(filepath.Dir(user), "task.yaml")); err == nil {
 		t.Error("task.yaml was written without nerv-task installed")
 	}
 }
