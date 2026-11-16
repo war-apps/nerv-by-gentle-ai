@@ -136,6 +136,11 @@ type options struct {
 	// GentleAIAPIBase is where nerv upgrade looks up gentle-ai's newest
 	// release; empty means gentleAIAPIBase.
 	GentleAIAPIBase string
+	// EcosystemAPIBase overrides the GitHub API base used to resolve an
+	// ecosystem tool's latest release, keyed by ecosystem.Tool.Name;
+	// empty or missing means "https://api.github.com/repos/<tool.Repo>".
+	// Tests only.
+	EcosystemAPIBase map[string]string
 	// Executable locates the running nerv binary nerv upgrade replaces
 	// (symlinks are resolved after it); nil means os.Executable.
 	Executable func() (string, error)

@@ -36,10 +36,13 @@ type State struct {
 // DefaultInstallDir is where t's official install script places Binary
 // when run with no override: "<LOCALAPPDATA>\<tool>\bin" on Windows
 // (getenv("LOCALAPPDATA"), falling back to "<home>\AppData\Local" when
-// unset), "<home>/.local/bin" everywhere else.
+// unset or nil), "<home>/.local/bin" everywhere else.
 func DefaultInstallDir(t Tool, goos, home string, getenv func(string) string) string {
 	if goos == "windows" {
-		dir := getenv("LOCALAPPDATA")
+		var dir string
+		if getenv != nil {
+			dir = getenv("LOCALAPPDATA")
+		}
 		if dir == "" {
 			dir = filepath.Join(home, "AppData", "Local")
 		}

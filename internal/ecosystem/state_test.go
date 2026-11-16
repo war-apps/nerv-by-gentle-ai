@@ -41,6 +41,14 @@ func TestDefaultInstallDir_WindowsFallsBackWhenLocalAppDataUnset(t *testing.T) {
 	}
 }
 
+func TestDefaultInstallDir_WindowsToleratesNilGetenv(t *testing.T) {
+	got := DefaultInstallDir(testTool(), "windows", `C:\Users\wal1rod`, nil)
+	want := filepath.Join(`C:\Users\wal1rod`, "AppData", "Local", "nerv-task", "bin")
+	if got != want {
+		t.Errorf("DefaultInstallDir() = %q, want %q", got, want)
+	}
+}
+
 func TestDefaultInstallDir_Posix(t *testing.T) {
 	got := DefaultInstallDir(testTool(), "linux", "/home/walter", func(string) string { return "" })
 	want := filepath.Join("/home/walter", ".local", "bin")

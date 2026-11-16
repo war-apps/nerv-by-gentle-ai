@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/war-apps/nerv-by-gentle-ai/internal/configure"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/gentleai"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/version"
 	"github.com/war-apps/nerv-kit-by-gentle-ai/selfupgrade"
@@ -30,7 +31,7 @@ const (
 	goInstallHint = "Install with: go install github.com/war-apps/nerv-by-gentle-ai/cmd/nerv@latest"
 )
 
-const upgradeUsage = `Usage: nerv upgrade [--alpha | --rc]
+var upgradeUsage = `Usage: nerv upgrade [--alpha | --rc]
 
 Replace this nerv binary with the newest release, then run the new
 binary's install (nerv install, or nerv install --no-configure without an
@@ -50,14 +51,18 @@ checksum) — so gentle-ai keeps getting its chance and NERV stays laid
 over it either way. That install is told not to upgrade gentle-ai again
 (it already ran once, right here).
 
+Then offers the NERV-ecosystem tools (nerv-task today), the same way
+install does, but running "<tool> upgrade" for a confirmed or named tool
+instead of its install script.
+
 Flags:
   --alpha    Also consider alpha prereleases (the newest of stable and alpha)
   --rc       Also consider release candidates (the newest of stable and rc)
 
 Exit codes: 0 up to date, or the new binary's install exit code;
-1 the upgrade failed (nerv's or gentle-ai's) or this platform has no
-prebuilt binary; 2 usage error.
-`
+1 the upgrade failed (nerv's, gentle-ai's or an ecosystem tool's) or this
+platform has no prebuilt binary; 2 usage error.
+` + ecosystemToolsFlagsUsage("upgrade")
 
 // upgradeHTTPTimeout bounds every request nerv upgrade makes when
 // options.HTTPClient is nil.
@@ -68,6 +73,8 @@ func runUpgrade(args []string, stdout, stderr io.Writer, opts options) int {
 	fs.SetOutput(io.Discard)
 	alpha := fs.Bool("alpha", false, "")
 	rc := fs.Bool("rc", false, "")
+	tools := fs.String("tools", "", "")
+	noTools := fs.Bool("no-tools", false, "")
 	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			fmt.Fprint(stdout, upgradeUsage)
@@ -132,6 +139,16 @@ func runUpgrade(args []string, stdout, stderr io.Writer, opts options) int {
 	if runInstall {
 		code = runNewInstall(ctx, bin, stdout, stderr, opts)
 	}
+
+	if home, homeErr := configure.ResolveHome(opts.Home); homeErr == nil {
+		if ecoErr := offerEcosystemTools(ctx, stdout, opts, home, "upgrade", *tools, *noTools); ecoErr != nil {
+			fmt.Fprintf(stdout, "nerv upgrade: %v\n", ecoErr)
+			if code == 0 {
+				code = exitCodeFor(ecoErr)
+			}
+		}
+	}
+
 	if code == 0 && (replaceErr != nil || gentleErr != nil) {
 		return 1
 	}
@@ -296,8 +313,10 @@ func runNewInstall(ctx context.Context, bin string, stdout, stderr io.Writer, op
 	}
 	// upgradeGentleAI already ran gentle-ai's upgrade once for this nerv
 	// upgrade (whether or not it actually upgraded anything): the install
-	// this spawns must not run it again.
-	args = append(args, "--skip-gentle-ai-upgrade")
+	// this spawns must not run it again. The ecosystem tools step is
+	// skipped too: runUpgrade runs its own, with action "upgrade" instead
+	// of "install", once this nested install returns.
+	args = append(args, "--skip-gentle-ai-upgrade", "--skip-ecosystem-tools")
 	runBinary := opts.RunBinary
 	if runBinary == nil {
 		runBinary = execBinary

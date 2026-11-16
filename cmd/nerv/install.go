@@ -14,7 +14,7 @@ import (
 	"github.com/war-apps/nerv-by-gentle-ai/internal/workflowconfig"
 )
 
-const installUsage = `Usage: nerv install [flags]
+var installUsage = `Usage: nerv install [flags]
 
 Before anything else, when gentle-ai is on PATH and already 4.x, it
 upgrades gentle-ai to its newest 4.x release (gentle-ai upgrade gentle-ai,
@@ -43,6 +43,15 @@ its extension is installed or chosen. An extension or provider named in --with b
 with it; a requirement this nerv does not ship is refused.
 Old /task:* copies in <home>/.claude/commands/task, which shadow the task
 extension's commands, are reported, and removed when you confirm on a terminal.
+
+Then offers the NERV-ecosystem tools (nerv-task today): on a terminal with
+neither --tools nor --no-tools, each tool's state (not installed, its
+version, or outdated against its latest release) is shown and confirmed
+one by one; a confirmed tool's official install script runs (install.sh on
+Linux/macOS, install.ps1 on Windows). An extension a tool replaces (task,
+task-teamwork for nerv-task) is never offered, selected or re-enabled once
+that tool is installed, or chosen in this run.
+
 Unless --no-configure is given,
 it then runs the interactive setup wizard when stdin is a terminal, or
 prints the "run nerv configure" hint otherwise.
@@ -54,7 +63,7 @@ Flags:
   --with <names>        Comma-separated extensions and providers to install, such as
                         task,task-<provider>,release,release-<provider>
                         (each brings what it requires)
-`
+` + ecosystemToolsFlagsUsage("install")
 
 const uninstallUsage = `Usage: nerv uninstall [flags]
 
@@ -77,10 +86,16 @@ func runInstall(args []string, stdout, stderr io.Writer, opts options) int {
 	noSkills := fs.Bool("no-skills", false, "")
 	noConfigure := fs.Bool("no-configure", false, "")
 	with := fs.String("with", "", "")
+	tools := fs.String("tools", "", "")
+	noTools := fs.Bool("no-tools", false, "")
 	// skipGentleAIUpgrade is internal: only nerv upgrade's own install run
 	// sets it, since upgradeGentleAI already upgraded gentle-ai once for
 	// that upgrade (S5) and this run must not upgrade it again.
 	skipGentleAIUpgrade := fs.Bool("skip-gentle-ai-upgrade", false, "")
+	// skipEcosystemTools is internal: only nerv upgrade's own install run
+	// sets it, since it offers the ecosystem tools itself afterwards, with
+	// action "upgrade" instead of "install".
+	skipEcosystemTools := fs.Bool("skip-ecosystem-tools", false, "")
 
 	if err := fs.Parse(args); err != nil {
 		fmt.Fprint(stderr, installUsage)
@@ -123,12 +138,20 @@ func runInstall(args []string, stdout, stderr io.Writer, opts options) int {
 	}
 
 	err = install.Install(context.Background(), deps, install.Options{
-		RequireGentleAI: *requireGentleAI,
-		NoSkills:        *noSkills,
-		Extensions:      splitList(*with),
+		RequireGentleAI:      *requireGentleAI,
+		NoSkills:             *noSkills,
+		Extensions:           splitList(*with),
+		SuppressedExtensions: suppressedExtensions(context.Background(), opts, home, *tools, *noTools),
 	})
 	if code := mapInstallError(stdout, err); code != 0 {
 		return code
+	}
+
+	if !*skipEcosystemTools {
+		if ecoErr := offerEcosystemTools(context.Background(), stdout, opts, home, "install", *tools, *noTools); ecoErr != nil {
+			fmt.Fprintf(stdout, "nerv install: %v\n", ecoErr)
+			return exitCodeFor(ecoErr)
+		}
 	}
 
 	if *noConfigure {
