@@ -22,7 +22,7 @@ func TestRunInstall_Terminal_DecliningTaskOffersNoProvider(t *testing.T) {
 	// No to task, then no to release (asked next, after task's providers).
 	opts.Stdin = strings.NewReader("n\nn\n")
 
-	code := run([]string{"install", "--no-skills", "--no-configure"}, &stdout, &stderr, opts)
+	code := run([]string{"install", "--no-skills", "--no-configure", "--no-tools"}, &stdout, &stderr, opts)
 
 	if code != 0 {
 		t.Fatalf("exit code = %d, want 0; stdout:\n%s", code, stdout.String())
@@ -308,7 +308,10 @@ func TestRunInstall_Terminal_SuggestionOrder(t *testing.T) {
 			opts.Runner = baseInstallRunner()
 			opts.Stdin = strings.NewReader(tt.answers)
 
-			code := run([]string{"install", "--no-skills", "--no-configure"}, &stdout, &stderr, opts)
+			// This test is about the extension suggestion order, not the
+			// ecosystem-tools step (F2 has its own ordering test): --no-tools
+			// keeps nerv-task out of the asked names below.
+			code := run([]string{"install", "--no-skills", "--no-configure", "--no-tools"}, &stdout, &stderr, opts)
 
 			if code != 0 {
 				t.Fatalf("exit code = %d, want 0; stdout:\n%s", code, stdout.String())

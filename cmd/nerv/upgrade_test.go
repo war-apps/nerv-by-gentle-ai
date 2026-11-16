@@ -273,9 +273,12 @@ func (w *upgradeWorld) assertUntouched() {
 // skippingGentleAIInstall is the install call nerv upgrade launches with
 // the running executable when it did not need (or could not finish)
 // replacing itself: --skip-gentle-ai-upgrade tells that install not to
-// upgrade gentle-ai again, since upgradeGentleAI above already did (S5).
+// upgrade gentle-ai again, since upgradeGentleAI above already did (S5);
+// --skip-ecosystem-tools tells it not to offer the ecosystem tools
+// either, since runUpgrade offers them itself afterwards, with action
+// "upgrade" instead of "install".
 func skippingGentleAIInstall(bin string, extra ...string) installCall {
-	return installCall{Bin: bin, Args: append([]string{"install"}, append(extra, "--skip-gentle-ai-upgrade")...)}
+	return installCall{Bin: bin, Args: append([]string{"install"}, append(extra, "--skip-gentle-ai-upgrade", "--skip-ecosystem-tools")...)}
 }
 
 var defaultReleases = []fakeRelease{
@@ -430,7 +433,7 @@ func TestUpgrade_RunsTheNewBinary(t *testing.T) {
 	if code != 4 {
 		t.Fatalf("exit %d, want 4; stderr %q\n%s", code, errOut, out)
 	}
-	if !strings.Contains(out, "\nnew nerv install --no-configure --skip-gentle-ai-upgrade\n") || errOut != "oops\n" {
+	if !strings.Contains(out, "\nnew nerv install --no-configure --skip-gentle-ai-upgrade --skip-ecosystem-tools\n") || errOut != "oops\n" {
 		t.Errorf("stdout:\n%s\nstderr %q", out, errOut)
 	}
 	if got := w.binary(); got != w.script {
