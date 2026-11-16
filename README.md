@@ -143,7 +143,17 @@ resolution entirely).
 
 **Windows:**
 
-Download `nerv_<version>_windows_<amd64|arm64>.zip` from the
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/war-apps/nerv-by-gentle-ai/main/scripts/install.ps1 | iex"
+```
+
+Environment options (set before running): `NERV_CHANNEL` (`stable` default,
+`rc`, or `alpha`), `NERV_INSTALL_DIR` (default `%LOCALAPPDATA%\nerv\bin`),
+`NERV_NO_INSTALL` (non-empty: download and install the binary only, skip
+running `nerv install` afterwards), and `NERV_VERSION` (an explicit release
+tag, overriding channel resolution entirely).
+
+Or download `nerv_<version>_windows_<amd64|arm64>.zip` from the
 [latest release](https://github.com/war-apps/nerv-by-gentle-ai/releases/latest),
 extract `nerv.exe` onto `PATH`, then run:
 

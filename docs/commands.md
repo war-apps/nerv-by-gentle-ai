@@ -419,8 +419,11 @@ requires with it, and a requirement this nerv does not ship is refused. Copies o
 `~/.claude/commands/task/` are reported, and removed only after you
 confirm. See the README's "Install" section for the shell one-liners and
 environment variables (`NERV_CHANNEL`, `NERV_INSTALL_DIR`,
-`NERV_NO_INSTALL`, `NERV_VERSION`); the install script itself is
-[`../scripts/install.sh`](../scripts/install.sh).
+`NERV_NO_INSTALL`, `NERV_VERSION`); the install scripts are
+[`../scripts/install.sh`](../scripts/install.sh) (Linux, macOS) and
+[`../scripts/install.ps1`](../scripts/install.ps1) (Windows, same
+environment variables, `%LOCALAPPDATA%\nerv\bin` as the default
+`NERV_INSTALL_DIR`).
 
 ```
 Usage: nerv install [flags]
