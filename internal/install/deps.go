@@ -74,6 +74,13 @@ type Options struct {
 	// "task-<provider>" plugin); their requirements are added. Unknown names are a
 	// RefusalError.
 	Extensions []string
+	// SuppressedExtensions names extensions a NERV-ecosystem tool already
+	// replaces (its own install disables them; nerv must simply never
+	// turn them back on): never offered in the ConfirmExtension
+	// suggestion loop, and a RefusalError when named in Extensions. An
+	// already-enabled one is left exactly as found (disabling it is the
+	// replacing tool's job, not nerv's).
+	SuppressedExtensions []string
 }
 
 // RefusalError marks a rejected install/uninstall/apply-models request —

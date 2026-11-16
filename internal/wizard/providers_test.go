@@ -82,6 +82,36 @@ func TestRun_TaskProviders_SaysNoProviderIsEnabled(t *testing.T) {
 	}
 }
 
+// U2 (S11): once nerv-task is installed, nerv configure no longer offers
+// the (replaced) task providers section, even with task@nerv/a provider
+// still enabled; it redirects to nerv-task configure instead.
+func TestRun_TaskProviders_RedirectsToNervTaskWhenInstalled(t *testing.T) {
+	root := t.TempDir()
+	home := t.TempDir()
+	writeFixture(t, filepath.Join(root, "config.yml"))
+	lookPathNervTask := func(name string) (string, error) {
+		if name == "nerv-task" {
+			return "/usr/local/bin/nerv-task", nil
+		}
+		return "", os.ErrNotExist
+	}
+	deps := configure.Deps{Home: home, FS: nerv.PluginFS(), ExtensionsFS: nerv.ExtensionsFS(), Runner: noRunner(), Now: fixedNow, LookPath: lookPathNervTask}
+	opts := skipAll()
+	opts.Paths = testPaths(root, home)
+	opts.SettingsPath = writeSettings(t, home, "nerv@nerv", "task@nerv", "task-teamwork@nerv")
+
+	var out bytes.Buffer
+	if _, err := wizard.Run(deps, strings.NewReader(strings.Repeat("\n", 12)), &out, opts); err != nil {
+		t.Fatalf("Run() error = %v; output:\n%s", err, out.String())
+	}
+	if strings.Contains(out.String(), "--- Task providers ---") {
+		t.Errorf("Task providers section shown while nerv-task is installed:\n%s", out.String())
+	}
+	if !strings.Contains(out.String(), "nerv-task is installed") || !strings.Contains(out.String(), "nerv-task configure") {
+		t.Errorf("expected a redirect to nerv-task configure, got:\n%s", out.String())
+	}
+}
+
 // S3: with task@nerv and one provider enabled, every user-scope scalar key
 // of its manifest is prompted with its Prompt and the current value (or the
 // Default), invalid values are asked again, and the answers are written to

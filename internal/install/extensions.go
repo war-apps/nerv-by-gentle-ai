@@ -72,7 +72,12 @@ func selectExtensions(deps Deps, opts Options, settings *claude.Settings) ([]plu
 		add(e)
 		return nil
 	}
+	suppressed := func(name string) bool { return slices.Contains(opts.SuppressedExtensions, name) }
+
 	for _, name := range opts.Extensions {
+		if suppressed(name) {
+			return nil, &RefusalError{Err: fmt.Errorf("%s is already replaced by a NERV-ecosystem tool you have installed; it is never installed again", name)}
+		}
 		e, ok := byName[name]
 		if !ok && slices.Contains(RetiredPlugins, name) {
 			return nil, &RefusalError{Err: fmt.Errorf("%s was %s: install release, which brings every deploy provider", name, retiredWhy)}
@@ -99,7 +104,7 @@ func selectExtensions(deps Deps, opts Options, settings *claude.Settings) ([]plu
 		return selected, nil
 	}
 	for _, e := range plugin.SuggestionOrder(exts) {
-		if has(e.Name) {
+		if has(e.Name) || suppressed(e.Name) {
 			continue
 		}
 		if !slices.ContainsFunc(e.Requires, func(r string) bool { return !has(r) }) && deps.ConfirmExtension(e.Name, e.Description) {
