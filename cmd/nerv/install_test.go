@@ -237,7 +237,10 @@ func TestRunInstall_SkillsStep_Terminal_ConfirmYes_RunsSync(t *testing.T) {
 	opts.IsTerminal = func() bool { return true }
 	opts.Stdin = strings.NewReader("y\n")
 
-	code := run([]string{"install", "--no-configure"}, &stdout, &stderr, opts)
+	// Not about the ecosystem-tools step: --no-tools keeps its [y/N]
+	// prompt from eating the single "y\n" answer meant for the skills
+	// sync confirm below.
+	code := run([]string{"install", "--no-configure", "--no-tools"}, &stdout, &stderr, opts)
 
 	if code != 0 {
 		t.Fatalf("exit code = %d, want 0; stdout:\n%s\nstderr:\n%s", code, stdout.String(), stderr.String())
@@ -364,7 +367,10 @@ func TestRunInstall_Terminal_SuggestsExtensions(t *testing.T) {
 	opts.Runner = baseInstallRunner()
 	opts.Stdin = strings.NewReader("y\nn\n")
 
-	code := run([]string{"install", "--no-skills", "--no-configure"}, &stdout, &stderr, opts)
+	// This test is about the extension suggestion order, not the
+	// ecosystem-tools step: --no-tools keeps its [y/N] prompt from
+	// eating an answer meant for task/task-teamwork below.
+	code := run([]string{"install", "--no-skills", "--no-configure", "--no-tools"}, &stdout, &stderr, opts)
 
 	if code != 0 {
 		t.Fatalf("exit code = %d, want 0; stdout:\n%s\nstderr:\n%s", code, stdout.String(), stderr.String())
@@ -416,7 +422,10 @@ func TestRunInstall_LegacyCommands_AskOnTerminalReportOtherwise(t *testing.T) {
 		opts.Stdin = strings.NewReader("y\n")
 
 		var stdout, stderr bytes.Buffer
-		if code := run([]string{"install", "--no-skills", "--no-configure"}, &stdout, &stderr, opts); code != 0 {
+		// Not about the ecosystem-tools step: --no-tools keeps its [y/N]
+		// prompt from eating the single "y\n" answer meant for the legacy
+		// commands removal confirm below.
+		if code := run([]string{"install", "--no-skills", "--no-configure", "--no-tools"}, &stdout, &stderr, opts); code != 0 {
 			t.Fatalf("terminal=%v: exit code = %d, want 0; stdout:\n%s", terminal, code, stdout.String())
 		}
 		_, statErr := os.Stat(copyPath)

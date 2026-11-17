@@ -493,6 +493,15 @@ func FormatScalarToken(value string) string {
 	if bareScalarRe.MatchString(value) {
 		return value
 	}
-	escaped := strings.ReplaceAll(value, `"`, `\"`)
+	// A double-quoted YAML scalar treats the backslash as an escape: escape
+	// it first (Windows paths such as D:\.worktrees\{repo}), then the quote
+	// and the control characters, so the token reads back as value.
+	escaped := strings.NewReplacer(
+		`\`, `\\`,
+		`"`, `\"`,
+		"\n", `\n`,
+		"\r", `\r`,
+		"\t", `\t`,
+	).Replace(value)
 	return `"` + escaped + `"`
 }

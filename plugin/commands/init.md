@@ -104,23 +104,32 @@ creates no `odd/` file.
    The options, in this order, each with its command's one-line purpose:
    - `/nerv:configure` — NERV's user configuration: git, skills, models,
      repository. Always offered.
-   - `/task:setup` — the `tasks:` section: task provider and connection
-     check. Offered only when the task extension is installed (the
-     `/task:setup` command is available in this session).
+   - **Tasks repository setup** — one of:
+     - `nerv-task init` — the task tool's own repository setup. Offered
+       instead of `/task:setup` when nerv-task is installed (its binary on
+       `PATH` or in its default directory): nerv-task is installed means the
+       task extension is being replaced, so its own `init` runs in place of
+       the extension's setup flow.
+     - `/task:setup` — the `tasks:` section: task provider and connection
+       check. Offered only when the task extension is installed and
+       nerv-task is not.
    - `/release:setup` — the `release:` section: projects, build providers,
-     version engine. Offered only when the release extension is installed.
+     version engine. Offered only when the release extension is installed
+     (release is still a nerv extension until P4).
    - `/release:deploy-setup` — the `deploy:` section: git host and
      targets. Offered only when the release extension is installed.
+   - **None** — skip this step; always offered alongside the flows above.
 
-   A flow whose extension is not installed is not offered; say once which
-   extensions are missing and that `nerv install` adds them. STOP after
-   asking and wait. Selecting none skips this step. Run each selected flow
+   A flow whose extension or tool is not installed is not offered; say once
+   which extensions are missing and that `nerv install` adds them. STOP after
+   asking and wait. Selecting None skips this step. Run each selected flow
    in the order above, one after the other: Follow the selected command's
    file from its first step, with no arguments (`/nerv:configure` with
-   `all`), and let it ask its own questions. `/release:deploy-setup` stops
-   when the `release:` section is missing, so it runs after
-   `/release:setup`. A flow that stops or fails is reported and the next
-   selected flow still runs.
+   `all`), or, for `nerv-task init`, run that CLI command directly. A
+   `nerv-task init`/`/task:setup` choice is never both offered, so at most
+   one of the two ever runs. `/release:deploy-setup` stops when the
+   `release:` section is missing, so it runs after `/release:setup`. A flow
+   that stops or fails is reported and the next selected flow still runs.
 
 7. **Summarize.** Print what was written (`.ai-workflow/config.yaml` path and its
    resolved keys, marking the ones copied from `defaults.tasks`), which

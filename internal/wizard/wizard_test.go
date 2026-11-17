@@ -1,6 +1,8 @@
 package wizard_test
 
 import (
+	"gopkg.in/yaml.v3"
+
 	"bytes"
 	"errors"
 	"fmt"
@@ -542,8 +544,21 @@ func TestRun_WorktreePatternMenu_HerdrDetected_ChoosesHerdr(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(got), `worktree_pattern: "D:\.worktrees\{repo}\{slug}"`) {
+	// The Windows path is escaped so the file stays valid YAML (an unescaped
+	// "D:\.worktrees\..." is an invalid double-quoted scalar).
+	if !strings.Contains(string(got), `worktree_pattern: "D:\\.worktrees\\{repo}\\{slug}"`) {
 		t.Errorf("expected herdr pattern written:\n%s", got)
+	}
+	var doc struct {
+		Git struct {
+			WorktreePattern string `yaml:"worktree_pattern"`
+		} `yaml:"git"`
+	}
+	if err := yaml.Unmarshal(got, &doc); err != nil {
+		t.Fatalf("written config is not valid YAML: %v", err)
+	}
+	if want := `D:\.worktrees\{repo}\{slug}`; doc.Git.WorktreePattern != want {
+		t.Errorf("worktree_pattern reads back as %q, want %q", doc.Git.WorktreePattern, want)
 	}
 }
 

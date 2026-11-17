@@ -66,8 +66,8 @@ the workflow will refuse, since the guard sees the tag already exists.
 **CI.** `.github/workflows/ci.yml` runs `gofmt -l`, `go vet ./...`, and
 `go test ./...`, plus the two hook suites
 (`tests/hook-session-start.test.sh`, `tests/hook-engram-project.test.sh`)
-and `tests/install-sh.test.sh`, on every pull request targeting `develop`
-or `main`.
+and `tests/install-sh.test.sh` on Linux, and `tests/install-ps1.test.ps1`
+on a Windows job, on every pull request targeting `develop` or `main`.
 
 **Marketplace consumers.** A marketplace added from GitHub serves the
 repository's default branch. For users to receive released versions

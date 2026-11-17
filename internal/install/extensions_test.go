@@ -233,6 +233,68 @@ func TestInstall_UnknownExtensionIsRefused(t *testing.T) {
 	}
 }
 
+// U2 (S11): once nerv-task is installed (or selected in this run), nerv
+// never offers, selects or re-enables the task/task-teamwork extensions it
+// replaces.
+func TestInstall_SuppressedExtensionIsNeverSuggested(t *testing.T) {
+	home := t.TempDir()
+	seedInstalledPlugins(t, home, pluginVersion(t))
+	var asked []string
+	var stdout bytes.Buffer
+	deps := install.Deps{
+		Home: home, FS: nerv.PluginFS(), ExtensionsFS: fakeExtensions(), Runner: baseRunner(), Now: fixedNow, LookPath: lookPathAll, Stdout: &stdout,
+		ConfirmExtension: func(name, _ string) bool { asked = append(asked, name); return true },
+	}
+	err := install.Install(context.Background(), deps, install.Options{NoSkills: true, SuppressedExtensions: []string{"task", "task-teamwork"}})
+	if err != nil {
+		t.Fatalf("Install() error = %v; output:\n%s", err, stdout.String())
+	}
+	if len(asked) != 0 {
+		t.Errorf("asked = %v, want none (task and task-teamwork are suppressed)", asked)
+	}
+	enabled := enabledPlugins(t, home)
+	if enabled["task@nerv"] || enabled["task-teamwork@nerv"] {
+		t.Errorf("a suppressed extension was enabled: %v", enabled)
+	}
+}
+
+func TestInstall_SuppressedExtensionRequestedByWithIsRefused(t *testing.T) {
+	home := t.TempDir()
+	seedInstalledPlugins(t, home, pluginVersion(t))
+	var stdout bytes.Buffer
+	deps := install.Deps{Home: home, FS: nerv.PluginFS(), ExtensionsFS: fakeExtensions(), Runner: baseRunner(), Now: fixedNow, LookPath: lookPathAll, Stdout: &stdout}
+	err := install.Install(context.Background(), deps, install.Options{NoSkills: true, Extensions: []string{"task-teamwork"}, SuppressedExtensions: []string{"task", "task-teamwork"}})
+	var refused *refusal.Error
+	if !errors.As(err, &refused) {
+		t.Fatalf("Install() error = %v, want a refusal", err)
+	}
+	if !strings.Contains(err.Error(), "task-teamwork") {
+		t.Errorf("refusal does not name the suppressed extension: %v", err)
+	}
+}
+
+func TestInstall_SuppressedExtensionAlreadyEnabledStaysEnabledButNeverSuggestedAgain(t *testing.T) {
+	home := t.TempDir()
+	seedInstalledIDs(t, home, pluginVersion(t), "task@nerv", "task-teamwork@nerv")
+	settings := filepath.Join(home, ".claude", "settings.json")
+	if err := os.WriteFile(settings, []byte(`{"enabledPlugins":{"task@nerv":true,"task-teamwork@nerv":true}}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var stdout bytes.Buffer
+	deps := install.Deps{Home: home, FS: nerv.PluginFS(), ExtensionsFS: fakeExtensions(), Runner: baseRunner(), Now: fixedNow, LookPath: lookPathAll, Stdout: &stdout}
+	err := install.Install(context.Background(), deps, install.Options{NoSkills: true, SuppressedExtensions: []string{"task", "task-teamwork"}})
+	if err != nil {
+		t.Fatalf("Install() error = %v; output:\n%s", err, stdout.String())
+	}
+	// Disabling an already-enabled suppressed extension is the replacing
+	// tool's own job (S11), never nerv's: install leaves it exactly as it
+	// found it, enabled.
+	enabled := enabledPlugins(t, home)
+	if !enabled["task@nerv"] || !enabled["task-teamwork@nerv"] {
+		t.Errorf("install disabled an already-enabled suppressed extension: %v", enabled)
+	}
+}
+
 // The deploy extension and its providers merged into release: install
 // removes them from settings.json and uninstalls them from Claude Code's
 // cache, and keeps release and everything else enabled.

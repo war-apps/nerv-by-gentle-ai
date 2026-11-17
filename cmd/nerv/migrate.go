@@ -6,11 +6,16 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"path/filepath"
+	"runtime"
 	"strings"
 
 	"github.com/war-apps/nerv-by-gentle-ai/internal/configure"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/ecosystem"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/migrate"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/paths"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/refusal"
+	"github.com/war-apps/nerv-kit-by-gentle-ai/aiworkflow"
 )
 
 const migrateUsage = `Usage: nerv migrate [--user] [--dry-run] [--install] [--force] [--cwd <dir>]
@@ -53,6 +58,12 @@ Moves a repository (and, with --user, your user configuration) from nerv
     with both ship: and release: is refused;
   - pipeline: becomes deploy: (one release-ssh-compose target per
     environment), with deploy.host github when origin is on GitHub;
+  - when nerv-task is installed, tasks: moves to nerv-task's own files
+    instead: the project file's tasks: to .ai-workflow/task.yaml (repo
+    keys), and, with --user, the user config's personal tasks: keys and
+    its defaults.tasks: seed to the global task.yaml (keys without the
+    "tasks."/"defaults.tasks." prefix); a key already set in task.yaml is
+    never overwritten, and is reported instead;
   - each in-flight FULL openspec/changes/<change>/ becomes
     odd/tasks/<change>.md and its run files odd/<change>/nerv/; a DIRECT or
     LIGHT one moves whole to .nerv/runs/<change>/ with no ODD document; the
@@ -118,6 +129,29 @@ func runMigrate(args []string, stdout, stderr io.Writer, opts options) int {
 	return exitCodeFor(err)
 }
 
+// taskYAMLTool is the name nerv-task resolves its own files under (its
+// own internal/config.Tool), used here only to compute where those files
+// live (kit aiworkflow.UserConfigPath/ProjectConfigPath): nerv never
+// imports nerv-task's module.
+const taskYAMLTool = "task"
+
+// nervTaskInstalled reports whether nerv-task (the ecosystem catalogue
+// tool, S12) is installed on this machine: on PATH, or in its default
+// install directory (internal/ecosystem's own detection).
+func nervTaskInstalled(ctx context.Context, opts options, home string) bool {
+	goos := opts.GOOS
+	if goos == "" {
+		goos = runtime.GOOS
+	}
+	for _, t := range ecosystem.Catalogue() {
+		if t.Name != "nerv-task" {
+			continue
+		}
+		return ecosystem.Detect(ctx, t, opts.Runner, opts.LookPath, goos, home, opts.Getenv).Installed
+	}
+	return false
+}
+
 // exitError carries the exit code of a step that printed its own error.
 type exitError struct{ code int }
 
@@ -138,6 +172,21 @@ func migrateRun(ctx context.Context, cwd string, dryRun, user, install, force bo
 	o := migrate.Options{RepoRoot: top, Home: home, User: user, ExtensionsFS: opts.ExtensionsFS, Now: opts.Now(), Force: force}
 	if top != "" {
 		o.OriginURL = originURL(ctx, opts, top)
+	}
+	// S12: nerv-task's own files (task.yaml) only become the target of
+	// this step once nerv-task is actually installed; otherwise tasks:
+	// keeps meaning nerv's own task extension, unchanged.
+	if nervTaskInstalled(ctx, opts, home) {
+		if top != "" {
+			o.TaskYAMLRepo = aiworkflow.ProjectConfigPath(top, taskYAMLTool)
+		}
+		if user {
+			// The global task.yaml sits next to the user config.yaml nerv
+			// migrates, in the directory paths.Resolve already chose: the
+			// real environment (XDG_CONFIG_HOME, %AppData%) applies to the
+			// real home only, never to a fake one.
+			o.TaskYAMLHome = filepath.Join(filepath.Dir(paths.Resolve(home).UserConfig), taskYAMLTool+".yaml")
+		}
 	}
 	plan, err := migrate.Compute(o)
 	if err != nil {

@@ -121,6 +121,26 @@ lists the steps to take ([commands.md](commands.md#nerv-doctor)).
   copied the commands there. The `task` extension now serves them itself;
   `nerv install` reports the old copies and removes them only after you
   confirm.
+- **`/task:*` duplicated.** `task@nerv` (the extension) and `task@nerv-task`
+  (the ecosystem tool's own plugin) are both enabled, so Claude Code shows
+  two copies of every `/task:*` command. `nerv-task install` disables
+  `task@nerv` for you once it runs; rerun it (or `nerv install`, which
+  offers nerv-task and suppresses `task@nerv` the moment it is confirmed
+  or already installed — see the README's "NERV ecosystem" section)
+  instead of removing either plugin by hand.
+- **`config.yaml is not valid YAML: ... found unknown escape character`.**
+  An older nerv wrote a Windows path (such as a `git.worktree_pattern`
+  like `D:\.worktrees\{repo}\{slug}`) into a double-quoted scalar without
+  escaping its backslashes; fixed now (`internal/config.FormatScalarToken`
+  escapes `\`, `"` and control characters). Rewrite the offending value
+  with single quotes (`'D:\.worktrees\{repo}\{slug}'`) by hand, or rerun
+  `nerv configure` and re-enter it so the fixed writer quotes it correctly.
+- **`/task:*` has no personal settings after installing nerv-task.**
+  nerv-task reads its personal keys (your Teamwork `assignee_id`, the
+  timer store, ...) from its own global `task.yaml`
+  (`~/.config/ai-workflow/task.yaml`), not from NERV's user `config.yaml`
+  any more. Run `nerv migrate --user` once to move them there (see
+  [commands.md](commands.md#nerv-migrate)).
 - **Extra reviewer sessions appear on every tool use.** That's the
   `security-guidance` plugin's own hook (installed independently), not
   Nerv by Gentle-AI. Nerv by Gentle-AI's own review relay only runs after an
