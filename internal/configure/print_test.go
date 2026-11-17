@@ -10,14 +10,14 @@ import (
 	nerv "github.com/war-apps/nerv-by-gentle-ai"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/config"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/configure"
-	"github.com/war-apps/nerv-by-gentle-ai/internal/env/envtest"
+	"github.com/war-apps/nerv-kit-by-gentle-ai/runner/runnertest"
 )
 
 func printDeps(home string) configure.Deps {
 	return configure.Deps{
 		Home:     home,
 		FS:       nerv.PluginFS(),
-		Runner:   &envtest.FakeRunner{}, // no gentle-ai on PATH in tests
+		Runner:   &runnertest.FakeRunner{}, // no gentle-ai on PATH in tests
 		LookPath: func(string) (string, error) { return "", errNotFound },
 	}
 }

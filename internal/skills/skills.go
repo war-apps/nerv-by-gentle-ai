@@ -1,7 +1,7 @@
 // Package skills reads the NERV skills manifest, computes each skill's
 // installed status against a Claude Code user-scope skills directory, and
 // runs the "npx skills add" installs for missing external skills, and one
-// "gentle-ai sync" for missing gentle-ai skills, through env.Runner.
+// "gentle-ai sync" for missing gentle-ai skills, through runner.Runner.
 package skills
 
 import (
@@ -13,7 +13,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/war-apps/nerv-by-gentle-ai/internal/env"
+	"github.com/war-apps/nerv-kit-by-gentle-ai/runner"
 )
 
 // SchemaID is the manifest schema this package understands.
@@ -304,7 +304,7 @@ type InstallResult struct {
 // counting a launch error or a non-zero exit as a failure. Callers that
 // support a dry-run mode skip calling Install entirely and render
 // plan.Installs instead.
-func Install(ctx context.Context, runner env.Runner, plan Plan) InstallResult {
+func Install(ctx context.Context, runner runner.Runner, plan Plan) InstallResult {
 	var result InstallResult
 	for _, step := range plan.Installs {
 		_, _, exitCode, err := runner.Run(ctx, "npx", step.Args...)
@@ -335,7 +335,7 @@ const syncDiagnosticLines = 2
 
 // Sync runs "gentle-ai <step.Args>" through runner. A nil step is a no-op.
 // A failure is only reported, never an error: the remedies stay in place.
-func Sync(ctx context.Context, runner env.Runner, step *SyncStep) SyncResult {
+func Sync(ctx context.Context, runner runner.Runner, step *SyncStep) SyncResult {
 	if step == nil {
 		return SyncResult{}
 	}

@@ -9,9 +9,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/war-apps/nerv-by-gentle-ai/internal/env"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/refusal"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/versioning"
+	"github.com/war-apps/nerv-kit-by-gentle-ai/runner"
 )
 
 const tag = "v1.0.0-alpha.1"
@@ -90,7 +90,7 @@ func TestRun_NextPrereleaseIsNumberedFromTheDeployedTag(t *testing.T) {
 	e.pushOther("app.txt", "two\n")
 	clone := filepath.Join(t.TempDir(), "clone")
 	git(t, filepath.Dir(clone), "clone", "-q", "--branch", "develop", e.origin, clone)
-	res, err := versioning.Compute(context.Background(), versioning.Request{RepoDir: clone, Branch: "develop", Runner: env.ExecRunner{}})
+	res, err := versioning.Compute(context.Background(), versioning.Request{RepoDir: clone, Branch: "develop", Runner: runner.ExecRunner{}})
 	if err != nil {
 		t.Fatal(err)
 	}

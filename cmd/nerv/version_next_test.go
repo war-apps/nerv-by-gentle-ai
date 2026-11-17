@@ -16,11 +16,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/war-apps/nerv-by-gentle-ai/internal/env/envtest"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/releaseclone"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/releaseconfig"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/releaseplan"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/versioning"
+	"github.com/war-apps/nerv-kit-by-gentle-ai/runner/runnertest"
 )
 
 // releaseconfigValidationError is a release configuration problem as the engine
@@ -33,7 +33,7 @@ var releaseconfigValidationError = releaseconfig.ValidationError{Problems: []str
 // fake.
 type nextFixture struct {
 	top     string
-	runner  *envtest.FakeRunner
+	runner  *runnertest.FakeRunner
 	calls   []releaseclone.ComputeOptions
 	ctxErrs []error
 	results []versioning.Result
@@ -70,7 +70,7 @@ func newNextFixture(t *testing.T, nervYAML string) *nextFixture {
 	}
 	return &nextFixture{
 		top: top,
-		runner: &envtest.FakeRunner{Responses: map[string]envtest.Response{
+		runner: &runnertest.FakeRunner{Responses: map[string]runnertest.Response{
 			"git -C . rev-parse --show-toplevel": {Stdout: top + "\n"},
 		}},
 	}
@@ -206,7 +206,7 @@ func TestVersionNext_UsageErrors(t *testing.T) {
 
 func TestVersionNext_FlagsReachTheEngine(t *testing.T) {
 	f := newNextFixture(t, twoProjectsYAML)
-	f.runner.Responses["git -C /work/repo/sub rev-parse --show-toplevel"] = envtest.Response{Stdout: f.top + "\n"}
+	f.runner.Responses["git -C /work/repo/sub rev-parse --show-toplevel"] = runnertest.Response{Stdout: f.top + "\n"}
 	f.results = []versioning.Result{released("api", "1.2.0", "")}
 
 	code, _, stderr := f.run(t, "--cwd", "/work/repo/sub", "--branch", "develop", "--project", "api", "--offline", "--fetch-timeout", "15s")
@@ -517,7 +517,7 @@ func TestVersionNext_InvalidConfigIsARefusal(t *testing.T) {
 
 func TestVersionNext_NotAGitRepository(t *testing.T) {
 	f := newNextFixture(t, "")
-	f.runner.Responses["git -C . rev-parse --show-toplevel"] = envtest.Response{Stderr: "fatal: not a git repository", ExitCode: 128}
+	f.runner.Responses["git -C . rev-parse --show-toplevel"] = runnertest.Response{Stderr: "fatal: not a git repository", ExitCode: 128}
 
 	code, _, stderr := f.run(t)
 
@@ -528,7 +528,7 @@ func TestVersionNext_NotAGitRepository(t *testing.T) {
 
 func TestVersionNext_GitMissing(t *testing.T) {
 	f := newNextFixture(t, "")
-	f.runner.Responses["git -C . rev-parse --show-toplevel"] = envtest.Response{ExitCode: -1, Err: &exec.Error{Name: "git", Err: exec.ErrNotFound}}
+	f.runner.Responses["git -C . rev-parse --show-toplevel"] = runnertest.Response{ExitCode: -1, Err: &exec.Error{Name: "git", Err: exec.ErrNotFound}}
 
 	code, _, stderr := f.run(t)
 

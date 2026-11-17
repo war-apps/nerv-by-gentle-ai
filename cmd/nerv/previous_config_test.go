@@ -11,9 +11,9 @@ import (
 
 	nerv "github.com/war-apps/nerv-by-gentle-ai"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/artifact"
-	"github.com/war-apps/nerv-by-gentle-ai/internal/env"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/paths"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/versioning"
+	"github.com/war-apps/nerv-kit-by-gentle-ai/runner"
 )
 
 // S9: the project configuration is .ai-workflow/config.yaml and the user
@@ -65,7 +65,7 @@ func TestPrevious_DeployRefuses(t *testing.T) {
 	previous := paths.PreviousProjectConfig(repo)
 	writePrevious(t, previous)
 	opts := testOptions(t.TempDir())
-	opts.Runner = env.ExecRunner{}
+	opts.Runner = runner.ExecRunner{}
 	opts.ExtensionsFS = nerv.ExtensionsFS()
 	var stdout, stderr bytes.Buffer
 	code := run([]string{"deploy", "--cwd", repo, "--artifact", filepath.Join(repo, "x"), "--dry-run"}, &stdout, &stderr, opts)
@@ -77,7 +77,7 @@ func TestPrevious_ConfigureInitRepoRefuses(t *testing.T) {
 	previous := paths.PreviousProjectConfig(repo)
 	writePrevious(t, previous)
 	opts := testOptions(t.TempDir())
-	opts.Runner = env.ExecRunner{}
+	opts.Runner = runner.ExecRunner{}
 	var stdout, stderr bytes.Buffer
 	code := run([]string{"configure", "--init-repo", repo}, &stdout, &stderr, opts)
 	assertPreviousRefused(t, code, stdout.String()+stderr.String(), previous, migrateHint)
@@ -113,7 +113,7 @@ func TestPrevious_UserConfigIsRefused(t *testing.T) {
 func TestPrevious_ConfigureInitRepoWritesTheFolder(t *testing.T) {
 	repo := gitInit(t)
 	opts := testOptions(t.TempDir())
-	opts.Runner = env.ExecRunner{}
+	opts.Runner = runner.ExecRunner{}
 	var stdout, stderr bytes.Buffer
 	if code := run([]string{"configure", "--init-repo", repo}, &stdout, &stderr, opts); code != 0 {
 		t.Fatalf("exit %d\n%s\n%s", code, stdout.String(), stderr.String())
@@ -274,7 +274,7 @@ operations:
 		t.Fatal(err)
 	}
 	opts := testOptions(t.TempDir())
-	opts.Runner = env.ExecRunner{}
+	opts.Runner = runner.ExecRunner{}
 	opts.ExtensionsFS = nerv.ExtensionsFS()
 	var stdout, stderr bytes.Buffer
 	code := run([]string{"deploy", "--cwd", work.dir, "--artifact", dir, "--dry-run"}, &stdout, &stderr, opts)

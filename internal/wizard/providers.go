@@ -1,14 +1,17 @@
 package wizard
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
 	"io/fs"
+	"runtime"
 	"slices"
 
 	"github.com/war-apps/nerv-by-gentle-ai/internal/claude"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/configure"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/ecosystem"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/paths"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/plugin"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/taskprovider"
@@ -24,6 +27,18 @@ const marketplace = "nerv"
 // deps.ExtensionsFS. A missing settings.json enables nothing; an unreadable
 // one is reported and treated the same way.
 func taskPlugins(deps Deps, opts Options, out io.Writer) (enabled bool, providers []configure.Provider) {
+	// U2 (S11): once the tool that replaces the task extension is
+	// installed, its own "configure" is the way to set up task
+	// providers; nerv configure no longer offers the (replaced) section.
+	if tool, replaced := ecosystem.ReplacingTool(ecosystem.Catalogue(), plugin.TaskPlugin); replaced {
+		goos := runtime.GOOS
+		if ecosystem.Detect(context.Background(), tool, deps.Runner, deps.LookPath, goos, deps.Home, deps.Getenv).Installed {
+			fmt.Fprintln(out)
+			fmt.Fprintf(out, "%s is installed; run `%s configure` to set up its task providers.\n", tool.Name, tool.Name)
+			return false, nil
+		}
+	}
+
 	settingsPath := opts.SettingsPath
 	if settingsPath == "" {
 		settingsPath = paths.Resolve(deps.Home).Settings

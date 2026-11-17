@@ -23,10 +23,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/war-apps/nerv-by-gentle-ai/internal/atomicfile"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/config"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/paths"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/refusal"
+	"github.com/war-apps/nerv-kit-by-gentle-ai/atomicfile"
 )
 
 // MigratedSuffix is appended to an old configuration file once it has been
@@ -57,6 +57,15 @@ type Options struct {
 	Host string
 	// Force moves a change whose orchestrator lock is still held.
 	Force bool
+	// TaskYAMLHome is nerv-task's global task.yaml path (typically kit
+	// aiworkflow.UserConfigPath(Home, goos, "task")); "" skips the S12
+	// step entirely (nerv-task is not installed, or the caller does not
+	// resolve one). Only used with User.
+	TaskYAMLHome string
+	// TaskYAMLRepo is nerv-task's repository task.yaml path (typically
+	// kit aiworkflow.ProjectConfigPath(RepoRoot, "task")); "" skips the
+	// S12 repository step.
+	TaskYAMLRepo string
 }
 
 // Kind is what a Change does.
@@ -143,6 +152,9 @@ func Compute(o Options) (*Plan, error) {
 	}
 	if user != nil {
 		if err := moveUserDefaults(p, user, o.ExtensionsFS); err != nil {
+			return nil, err
+		}
+		if err := moveUserTaskYAML(p, o, user); err != nil {
 			return nil, err
 		}
 		user.finish(p)

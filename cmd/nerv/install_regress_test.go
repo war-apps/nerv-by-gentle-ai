@@ -8,7 +8,7 @@ import (
 	"testing"
 
 	nerv "github.com/war-apps/nerv-by-gentle-ai"
-	"github.com/war-apps/nerv-by-gentle-ai/internal/env/envtest"
+	"github.com/war-apps/nerv-kit-by-gentle-ai/runner/runnertest"
 )
 
 func TestRunInstall_Terminal_DecliningTaskOffersNoProvider(t *testing.T) {
@@ -22,7 +22,7 @@ func TestRunInstall_Terminal_DecliningTaskOffersNoProvider(t *testing.T) {
 	// No to task, then no to release (asked next, after task's providers).
 	opts.Stdin = strings.NewReader("n\nn\n")
 
-	code := run([]string{"install", "--no-skills", "--no-configure"}, &stdout, &stderr, opts)
+	code := run([]string{"install", "--no-skills", "--no-configure", "--no-tools"}, &stdout, &stderr, opts)
 
 	if code != 0 {
 		t.Fatalf("exit code = %d, want 0; stdout:\n%s", code, stdout.String())
@@ -143,7 +143,7 @@ func TestRunUninstall_KeepsOtherMarketplacesPlugins(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	opts := testOptions(home)
 	opts.ExtensionsFS = nerv.ExtensionsFS()
-	runner := &envtest.FakeRunner{}
+	runner := &runnertest.FakeRunner{}
 	opts.Runner = runner
 
 	code := run([]string{"uninstall"}, &stdout, &stderr, opts)
@@ -176,21 +176,21 @@ func TestRunUninstall_RerunAfterExtensionFailure_StillUninstallsIt(t *testing.T)
 	if err := os.WriteFile(filepath.Join(home, ".claude", "settings.json"), []byte(seed), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	uninstall := func(runner *envtest.FakeRunner) int {
+	uninstall := func(runner *runnertest.FakeRunner) int {
 		var stdout, stderr bytes.Buffer
 		opts := testOptions(home)
 		opts.ExtensionsFS = nerv.ExtensionsFS()
 		opts.Runner = runner
 		return run([]string{"uninstall"}, &stdout, &stderr, opts)
 	}
-	failing := &envtest.FakeRunner{Responses: map[string]envtest.Response{
+	failing := &runnertest.FakeRunner{Responses: map[string]runnertest.Response{
 		"claude plugin uninstall task@nerv": {Stderr: "boom", ExitCode: 3},
 	}}
 	if code := uninstall(failing); code == 0 {
 		t.Fatal("first uninstall should fail")
 	}
 
-	rerun := &envtest.FakeRunner{}
+	rerun := &runnertest.FakeRunner{}
 	if code := uninstall(rerun); code != 0 {
 		t.Fatalf("rerun exit code = %d, want 0", code)
 	}
@@ -211,7 +211,7 @@ func TestMaintainerReleaseApply_ExtensionWithoutVersion_WritesNothing(t *testing
 	if err := os.WriteFile(ext, []byte("{\n  \"name\": \"task\"\n}\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	runner := &envtest.FakeRunner{Responses: map[string]envtest.Response{
+	runner := &runnertest.FakeRunner{Responses: map[string]runnertest.Response{
 		gitTagsKey(repo, "v*"): {Stdout: ""},
 		gitLogKey(repo, ""):    {Stdout: commitRecord(3, "feat: add applied feature", "")},
 	}}
@@ -239,7 +239,7 @@ func TestMaintainerReleaseApply_ListsExtensionsAfterChangelog(t *testing.T) {
 	if err := os.WriteFile(ext, []byte("{\n  \"name\": \"task\",\n  \"version\": \"0.1.0\"\n}\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	runner := &envtest.FakeRunner{Responses: map[string]envtest.Response{
+	runner := &runnertest.FakeRunner{Responses: map[string]runnertest.Response{
 		gitTagsKey(repo, "v*"): {Stdout: ""},
 		gitLogKey(repo, ""):    {Stdout: commitRecord(3, "feat: add applied feature", "")},
 	}}
@@ -308,7 +308,10 @@ func TestRunInstall_Terminal_SuggestionOrder(t *testing.T) {
 			opts.Runner = baseInstallRunner()
 			opts.Stdin = strings.NewReader(tt.answers)
 
-			code := run([]string{"install", "--no-skills", "--no-configure"}, &stdout, &stderr, opts)
+			// This test is about the extension suggestion order, not the
+			// ecosystem-tools step (F2 has its own ordering test): --no-tools
+			// keeps nerv-task out of the asked names below.
+			code := run([]string{"install", "--no-skills", "--no-configure", "--no-tools"}, &stdout, &stderr, opts)
 
 			if code != 0 {
 				t.Fatalf("exit code = %d, want 0; stdout:\n%s", code, stdout.String())
@@ -322,5 +325,76 @@ func TestRunInstall_Terminal_SuggestionOrder(t *testing.T) {
 				t.Errorf("asked %v, want %v:\n%s", asked, tt.asked, stdout.String())
 			}
 		})
+	}
+}
+
+// F2/S11: nerv install offers the ecosystem tools before NERV's own
+// extensions; a tool selected (confirmed) in this run, not only one
+// already installed on this machine, suppresses the extensions it
+// replaces. A user who accepts nerv-task is never asked about task or
+// task-teamwork, and neither is enabled.
+func TestRunInstall_Terminal_NervTaskSelected_SuppressesTaskExtensions(t *testing.T) {
+	home := t.TempDir()
+	seedReleaseFamilyForCLI(t, home)
+	var stdout, stderr bytes.Buffer
+	opts := testOptions(home)
+	opts.ExtensionsFS = nerv.ExtensionsFS()
+	opts.IsTerminal = func() bool { return true }
+	opts.Runner = baseInstallRunner()
+	opts.GOOS = "linux"
+	// "y" confirms nerv-task (asked first); "n" declines release (asked
+	// next, since it is not replaced by any catalogue tool).
+	opts.Stdin = strings.NewReader("y\nn\n")
+
+	code := run([]string{"install", "--no-skills", "--no-configure"}, &stdout, &stderr, opts)
+
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0; stdout:\n%s", code, stdout.String())
+	}
+	out := stdout.String()
+	if !strings.Contains(out, "Install nerv-task? [y/N]:") {
+		t.Fatalf("nerv-task was not offered:\n%s", out)
+	}
+	if strings.Contains(out, "Install task (") || strings.Contains(out, "Install task-teamwork (") {
+		t.Errorf("task/task-teamwork were asked after nerv-task was selected:\n%s", out)
+	}
+	if strings.Contains(out, "claude plugin install task@nerv") || strings.Contains(out, "claude plugin install task-teamwork@nerv") {
+		t.Errorf("task/task-teamwork were enabled after nerv-task was selected:\n%s", out)
+	}
+	if !strings.Contains(out, "Install release (") {
+		t.Errorf("release (not replaced by any tool) was not asked:\n%s", out)
+	}
+}
+
+// F2/S11: declining nerv-task in this same run leaves its replaced
+// extensions (task, task-teamwork) offered exactly as before the
+// ecosystem-tools step existed.
+func TestRunInstall_Terminal_NervTaskDeclined_StillOffersTaskExtensions(t *testing.T) {
+	home := t.TempDir()
+	seedReleaseFamilyForCLI(t, home)
+	var stdout, stderr bytes.Buffer
+	opts := testOptions(home)
+	opts.ExtensionsFS = nerv.ExtensionsFS()
+	opts.IsTerminal = func() bool { return true }
+	opts.Runner = baseInstallRunner()
+	opts.GOOS = "linux"
+	// "n" declines nerv-task (asked first); "y\ny\ny\n" accepts task, its
+	// provider task-teamwork, and release, same as before F2.
+	opts.Stdin = strings.NewReader("n\ny\ny\ny\n")
+
+	code := run([]string{"install", "--no-skills", "--no-configure"}, &stdout, &stderr, opts)
+
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0; stdout:\n%s", code, stdout.String())
+	}
+	out := stdout.String()
+	if !strings.Contains(out, "Install nerv-task? [y/N]:") {
+		t.Fatalf("nerv-task was not offered:\n%s", out)
+	}
+	if !strings.Contains(out, "Install task (") || !strings.Contains(out, "Install task-teamwork (") {
+		t.Errorf("task/task-teamwork were not offered after nerv-task was declined:\n%s", out)
+	}
+	if !strings.Contains(out, "claude plugin install task@nerv") || !strings.Contains(out, "claude plugin install task-teamwork@nerv") {
+		t.Errorf("task/task-teamwork were not enabled after being accepted:\n%s", out)
 	}
 }

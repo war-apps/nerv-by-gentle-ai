@@ -12,8 +12,8 @@ import (
 	nerv "github.com/war-apps/nerv-by-gentle-ai"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/config"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/configure"
-	"github.com/war-apps/nerv-by-gentle-ai/internal/env/envtest"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/wizard"
+	"github.com/war-apps/nerv-kit-by-gentle-ai/runner/runnertest"
 )
 
 // writeSettings writes a settings.json enabling ids and returns its path.
@@ -79,6 +79,36 @@ func TestRun_TaskProviders_SaysNoProviderIsEnabled(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), "--- Task providers ---\nNo task provider is enabled; install one with nerv install.\n") {
 		t.Errorf("output:\n%s", out.String())
+	}
+}
+
+// U2 (S11): once nerv-task is installed, nerv configure no longer offers
+// the (replaced) task providers section, even with task@nerv/a provider
+// still enabled; it redirects to nerv-task configure instead.
+func TestRun_TaskProviders_RedirectsToNervTaskWhenInstalled(t *testing.T) {
+	root := t.TempDir()
+	home := t.TempDir()
+	writeFixture(t, filepath.Join(root, "config.yml"))
+	lookPathNervTask := func(name string) (string, error) {
+		if name == "nerv-task" {
+			return "/usr/local/bin/nerv-task", nil
+		}
+		return "", os.ErrNotExist
+	}
+	deps := configure.Deps{Home: home, FS: nerv.PluginFS(), ExtensionsFS: nerv.ExtensionsFS(), Runner: noRunner(), Now: fixedNow, LookPath: lookPathNervTask}
+	opts := skipAll()
+	opts.Paths = testPaths(root, home)
+	opts.SettingsPath = writeSettings(t, home, "nerv@nerv", "task@nerv", "task-teamwork@nerv")
+
+	var out bytes.Buffer
+	if _, err := wizard.Run(deps, strings.NewReader(strings.Repeat("\n", 12)), &out, opts); err != nil {
+		t.Fatalf("Run() error = %v; output:\n%s", err, out.String())
+	}
+	if strings.Contains(out.String(), "--- Task providers ---") {
+		t.Errorf("Task providers section shown while nerv-task is installed:\n%s", out.String())
+	}
+	if !strings.Contains(out.String(), "nerv-task is installed") || !strings.Contains(out.String(), "nerv-task configure") {
+		t.Errorf("expected a redirect to nerv-task configure, got:\n%s", out.String())
 	}
 }
 
@@ -211,7 +241,7 @@ func TestRun_RepoInit_PromptsRepoScopeProviderKeys(t *testing.T) {
 	home := t.TempDir()
 	writeFixture(t, filepath.Join(root, "config.yml"))
 	repoDir := t.TempDir()
-	runner := &envtest.FakeRunner{Responses: map[string]envtest.Response{
+	runner := &runnertest.FakeRunner{Responses: map[string]runnertest.Response{
 		"git -C " + repoDir + " rev-parse --show-toplevel": {Stdout: repoDir + "\n"},
 	}}
 	deps := configure.Deps{Home: home, FS: nerv.PluginFS(), ExtensionsFS: nerv.ExtensionsFS(), Runner: runner, Now: fixedNow, LookPath: lookPathNone}
@@ -248,7 +278,7 @@ func TestRun_RepoInit_SeedsTasksFromTheUserDefaults(t *testing.T) {
 	home := t.TempDir()
 	writeFixture(t, filepath.Join(root, "config.yml"))
 	repoDir := t.TempDir()
-	runner := &envtest.FakeRunner{Responses: map[string]envtest.Response{
+	runner := &runnertest.FakeRunner{Responses: map[string]runnertest.Response{
 		"git -C " + repoDir + " rev-parse --show-toplevel": {Stdout: repoDir + "\n"},
 	}}
 	deps := configure.Deps{Home: home, FS: nerv.PluginFS(), ExtensionsFS: nerv.ExtensionsFS(), Runner: runner, Now: fixedNow, LookPath: lookPathNone}
@@ -309,7 +339,7 @@ func TestRun_RepoInit_PromptsProjectTaskProviderKeys(t *testing.T) {
 	if err := os.WriteFile(manifest, []byte("name: tracker\nextension: task\nslot: provider\ncontract_version: 1\nruntime: agent\ntask_ref_prefix: TR\nmcp:\n  server: tracker\n  tools: [tracker_get]\nconfig:\n  - key: board\n    scope: repo\n    type: string\n    prompt: The tracker board of this repository\noperations:\n"+ops), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	runner := &envtest.FakeRunner{Responses: map[string]envtest.Response{
+	runner := &runnertest.FakeRunner{Responses: map[string]runnertest.Response{
 		"git -C " + repoDir + " rev-parse --show-toplevel": {Stdout: repoDir + "\n"},
 	}}
 	deps := configure.Deps{Home: home, FS: nerv.PluginFS(), ExtensionsFS: nerv.ExtensionsFS(), Runner: runner, Now: fixedNow, LookPath: lookPathNone}

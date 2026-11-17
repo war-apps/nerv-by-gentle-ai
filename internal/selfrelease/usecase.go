@@ -8,9 +8,9 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/war-apps/nerv-by-gentle-ai/internal/env"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/refusal"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/version"
+	"github.com/war-apps/nerv-kit-by-gentle-ai/runner"
 )
 
 // Deps bundles the release use cases' external effects: the repository
@@ -19,7 +19,7 @@ import (
 // embedded plugin tree Guard compares against the on-disk plugin.json.
 type Deps struct {
 	Repo     string
-	Runner   env.Runner
+	Runner   runner.Runner
 	Now      func() time.Time
 	PluginFS fs.FS
 }

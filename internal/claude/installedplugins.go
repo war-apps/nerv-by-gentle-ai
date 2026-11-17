@@ -1,21 +1,14 @@
 package claude
 
 import (
-	"encoding/json"
-	"errors"
-	"fmt"
-	"io/fs"
-	"os"
-
-	"github.com/war-apps/nerv-by-gentle-ai/internal/paths"
+	"github.com/war-apps/nerv-kit-by-gentle-ai/claudeplugin"
 )
 
 // PluginInstallInfo is one plugin's recorded install path and version, as
-// read from installed_plugins.json.
-type PluginInstallInfo struct {
-	InstallPath string
-	Version     string
-}
+// read from installed_plugins.json. It is claudeplugin.PluginInstallInfo,
+// re-exported so every nerv package keeps importing this package instead
+// of the kit directly.
+type PluginInstallInfo = claudeplugin.PluginInstallInfo
 
 // InstalledPlugins reads path (typically
 // "<home>/.claude/plugins/installed_plugins.json") and returns the first
@@ -30,34 +23,12 @@ func InstalledPlugins(path string) (PluginInstallInfo, bool, error) {
 // InstalledPlugin is InstalledPlugins for any plugin id, such as an
 // extension's "task@nerv".
 func InstalledPlugin(path, id string) (PluginInstallInfo, bool, error) {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		if errors.Is(err, fs.ErrNotExist) {
-			return PluginInstallInfo{}, false, nil
-		}
-		return PluginInstallInfo{}, false, err
-	}
-
-	var doc struct {
-		Plugins map[string][]struct {
-			InstallPath string `json:"installPath"`
-			Version     string `json:"version"`
-		} `json:"plugins"`
-	}
-	if err := json.Unmarshal(data, &doc); err != nil {
-		return PluginInstallInfo{}, false, fmt.Errorf("parse %s: %w", path, err)
-	}
-
-	entries := doc.Plugins[id]
-	if len(entries) == 0 {
-		return PluginInstallInfo{}, false, nil
-	}
-	return PluginInstallInfo{InstallPath: entries[0].InstallPath, Version: entries[0].Version}, true, nil
+	return claudeplugin.InstalledPlugin(path, id)
 }
 
 // CacheAgentsDir is where Claude Code caches nerv@nerv's agent
 // frontmatter for a given plugin version:
 // "<home>/.claude/plugins/cache/nerv/nerv/<version>/agents".
 func CacheAgentsDir(home, pluginVersion string) string {
-	return paths.Paths{Home: home}.CacheAgentsDir(pluginVersion)
+	return claudeplugin.CacheAgentsDir(home, "nerv", "nerv", pluginVersion)
 }

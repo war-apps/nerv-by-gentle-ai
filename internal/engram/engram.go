@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/war-apps/nerv-by-gentle-ai/internal/env"
+	"github.com/war-apps/nerv-kit-by-gentle-ai/runner"
 )
 
 const (
@@ -33,7 +33,7 @@ type Result struct {
 // save ... --project nerv --type manual" creates it. Every failure (a
 // launch error, a non-zero exit) is reported as a Warning, never as a Go
 // error.
-func EnsureKnowledgeBase(ctx context.Context, runner env.Runner, lookPath func(name string) (string, error)) Result {
+func EnsureKnowledgeBase(ctx context.Context, runner runner.Runner, lookPath func(name string) (string, error)) Result {
 	var result Result
 
 	if _, err := lookPath("engram"); err != nil {

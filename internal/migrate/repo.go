@@ -198,9 +198,18 @@ func planRepo(p *Plan, o Options, user *userState) error {
 			doc.SetScalar("odd.tdd", tdd.mode)
 			doc.SetScalar("odd.test_runner", tdd.runner)
 		}
-		seedTaskProvider(p, o, doc)
+		if o.TaskYAMLRepo == "" {
+			// Once nerv-task owns the repository's task configuration
+			// (TaskYAMLRepo set), tasks.provider no longer belongs in
+			// this file: seeding it here would only have
+			// moveRepoTaskYAML move it right back out on every run.
+			seedTaskProvider(p, o, doc)
+		}
 		renameScriptTargets(p, doc, "deploy", paths.ProjectConfigFile)
 		if err := personalKeys(p, doc, paths.ProjectConfigFile, o.ExtensionsFS, user); err != nil {
+			return err
+		}
+		if err := moveRepoTaskYAML(p, o, doc); err != nil {
 			return err
 		}
 		text := doc.String()

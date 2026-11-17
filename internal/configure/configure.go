@@ -5,24 +5,24 @@
 // setup wizard lives in internal/wizard.
 //
 // This package owns file I/O (Store) and process launches (through
-// env.Runner) for the configure use case; cmd/nerv only wires flags into
+// runner.Runner) for the configure use case; cmd/nerv only wires flags into
 // it. It never reads HOME/USERPROFILE directly — callers resolve Home
 // through ResolveHome and pass it in via Deps, the same seam rule as every
-// other internal package (see internal/env's doc comment).
+// other internal package (see nerv-kit's runner package doc comment).
 package configure
 
 import (
 	"io/fs"
 	"time"
 
-	"github.com/war-apps/nerv-by-gentle-ai/internal/env"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/paths"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/refusal"
+	"github.com/war-apps/nerv-kit-by-gentle-ai/runner"
 )
 
 // Deps bundles configure's external effects so tests can inject fakes: no
-// test outside internal/env's own tests should touch a real process, and no
-// test in this package should touch the real home directory or the real
+// test outside nerv-kit's own runner tests should touch a real process, and
+// no test in this package should touch the real home directory or the real
 // embedded plugin tree unless it explicitly wants that realism.
 type Deps struct {
 	// Home is the already-resolved home directory (see ResolveHome) —
@@ -38,7 +38,7 @@ type Deps struct {
 	ExtensionsFS fs.FS
 	// Runner launches "git" (InitRepo) and "gentle-ai"/PATH lookups
 	// (Print's prerequisites).
-	Runner env.Runner
+	Runner runner.Runner
 	// Now supplies the clock used to name Store's backup files.
 	Now func() time.Time
 	// LookPath resolves a tool's presence on PATH (Print's prerequisites).
@@ -64,12 +64,12 @@ type Paths struct {
 }
 
 // ResolveHome resolves the home directory to use: override when non-empty,
-// otherwise env.HomeDir().
+// otherwise runner.HomeDir().
 func ResolveHome(override string) (string, error) {
 	if override != "" {
 		return override, nil
 	}
-	return env.HomeDir()
+	return runner.HomeDir()
 }
 
 // ResolvePaths builds Paths from a resolved home directory and an optional

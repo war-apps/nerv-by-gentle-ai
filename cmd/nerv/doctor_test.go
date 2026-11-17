@@ -12,10 +12,10 @@ import (
 	"testing"
 
 	nerv "github.com/war-apps/nerv-by-gentle-ai"
-	"github.com/war-apps/nerv-by-gentle-ai/internal/env/envtest"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/paths"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/skills"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/version"
+	"github.com/war-apps/nerv-kit-by-gentle-ai/runner/runnertest"
 )
 
 // doctorWorld is a home where NERV is installed and set up, and a
@@ -24,7 +24,7 @@ type doctorWorld struct {
 	t         *testing.T
 	home, top string
 	opts      options
-	runner    *envtest.FakeRunner
+	runner    *runnertest.FakeRunner
 }
 
 func newDoctorWorld(t *testing.T) *doctorWorld {
@@ -33,9 +33,9 @@ func newDoctorWorld(t *testing.T) *doctorWorld {
 	w.opts = testOptions(w.home)
 	w.opts.ExtensionsFS = nerv.ExtensionsFS()
 	w.opts.LookPath = func(name string) (string, error) { return "/usr/bin/" + name, nil }
-	w.runner = &envtest.FakeRunner{
-		Default: envtest.Response{ExitCode: 1},
-		Responses: map[string]envtest.Response{
+	w.runner = &runnertest.FakeRunner{
+		Default: runnertest.Response{ExitCode: 1},
+		Responses: map[string]runnertest.Response{
 			"gentle-ai --version":                                                {Stdout: "gentle-ai 4.2.0\n"},
 			"git -C . rev-parse --show-toplevel":                                 {Stdout: w.top + "\n"},
 			"git -C " + w.top + " remote get-url origin":                         {Stdout: "git@github.com:acme/widgets.git\n"},
@@ -204,7 +204,7 @@ func TestDoctor_OldConfigurationPointsToMigrate(t *testing.T) {
 // Outside a repository the repository checks are skipped, not failed.
 func TestDoctor_OutsideARepository(t *testing.T) {
 	w := newDoctorWorld(t)
-	w.runner.Responses["git -C . rev-parse --show-toplevel"] = envtest.Response{ExitCode: 128, Stderr: "fatal: not a git repository"}
+	w.runner.Responses["git -C . rev-parse --show-toplevel"] = runnertest.Response{ExitCode: 128, Stderr: "fatal: not a git repository"}
 	code, out, _ := w.doctor()
 	if code != 0 {
 		t.Fatalf("exit %d\n%s", code, out)

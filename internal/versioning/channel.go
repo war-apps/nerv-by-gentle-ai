@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"slices"
 
-	"github.com/war-apps/nerv-by-gentle-ai/internal/env"
+	"github.com/war-apps/nerv-kit-by-gentle-ai/runner"
 )
 
 // ReleaseBranch is how the configured branches treat one branch.
@@ -24,15 +24,15 @@ type ReleaseBranch struct {
 // prerelease identifier and channel. A branch that is not a release branch
 // is an error naming the configured branches. It never reads origin.
 func BranchChannel(ctx context.Context, req Request) (ReleaseBranch, error) {
-	runner := req.Runner
-	if runner == nil {
-		runner = env.ExecRunner{}
+	r := req.Runner
+	if r == nil {
+		r = runner.ExecRunner{}
 	}
 	cfg := req.Config.WithDefaults()
 	if err := cfg.Validate(); err != nil {
 		return ReleaseBranch{}, err
 	}
-	g := gitReader{runner: runner, dir: req.RepoDir}
+	g := gitReader{runner: r, dir: req.RepoDir}
 	top, err := g.trimmed(ctx, "rev-parse", "--show-toplevel")
 	if err != nil {
 		return ReleaseBranch{}, fmt.Errorf("not a git repository: %w", err)

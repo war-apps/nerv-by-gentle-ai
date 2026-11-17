@@ -6,12 +6,12 @@ import (
 	"testing"
 
 	"github.com/war-apps/nerv-by-gentle-ai/internal/claude"
-	"github.com/war-apps/nerv-by-gentle-ai/internal/env/envtest"
+	"github.com/war-apps/nerv-kit-by-gentle-ai/runner/runnertest"
 )
 
 func TestPluginCLI_Uninstall_Success(t *testing.T) {
-	runner := &envtest.FakeRunner{
-		Responses: map[string]envtest.Response{
+	runner := &runnertest.FakeRunner{
+		Responses: map[string]runnertest.Response{
 			"claude plugin uninstall nerv@nerv": {Stdout: "uninstalled\n", ExitCode: 0},
 		},
 	}
@@ -26,8 +26,8 @@ func TestPluginCLI_Uninstall_Success(t *testing.T) {
 }
 
 func TestPluginCLI_Uninstall_TolerantOfNotInstalled(t *testing.T) {
-	runner := &envtest.FakeRunner{
-		Responses: map[string]envtest.Response{
+	runner := &runnertest.FakeRunner{
+		Responses: map[string]runnertest.Response{
 			"claude plugin uninstall nerv@nerv": {Stderr: "Error: plugin nerv@nerv is not installed\n", ExitCode: 1},
 		},
 	}
@@ -39,8 +39,8 @@ func TestPluginCLI_Uninstall_TolerantOfNotInstalled(t *testing.T) {
 }
 
 func TestPluginCLI_Uninstall_OtherFailureErrors(t *testing.T) {
-	runner := &envtest.FakeRunner{
-		Responses: map[string]envtest.Response{
+	runner := &runnertest.FakeRunner{
+		Responses: map[string]runnertest.Response{
 			"claude plugin uninstall nerv@nerv": {Stderr: "boom\n", ExitCode: 1},
 		},
 	}
@@ -56,8 +56,8 @@ func TestPluginCLI_Uninstall_OtherFailureErrors(t *testing.T) {
 }
 
 func TestPluginCLI_Install_Success(t *testing.T) {
-	runner := &envtest.FakeRunner{
-		Responses: map[string]envtest.Response{
+	runner := &runnertest.FakeRunner{
+		Responses: map[string]runnertest.Response{
 			"claude plugin install nerv@nerv": {Stdout: "installed\n", ExitCode: 0},
 		},
 	}
@@ -69,8 +69,8 @@ func TestPluginCLI_Install_Success(t *testing.T) {
 }
 
 func TestPluginCLI_Install_FailureErrors(t *testing.T) {
-	runner := &envtest.FakeRunner{
-		Responses: map[string]envtest.Response{
+	runner := &runnertest.FakeRunner{
+		Responses: map[string]runnertest.Response{
 			"claude plugin install nerv@nerv": {Stderr: "network error\n", ExitCode: 1},
 		},
 	}
@@ -83,8 +83,8 @@ func TestPluginCLI_Install_FailureErrors(t *testing.T) {
 }
 
 func TestPluginCLI_LaunchFailureErrors(t *testing.T) {
-	runner := &envtest.FakeRunner{
-		Default: envtest.Response{Err: context.DeadlineExceeded},
+	runner := &runnertest.FakeRunner{
+		Default: runnertest.Response{Err: context.DeadlineExceeded},
 	}
 	cli := claude.PluginCLI{Runner: runner}
 
@@ -94,8 +94,8 @@ func TestPluginCLI_LaunchFailureErrors(t *testing.T) {
 }
 
 func TestPluginCLI_AddMarketplace_RunsExactCommand(t *testing.T) {
-	runner := &envtest.FakeRunner{
-		Responses: map[string]envtest.Response{
+	runner := &runnertest.FakeRunner{
+		Responses: map[string]runnertest.Response{
 			"claude plugin marketplace add /home/u/.nerv/marketplace": {Stdout: "added\n", ExitCode: 0},
 		},
 	}
@@ -114,8 +114,8 @@ func TestPluginCLI_AddMarketplace_RunsExactCommand(t *testing.T) {
 }
 
 func TestPluginCLI_AddMarketplace_FailureErrors(t *testing.T) {
-	runner := &envtest.FakeRunner{
-		Default: envtest.Response{Stderr: "invalid marketplace\n", ExitCode: 1},
+	runner := &runnertest.FakeRunner{
+		Default: runnertest.Response{Stderr: "invalid marketplace\n", ExitCode: 1},
 	}
 	cli := claude.PluginCLI{Runner: runner}
 
@@ -129,8 +129,8 @@ func TestPluginCLI_AddMarketplace_FailureErrors(t *testing.T) {
 }
 
 func TestPluginCLI_RemoveMarketplace_RunsExactCommand(t *testing.T) {
-	runner := &envtest.FakeRunner{
-		Responses: map[string]envtest.Response{
+	runner := &runnertest.FakeRunner{
+		Responses: map[string]runnertest.Response{
 			"claude plugin marketplace remove nerv": {Stdout: "removed\n", ExitCode: 0},
 		},
 	}
@@ -149,8 +149,8 @@ func TestPluginCLI_RemoveMarketplace_RunsExactCommand(t *testing.T) {
 }
 
 func TestPluginCLI_RemoveMarketplace_TolerantOfNotFound(t *testing.T) {
-	runner := &envtest.FakeRunner{
-		Responses: map[string]envtest.Response{
+	runner := &runnertest.FakeRunner{
+		Responses: map[string]runnertest.Response{
 			"claude plugin marketplace remove nerv": {Stderr: "✘ Failed to remove marketplace: Marketplace 'nerv' not found\n", ExitCode: 1},
 		},
 	}
@@ -162,8 +162,8 @@ func TestPluginCLI_RemoveMarketplace_TolerantOfNotFound(t *testing.T) {
 }
 
 func TestPluginCLI_RemoveMarketplace_OtherFailureErrors(t *testing.T) {
-	runner := &envtest.FakeRunner{
-		Responses: map[string]envtest.Response{
+	runner := &runnertest.FakeRunner{
+		Responses: map[string]runnertest.Response{
 			"claude plugin marketplace remove nerv": {Stderr: "boom\n", ExitCode: 1},
 		},
 	}
@@ -179,8 +179,8 @@ func TestPluginCLI_RemoveMarketplace_OtherFailureErrors(t *testing.T) {
 }
 
 func TestPluginCLI_RemoveMarketplace_UnrelatedNotFoundErrors(t *testing.T) {
-	runner := &envtest.FakeRunner{
-		Responses: map[string]envtest.Response{
+	runner := &runnertest.FakeRunner{
+		Responses: map[string]runnertest.Response{
 			"claude plugin marketplace remove nerv": {Stderr: "Error: settings file not found\n", ExitCode: 1},
 		},
 	}
@@ -192,8 +192,8 @@ func TestPluginCLI_RemoveMarketplace_UnrelatedNotFoundErrors(t *testing.T) {
 }
 
 func TestPluginCLI_RemoveMarketplace_LaunchFailureErrors(t *testing.T) {
-	runner := &envtest.FakeRunner{
-		Default: envtest.Response{Err: context.DeadlineExceeded},
+	runner := &runnertest.FakeRunner{
+		Default: runnertest.Response{Err: context.DeadlineExceeded},
 	}
 	cli := claude.PluginCLI{Runner: runner}
 

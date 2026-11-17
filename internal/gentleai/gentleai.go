@@ -1,7 +1,7 @@
 // Package gentleai detects the gentle-ai CLI (presence, version, the 4.x
 // preflight rule) and reads its claude_phase_assignments state, without
 // ever touching a real process or the real home directory outside a
-// caller-supplied env.Runner / path.
+// caller-supplied runner.Runner / path.
 package gentleai
 
 import (
@@ -16,7 +16,7 @@ import (
 	"strings"
 
 	"github.com/war-apps/nerv-by-gentle-ai/internal/config"
-	"github.com/war-apps/nerv-by-gentle-ai/internal/env"
+	"github.com/war-apps/nerv-kit-by-gentle-ai/runner"
 )
 
 // Preflight is the result of checking gentle-ai's presence and version.
@@ -49,7 +49,7 @@ var versionRe = regexp.MustCompile(`\d+\.\d+\.\d+`)
 // CheckPreflight runs "gentle-ai --version" through runner and computes
 // the Preflight result: Found, its parsed Version (when parseable), and
 // whether it satisfies NERV's 4.x requirement.
-func CheckPreflight(ctx context.Context, runner env.Runner) Preflight {
+func CheckPreflight(ctx context.Context, runner runner.Runner) Preflight {
 	line, found := firstOutputLine(ctx, runner)
 	if !found {
 		return Preflight{}
@@ -83,7 +83,7 @@ func majorOf(semver string) int {
 // such line exists at all. A launch failure (runner err != nil) always
 // reports found=false, matching the script's try/catch around a missing
 // executable.
-func firstOutputLine(ctx context.Context, runner env.Runner) (line string, found bool) {
+func firstOutputLine(ctx context.Context, runner runner.Runner) (line string, found bool) {
 	stdout, stderr, _, err := runner.Run(ctx, "gentle-ai", "--version")
 	if err != nil {
 		return "", false
@@ -137,7 +137,7 @@ func PhaseAssignments(path string) (map[string]config.PhaseAssignment, error) {
 // Prerequisites computes -Print's `prerequisites` shape: gentle-ai's
 // version preflight via runner, plus engram/claude's plain PATH presence
 // via lookPath. Mirrors Get-NervPrerequisitesStatus.
-func Prerequisites(ctx context.Context, runner env.Runner, lookPath func(name string) (string, error)) PrerequisitesStatus {
+func Prerequisites(ctx context.Context, runner runner.Runner, lookPath func(name string) (string, error)) PrerequisitesStatus {
 	_, engramErr := lookPath("engram")
 	_, claudeErr := lookPath("claude")
 

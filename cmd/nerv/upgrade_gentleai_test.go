@@ -5,15 +5,15 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/war-apps/nerv-by-gentle-ai/internal/env/envtest"
+	"github.com/war-apps/nerv-kit-by-gentle-ai/runner/runnertest"
 )
 
 // withGentleAI makes "gentle-ai --version" print version ("" leaves
 // gentle-ai off PATH) and serves latest as gentle-ai's newest release.
 func (w *upgradeWorld) withGentleAI(version, latest string) {
-	runner := &envtest.FakeRunner{}
+	runner := &runnertest.FakeRunner{}
 	if version != "" {
-		runner.Responses = map[string]envtest.Response{"gentle-ai --version": {Stdout: "gentle-ai " + version + "\n"}}
+		runner.Responses = map[string]runnertest.Response{"gentle-ai --version": {Stdout: "gentle-ai " + version + "\n"}}
 	}
 	w.opts.Runner = runner
 	w.gentleLatest = latest

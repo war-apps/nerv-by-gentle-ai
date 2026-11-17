@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/war-apps/nerv-by-gentle-ai/internal/engram"
-	"github.com/war-apps/nerv-by-gentle-ai/internal/env/envtest"
+	"github.com/war-apps/nerv-kit-by-gentle-ai/runner/runnertest"
 )
 
 func lookPathFound(string) (string, error) { return "/usr/local/bin/engram", nil }
@@ -15,7 +15,7 @@ func lookPathMissing(string) (string, error) {
 }
 
 func TestEnsureKnowledgeBase_EngramNotOnPath_Warns(t *testing.T) {
-	runner := &envtest.FakeRunner{}
+	runner := &runnertest.FakeRunner{}
 
 	result := engram.EnsureKnowledgeBase(context.Background(), runner, lookPathMissing)
 
@@ -28,8 +28,8 @@ func TestEnsureKnowledgeBase_EngramNotOnPath_Warns(t *testing.T) {
 }
 
 func TestEnsureKnowledgeBase_ProjectAlreadyExists(t *testing.T) {
-	runner := &envtest.FakeRunner{
-		Responses: map[string]envtest.Response{
+	runner := &runnertest.FakeRunner{
+		Responses: map[string]runnertest.Response{
 			"engram projects list": {Stdout: "nerv    3 memories\nother-project   1 memory\n", ExitCode: 0},
 		},
 	}
@@ -50,8 +50,8 @@ func TestEnsureKnowledgeBase_ProjectAlreadyExists(t *testing.T) {
 }
 
 func TestEnsureKnowledgeBase_ProjectMissing_CreatesIt(t *testing.T) {
-	runner := &envtest.FakeRunner{
-		Responses: map[string]envtest.Response{
+	runner := &runnertest.FakeRunner{
+		Responses: map[string]runnertest.Response{
 			"engram projects list": {Stdout: "other-project   1 memory\n", ExitCode: 0},
 		},
 	}
@@ -86,8 +86,8 @@ func TestEnsureKnowledgeBase_ProjectMissing_CreatesIt(t *testing.T) {
 }
 
 func TestEnsureKnowledgeBase_ProjectsListFails_Warns(t *testing.T) {
-	runner := &envtest.FakeRunner{
-		Responses: map[string]envtest.Response{
+	runner := &runnertest.FakeRunner{
+		Responses: map[string]runnertest.Response{
 			"engram projects list": {Stderr: "connection refused", ExitCode: 1},
 		},
 	}
@@ -103,11 +103,11 @@ func TestEnsureKnowledgeBase_ProjectsListFails_Warns(t *testing.T) {
 }
 
 func TestEnsureKnowledgeBase_SaveFails_Warns(t *testing.T) {
-	runner := &envtest.FakeRunner{
-		Responses: map[string]envtest.Response{
+	runner := &runnertest.FakeRunner{
+		Responses: map[string]runnertest.Response{
 			"engram projects list": {Stdout: "", ExitCode: 0},
 		},
-		Default: envtest.Response{Stderr: "write failed", ExitCode: 1},
+		Default: runnertest.Response{Stderr: "write failed", ExitCode: 1},
 	}
 
 	result := engram.EnsureKnowledgeBase(context.Background(), runner, lookPathFound)

@@ -11,13 +11,13 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/war-apps/nerv-by-gentle-ai/internal/env"
+	"github.com/war-apps/nerv-kit-by-gentle-ai/runner"
 )
 
-// gitReader reads the repository through an env.Runner; it never writes to
+// gitReader reads the repository through a runner.Runner; it never writes to
 // it, except for the fetch of origin's tags and notes outside offline mode.
 type gitReader struct {
-	runner env.Runner
+	runner runner.Runner
 	dir    string
 }
 

@@ -97,6 +97,39 @@ repository set up with nerv 4.2.0 or 5.0.0-alpha.1 (`.ai-workflow.yml`)
 migrates with `nerv migrate` (see [docs/migration.md](docs/migration.md));
 until then nerv refuses to run on the old file.
 
+## NERV ecosystem
+
+Some of NERV's optional extensions are moving out into standalone
+NERV-ecosystem tools: each gets its own repository, CLI, Claude Code
+plugin and configuration file, installed by its own script
+(`install.sh`/`install.ps1`) exactly like `nerv` itself — it installs and
+works on a machine without `nerv`.
+
+| Tool | Repository | Replaces |
+|---|---|---|
+| [`nerv-task`](https://github.com/war-apps/nerv-task-by-gentle-ai) | `war-apps/nerv-task-by-gentle-ai` | the `task` and `task-teamwork` extensions |
+
+`nerv install` and `nerv upgrade` also offer the catalogue, after NERV's
+own work: each tool's state (not installed, installed with its version,
+or outdated against its latest release) is shown and confirmed one by one
+on a terminal; `--tools <names>` installs or upgrades the named tools
+outright, and `--no-tools` skips the step. Confirming a tool here, or one
+already installed on this machine, also stops NERV from ever offering,
+selecting or re-enabling the extension it replaces — even one already
+enabled is left exactly as found, since disabling it is the tool's own
+install, never NERV's. See
+[docs/commands.md](docs/commands.md#nerv-install) for the full flow and
+flags.
+
+Once `nerv-task` is installed, `/nerv:init` offers `nerv-task init`
+instead of `/task:setup`, and `nerv migrate` moves the `tasks:` section to
+nerv-task's own `task.yaml` files instead of `.ai-workflow/config.yaml`
+(see [docs/commands.md](docs/commands.md#nerv-migrate) and
+[docs/configuration.md](docs/configuration.md#tasks-task-extension)). From
+then on, configure task tracking through nerv-task's own commands and
+[its documentation](https://github.com/war-apps/nerv-task-by-gentle-ai),
+not NERV's.
+
 ## Requirements
 
 - **gentle-ai 4.x** — major version 4 is required; minor and
@@ -143,7 +176,17 @@ resolution entirely).
 
 **Windows:**
 
-Download `nerv_<version>_windows_<amd64|arm64>.zip` from the
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/war-apps/nerv-by-gentle-ai/main/scripts/install.ps1 | iex"
+```
+
+Environment options (set before running): `NERV_CHANNEL` (`stable` default,
+`rc`, or `alpha`), `NERV_INSTALL_DIR` (default `%LOCALAPPDATA%\nerv\bin`),
+`NERV_NO_INSTALL` (non-empty: download and install the binary only, skip
+running `nerv install` afterwards), and `NERV_VERSION` (an explicit release
+tag, overriding channel resolution entirely).
+
+Or download `nerv_<version>_windows_<amd64|arm64>.zip` from the
 [latest release](https://github.com/war-apps/nerv-by-gentle-ai/releases/latest),
 extract `nerv.exe` onto `PATH`, then run:
 
@@ -438,3 +481,7 @@ checks and CI that gate a release.
 
 See [docs/releases.md](docs/releases.md) for versioning, channels, cutting
 a release, pre-releases, the release guard, CI, and marketplace notes.
+
+## License
+
+NERV is dedicated to the public domain under [CC0 1.0 Universal](LICENSE).

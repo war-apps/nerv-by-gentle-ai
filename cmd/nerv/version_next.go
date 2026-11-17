@@ -18,13 +18,13 @@ import (
 	"sync"
 	"syscall"
 
-	"github.com/war-apps/nerv-by-gentle-ai/internal/env"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/refusal"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/releaseclone"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/releaseconfig"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/releaseplan"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/versioning"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/workflowconfig"
+	"github.com/war-apps/nerv-kit-by-gentle-ai/runner"
 )
 
 const versionNextUsage = `Usage: nerv version next [flags]
@@ -404,7 +404,7 @@ func reportVersionError(ctx context.Context, sig os.Signal, stderr io.Writer, er
 // gitTopLevel resolves dir to the top level of its git repository. A
 // directory outside any repository is a refusal; a git that cannot run is
 // an environment error.
-func gitTopLevel(ctx context.Context, runner env.Runner, dir string) (string, error) {
+func gitTopLevel(ctx context.Context, runner runner.Runner, dir string) (string, error) {
 	out, errOut, code, err := runner.Run(ctx, "git", "-C", dir, "rev-parse", "--show-toplevel")
 	if err != nil {
 		if errors.Is(err, exec.ErrNotFound) {

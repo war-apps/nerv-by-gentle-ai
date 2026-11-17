@@ -12,11 +12,11 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/war-apps/nerv-by-gentle-ai/internal/env"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/extension"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/releaseconfig"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/releaseconfig/yamlsection"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/versioning"
+	"github.com/war-apps/nerv-kit-by-gentle-ai/runner"
 	"gopkg.in/yaml.v3"
 )
 
@@ -34,8 +34,8 @@ var NativeProviders = []string{Bash, ConventionalCommits, DockerCompose}
 
 // NativeDeps are what the native providers run with.
 type NativeDeps struct {
-	// Git runs the version engine's git; nil means env.ExecRunner.
-	Git env.Runner
+	// Git runs the version engine's git; nil means runner.ExecRunner.
+	Git runner.Runner
 }
 
 // RunNative runs one operation of the native release provider:

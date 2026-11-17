@@ -17,3 +17,15 @@ func TestInitCommand_OffersSetupFlows(t *testing.T) {
 		"/nerv:configure", "/task:setup", "/release:setup", "/release:deploy-setup",
 		"multi-select", "Follow the", "not offered")
 }
+
+// S11/U4: once nerv-task is installed, /nerv:init offers its own
+// repository setup ("nerv-task init") instead of /task:setup, and the
+// setup-flow prompt always carries an explicit "None" choice.
+func TestInitCommand_OffersNervTaskInitInsteadOfTaskSetupWhenInstalled(t *testing.T) {
+	data, err := fs.ReadFile(PluginFS(), "commands/init.md")
+	if err != nil {
+		t.Fatalf("reading plugin/commands/init.md: %v", err)
+	}
+	assertContainsAll(t, "commands/init.md", string(data),
+		"nerv-task init", "nerv-task is installed", "None")
+}

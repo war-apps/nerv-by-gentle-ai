@@ -14,12 +14,24 @@ import (
 	"strings"
 	"time"
 
+	"github.com/war-apps/nerv-by-gentle-ai/internal/configure"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/gentleai"
-	"github.com/war-apps/nerv-by-gentle-ai/internal/upgrade"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/version"
+	"github.com/war-apps/nerv-kit-by-gentle-ai/selfupgrade"
 )
 
-const upgradeUsage = `Usage: nerv upgrade [--alpha | --rc]
+const (
+	// defaultAPIBase is the GitHub API base of nerv's own repository.
+	defaultAPIBase = "https://api.github.com/repos/war-apps/nerv-by-gentle-ai"
+	// gentleAIAPIBase is the GitHub API base of gentle-ai's repository.
+	gentleAIAPIBase = "https://api.github.com/repos/Gentleman-Programming/gentle-ai"
+	// defaultDownloadBase is where nerv's release assets are downloaded.
+	defaultDownloadBase = "https://github.com/war-apps/nerv-by-gentle-ai/releases/download"
+
+	goInstallHint = "Install with: go install github.com/war-apps/nerv-by-gentle-ai/cmd/nerv@latest"
+)
+
+var upgradeUsage = `Usage: nerv upgrade [--alpha | --rc]
 
 Replace this nerv binary with the newest release, then run the new
 binary's install (nerv install, or nerv install --no-configure without an
@@ -39,14 +51,18 @@ checksum) — so gentle-ai keeps getting its chance and NERV stays laid
 over it either way. That install is told not to upgrade gentle-ai again
 (it already ran once, right here).
 
+Then offers the NERV-ecosystem tools (nerv-task today), the same way
+install does, but running "<tool> upgrade" for a confirmed or named tool
+instead of its install script.
+
 Flags:
   --alpha    Also consider alpha prereleases (the newest of stable and alpha)
   --rc       Also consider release candidates (the newest of stable and rc)
 
 Exit codes: 0 up to date, or the new binary's install exit code;
-1 the upgrade failed (nerv's or gentle-ai's) or this platform has no
-prebuilt binary; 2 usage error.
-`
+1 the upgrade failed (nerv's, gentle-ai's or an ecosystem tool's) or this
+platform has no prebuilt binary; 2 usage error.
+` + ecosystemToolsFlagsUsage("upgrade")
 
 // upgradeHTTPTimeout bounds every request nerv upgrade makes when
 // options.HTTPClient is nil.
@@ -57,6 +73,8 @@ func runUpgrade(args []string, stdout, stderr io.Writer, opts options) int {
 	fs.SetOutput(io.Discard)
 	alpha := fs.Bool("alpha", false, "")
 	rc := fs.Bool("rc", false, "")
+	tools := fs.String("tools", "", "")
+	noTools := fs.Bool("no-tools", false, "")
 	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			fmt.Fprint(stdout, upgradeUsage)
@@ -73,20 +91,20 @@ func runUpgrade(args []string, stdout, stderr io.Writer, opts options) int {
 		fmt.Fprintf(stderr, "nerv upgrade: --alpha and --rc cannot be used together\n\n%s", upgradeUsage)
 		return 2
 	}
-	channel := upgrade.Stable
+	channel := selfupgrade.Stable
 	switch {
 	case *alpha:
-		channel = upgrade.Alpha
+		channel = selfupgrade.Alpha
 	case *rc:
-		channel = upgrade.RC
+		channel = selfupgrade.RC
 	}
 
 	if exe, err := runningExecutable(opts); err == nil {
 		// Best-effort: a leftover <exe>.old from an earlier windows
-		// replacement (internal/upgrade.Replace) that could not be
+		// replacement (selfupgrade.Replace) that could not be
 		// removed while it was still that run's image. Harmless on
 		// every other goos, where Replace never creates one.
-		upgrade.CleanupStaleReplacement(exe)
+		selfupgrade.CleanupStaleReplacement(exe)
 	}
 
 	signalCtx := opts.SignalContext
@@ -121,6 +139,16 @@ func runUpgrade(args []string, stdout, stderr io.Writer, opts options) int {
 	if runInstall {
 		code = runNewInstall(ctx, bin, stdout, stderr, opts)
 	}
+
+	if home, homeErr := configure.ResolveHome(opts.Home); homeErr == nil {
+		if _, ecoErr := offerEcosystemTools(ctx, stdout, opts, home, "upgrade", *tools, *noTools); ecoErr != nil {
+			fmt.Fprintf(stdout, "nerv upgrade: %v\n", ecoErr)
+			if code == 0 {
+				code = exitCodeFor(ecoErr)
+			}
+		}
+	}
+
 	if code == 0 && (replaceErr != nil || gentleErr != nil) {
 		return 1
 	}
@@ -149,9 +177,9 @@ func upgradeGentleAI(ctx context.Context, stdout, stderr io.Writer, opts options
 	client := newUpgradeClient(opts)
 	client.APIBase = opts.GentleAIAPIBase
 	if client.APIBase == "" {
-		client.APIBase = upgrade.GentleAIAPIBase
+		client.APIBase = gentleAIAPIBase
 	}
-	latest, err := client.Resolve(ctx, upgrade.Stable)
+	latest, err := client.Resolve(ctx, selfupgrade.Stable)
 	if err != nil {
 		return false, err
 	}
@@ -160,7 +188,7 @@ func upgradeGentleAI(ctx context.Context, stdout, stderr io.Writer, opts options
 		fmt.Fprintf(stdout, "gentle-ai %s is a new major version: NERV %s supports gentle-ai %d.x, so gentle-ai stays on %s.\n", latest, version.Binary, gentleai.SupportedMajor, pre.Version)
 		return false, nil
 	}
-	if !upgrade.IsNewer(latest, pre.Version) {
+	if !selfupgrade.IsNewer(latest, pre.Version) {
 		fmt.Fprintf(stdout, "gentle-ai %s is up to date.\n", pre.Version)
 		return false, nil
 	}
@@ -189,16 +217,16 @@ func upgradeGentleAI(ctx context.Context, stdout, stderr io.Writer, opts options
 const gentleAIURL = "https://github.com/Gentleman-Programming/gentle-ai"
 
 // newUpgradeClient is the releases client of nerv's repository, from opts.
-func newUpgradeClient(opts options) upgrade.Client {
-	client := upgrade.Client{HTTP: opts.HTTPClient, APIBase: opts.ReleaseAPIBase, DownloadBase: opts.ReleaseDownloadBase}
+func newUpgradeClient(opts options) selfupgrade.Client {
+	client := selfupgrade.Client{HTTP: opts.HTTPClient, APIBase: opts.ReleaseAPIBase, DownloadBase: opts.ReleaseDownloadBase, BinaryName: "nerv"}
 	if client.HTTP == nil {
 		client.HTTP = &http.Client{Timeout: upgradeHTTPTimeout}
 	}
 	if client.APIBase == "" {
-		client.APIBase = upgrade.DefaultAPIBase
+		client.APIBase = defaultAPIBase
 	}
 	if client.DownloadBase == "" {
-		client.DownloadBase = upgrade.DefaultDownloadBase
+		client.DownloadBase = defaultDownloadBase
 	}
 	return client
 }
@@ -222,7 +250,7 @@ func runningExecutable(opts options) (string, error) {
 
 // replaceBinary swaps the running binary for the newest release of channel
 // and returns its path, or "" when it is already up to date.
-func replaceBinary(ctx context.Context, channel upgrade.Channel, stdout io.Writer, opts options) (string, error) {
+func replaceBinary(ctx context.Context, channel selfupgrade.Channel, stdout io.Writer, opts options) (string, error) {
 	goos, goarch := opts.GOOS, opts.GOARCH
 	if goos == "" {
 		goos = runtime.GOOS
@@ -230,7 +258,7 @@ func replaceBinary(ctx context.Context, channel upgrade.Channel, stdout io.Write
 	if goarch == "" {
 		goarch = runtime.GOARCH
 	}
-	if err := upgrade.CheckPlatform(goos, goarch); err != nil {
+	if err := selfupgrade.CheckPlatform(goos, goarch, "nerv", goInstallHint); err != nil {
 		return "", err
 	}
 
@@ -243,7 +271,7 @@ func replaceBinary(ctx context.Context, channel upgrade.Channel, stdout io.Write
 		return "", err
 	}
 	fmt.Fprintf(stdout, "Newest release on the %s channel: %s\n", channel, tag)
-	if !upgrade.IsNewer(tag, current) {
+	if !selfupgrade.IsNewer(tag, current) {
 		fmt.Fprintf(stdout, "nerv %s is up to date (newest on the %s channel: %s).\n", current, channel, tag)
 		return "", nil
 	}
@@ -258,13 +286,13 @@ func replaceBinary(ctx context.Context, channel upgrade.Channel, stdout io.Write
 		return "", err
 	}
 	defer os.RemoveAll(dir)
-	fmt.Fprintf(stdout, "Downloading %s\n", upgrade.ArchiveName(tag, goos, goarch))
+	fmt.Fprintf(stdout, "Downloading %s\n", selfupgrade.ArchiveName("nerv", tag, goos, goarch))
 	archive, err := client.Download(ctx, tag, goos, goarch, dir)
 	if err != nil {
 		return "", err
 	}
 	fmt.Fprintln(stdout, "Checksum verified.")
-	if err := upgrade.Replace(archive, exe, goos); err != nil {
+	if err := selfupgrade.Replace(archive, exe, goos, "nerv"); err != nil {
 		return "", err
 	}
 	fmt.Fprintf(stdout, "Replaced %s\n", exe)
@@ -285,8 +313,10 @@ func runNewInstall(ctx context.Context, bin string, stdout, stderr io.Writer, op
 	}
 	// upgradeGentleAI already ran gentle-ai's upgrade once for this nerv
 	// upgrade (whether or not it actually upgraded anything): the install
-	// this spawns must not run it again.
-	args = append(args, "--skip-gentle-ai-upgrade")
+	// this spawns must not run it again. The ecosystem tools step is
+	// skipped too: runUpgrade runs its own, with action "upgrade" instead
+	// of "install", once this nested install returns.
+	args = append(args, "--skip-gentle-ai-upgrade", "--skip-ecosystem-tools")
 	runBinary := opts.RunBinary
 	if runBinary == nil {
 		runBinary = execBinary

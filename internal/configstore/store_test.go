@@ -3,6 +3,7 @@ package configstore_test
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -168,6 +169,46 @@ func TestStore_Save_CreatesParentDirWhenFileMissing(t *testing.T) {
 	}
 	if string(content) != "enabled: true\n" {
 		t.Errorf("content = %q, want %q", content, "enabled: true\n")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Store.Save — backup permission (nerv-kit security fix): a backup of the
+// 0600 user config.yaml must keep 0600, never widen to the fixed 0644 the
+// pre-nerv-kit atomicfile used to write every backup with, regardless of
+// the source file's own mode.
+// ---------------------------------------------------------------------------
+
+func TestStore_Save_BackupKeepsTheUserConfigsMode(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX permission bits are not meaningfully enforced by the Windows filesystem")
+	}
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+	original := []byte("enabled: true\ngit:\n  base_branch: develop\n")
+	if err := os.WriteFile(path, original, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	doc := config.Parse(string(original))
+	doc.SetScalar("git.base_branch", "develop2")
+	now := time.Date(2026, 9, 29, 12, 34, 56, 0, time.UTC)
+
+	_, backup, err := (configstore.Store{}).Save(path, doc, original, now)
+	if err != nil {
+		t.Fatalf("Save() error = %v", err)
+	}
+	if backup == "" {
+		t.Fatal("backup = \"\", want a backup path")
+	}
+
+	info, err := os.Stat(backup)
+	if err != nil {
+		t.Fatalf("stat backup: %v", err)
+	}
+	if info.Mode().Perm() != 0o600 {
+		t.Errorf("backup mode = %v, want 0600 (the source config.yaml's own mode)", info.Mode().Perm())
 	}
 }
 

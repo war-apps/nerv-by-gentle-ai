@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/war-apps/nerv-by-gentle-ai/internal/env"
-	"github.com/war-apps/nerv-by-gentle-ai/internal/env/envtest"
+	"github.com/war-apps/nerv-kit-by-gentle-ai/runner"
+	"github.com/war-apps/nerv-kit-by-gentle-ai/runner/runnertest"
 )
 
 // Rule 1: commit-analyzer's default rules with the conventionalcommits
@@ -396,7 +396,7 @@ func TestComputeNotes(t *testing.T) {
 
 // Rule 6: Compute goes through the injected runner.
 func TestComputeUsesTheInjectedRunner(t *testing.T) {
-	fake := &envtest.FakeRunner{Default: envtest.Response{Stderr: "fatal: not a git repository", ExitCode: 128}}
+	fake := &runnertest.FakeRunner{Default: runnertest.Response{Stderr: "fatal: not a git repository", ExitCode: 128}}
 	_, err := Compute(context.Background(), Request{RepoDir: "/nowhere", Runner: fake, Offline: true})
 	if err == nil || !strings.Contains(err.Error(), "not a git repository") {
 		t.Fatalf("err = %v, want a not-a-git-repository error", err)
@@ -460,7 +460,7 @@ func TestComputeFetchesOriginReleases(t *testing.T) {
 	if offline.NewReleaseVersion != "1.0.0-alpha.1" {
 		t.Fatalf("offline = %q, want 1.0.0-alpha.1 (no tags locally)", offline.NewReleaseVersion)
 	}
-	results, err := Compute(context.Background(), Request{RepoDir: r.dir, Runner: env.ExecRunner{}, Now: fixedNow})
+	results, err := Compute(context.Background(), Request{RepoDir: r.dir, Runner: runner.ExecRunner{}, Now: fixedNow})
 	if err != nil {
 		t.Fatal(err)
 	}

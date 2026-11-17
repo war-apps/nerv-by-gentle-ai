@@ -13,10 +13,10 @@ import (
 	"time"
 
 	nerv "github.com/war-apps/nerv-by-gentle-ai"
-	"github.com/war-apps/nerv-by-gentle-ai/internal/env/envtest"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/install"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/paths"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/version"
+	"github.com/war-apps/nerv-kit-by-gentle-ai/runner/runnertest"
 )
 
 func fixedNow() time.Time { return time.Date(2026, 9, 29, 15, 4, 5, 0, time.UTC) }
@@ -81,9 +81,9 @@ func seedInstalledPlugins(t *testing.T, home, cachedVersion string) {
 	}
 }
 
-func baseRunner() *envtest.FakeRunner {
-	return &envtest.FakeRunner{
-		Responses: map[string]envtest.Response{
+func baseRunner() *runnertest.FakeRunner {
+	return &runnertest.FakeRunner{
+		Responses: map[string]runnertest.Response{
 			"gentle-ai --version":               {Stdout: "gentle-ai version 4.0.0\n", ExitCode: 0},
 			"claude plugin uninstall nerv@nerv": {Stdout: "uninstalled\n", ExitCode: 0},
 			"claude plugin install nerv@nerv":   {Stdout: "installed\n", ExitCode: 0},
@@ -193,8 +193,8 @@ func TestInstall_NeverPrintsConfigureHint(t *testing.T) {
 
 func TestInstall_RequireGentleAI_MissingRefuses(t *testing.T) {
 	home := t.TempDir()
-	runner := &envtest.FakeRunner{
-		Default: envtest.Response{Err: errors.New("executable file not found in $PATH")},
+	runner := &runnertest.FakeRunner{
+		Default: runnertest.Response{Err: errors.New("executable file not found in $PATH")},
 	}
 	var stdout bytes.Buffer
 	deps := install.Deps{Home: home, FS: nerv.PluginFS(), Runner: runner, Now: fixedNow, LookPath: lookPathAll, Stdout: &stdout}
@@ -229,7 +229,7 @@ func TestInstall_RequireGentleAI_MajorGate(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			home := t.TempDir()
 			runner := baseRunner()
-			runner.Responses["gentle-ai --version"] = envtest.Response{Stdout: "gentle-ai version " + tt.version + "\n"}
+			runner.Responses["gentle-ai --version"] = runnertest.Response{Stdout: "gentle-ai version " + tt.version + "\n"}
 			seedInstalledPlugins(t, home, pluginVersion(t))
 			var stdout bytes.Buffer
 			deps := install.Deps{Home: home, FS: nerv.PluginFS(), Runner: runner, Now: fixedNow, LookPath: lookPathAll, Stdout: &stdout}
@@ -259,7 +259,7 @@ func TestInstall_RequireGentleAI_MajorGate(t *testing.T) {
 func TestInstall_GentleAIVersionNote(t *testing.T) {
 	home := t.TempDir()
 	runner := baseRunner()
-	runner.Responses["gentle-ai --version"] = envtest.Response{Stdout: "gentle-ai version 4.0.0\n"}
+	runner.Responses["gentle-ai --version"] = runnertest.Response{Stdout: "gentle-ai version 4.0.0\n"}
 	seedInstalledPlugins(t, home, pluginVersion(t))
 	var stdout bytes.Buffer
 	deps := install.Deps{Home: home, FS: nerv.PluginFS(), Runner: runner, Now: fixedNow, LookPath: lookPathAll, Stdout: &stdout}
@@ -278,7 +278,7 @@ func TestInstall_GentleAIVersionNote(t *testing.T) {
 func TestInstall_GentleAI3x_UpgradeHint(t *testing.T) {
 	home := t.TempDir()
 	runner := baseRunner()
-	runner.Responses["gentle-ai --version"] = envtest.Response{Stdout: "gentle-ai version 3.7.0\n"}
+	runner.Responses["gentle-ai --version"] = runnertest.Response{Stdout: "gentle-ai version 3.7.0\n"}
 	seedInstalledPlugins(t, home, pluginVersion(t))
 	var stdout bytes.Buffer
 	deps := install.Deps{Home: home, FS: nerv.PluginFS(), Runner: runner, Now: fixedNow, LookPath: lookPathAll, Stdout: &stdout}
@@ -297,7 +297,7 @@ func TestInstall_GentleAIMissing_WithoutRequire_WarnsAndContinues(t *testing.T) 
 	home := t.TempDir()
 	runner := baseRunner()
 	delete(runner.Responses, "gentle-ai --version")
-	runner.Responses["gentle-ai --version"] = envtest.Response{Err: errors.New("not found")}
+	runner.Responses["gentle-ai --version"] = runnertest.Response{Err: errors.New("not found")}
 	seedInstalledPlugins(t, home, pluginVersion(t))
 	var stdout bytes.Buffer
 	deps := install.Deps{Home: home, FS: nerv.PluginFS(), Runner: runner, Now: fixedNow, LookPath: lookPathAll, Stdout: &stdout}
@@ -418,7 +418,7 @@ func TestInstall_AppliesModelOverridesToCache(t *testing.T) {
 // register the materialized directory through the CLI first.
 // ---------------------------------------------------------------------------
 
-func callLines(runner *envtest.FakeRunner) []string {
+func callLines(runner *runnertest.FakeRunner) []string {
 	var lines []string
 	for _, c := range runner.Calls {
 		lines = append(lines, c.Name+" "+strings.Join(c.Args, " "))
@@ -462,7 +462,7 @@ func TestInstall_MarketplaceAddFailure_StopsBeforeInstall(t *testing.T) {
 	home := t.TempDir()
 	runner := baseRunner()
 	runner.Responses["claude plugin marketplace add "+filepath.Join(home, ".nerv", "marketplace")] =
-		envtest.Response{Stderr: "invalid marketplace\n", ExitCode: 1}
+		runnertest.Response{Stderr: "invalid marketplace\n", ExitCode: 1}
 	var stdout bytes.Buffer
 	deps := install.Deps{Home: home, FS: nerv.PluginFS(), Runner: runner, Now: fixedNow, LookPath: lookPathAll, Stdout: &stdout}
 
@@ -504,7 +504,7 @@ func TestRefreshCache_MarketplaceAddFailure_StopsBeforeInstall(t *testing.T) {
 	home := t.TempDir()
 	runner := baseRunner()
 	runner.Responses["claude plugin marketplace add "+filepath.Join(home, ".nerv", "marketplace")] =
-		envtest.Response{Stderr: "invalid marketplace\n", ExitCode: 1}
+		runnertest.Response{Stderr: "invalid marketplace\n", ExitCode: 1}
 	var stdout bytes.Buffer
 	deps := install.Deps{Home: home, FS: nerv.PluginFS(), Runner: runner, Now: fixedNow, LookPath: lookPathAll, Stdout: &stdout}
 
@@ -549,7 +549,7 @@ func TestInstall_SkillsStep_RunsAndReportsGentleAISync(t *testing.T) {
 func TestInstall_SkillsStep_FailedGentleAISync_WarnsWithDiagnostic(t *testing.T) {
 	home := t.TempDir()
 	runner := baseRunner()
-	runner.Responses["gentle-ai"] = envtest.Response{ExitCode: 1, Stderr: "boom: no such agent\n"}
+	runner.Responses["gentle-ai"] = runnertest.Response{ExitCode: 1, Stderr: "boom: no such agent\n"}
 	seedInstalledPlugins(t, home, pluginVersion(t))
 	var stdout bytes.Buffer
 	deps := install.Deps{Home: home, FS: nerv.PluginFS(), Runner: runner, Now: fixedNow, LookPath: lookPathAll, Stdout: &stdout, ConfirmSync: func([]string) bool { return true }}
@@ -564,7 +564,7 @@ func TestInstall_SkillsStep_FailedGentleAISync_WarnsWithDiagnostic(t *testing.T)
 	}
 }
 
-func countSyncCalls(runner *envtest.FakeRunner) int {
+func countSyncCalls(runner *runnertest.FakeRunner) int {
 	n := 0
 	for _, l := range callLines(runner) {
 		if strings.HasPrefix(l, "gentle-ai sync ") {

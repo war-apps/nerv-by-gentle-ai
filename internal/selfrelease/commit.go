@@ -2,7 +2,7 @@
 // Commits, edits plugin.json and CHANGELOG.md, and checks release
 // readiness. Every function in this package is pure over its inputs
 // except the thin git access helpers in git.go, which run "git" through
-// an injected env.Runner.
+// an injected runner.Runner.
 package selfrelease
 
 import (

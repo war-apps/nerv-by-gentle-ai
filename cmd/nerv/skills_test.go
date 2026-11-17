@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/war-apps/nerv-by-gentle-ai/internal/env/envtest"
+	"github.com/war-apps/nerv-kit-by-gentle-ai/runner/runnertest"
 )
 
 // These cases port the 10 CLI cases install-skills.test.ps1's case groups
@@ -169,7 +169,7 @@ func TestRunSkills_Run_PrintsTheGentleAISyncLine(t *testing.T) {
 }
 
 func TestRunSkills_FailedSync_PrintsWarningWithDiagnostic(t *testing.T) {
-	cases := map[string]envtest.Response{
+	cases := map[string]runnertest.Response{
 		"non-zero exit": {ExitCode: 1, Stderr: "boom: no such agent\n"},
 		"launch error":  {Err: errors.New("boom: no such agent")},
 	}
@@ -178,7 +178,7 @@ func TestRunSkills_FailedSync_PrintsWarningWithDiagnostic(t *testing.T) {
 			var stdout, stderr bytes.Buffer
 			home := t.TempDir()
 			opts := testOptions(home)
-			opts.Runner = &envtest.FakeRunner{Responses: map[string]envtest.Response{"gentle-ai": resp}}
+			opts.Runner = &runnertest.FakeRunner{Responses: map[string]runnertest.Response{"gentle-ai": resp}}
 			opts.IsTerminal = func() bool { return true }
 			opts.Stdin = strings.NewReader("y\n")
 
@@ -199,7 +199,7 @@ func TestRunSkills_FailedSync_PrintsWarningWithDiagnostic(t *testing.T) {
 // The gentle-ai sync asks first in a terminal and never runs without one.
 // ---------------------------------------------------------------------------
 
-func countSyncCalls(runner *envtest.FakeRunner) int {
+func countSyncCalls(runner *runnertest.FakeRunner) int {
 	n := 0
 	for _, c := range runner.Calls {
 		if c.Name == "gentle-ai" && len(c.Args) > 0 && c.Args[0] == "sync" {
@@ -212,7 +212,7 @@ func countSyncCalls(runner *envtest.FakeRunner) int {
 func TestRunSkills_Terminal_ConfirmYes_RunsSync(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	opts := testOptions(t.TempDir())
-	runner := &envtest.FakeRunner{}
+	runner := &runnertest.FakeRunner{}
 	opts.Runner = runner
 	opts.IsTerminal = func() bool { return true }
 	opts.Stdin = strings.NewReader("y\n")
@@ -235,7 +235,7 @@ func TestRunSkills_Terminal_DefaultAnswerIsNo(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			var stdout, stderr bytes.Buffer
 			opts := testOptions(t.TempDir())
-			runner := &envtest.FakeRunner{}
+			runner := &runnertest.FakeRunner{}
 			opts.Runner = runner
 			opts.IsTerminal = func() bool { return true }
 			opts.Stdin = strings.NewReader(input)
@@ -258,7 +258,7 @@ func TestRunSkills_Terminal_DefaultAnswerIsNo(t *testing.T) {
 func TestRunSkills_NotATerminal_NoPromptNoSync_RemedyStays(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	opts := testOptions(t.TempDir())
-	runner := &envtest.FakeRunner{}
+	runner := &runnertest.FakeRunner{}
 	opts.Runner = runner
 	opts.Stdin = strings.NewReader("y\n")
 
@@ -281,7 +281,7 @@ func TestRunSkills_NotATerminal_NoPromptNoSync_RemedyStays(t *testing.T) {
 func TestRunSkills_JSON_NeverPromptsOrSyncs(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	opts := testOptions(t.TempDir())
-	runner := &envtest.FakeRunner{}
+	runner := &runnertest.FakeRunner{}
 	opts.Runner = runner
 	opts.IsTerminal = func() bool { return true }
 	opts.Stdin = strings.NewReader("y\n")

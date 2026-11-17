@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/war-apps/nerv-by-gentle-ai/internal/env"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/releaseconfig"
+	"github.com/war-apps/nerv-kit-by-gentle-ai/runner"
 )
 
 // setupRepo is a git repository holding files (name -> content).
@@ -37,7 +37,7 @@ func runSetup(t *testing.T, repo string, args ...string) (int, string, string) {
 	t.Helper()
 	var stdout, stderr bytes.Buffer
 	opts := testOptions(t.TempDir())
-	opts.Runner = env.ExecRunner{}
+	opts.Runner = runner.ExecRunner{}
 	code := run(append([]string{"release", "setup", "--cwd", repo}, args...), &stdout, &stderr, opts)
 	return code, stdout.String(), stderr.String()
 }

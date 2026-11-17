@@ -15,12 +15,12 @@ import (
 	"testing"
 
 	"github.com/war-apps/nerv-by-gentle-ai/internal/artifact"
-	"github.com/war-apps/nerv-by-gentle-ai/internal/env/envtest"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/releaseclone"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/releaseconfig"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/releaseplan"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/releaserun"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/versioning"
+	"github.com/war-apps/nerv-kit-by-gentle-ai/runner/runnertest"
 )
 
 const localHead = "1111111111111111111111111111111111111111"
@@ -223,7 +223,7 @@ func (w *fakeWorkspace) BranchOnOrigin(ctx context.Context) (string, error) {
 // clone and the steps are recorded fakes sharing one event log.
 type releaseFixture struct {
 	top      string
-	runner   *envtest.FakeRunner
+	runner   *runnertest.FakeRunner
 	ws       *fakeWorkspace
 	opened   []releaseclone.Options
 	events   []string
@@ -264,7 +264,7 @@ func newReleaseFixture(t *testing.T, nervYAML string) *releaseFixture {
 	}
 	f := &releaseFixture{
 		top: top,
-		runner: &envtest.FakeRunner{Responses: map[string]envtest.Response{
+		runner: &runnertest.FakeRunner{Responses: map[string]runnertest.Response{
 			"git -C . rev-parse --show-toplevel":                            {Stdout: top + "\n"},
 			"git -C " + top + " symbolic-ref --short HEAD":                  {Stdout: "main\n"},
 			"git -C " + top + " rev-parse --verify --quiet refs/heads/main": {Stdout: localHead + "\n"},
@@ -471,7 +471,7 @@ func TestRelease_RefusesWhenTheLocalBranchIsNotOrigins(t *testing.T) {
 func TestRelease_ReadsOriginOnTheRequestedBranch(t *testing.T) {
 	f := newReleaseFixture(t, releaseMonorepoYAML)
 	f.monorepoResults()
-	f.runner.Responses["git -C "+f.top+" rev-parse --verify --quiet refs/heads/develop"] = envtest.Response{Stdout: localHead + "\n"}
+	f.runner.Responses["git -C "+f.top+" rev-parse --verify --quiet refs/heads/develop"] = runnertest.Response{Stdout: localHead + "\n"}
 	if code, _, stderr := f.run(t, "--yes", "--branch", "develop", "--fetch-timeout", "5s", "--project", "web"); code != 0 {
 		t.Fatalf("exit %d: %s", code, stderr)
 	}
@@ -809,7 +809,7 @@ func TestRelease_AnExistingArtifactIsRefusedUnlessForced(t *testing.T) {
 
 func TestRelease_ExplicitVersionSkipsComputing(t *testing.T) {
 	f := newReleaseFixture(t, releaseMonorepoYAML)
-	f.runner.Responses["git -C "+f.ws.dir+" tag --list"] = envtest.Response{Stdout: "core-v1.0.0\ncore-v1.1.0-rc.2\nweb-v9.0.0\nv5.0.0\n"}
+	f.runner.Responses["git -C "+f.ws.dir+" tag --list"] = runnertest.Response{Stdout: "core-v1.0.0\ncore-v1.1.0-rc.2\nweb-v9.0.0\nv5.0.0\n"}
 	code, doc, stderr := f.runJSON(t, "--yes", "--project", "core", "--version", "1.1.0", "--expect", "core=1.1.0")
 	if code != 0 || doc.Status != "packaged" || doc.SemanticReleaseConfig != "" {
 		t.Fatalf("exit %d, %+v\n%s", code, doc, stderr)
@@ -900,7 +900,7 @@ func TestRelease_ExplicitVersionChecks(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			f := newReleaseFixture(t, releaseMonorepoYAML)
-			f.runner.Responses["git -C "+f.ws.dir+" tag --list"] = envtest.Response{Stdout: tt.tags}
+			f.runner.Responses["git -C "+f.ws.dir+" tag --list"] = runnertest.Response{Stdout: tt.tags}
 			code, doc, _ := f.runJSON(t, append(tt.args, "--yes")...)
 			if code != 1 || doc.Status != "refused" || !strings.Contains(doc.Error, tt.want) {
 				t.Fatalf("exit %d, %+v; want a refusal with %q", code, doc, tt.want)

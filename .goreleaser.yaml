@@ -30,8 +30,7 @@ archives:
           - zip
     name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
     files:
-      # No LICENSE file exists in this repository yet; add it here once one
-      # is added.
+      - LICENSE
       - README.md
 
 checksum:
