@@ -7,6 +7,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [6.5.0] - 2026-11-17
+
+Upgrading from 6.4.0: run `nerv upgrade`, then restart Claude Code. nerv now
+offers the NERV ecosystem tools: today nerv-task, the task tool that replaces
+the `task` and `task-teamwork` extensions (choose it in the list, or
+`nerv install --tools nerv-task`). Once nerv-task is installed, run
+`nerv migrate --user` to move your task settings to
+`~/.config/ai-workflow/task.yaml` (`%AppData%i-workflow	ask.yaml` on Windows),
+and `nerv migrate` in each repository for its `.ai-workflow/task.yaml`.
+Windows installs in one line with `scripts/install.ps1`. Backups of the user
+configuration now keep its permissions, and Windows paths are written as
+valid YAML.
+
+### Added
+- ecosystem: add the released-tools catalogue, state and actions (e277cb9)
+- init: offer nerv-task init instead of /task:setup when installed (c61bc03)
+- install: add scripts/install.ps1 for Windows, tested on CI (4822d57)
+- install: offer NERV-ecosystem tools in nerv install/nerv upgrade (40ce620)
+- install: never re-offer an extension its ecosystem tool replaces (056a85e)
+- migrate: move task settings to nerv-task's task.yaml (5bc81d6)
+
+### Changed
+- runner: use nerv-kit runner for process execution and home/PATH lookups (dda2b49)
+- claude: use nerv-kit claudeplugin for settings, plugin CLI, materialization and version (6b7834e)
+- upgrade: use nerv-kit selfupgrade for the release client (1517623)
+
+### Fixed
+- config: keep backup file permissions via nerv-kit atomicfile (8350789)
+- config: use nerv-kit v0.1.1 so back-to-back saves keep both backups (879018e)
+- install: offer ecosystem tools before the extensions they replace (c9cc685)
+- config: escape backslashes and control characters in quoted YAML values (5ada425)
+- migrate: write the global task.yaml next to the user config nerv migrates (edbd3c1)
+
 ## [6.4.0] - 2026-11-02
 
 Upgrading from 6.3.0: on Linux and macOS run `nerv upgrade`, then restart
