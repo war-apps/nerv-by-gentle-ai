@@ -44,6 +44,7 @@ import (
 	"github.com/war-apps/nerv-by-gentle-ai/internal/deployprovider"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/proc"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/refusal"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/workflowconfig"
 )
 
 // Options configure one deploy.
@@ -453,22 +454,34 @@ func (d *deployer) manifest(name, slot, at string) (*deployprovider.Manifest, er
 	return m, nil
 }
 
-// resolveConfig gives each declared key its value: the target's, the user
-// scope's, or the default. An undeclared or ill-typed key is refused.
+// resolveConfig gives each declared key its value: a personal (scope:
+// user) key comes from the user scope only (UserValue), never the
+// target's given config, so a target can never shadow or override it
+// (R-S4); every other key is the target's, else the user scope's, else
+// the default. An undeclared or ill-typed key is refused, and so is a
+// target that sets a personal key, naming it.
 func (d *deployer) resolveConfig(m *deployprovider.Manifest, given map[string]string, at string) (map[string]string, error) {
 	var problems []string
 	for _, key := range sortedKeys(given) {
-		if _, ok := m.Key(key); !ok {
+		c, ok := m.Key(key)
+		switch {
+		case !ok:
 			var keys []string
 			for _, c := range m.Config {
 				keys = append(keys, c.Key)
 			}
 			problems = append(problems, fmt.Sprintf("config.%s is not a key of provider %s (%s)", key, m.Name, orNone(strings.Join(keys, ", "))))
+		case c.Scope == "user":
+			problems = append(problems, fmt.Sprintf("%s.config.%s: %s", at, key, workflowconfig.PersonalKeyMessage("deploy.providers."+m.Name+"."+key)))
 		}
 	}
 	cfg := map[string]string{}
 	for _, c := range m.Config {
-		v, ok := given[c.Key]
+		var v string
+		var ok bool
+		if c.Scope != "user" {
+			v, ok = given[c.Key]
+		}
 		if !ok && d.o.UserValue != nil {
 			v, ok = d.o.UserValue(m.Name, c.Key)
 		}

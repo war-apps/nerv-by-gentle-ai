@@ -34,7 +34,8 @@ mcp:
     - twprojects-list_tasklists
 
 # Read from tasks.providers.teamwork.<key>: the scope: repo keys from .ai-workflow/config.yaml only,
-# the scope: user keys from the user config.yaml (the project file still wins when it sets one).
+# the scope: user keys from the user config.yaml only (the project file
+# can never override or shadow the user's own value for one of these).
 config:
   - key: assignee_id
     scope: user

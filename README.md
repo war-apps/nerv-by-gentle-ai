@@ -133,7 +133,7 @@ not NERV's.
 ## Requirements
 
 - **gentle-ai 4.x** — major version 4 is required; minor and
-  patch are free. Tested against 4.3.1. Within 4.x, `nerv install` and
+  patch are free. Tested against 4.5.0. Within 4.x, `nerv install` and
   `nerv upgrade` keep gentle-ai on its newest 4.x release automatically
   (`gentle-ai upgrade gentle-ai`, then `gentle-ai sync`); on 3.x, upgrade
   by hand with

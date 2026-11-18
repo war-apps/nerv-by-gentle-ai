@@ -7,8 +7,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"github.com/war-apps/nerv-by-gentle-ai/internal/artifact"
@@ -71,18 +73,85 @@ func (w workspace) resolve(ctx context.Context, rev string) string {
 	return out
 }
 
-// clone clones url's branch into the workspace with origin's tags and
-// semantic-release notes. Credentials stay the user's git setup; prompts
-// are refused.
-func (w workspace) clone(ctx context.Context, url, branch string) error {
+// clone clones remoteURL's branch into the workspace with origin's tags
+// and semantic-release notes. Credentials stay the user's git setup;
+// prompts are refused. remoteURL's userinfo (a CI token, commonly
+// https://user:token@host/...) must never reach an error, a log line or
+// the deploy report, so it, and any the same credentials git's own
+// stderr echoes back, are redacted before they appear in the error.
+func (w workspace) clone(ctx context.Context, remoteURL, branch string) error {
 	res, err := w.runner.Run(ctx, proc.Command{Name: "git", Env: w.env,
-		Args: []string{"-c", "credential.interactive=never", "clone", "--quiet", "--no-checkout", "--branch", branch, "--", url, w.dir}})
+		Args: []string{"-c", "credential.interactive=never", "clone", "--quiet", "--no-checkout", "--branch", branch, "--", remoteURL, w.dir}})
 	if err != nil {
-		return fmt.Errorf("git clone %s (branch %s): %w: %s", url, branch, err, strings.TrimSpace(string(res.Stderr)))
+		detail := redactUserinfo(strings.TrimSpace(string(res.Stderr)))
+		return fmt.Errorf("git clone %s (branch %s): %w: %s", redactURL(remoteURL), branch, err, detail)
 	}
 	_, err = w.git(ctx, "-c", "credential.interactive=never", "fetch", "--quiet", "--tags", "origin",
 		"+refs/notes/semantic-release*:refs/notes/semantic-release*")
 	return err
+}
+
+// hasSchemeRe matches a URL scheme ("https://", "ssh://", ...); an scp-like
+// ssh address (git@host:org/repo) has none and carries no secret.
+var hasSchemeRe = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9+.-]*://`)
+
+// schemeUserinfoRe matches a URL's scheme and userinfo in free text
+// ("scheme://userinfo@"), to find it wherever git's own stderr echoes a
+// failed URL back. The userinfo group is greedy up to the LAST '@'
+// before the host (allowing '@' is required, not just tolerated: a
+// password containing '@', such as p@ss, must not leave the part after
+// its first '@' unmasked).
+var schemeUserinfoRe = regexp.MustCompile(`(?i)\b([a-z][a-z0-9+.-]*)://([^/\s'"]*)@`)
+
+// isSecretUserinfo reports whether a URL's userinfo may hold a secret:
+// any userinfo on a scheme other than ssh (https://<token>@host is a
+// common CI form with no password part at all), or a password part on
+// any scheme. A bare ssh username (ssh://git@host, git@host:org/repo) is
+// git's own convention for the login name, not a secret.
+func isSecretUserinfo(scheme, userinfo string) bool {
+	switch strings.ToLower(scheme) {
+	case "ssh", "git+ssh", "ssh+git", "git":
+		return strings.Contains(userinfo, ":")
+	default:
+		return true
+	}
+}
+
+// redactURL drops raw's userinfo when it may hold a secret (isSecretUserinfo),
+// keeping the scheme, host and path (https://user:token@host/path ->
+// https://host/path): a cloned repository's CI remote commonly carries a
+// token there, and it must never reach an error, a log line or the
+// deploy report. An scp-like ssh address, anything without a URL scheme,
+// or a bare ssh username, is returned unchanged. raw having a scheme but
+// failing to parse (invalid percent-encoding, a bad port, ...) fails
+// closed through redactUserinfo's text match, instead of returning raw
+// (and any credential it carries) just because net/url choked on it.
+func redactURL(raw string) string {
+	if !hasSchemeRe.MatchString(raw) {
+		return raw
+	}
+	u, err := url.Parse(raw)
+	if err != nil {
+		return redactUserinfo(raw)
+	}
+	if u.User == nil || !isSecretUserinfo(u.Scheme, u.User.String()) {
+		return raw
+	}
+	u.User = nil
+	return u.String()
+}
+
+// redactUserinfo masks every secret URL userinfo (isSecretUserinfo) found
+// in free text (git's own stderr can echo the URL it failed to read).
+func redactUserinfo(s string) string {
+	return schemeUserinfoRe.ReplaceAllStringFunc(s, func(m string) string {
+		sub := schemeUserinfoRe.FindStringSubmatch(m)
+		scheme, userinfo := sub[1], sub[2]
+		if !isSecretUserinfo(scheme, userinfo) {
+			return m
+		}
+		return scheme + "://***@"
+	})
 }
 
 // releaseState is what origin already holds of this release.

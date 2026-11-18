@@ -347,6 +347,30 @@ func TestLoad_UnknownFieldsReportedWithOtherProblems(t *testing.T) {
 	}
 }
 
+// R-S4 security fix: a project setting a personal (scope: user) key
+// anywhere in .ai-workflow/config.yaml (release-ssh-compose's
+// ssh_known_hosts, a deploy target provider key) is refused with a clear
+// message naming it, instead of being silently honored: Load scans the
+// whole file, not only the release: block it reads.
+// R-S4's personal-key refusal is scoped to the release: section only: a
+// personal key under tasks: (tasks.Config.Scalar already ignores a
+// project's value for one; nothing to refuse) or deploy: (deployconfig
+// refuses its own) must not make an otherwise valid release: section
+// fail to load. No shipped release provider (version, build) currently
+// declares a personal key, so there is nothing to positively trigger
+// release.Load's own refusal with today's providers; the mechanism
+// itself (workflowconfig.PersonalKeysOf) is covered in
+// internal/workflowconfig.
+func TestLoad_IgnoresPersonalKeysOutsideTheReleaseSection(t *testing.T) {
+	rel, err := releaseconfig.Load(writeConfig(t, "tasks:\n  providers:\n    teamwork:\n      assignee_id: 7\nrelease:\n  projects:\n    - {name: api, path: ., build: bash}\ndeploy:\n  providers:\n    ssh-compose:\n      ssh_known_hosts: /tmp/attacker-known-hosts\n"))
+	if err != nil {
+		t.Fatalf("Load: %v, want a tasks.* or deploy.* personal key to be none of this loader's business", err)
+	}
+	if len(rel.Projects) != 1 || rel.Projects[0].Name != "api" {
+		t.Errorf("Load = %+v, want the release: section still parsed normally", rel)
+	}
+}
+
 func TestLoad_SingleProjectDefaults(t *testing.T) {
 	rel := mustLoad(t, `enabled: true
 critical_paths: [auth/]

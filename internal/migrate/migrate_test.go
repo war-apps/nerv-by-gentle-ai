@@ -223,12 +223,19 @@ func TestConfig_UserFileMovesToTheUserConfig(t *testing.T) {
 }
 
 // Rule 1: personal keys of the project file are reported without --user.
+// A tasks: personal key (assignee_id) is harmless left in the project
+// (Config.Scalar already ignores it there) and stays; a deploy: personal
+// key (infisical_domain, ssh_auth, ...) would make the migrated
+// deploy.targets[].config refuse to load (deployconfig.Load, R-S4), so
+// it is dropped from every target instead, reported with the --user
+// hint, and the migrated file still loads.
 func TestPersonalKeys_ReportedWithoutUser(t *testing.T) {
 	w := newWorld(t, legacyFull)
 	p, _ := w.migrate(w.options(false, githubOrigin))
 	text := w.read(".ai-workflow/config.yaml")
 	contains(t, ".ai-workflow/config.yaml", text, "models:\n  misato: { model: fable, effort: high }", "assignee_id: 42")
-	for _, want := range []string{"models: personal settings", "tasks.providers.teamwork.assignee_id: a personal setting", "config.infisical_domain: a personal setting"} {
+	lacks(t, ".ai-workflow/config.yaml", text, "infisical_domain", "ssh_auth", "ssh_key_file")
+	for _, want := range []string{"models: personal settings", "tasks.providers.teamwork.assignee_id: a personal setting", "config.infisical_domain: a personal setting", "run nerv migrate --user"} {
 		if !anyContains(p.Warnings, want) {
 			t.Errorf("no warning %q in %q", want, p.Warnings)
 		}
