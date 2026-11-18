@@ -227,10 +227,14 @@ func Load(repoRoot string) (*Release, error) {
 }
 
 // refusePersonalKeys reports every personal key (workflowconfig.Personal)
-// the project file sets, such as release-ssh-compose's ssh_known_hosts,
-// as one error naming each (the shipped providers only: a malformed
-// project-local provider is left to the normal validation path, which
-// reports it with its own, correctly classified refusal). It scans the
+// the project file sets under release: (such as a future release
+// provider's own, the shipped providers only: a malformed project-local
+// provider is left to the normal validation path, which reports it with
+// its own, correctly classified refusal), as one error naming each. It
+// is scoped to the release: section only: a personal key under tasks:
+// or deploy: is none of this loader's business (tasks.Config.Scalar
+// already ignores a project value for one; deployconfig.Load refuses
+// its own), and must not make this one refuse to load. It scans the
 // whole document as YAML (unlike parse's tolerant per-block cut), so a
 // scan error is not reported here: it falls through to parse, which
 // reports whatever is actually wrong with the release: block.
@@ -239,7 +243,7 @@ func refusePersonalKeys(data []byte) error {
 	if err != nil {
 		return err
 	}
-	keys, err := workflowconfig.ProjectPersonalKeys(config.Parse(string(data)), personal)
+	keys, err := workflowconfig.PersonalKeysOf(config.Parse(string(data)), SectionKey, personal)
 	if err != nil || len(keys) == 0 {
 		return nil
 	}

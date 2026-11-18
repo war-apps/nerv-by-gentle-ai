@@ -23,6 +23,7 @@ import (
 	"os"
 	"reflect"
 	"regexp"
+	"sort"
 	"strings"
 
 	nerv "github.com/war-apps/nerv-by-gentle-ai"
@@ -115,11 +116,12 @@ func CommitMessage(message string, r Release) string {
 }
 
 // Load reads the deploy: section of repoRoot's .ai-workflow/config.yaml.
-// A project setting a personal (scope: user) key at the canonical
-// deploy.providers.<provider>.<key> path, such as release-ssh-compose's
-// ssh_known_hosts, is refused (R-S4): a deploy must not run with an
-// ambiguous trust boundary between the repository and the user's own
-// configuration.
+// A project setting a personal (scope: user) key, at the canonical
+// deploy.providers.<provider>.<key> path (such as release-ssh-compose's
+// ssh_known_hosts) or through a target's own config (deploy.targets[].
+// config, the override internal/deployrun closes at run time), is
+// refused (R-S4): a deploy must not run with an ambiguous trust boundary
+// between the repository and the user's own configuration.
 func Load(repoRoot string) (*Deploy, error) {
 	if err := paths.RefusePreviousProject(repoRoot); err != nil {
 		return nil, err
@@ -132,30 +134,35 @@ func Load(repoRoot string) (*Deploy, error) {
 	if err != nil {
 		return nil, fmt.Errorf("deploy: %w", err)
 	}
-	if err := refusePersonalKeys(data); err != nil {
+	personal, err := workflowconfig.LoadPersonal(nerv.ExtensionsFS())
+	if err != nil {
+		return nil, fmt.Errorf("deploy: %w", err)
+	}
+	if err := refuseSectionPersonalKeys(data, personal); err != nil {
 		return nil, fmt.Errorf("%s: %w", path, err)
 	}
-	d, err := parse(data)
+	d, err := parse(data, personal)
 	if err != nil && !errors.Is(err, ErrNotConfigured) {
 		return nil, fmt.Errorf("%s: %w", path, err)
 	}
 	return d, err
 }
 
-// refusePersonalKeys reports every personal key (workflowconfig.Personal)
-// the project file sets, such as release-ssh-compose's ssh_known_hosts,
-// as one error naming each (the shipped providers only: a malformed
-// project-local provider is left to the normal validation path, which
-// reports it with its own, correctly classified refusal). It scans the
-// whole document as YAML (unlike parse's tolerant per-block cut), so a
-// scan error is not reported here: it falls through to parse, which
-// reports whatever is actually wrong with the deploy: block.
-func refusePersonalKeys(data []byte) error {
-	personal, err := workflowconfig.LoadPersonal(nerv.ExtensionsFS())
-	if err != nil {
-		return err
-	}
-	keys, err := workflowconfig.ProjectPersonalKeys(config.Parse(string(data)), personal)
+// refuseSectionPersonalKeys reports every personal key (personal) the
+// project file sets under deploy: (such as release-ssh-compose's
+// ssh_known_hosts, at the canonical deploy.providers.<provider>.<key>
+// path; a malformed project-local provider is left to the normal
+// validation path, which reports it with its own, correctly classified
+// refusal), as one error naming each. It is scoped to the deploy:
+// section only: a personal key under tasks: or release: is none of this
+// loader's business (tasks.Config.Scalar already ignores a project
+// value for one; releaseconfig.Load refuses its own) and must not make
+// this one refuse to load. It scans the whole document as YAML (unlike
+// parse's tolerant per-block cut), so a scan error is not reported here:
+// it falls through to parse, which reports whatever is actually wrong
+// with the deploy: block.
+func refuseSectionPersonalKeys(data []byte, personal workflowconfig.Personal) error {
+	keys, err := workflowconfig.PersonalKeysOf(config.Parse(string(data)), "deploy", personal)
 	if err != nil || len(keys) == 0 {
 		return nil
 	}
@@ -166,7 +173,7 @@ func refusePersonalKeys(data []byte) error {
 	return errors.New(strings.Join(msgs, "; "))
 }
 
-func parse(data []byte) (*Deploy, error) {
+func parse(data []byte, personal workflowconfig.Personal) (*Deploy, error) {
 	if msg := releaseconfig.RemovedPipeline(data); msg != "" {
 		return nil, errors.New(msg)
 	}
@@ -199,13 +206,13 @@ func parse(data []byte) (*Deploy, error) {
 	if d.Git.Remote == "" {
 		d.Git.Remote = DefaultRemote
 	}
-	if problems := d.validate(); len(problems) > 0 {
+	if problems := d.validate(personal); len(problems) > 0 {
 		return nil, errors.New(strings.Join(problems, "; "))
 	}
 	return &d, nil
 }
 
-func (d *Deploy) validate() []string {
+func (d *Deploy) validate(personal workflowconfig.Personal) []string {
 	var p []string
 	add := func(format string, args ...any) { p = append(p, fmt.Sprintf(format, args...)) }
 	if d.Host != "" && !providerRe.MatchString(d.Host) {
@@ -227,9 +234,17 @@ func (d *Deploy) validate() []string {
 		case !providerRe.MatchString(t.Provider):
 			add("%s.provider %q must be a provider name", at, t.Provider)
 		}
-		for key := range t.Config {
+		for _, key := range sortedKeys(t.Config) {
 			if !keyRe.MatchString(key) {
 				add("%s.config.%s: a key is lower-case letters, digits and underscores", at, key)
+				continue
+			}
+			// R-S4: a target cannot set a personal (scope: user) provider
+			// key, such as release-ssh-compose's ssh_auth: that value
+			// belongs in the user's own configuration, never the
+			// repository.
+			if path := "deploy.providers." + t.Provider + "." + key; personal.Has(path) {
+				add("%s.config.%s: %s", at, key, workflowconfig.PersonalKeyMessage(path))
 			}
 		}
 	}
@@ -246,4 +261,15 @@ func (d *Deploy) validate() []string {
 		add("deploy.git.remote %q must be a remote name", d.Git.Remote)
 	}
 	return p
+}
+
+// sortedKeys lists m's keys in order, so the problems they produce are
+// reported deterministically.
+func sortedKeys(m map[string]string) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
 }
