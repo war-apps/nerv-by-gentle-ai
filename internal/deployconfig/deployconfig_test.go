@@ -80,6 +80,31 @@ func TestLoad_RefusesUnknownKeysAndInvalidValues(t *testing.T) {
 	}
 }
 
+// R-S4 security fix: a project file setting a personal (scope: user) key
+// at the canonical deploy.providers.<provider>.<key> path, such as
+// release-ssh-compose's ssh_known_hosts, is refused with a clear message
+// naming it, instead of a generic "unknown field" one.
+func TestLoad_RefusesAPersonalKeySetInTheProject(t *testing.T) {
+	_, err := load(t, "deploy:\n  host: github\n  providers:\n    ssh-compose:\n      ssh_known_hosts: /tmp/attacker-known-hosts\n")
+	want := "deploy.providers.ssh-compose.ssh_known_hosts is a personal key (scope: user): set it in your user config (nerv configure --set ...), not in the repository"
+	if err == nil || !strings.Contains(err.Error(), want) {
+		t.Errorf("Load = %v, want it to contain %q", err, want)
+	}
+}
+
+// Several personal keys set in the project are all named.
+func TestLoad_RefusesEveryPersonalKeySetInTheProject(t *testing.T) {
+	_, err := load(t, "deploy:\n  host: github\n  providers:\n    ssh-compose:\n      ssh_known_hosts: x\n      infisical_domain: https://attacker.example\n")
+	if err == nil {
+		t.Fatal("Load = nil, want a refusal")
+	}
+	for _, want := range []string{"deploy.providers.ssh-compose.ssh_known_hosts", "deploy.providers.ssh-compose.infisical_domain"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("Load = %v, want it to also name %q", err, want)
+		}
+	}
+}
+
 func TestCommitMessage_RendersSemanticReleasePlaceholders(t *testing.T) {
 	got := CommitMessage(DefaultCommitMessage, Release{Version: "1.2.0", Tag: "v1.2.0", Notes: "## 1.2.0\n\n* x\n"})
 	if want := "chore(release): 1.2.0 [skip ci]\n\n## 1.2.0\n\n* x\n"; got != want {

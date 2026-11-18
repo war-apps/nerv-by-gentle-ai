@@ -25,8 +25,11 @@ import (
 	"strings"
 	"time"
 
+	nerv "github.com/war-apps/nerv-by-gentle-ai"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/config"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/paths"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/releaseconfig/yamlsection"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/workflowconfig"
 	"gopkg.in/yaml.v3"
 )
 
@@ -195,7 +198,9 @@ func (r *Release) Project(name string) (Project, bool) {
 // when the section is invalid. A file that still has the removed release:
 // or pipeline: section is refused (RemovedSections), with what to do, and
 // so is a key that moved (an engine key under release:, a build: mapping),
-// naming its new place.
+// naming its new place. A project setting a personal (scope: user)
+// provider key is refused too (R-S4): its value belongs in the user's own
+// configuration, never a cloned repository.
 func Load(repoRoot string) (*Release, error) {
 	if err := paths.RefusePreviousProject(repoRoot); err != nil {
 		return nil, err
@@ -208,6 +213,9 @@ func Load(repoRoot string) (*Release, error) {
 	if err != nil {
 		return nil, fmt.Errorf("release: %w", err)
 	}
+	if err := refusePersonalKeys(data); err != nil {
+		return nil, fmt.Errorf("%s: %w", path, err)
+	}
 	rel, err := parse(data)
 	if err != nil {
 		if errors.Is(err, ErrNotConfigured) {
@@ -216,6 +224,30 @@ func Load(repoRoot string) (*Release, error) {
 		return nil, fmt.Errorf("%s: %w", path, err)
 	}
 	return rel, nil
+}
+
+// refusePersonalKeys reports every personal key (workflowconfig.Personal)
+// the project file sets, such as release-ssh-compose's ssh_known_hosts,
+// as one error naming each (the shipped providers only: a malformed
+// project-local provider is left to the normal validation path, which
+// reports it with its own, correctly classified refusal). It scans the
+// whole document as YAML (unlike parse's tolerant per-block cut), so a
+// scan error is not reported here: it falls through to parse, which
+// reports whatever is actually wrong with the release: block.
+func refusePersonalKeys(data []byte) error {
+	personal, err := workflowconfig.LoadPersonal(nerv.ExtensionsFS())
+	if err != nil {
+		return err
+	}
+	keys, err := workflowconfig.ProjectPersonalKeys(config.Parse(string(data)), personal)
+	if err != nil || len(keys) == 0 {
+		return nil
+	}
+	msgs := make([]string, len(keys))
+	for i, k := range keys {
+		msgs[i] = workflowconfig.PersonalKeyMessage(k)
+	}
+	return errors.New(strings.Join(msgs, "; "))
 }
 
 // parse decodes the release: key of a .ai-workflow/config.yaml text. Unknown keys and

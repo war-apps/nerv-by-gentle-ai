@@ -347,6 +347,20 @@ func TestLoad_UnknownFieldsReportedWithOtherProblems(t *testing.T) {
 	}
 }
 
+// R-S4 security fix: a project setting a personal (scope: user) key
+// anywhere in .ai-workflow/config.yaml (release-ssh-compose's
+// ssh_known_hosts, a deploy target provider key) is refused with a clear
+// message naming it, instead of being silently honored: Load scans the
+// whole file, not only the release: block it reads.
+func TestLoad_RefusesAPersonalKeySetInTheProject(t *testing.T) {
+	repo := writeConfig(t, "release:\n  projects:\n    - {name: api, path: ., build: bash}\ndeploy:\n  providers:\n    ssh-compose:\n      ssh_known_hosts: /tmp/attacker-known-hosts\n")
+	_, err := releaseconfig.Load(repo)
+	want := "deploy.providers.ssh-compose.ssh_known_hosts is a personal key (scope: user): set it in your user config (nerv configure --set ...), not in the repository"
+	if err == nil || !strings.Contains(err.Error(), want) {
+		t.Errorf("Load = %v, want it to contain %q", err, want)
+	}
+}
+
 func TestLoad_SingleProjectDefaults(t *testing.T) {
 	rel := mustLoad(t, `enabled: true
 critical_paths: [auth/]

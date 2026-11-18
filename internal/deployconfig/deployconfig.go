@@ -25,9 +25,12 @@ import (
 	"regexp"
 	"strings"
 
+	nerv "github.com/war-apps/nerv-by-gentle-ai"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/config"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/paths"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/releaseconfig"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/releaseconfig/yamlsection"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/workflowconfig"
 )
 
 // ErrNotConfigured is returned by Load when the repository has no
@@ -112,6 +115,11 @@ func CommitMessage(message string, r Release) string {
 }
 
 // Load reads the deploy: section of repoRoot's .ai-workflow/config.yaml.
+// A project setting a personal (scope: user) key at the canonical
+// deploy.providers.<provider>.<key> path, such as release-ssh-compose's
+// ssh_known_hosts, is refused (R-S4): a deploy must not run with an
+// ambiguous trust boundary between the repository and the user's own
+// configuration.
 func Load(repoRoot string) (*Deploy, error) {
 	if err := paths.RefusePreviousProject(repoRoot); err != nil {
 		return nil, err
@@ -124,11 +132,38 @@ func Load(repoRoot string) (*Deploy, error) {
 	if err != nil {
 		return nil, fmt.Errorf("deploy: %w", err)
 	}
+	if err := refusePersonalKeys(data); err != nil {
+		return nil, fmt.Errorf("%s: %w", path, err)
+	}
 	d, err := parse(data)
 	if err != nil && !errors.Is(err, ErrNotConfigured) {
 		return nil, fmt.Errorf("%s: %w", path, err)
 	}
 	return d, err
+}
+
+// refusePersonalKeys reports every personal key (workflowconfig.Personal)
+// the project file sets, such as release-ssh-compose's ssh_known_hosts,
+// as one error naming each (the shipped providers only: a malformed
+// project-local provider is left to the normal validation path, which
+// reports it with its own, correctly classified refusal). It scans the
+// whole document as YAML (unlike parse's tolerant per-block cut), so a
+// scan error is not reported here: it falls through to parse, which
+// reports whatever is actually wrong with the deploy: block.
+func refusePersonalKeys(data []byte) error {
+	personal, err := workflowconfig.LoadPersonal(nerv.ExtensionsFS())
+	if err != nil {
+		return err
+	}
+	keys, err := workflowconfig.ProjectPersonalKeys(config.Parse(string(data)), personal)
+	if err != nil || len(keys) == 0 {
+		return nil
+	}
+	msgs := make([]string, len(keys))
+	for i, k := range keys {
+		msgs[i] = workflowconfig.PersonalKeyMessage(k)
+	}
+	return errors.New(strings.Join(msgs, "; "))
 }
 
 func parse(data []byte) (*Deploy, error) {

@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/war-apps/nerv-by-gentle-ai/internal/deployprovider"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/refusal"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/versioning"
 	"github.com/war-apps/nerv-kit-by-gentle-ai/runner"
@@ -295,5 +296,72 @@ func TestRun_RefusesInvalidTargetConfigAndMissingTools(t *testing.T) {
 	opts.Targets = []string{"prod"}
 	if _, err := e.run(opts); !refusal.Is(err) || !strings.Contains(err.Error(), "prod") {
 		t.Errorf("unknown --target: %v", err)
+	}
+}
+
+// R-S4 security fix: a project's deploy.targets[].config must not be able
+// to set a personal (scope: user) provider key, such as release-ssh-
+// compose's ssh_auth: a cloned repository could otherwise force key
+// authentication and point it at an attacker-controlled ssh_key_file, or
+// point ssh_known_hosts at a forged host key, overriding the user's own
+// value. It is refused, naming the key, instead of being silently honored
+// or silently read around.
+func TestRun_RefusesATargetConfigPersonalKey(t *testing.T) {
+	e := newEnv(t)
+	e.cfg.Targets[0].Config["ssh_auth"] = "key"
+	opts := e.options()
+	opts.UserValue = func(provider, key string) (string, bool) {
+		if provider == "ssh-compose" && key == "ssh_auth" {
+			return "password", true
+		}
+		return "", false
+	}
+	before := e.originRefs()
+	rep, err := e.run(opts)
+	if !refusal.Is(err) || !strings.Contains(err.Error(), "ssh_auth") || !strings.Contains(err.Error(), "personal key") {
+		t.Fatalf("Run: %v, want a refusal naming ssh_auth as a personal key", err)
+	}
+	refusedBeforeAnyWrite(t, e, rep, before)
+}
+
+// Direct unit tests of resolveConfig (no provider process involved): a
+// personal (scope: user) key always comes from the user scope, never the
+// target's given config, and a target that sets one is refused by name.
+func personalConfigManifest() *deployprovider.Manifest {
+	return &deployprovider.Manifest{
+		Name: "ssh-compose",
+		Config: []deployprovider.ConfigKey{
+			{Key: "environment", Scope: "repo", Type: "string"},
+			{Key: "ssh_auth", Scope: "user", Type: "string", Default: "password"},
+		},
+	}
+}
+
+func TestResolveConfig_PersonalKeysComeFromTheUserScopeNeverTheTarget(t *testing.T) {
+	d := &deployer{o: Options{UserValue: func(provider, key string) (string, bool) {
+		if provider == "ssh-compose" && key == "ssh_auth" {
+			return "key", true
+		}
+		return "", false
+	}}}
+	cfg, err := d.resolveConfig(personalConfigManifest(), map[string]string{"environment": "staging"}, "deploy.targets[0] (staging)")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg["ssh_auth"] != "key" {
+		t.Errorf("ssh_auth = %q, want key (the user scope)", cfg["ssh_auth"])
+	}
+}
+
+func TestResolveConfig_RefusesATargetSettingAPersonalKey(t *testing.T) {
+	d := &deployer{o: Options{UserValue: func(provider, key string) (string, bool) {
+		if provider == "ssh-compose" && key == "ssh_auth" {
+			return "password", true
+		}
+		return "", false
+	}}}
+	_, err := d.resolveConfig(personalConfigManifest(), map[string]string{"environment": "staging", "ssh_auth": "key"}, "deploy.targets[0] (staging)")
+	if !refusal.Is(err) || !strings.Contains(err.Error(), "ssh_auth") || !strings.Contains(err.Error(), "personal key") {
+		t.Fatalf("resolveConfig = %v, want a refusal naming ssh_auth as a personal key", err)
 	}
 }
