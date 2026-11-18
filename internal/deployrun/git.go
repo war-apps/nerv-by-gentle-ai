@@ -97,8 +97,11 @@ var hasSchemeRe = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9+.-]*://`)
 
 // schemeUserinfoRe matches a URL's scheme and userinfo in free text
 // ("scheme://userinfo@"), to find it wherever git's own stderr echoes a
-// failed URL back.
-var schemeUserinfoRe = regexp.MustCompile(`(?i)\b([a-z][a-z0-9+.-]*)://([^/\s@'"]+)@`)
+// failed URL back. The userinfo group is greedy up to the LAST '@'
+// before the host (allowing '@' is required, not just tolerated: a
+// password containing '@', such as p@ss, must not leave the part after
+// its first '@' unmasked).
+var schemeUserinfoRe = regexp.MustCompile(`(?i)\b([a-z][a-z0-9+.-]*)://([^/\s'"]*)@`)
 
 // isSecretUserinfo reports whether a URL's userinfo may hold a secret:
 // any userinfo on a scheme other than ssh (https://<token>@host is a
@@ -119,13 +122,19 @@ func isSecretUserinfo(scheme, userinfo string) bool {
 // https://host/path): a cloned repository's CI remote commonly carries a
 // token there, and it must never reach an error, a log line or the
 // deploy report. An scp-like ssh address, anything without a URL scheme,
-// or a bare ssh username, is returned unchanged.
+// or a bare ssh username, is returned unchanged. raw having a scheme but
+// failing to parse (invalid percent-encoding, a bad port, ...) fails
+// closed through redactUserinfo's text match, instead of returning raw
+// (and any credential it carries) just because net/url choked on it.
 func redactURL(raw string) string {
 	if !hasSchemeRe.MatchString(raw) {
 		return raw
 	}
 	u, err := url.Parse(raw)
-	if err != nil || u.User == nil || !isSecretUserinfo(u.Scheme, u.User.String()) {
+	if err != nil {
+		return redactUserinfo(raw)
+	}
+	if u.User == nil || !isSecretUserinfo(u.Scheme, u.User.String()) {
 		return raw
 	}
 	u.User = nil

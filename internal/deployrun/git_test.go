@@ -77,6 +77,48 @@ func TestRedactUserinfo_MasksCredentialsInFreeText(t *testing.T) {
 	}
 }
 
+// A password containing '@' (https://user:p@ss@host/repo) must be masked
+// in full: the userinfo runs up to the LAST '@' before the host, not the
+// first one, or part of the password survives in free text.
+func TestRedactUserinfo_FullyMasksAPasswordContainingAt(t *testing.T) {
+	in := "fatal: unable to access 'https://user:p@ss@github.com/org/repo.git/': error"
+	got := redactUserinfo(in)
+	if strings.Contains(got, "p@ss") || strings.Contains(got, "ss@github") {
+		t.Errorf("redactUserinfo(%q) = %q, still leaks part of the password", in, got)
+	}
+	if want := "fatal: unable to access 'https://***@github.com/org/repo.git/': error"; got != want {
+		t.Errorf("redactUserinfo = %q, want %q", got, want)
+	}
+}
+
+// A URL whose userinfo credential cannot even be parsed as a valid URL
+// (e.g. invalid percent-encoding) must fail closed: the raw, unredacted
+// URL is never returned just because net/url.Parse choked on it.
+func TestRedactURL_FailsClosedWhenUnparsable(t *testing.T) {
+	in := "https://x-access-token:p%2wss@github.com/org/repo.git"
+	got := redactURL(in)
+	if strings.Contains(got, "p%2wss") {
+		t.Errorf("redactURL(%q) = %q, leaks the unparsable credential", in, got)
+	}
+	if strings.Contains(got, "x-access-token") {
+		t.Errorf("redactURL(%q) = %q, leaks the unparsable credential", in, got)
+	}
+}
+
+// The same unparsable-credential failure must not leak through the
+// clone error either (the end-to-end path a real git failure takes).
+func TestWorkspaceClone_RedactsEvenAnUnparsableURL(t *testing.T) {
+	url := "https://x-access-token:p%2wss@github.com/org/repo.git"
+	w := workspace{runner: fakeFailRunner{stderr: "fatal: " + url}, dir: t.TempDir()}
+	err := w.clone(context.Background(), url, "main")
+	if err == nil {
+		t.Fatal("clone: no error")
+	}
+	if strings.Contains(err.Error(), "p%2wss") || strings.Contains(err.Error(), "x-access-token") {
+		t.Errorf("clone error leaks the unparsable credential: %v", err)
+	}
+}
+
 // The note is JSON.stringify({channels: [channel]}): null for the default
 // channel, no HTML escaping.
 func TestChannelNote_IsSemanticReleases(t *testing.T) {
