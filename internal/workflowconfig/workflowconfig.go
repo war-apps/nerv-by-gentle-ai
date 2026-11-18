@@ -71,17 +71,27 @@ func Load(home, repoRoot string) (Config, error) {
 	return cfg, nil
 }
 
-// Scalar resolves a dotted key path, project first, then user. A key under
-// the extensions' Sections (tasks, release, deploy) is read from the
-// project only, unless Personal has it; the user's defaults: section never
-// applies.
+// Scalar resolves a dotted key path. A personal key (Personal.Has, R-S4)
+// comes ONLY from the user file: the project is never consulted for it,
+// so a project cannot shadow or override a key scoped to the user, such
+// as deploy-ssh-compose's ssh_known_hosts or infisical_domain, or
+// task-teamwork's assignee_id. Every other key resolves project first,
+// then user; a key under one of the extensions' Sections (tasks, release,
+// deploy) that is not personal is read from the project only. The user's
+// defaults: section never applies.
 func (c Config) Scalar(path string) (string, bool) {
+	if c.Personal.Has(path) {
+		if c.User != nil {
+			return c.User.Scalar(path)
+		}
+		return "", false
+	}
 	if c.Project != nil {
 		if v, found := c.Project.Scalar(path); found {
 			return v, true
 		}
 	}
-	if c.User != nil && (!ProjectOnly(path) || c.Personal.Has(path)) {
+	if c.User != nil && !ProjectOnly(path) {
 		return c.User.Scalar(path)
 	}
 	return "", false

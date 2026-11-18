@@ -1,6 +1,123 @@
 package deployrun
 
-import "testing"
+import (
+	"context"
+	"errors"
+	"strings"
+	"testing"
+
+	"github.com/war-apps/nerv-by-gentle-ai/internal/proc"
+)
+
+// fakeFailRunner fails every command, with stderr.
+type fakeFailRunner struct{ stderr string }
+
+func (f fakeFailRunner) Run(context.Context, proc.Command) (proc.Result, error) {
+	return proc.Result{Stderr: []byte(f.stderr)}, errors.New("exit status 128")
+}
+
+// A failed clone's error must not leak the remote URL's credentials, in
+// the URL it names or in git's own stderr, which can echo it back.
+func TestWorkspaceClone_RedactsCredentialsOnFailure(t *testing.T) {
+	url := "https://x-access-token:ghs_abc123@github.com/org/repo.git"
+	stderr := "fatal: unable to access '" + url + "/': The requested URL returned error: 403"
+	w := workspace{runner: fakeFailRunner{stderr: stderr}, dir: t.TempDir()}
+	err := w.clone(context.Background(), url, "main")
+	if err == nil {
+		t.Fatal("clone: no error")
+	}
+	if strings.Contains(err.Error(), "ghs_abc123") {
+		t.Errorf("clone error leaks the token: %v", err)
+	}
+	if !strings.Contains(err.Error(), "https://***@github.com/org/repo.git") {
+		t.Errorf("clone error %v, want the redacted URL", err)
+	}
+}
+
+// A remote URL's userinfo (a CI token, commonly https://user:token@host/...)
+// must never reach an error, a log line or the deploy report: it is
+// dropped, keeping the scheme, host and path. An scp-like ssh address
+// (git@host:org/repo) carries no secret and is returned unchanged.
+func TestRedactURL_DropsUserinfoKeepsSchemeHostPath(t *testing.T) {
+	tests := map[string]string{
+		"https://x-access-token:ghs_abc123@github.com/org/repo.git": "https://github.com/org/repo.git",
+		"https://user:p@ss@gitlab.example.com/org/repo.git":         "https://gitlab.example.com/org/repo.git",
+		"https://ghp_abc123tokenonly@github.com/org/repo.git":       "https://github.com/org/repo.git",
+		"https://github.com/org/repo.git":                           "https://github.com/org/repo.git",
+		"git@github.com:org/repo.git":                               "git@github.com:org/repo.git",
+		"ssh://git@github.com/org/repo.git":                         "ssh://git@github.com/org/repo.git",
+		"ssh://git:pass@github.com/org/repo.git":                    "ssh://github.com/org/repo.git",
+		"/local/path/repo.git":                                      "/local/path/repo.git",
+	}
+	for in, want := range tests {
+		if got := redactURL(in); got != want {
+			t.Errorf("redactURL(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+// git itself can echo the failed URL on stderr (e.g. "fatal: unable to
+// access '<url>'"); the same userinfo must be masked there too.
+func TestRedactUserinfo_MasksCredentialsInFreeText(t *testing.T) {
+	in := "fatal: unable to access 'https://x-access-token:ghs_abc123@github.com/org/repo.git/': The requested URL returned error: 403"
+	got := redactUserinfo(in)
+	if strings.Contains(got, "ghs_abc123") {
+		t.Errorf("redactUserinfo(%q) = %q, still leaks the token", in, got)
+	}
+	if want := "fatal: unable to access 'https://***@github.com/org/repo.git/': The requested URL returned error: 403"; got != want {
+		t.Errorf("redactUserinfo = %q, want %q", got, want)
+	}
+	// scp-like text, and an ssh:// URL's bare username (git's own login
+	// name convention, no password), are left alone: no secret to mask.
+	if got := redactUserinfo("git@github.com:org/repo.git"); got != "git@github.com:org/repo.git" {
+		t.Errorf("redactUserinfo(scp-like) = %q, want unchanged", got)
+	}
+	if got := redactUserinfo("ssh://git@github.com/org/repo.git"); got != "ssh://git@github.com/org/repo.git" {
+		t.Errorf("redactUserinfo(ssh bare username) = %q, want unchanged", got)
+	}
+}
+
+// A password containing '@' (https://user:p@ss@host/repo) must be masked
+// in full: the userinfo runs up to the LAST '@' before the host, not the
+// first one, or part of the password survives in free text.
+func TestRedactUserinfo_FullyMasksAPasswordContainingAt(t *testing.T) {
+	in := "fatal: unable to access 'https://user:p@ss@github.com/org/repo.git/': error"
+	got := redactUserinfo(in)
+	if strings.Contains(got, "p@ss") || strings.Contains(got, "ss@github") {
+		t.Errorf("redactUserinfo(%q) = %q, still leaks part of the password", in, got)
+	}
+	if want := "fatal: unable to access 'https://***@github.com/org/repo.git/': error"; got != want {
+		t.Errorf("redactUserinfo = %q, want %q", got, want)
+	}
+}
+
+// A URL whose userinfo credential cannot even be parsed as a valid URL
+// (e.g. invalid percent-encoding) must fail closed: the raw, unredacted
+// URL is never returned just because net/url.Parse choked on it.
+func TestRedactURL_FailsClosedWhenUnparsable(t *testing.T) {
+	in := "https://x-access-token:p%2wss@github.com/org/repo.git"
+	got := redactURL(in)
+	if strings.Contains(got, "p%2wss") {
+		t.Errorf("redactURL(%q) = %q, leaks the unparsable credential", in, got)
+	}
+	if strings.Contains(got, "x-access-token") {
+		t.Errorf("redactURL(%q) = %q, leaks the unparsable credential", in, got)
+	}
+}
+
+// The same unparsable-credential failure must not leak through the
+// clone error either (the end-to-end path a real git failure takes).
+func TestWorkspaceClone_RedactsEvenAnUnparsableURL(t *testing.T) {
+	url := "https://x-access-token:p%2wss@github.com/org/repo.git"
+	w := workspace{runner: fakeFailRunner{stderr: "fatal: " + url}, dir: t.TempDir()}
+	err := w.clone(context.Background(), url, "main")
+	if err == nil {
+		t.Fatal("clone: no error")
+	}
+	if strings.Contains(err.Error(), "p%2wss") || strings.Contains(err.Error(), "x-access-token") {
+		t.Errorf("clone error leaks the unparsable credential: %v", err)
+	}
+}
 
 // The note is JSON.stringify({channels: [channel]}): null for the default
 // channel, no HTML escaping.

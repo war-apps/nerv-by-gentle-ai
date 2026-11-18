@@ -127,6 +127,30 @@ func PersonalKeysOf(doc *config.Document, section string, personal Personal) ([]
 	return keysOf(doc, section, personal.Has)
 }
 
+// ProjectPersonalKeys lists the personal keys (Personal) that doc, a
+// project file, sets under any of Sections. A project must never set
+// one (R-S4): its value belongs in the user's global configuration
+// instead, never in a cloned repository, so deployconfig and
+// releaseconfig report or refuse one instead of silently reading it.
+func ProjectPersonalKeys(doc *config.Document, personal Personal) ([]string, error) {
+	var out []string
+	for _, section := range Sections {
+		keys, err := PersonalKeysOf(doc, section, personal)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, keys...)
+	}
+	return out, nil
+}
+
+// PersonalKeyMessage is the refusal text for path, a personal key a
+// project file must not set (ProjectPersonalKeys): its value belongs in
+// the user's own configuration instead.
+func PersonalKeyMessage(path string) string {
+	return fmt.Sprintf("%s is a personal key (scope: user): set it in your user config (nerv configure --set ...), not in the repository", path)
+}
+
 // Defaults is the user document's defaults: section as a document of its
 // own (its keys at column 0), or nil when it has none.
 func Defaults(user *config.Document) *config.Document {

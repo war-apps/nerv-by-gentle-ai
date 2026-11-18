@@ -127,15 +127,20 @@ func translatePipeline(p *Plan, data []byte, fsys fs.FS, user *userState) (*depl
 		path := "deploy.providers." + sshComposeProvider + "." + key
 		switch {
 		case user == nil:
-			p.warn("deploy.targets[*].config.%s: a personal setting (scope user) written into each target; run nerv migrate --user here to keep it in the user config instead", key)
+			p.warn("deploy.targets[*].config.%s: a personal setting (scope user); dropped from the migrated config (run nerv migrate --user here to move it to the user config instead)", key)
 		case func() bool { _, set := user.doc.Scalar(path); return set }():
 			existing, _ := user.doc.Scalar(path)
-			p.warn("deploy.targets[*].config.%s: kept in each target, the user config already sets %s to %s", key, path, existing)
+			p.warn("deploy.targets[*].config.%s: dropped from the migrated config; the user config already sets %s to %s", key, path, existing)
 		default:
 			user.doc.SetScalar(path, shared[key])
 			p.note("pipeline.deploy: %s moved to the user config as %s", key, path)
-			delete(shared, key)
 		}
+		// A personal (scope: user) key must never land in a target's
+		// config: a project setting one is refused at load time
+		// (deployconfig.Load, R-S4), so it is always dropped here, never
+		// written into every target — reported above, and moved to the
+		// user config when --user applies.
+		delete(shared, key)
 	}
 	envs := oldEnvironments
 	if e := value(dep, "environments"); e != nil && e.Kind == yaml.SequenceNode {

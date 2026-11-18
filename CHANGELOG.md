@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [6.5.1] - 2026-11-18
+
+Security fixes. Upgrading from 6.5.0: run `nerv upgrade`. A repository's
+`.ai-workflow/config.yaml` can no longer set provider keys of user scope
+(for example release-ssh-compose `ssh_known_hosts`, `ssh_key_file`,
+`infisical_domain`, `ssh_auth`) over your own, nor through a deploy target's
+`config:`; such a repository is now refused with a message saying to set the
+key in your user config. Remote URLs carrying credentials are redacted from
+deploy errors and reports. nerv is now tested against gentle-ai 4.5.0.
+
+### Fixed
+- config: read personal keys from the user config only (c2ae7de)
+- deploy: redact credentials from remote URLs in errors and reports (db7bcd8)
+- deploy: fail closed when redacting remote URLs (63699da)
+- config: refuse only a loader's own personal keys (68eedc9): a personal task key left in a repository no longer blocks loading its release or deploy section, and `nerv migrate` without `--user` drops personal keys from deploy targets instead of writing them
+
 ## [6.5.0] - 2026-11-17
 
 Upgrading from 6.4.0: run `nerv upgrade`, then restart Claude Code. nerv now

@@ -80,6 +80,57 @@ func TestLoad_RefusesUnknownKeysAndInvalidValues(t *testing.T) {
 	}
 }
 
+// R-S4 security fix: a project file setting a personal (scope: user) key
+// at the canonical deploy.providers.<provider>.<key> path, such as
+// release-ssh-compose's ssh_known_hosts, is refused with a clear message
+// naming it, instead of a generic "unknown field" one.
+func TestLoad_RefusesAPersonalKeySetInTheProject(t *testing.T) {
+	_, err := load(t, "deploy:\n  host: github\n  providers:\n    ssh-compose:\n      ssh_known_hosts: /tmp/attacker-known-hosts\n")
+	want := "deploy.providers.ssh-compose.ssh_known_hosts is a personal key (scope: user): set it in your user config (nerv configure --set ...), not in the repository"
+	if err == nil || !strings.Contains(err.Error(), want) {
+		t.Errorf("Load = %v, want it to contain %q", err, want)
+	}
+}
+
+// Several personal keys set in the project are all named.
+func TestLoad_RefusesEveryPersonalKeySetInTheProject(t *testing.T) {
+	_, err := load(t, "deploy:\n  host: github\n  providers:\n    ssh-compose:\n      ssh_known_hosts: x\n      infisical_domain: https://attacker.example\n")
+	if err == nil {
+		t.Fatal("Load = nil, want a refusal")
+	}
+	for _, want := range []string{"deploy.providers.ssh-compose.ssh_known_hosts", "deploy.providers.ssh-compose.infisical_domain"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("Load = %v, want it to also name %q", err, want)
+		}
+	}
+}
+
+// R-S4: a project's deploy.targets[].config must not be able to set a
+// personal (scope: user) provider key either — the override path
+// internal/deployrun closes at run time is refused earlier too, at
+// load time, naming the key.
+func TestLoad_RefusesAPersonalKeySetInATargetsConfig(t *testing.T) {
+	_, err := load(t, "deploy:\n  targets:\n    - name: staging\n      provider: ssh-compose\n      config: {environment: staging, ssh_auth: key}\n")
+	want := "deploy.providers.ssh-compose.ssh_auth is a personal key (scope: user): set it in your user config (nerv configure --set ...), not in the repository"
+	if err == nil || !strings.Contains(err.Error(), want) {
+		t.Errorf("Load = %v, want it to contain %q", err, want)
+	}
+}
+
+// R-S4's personal-key refusal is scoped to the deploy: section only: a
+// personal key under tasks: (tasks.Config.Scalar already ignores a
+// project's value for one; nothing to refuse) or release: must not make
+// an otherwise valid deploy: section fail to load.
+func TestLoad_IgnoresPersonalKeysOutsideTheDeploySection(t *testing.T) {
+	d, err := load(t, "tasks:\n  providers:\n    teamwork:\n      assignee_id: 7\ndeploy:\n  host: github\n")
+	if err != nil {
+		t.Fatalf("Load: %v, want a tasks.* personal key to be none of this loader's business", err)
+	}
+	if d.Host != "github" {
+		t.Errorf("Load = %+v, want the deploy: section still parsed normally", d)
+	}
+}
+
 func TestCommitMessage_RendersSemanticReleasePlaceholders(t *testing.T) {
 	got := CommitMessage(DefaultCommitMessage, Release{Version: "1.2.0", Tag: "v1.2.0", Notes: "## 1.2.0\n\n* x\n"})
 	if want := "chore(release): 1.2.0 [skip ci]\n\n## 1.2.0\n\n* x\n"; got != want {
