@@ -47,13 +47,17 @@ func TestRun_PreflightsEveryTargetBeforeAnyGitWrite(t *testing.T) {
 		config  map[string]string
 		missing []string
 		want    string
+		// user sets a personal (scope: user) provider key, as only the
+		// user scope may (R-S4): ssh_auth and ssh_key_file cannot be set
+		// through the target's own config.
+		user map[string]string
 	}{
-		{"password auth needs sshpass", map[string]string{"environment": "staging"}, []string{"sshpass"}, "sshpass is not on PATH"},
+		{"password auth needs sshpass", map[string]string{"environment": "staging"}, []string{"sshpass"}, "sshpass is not on PATH", nil},
 		{"source infisical needs the CLI", map[string]string{"environment": "staging", "source": "infisical", "infisical_project_id": "p", "infisical_app_path": "/app"},
-			[]string{"infisical"}, "infisical is not on PATH"},
-		{"key auth needs no sshpass but a key file", map[string]string{"environment": "staging", "ssh_auth": "key"}, []string{"sshpass"}, "config.ssh_key_file is required by ssh_auth key"},
-		{"source infisical needs its project", map[string]string{"environment": "staging", "source": "infisical"}, nil, "config.infisical_project_id and config.infisical_app_path are required"},
-		{"the environment is required", map[string]string{}, nil, "config.environment is required"},
+			[]string{"infisical"}, "infisical is not on PATH", nil},
+		{"key auth needs no sshpass but a key file", map[string]string{"environment": "staging"}, []string{"sshpass"}, "config.ssh_key_file is required by ssh_auth key", map[string]string{"ssh_auth": "key"}},
+		{"source infisical needs its project", map[string]string{"environment": "staging", "source": "infisical"}, nil, "config.infisical_project_id and config.infisical_app_path are required", nil},
+		{"the environment is required", map[string]string{}, nil, "config.environment is required", nil},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -62,6 +66,12 @@ func TestRun_PreflightsEveryTargetBeforeAnyGitWrite(t *testing.T) {
 			before := e.originRefs()
 			opts := e.options()
 			opts.LookPath = lookPathWithout(tt.missing...)
+			if tt.user != nil {
+				opts.UserValue = func(provider, key string) (string, bool) {
+					v, ok := tt.user[key]
+					return v, ok
+				}
+			}
 			rep, err := e.run(opts)
 			if !refusal.Is(err) || !strings.Contains(err.Error(), tt.want) || !strings.Contains(err.Error(), "staging") {
 				t.Fatalf("Run: %v, want a refusal naming the target and %q", err, tt.want)
