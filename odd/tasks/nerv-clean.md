@@ -20,7 +20,7 @@ Branches: `feat/release-tool-migration` (N1-N4, release 6.6.0), then `feat/nerv-
 |---|---|---|---|---|
 | N1 | S1 | delegated writer (context backstop) | done: catalogue entry, generalized catalogueToolInstalled, offer/suppression, /nerv:init, docs | 24e3592 |
 | N2 | S2 | delegated writer + parent fix | done: release.yaml move (user + repo, prefixes kept, personal keys reported), tool files written before config.yaml, aliases resolved, quoted lookalike strings kept; independent verifier: one blocker fixed | dcaa899 |
-| N3 | S3 | pending | pending | |
+| N3 | S3 | delegated writer | done: install/upgrade offer (dry run + y/N, hint without terminal, user scope), doctor user + repo checks, shared setToolFileTargets | 987bfab |
 | N4 | S4 | pending | pending | |
 | C1 | S5, S7 | pending | pending | |
 | C2 | S5, S8 | pending | pending | |
