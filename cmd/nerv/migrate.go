@@ -64,6 +64,14 @@ Moves a repository (and, with --user, your user configuration) from nerv
     its defaults.tasks: seed to the global task.yaml (keys without the
     "tasks."/"defaults.tasks." prefix); a key already set in task.yaml is
     never overwritten, and is reported instead;
+  - when nerv-release is installed, release: and deploy: move to
+    nerv-release's own files, every key at the same path: the project
+    file's release: and deploy: to .ai-workflow/release.yaml, and, with
+    --user, the user config's personal deploy keys
+    (deploy.providers.ssh-compose.infisical_domain, ssh_auth,
+    ssh_key_file, ssh_known_hosts, ssh_connect_timeout) and its
+    defaults.release:/defaults.deploy: seeds to the global release.yaml;
+    a personal key in the project file is never moved, and is reported;
   - each in-flight FULL openspec/changes/<change>/ becomes
     odd/tasks/<change>.md and its run files odd/<change>/nerv/; a DIRECT or
     LIGHT one moves whole to .nerv/runs/<change>/ with no ODD document; the
@@ -135,6 +143,10 @@ func runMigrate(args []string, stdout, stderr io.Writer, opts options) int {
 // imports nerv-task's module.
 const taskYAMLTool = "task"
 
+// releaseYAMLTool is the name nerv-release resolves its own files under
+// (release.yaml), used here only to compute where those files live.
+const releaseYAMLTool = "release"
+
 // catalogueToolInstalled reports whether the ecosystem catalogue tool
 // named name (S12) is installed on this machine: on PATH, or in its
 // default install directory (internal/ecosystem's own detection). A name
@@ -187,6 +199,16 @@ func migrateRun(ctx context.Context, cwd string, dryRun, user, install, force bo
 			// real environment (XDG_CONFIG_HOME, %AppData%) applies to the
 			// real home only, never to a fake one.
 			o.TaskYAMLHome = filepath.Join(filepath.Dir(paths.Resolve(home).UserConfig), taskYAMLTool+".yaml")
+		}
+	}
+	// S2: nerv-release's own files (release.yaml) become the target of
+	// release: and deploy: only once nerv-release is installed.
+	if catalogueToolInstalled(ctx, opts, home, "nerv-release") {
+		if top != "" {
+			o.ReleaseYAMLRepo = aiworkflow.ProjectConfigPath(top, releaseYAMLTool)
+		}
+		if user {
+			o.ReleaseYAMLHome = filepath.Join(filepath.Dir(paths.Resolve(home).UserConfig), releaseYAMLTool+".yaml")
 		}
 	}
 	plan, err := migrate.Compute(o)

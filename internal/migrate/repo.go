@@ -212,8 +212,19 @@ func planRepo(p *Plan, o Options, user *userState) error {
 		if err := moveRepoTaskYAML(p, o, doc); err != nil {
 			return err
 		}
+		// nerv's own release:/deploy: loaders check the sections before
+		// they move to nerv-release's release.yaml; once nerv-release owns
+		// them, a personal key left in the project file is reported by
+		// moveRepoReleaseYAML instead of refused here.
+		checkText := doc.String()
+		if o.ReleaseYAMLRepo != "" {
+			checkText = withoutReleasePersonal(doc)
+		}
+		if err := moveRepoReleaseYAML(p, o, doc); err != nil {
+			return err
+		}
 		text := doc.String()
-		if err := checkLoads(text); err != nil {
+		if err := checkLoads(checkText); err != nil {
 			return err
 		}
 		switch {

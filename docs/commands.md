@@ -294,6 +294,15 @@ Moves a repository from nerv 4.2.0 or 5.0.0-alpha.1 to this version, once:
   the global `task.yaml` (`~/.config/ai-workflow/task.yaml`,
   `%AppData%\ai-workflow\task.yaml` on Windows), both keyed without the
   `tasks.`/`defaults.tasks.` prefix;
+- when nerv-release is installed, `release:` and `deploy:` move to
+  nerv-release's own `release.yaml` files, every key at the same path
+  (nerv-release reads `release:`, `deploy:`, `defaults.release:` and
+  `defaults.deploy:` under the same names): the project file's `release:`
+  and `deploy:` to `.ai-workflow/release.yaml`, and, with `--user`, the
+  user config's personal deploy keys
+  (`deploy.providers.ssh-compose.{infisical_domain, ssh_auth, ssh_key_file, ssh_known_hosts, ssh_connect_timeout}`)
+  and its `defaults.release:`/`defaults.deploy:` seeds to the global
+  `release.yaml` (next to the user `config.yaml`);
 - `.nerv/.gitignore` is created.
 
 `--user` also moves `~/.claude/nerv/nerv.yaml`, or the user `config.yml`,
@@ -315,6 +324,13 @@ already moved) and one-directional — only `--user` ever writes the global
 global value. `--dry-run` lists this step like every other, and every
 `task.yaml` it writes is backed up first, next to the rest of the run's
 backups.
+
+**The release.yaml step** gives the same guarantees: a key already set in
+`release.yaml` is kept where it is and reported, the tool's file is
+written before `config.yaml` loses the moved keys, and only `--user`
+writes the global `release.yaml`. A personal ssh-compose key found in a
+project file is never moved into any `release.yaml`: it stays there and
+is reported, for you to set in the global `release.yaml`.
 
 ```
 nerv migrate --dry-run

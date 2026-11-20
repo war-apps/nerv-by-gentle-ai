@@ -41,7 +41,7 @@ func moveRepoTaskYAML(p *Plan, o Options, doc *config.Document) error {
 	}
 	removeMigrated(doc, "tasks", migrated)
 	text := taskDoc.String()
-	if err := verifyTaskYAML(o.TaskYAMLRepo, text); err != nil {
+	if err := verifyMigratedYAML(o.TaskYAMLRepo, text); err != nil {
 		return err
 	}
 	c := Change{Kind: Write, Path: o.TaskYAMLRepo, New: []byte(text), Why: "nerv-task's repository configuration, moved from " + paths.ProjectConfigFile}
@@ -85,14 +85,14 @@ func moveUserTaskYAML(p *Plan, o Options, u *userState) error {
 	removeMigrated(u.doc, "tasks", migratedTasks)
 	removeMigrated(u.doc, "defaults.tasks", migratedDefaults)
 	text := taskDoc.String()
-	if err := verifyTaskYAML(o.TaskYAMLHome, text); err != nil {
+	if err := verifyMigratedYAML(o.TaskYAMLHome, text); err != nil {
 		return err
 	}
 	c := Change{Kind: Write, Path: o.TaskYAMLHome, New: []byte(text), User: true, Why: "nerv-task's global configuration, moved from your user configuration"}
 	if exists {
 		c.Old = existing
 	}
-	p.Changes = append(p.Changes, c)
+	u.destinations = append(u.destinations, c)
 	if len(migratedTasks) > 0 {
 		p.note("user config: %s moved to %s", strings.Join(migratedTasks, ", "), o.TaskYAMLHome)
 	}
@@ -196,12 +196,32 @@ func nodeAt(root *yaml.Node, path string) *yaml.Node {
 // value verbatim (SetScalar quotes it as needed), a mapping or sequence
 // inlined in flow style (inlineYAML).
 func leafValue(n *yaml.Node) (text string, raw bool) {
+	n = resolveAlias(n)
 	switch n.Kind {
 	case yaml.MappingNode, yaml.SequenceNode:
 		return inlineYAML(n), true
 	default:
+		if quoted, ok := quotedString(n); ok {
+			return quoted, true
+		}
 		return n.Value, false
 	}
+}
+
+// quotedString is n double-quoted when n is a string whose unquoted form
+// would read back as another type ("010", "true", "null": a number, a bool,
+// a null), so a moved string stays a string; ok is false otherwise.
+func quotedString(n *yaml.Node) (string, bool) {
+	if n.Kind != yaml.ScalarNode || n.Tag != "!!str" {
+		return "", false
+	}
+	var back yaml.Node
+	if err := yaml.Unmarshal([]byte(config.FormatScalarToken(n.Value)), &back); err == nil &&
+		len(back.Content) == 1 && back.Content[0].Tag == "!!str" {
+		return "", false
+	}
+	escaped := strings.NewReplacer(`\`, `\\`, `"`, `\"`).Replace(n.Value)
+	return `"` + escaped + `"`, true
 }
 
 // renderValue is n as text, for a warning message: leafValue's text,
@@ -215,6 +235,7 @@ func renderValue(n *yaml.Node) string {
 // recursively, using config.FormatScalarToken for every scalar so types
 // (ints, bools, bare strings) survive without being quoted unnecessarily.
 func inlineYAML(n *yaml.Node) string {
+	n = resolveAlias(n)
 	switch n.Kind {
 	case yaml.MappingNode:
 		parts := make([]string, 0, len(n.Content)/2)
@@ -232,8 +253,20 @@ func inlineYAML(n *yaml.Node) string {
 		if n.Tag == "!!null" {
 			return "null"
 		}
+		if quoted, ok := quotedString(n); ok {
+			return quoted
+		}
 		return config.FormatScalarToken(n.Value)
 	}
+}
+
+// resolveAlias is the node an alias (*name) points to, so a moved value
+// is its content rather than the alias's name; any other node unchanged.
+func resolveAlias(n *yaml.Node) *yaml.Node {
+	for n.Kind == yaml.AliasNode && n.Alias != nil {
+		n = n.Alias
+	}
+	return n
 }
 
 // isEmptyNode reports whether n holds nothing: nil, a null scalar, or an
@@ -280,7 +313,7 @@ func removeMigrated(doc *config.Document, section string, migrated []string) {
 // verifyTaskYAML re-parses text (a planned task.yaml) to catch any
 // malformed YAML the migration produced, before it is queued as a
 // change and src's matching keys are removed.
-func verifyTaskYAML(path, text string) error {
+func verifyMigratedYAML(path, text string) error {
 	var v any
 	if err := yaml.Unmarshal([]byte(text), &v); err != nil {
 		return refuse("the migrated %s would not be valid YAML: %v", path, err)
