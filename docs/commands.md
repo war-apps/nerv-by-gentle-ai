@@ -95,9 +95,10 @@ resolves the TDD mode and test runner per feature. It then offers, in one
 multi-select question, the configuration flows available on the machine:
 `/nerv:configure` (always); the tasks repository setup, `nerv-task init`
 when nerv-task is installed or `/task:setup` when the task extension is
-installed without nerv-task (never both); `/release:setup` and
-`/release:deploy-setup` when the release extension is installed; and
-"None" to skip this step. It runs each selected flow in that order. Use
+installed without nerv-task (never both); the release repository setup,
+`nerv-release init` when nerv-release is installed or `/release:setup` and
+`/release:deploy-setup` when the release extension is installed without
+nerv-release (never both); and "None" to skip this step. It runs each selected flow in that order. Use
 it once per repository.
 
 ```
@@ -293,6 +294,15 @@ Moves a repository from nerv 4.2.0 or 5.0.0-alpha.1 to this version, once:
   the global `task.yaml` (`~/.config/ai-workflow/task.yaml`,
   `%AppData%\ai-workflow\task.yaml` on Windows), both keyed without the
   `tasks.`/`defaults.tasks.` prefix;
+- when nerv-release is installed, `release:` and `deploy:` move to
+  nerv-release's own `release.yaml` files, every key at the same path
+  (nerv-release reads `release:`, `deploy:`, `defaults.release:` and
+  `defaults.deploy:` under the same names): the project file's `release:`
+  and `deploy:` to `.ai-workflow/release.yaml`, and, with `--user`, the
+  user config's personal deploy keys
+  (`deploy.providers.ssh-compose.{infisical_domain, ssh_auth, ssh_key_file, ssh_known_hosts, ssh_connect_timeout}`)
+  and its `defaults.release:`/`defaults.deploy:` seeds to the global
+  `release.yaml` (next to the user `config.yaml`);
 - `.nerv/.gitignore` is created.
 
 `--user` also moves `~/.claude/nerv/nerv.yaml`, or the user `config.yml`,
@@ -315,6 +325,13 @@ global value. `--dry-run` lists this step like every other, and every
 `task.yaml` it writes is backed up first, next to the rest of the run's
 backups.
 
+**The release.yaml step** gives the same guarantees: a key already set in
+`release.yaml` is kept where it is and reported, the tool's file is
+written before `config.yaml` loses the moved keys, and only `--user`
+writes the global `release.yaml`. A personal ssh-compose key found in a
+project file is never moved into any `release.yaml`: it stays there and
+is reported, for you to set in the global `release.yaml`.
+
 ```
 nerv migrate --dry-run
 nerv migrate --user --install
@@ -328,9 +345,13 @@ Checks that everything NERV needs is in order and changes nothing:
   NERV plugin installed, enabled and at this binary's version, its skills,
   and the user configuration (a warning names its `tasks:`, `release:` and
   `deploy:` keys that no longer apply, with `nerv migrate --user` as the
-  step);
+  step; a `tool config` warning names a pending move of its settings to
+  the global `task.yaml` or `release.yaml` of nerv-task or nerv-release,
+  when that tool is installed);
 - in the repository: `.ai-workflow/config.yaml` with `enabled: true`, a
-  pending `nerv migrate`, the project extensions and providers, the
+  pending `nerv migrate` (naming `.ai-workflow/task.yaml` or
+  `.ai-workflow/release.yaml` when it moves settings there, for an
+  installed nerv-task or nerv-release), the project extensions and providers, the
   `release:`, `deploy:` and `tasks:` sections (read from the project file
   only) with the extensions they need, the origin remote and the base branch.
 
@@ -410,6 +431,10 @@ never stops the others; naming an unknown tool in `--tools` refuses and
 sets `nerv upgrade`'s own exit code to 1, when nothing else already set
 it to a non-zero value.
 
+Then it offers `nerv migrate --user` the same way `nerv install` does
+(see "nerv install" below); the install it ran above leaves that offer to
+it, so it is asked once.
+
 ### nerv install
 
 Before any of that, when gentle-ai is on PATH and already 4.x, it
@@ -420,8 +445,8 @@ reported and left alone, and a failed release lookup or upgrade is only a
 warning — install continues with the gentle-ai it found, and the exit
 code is unaffected.
 
-Next, it offers the NERV-ecosystem tools (`nerv-task` today; see the
-README's "NERV ecosystem" section): on a terminal with neither `--tools`
+Next, it offers the NERV-ecosystem tools (`nerv-task`, then
+`nerv-release`; see the README's "NERV ecosystem" section): on a terminal with neither `--tools`
 nor `--no-tools`, every catalogue tool's state (not installed, installed
 with its version, or outdated against its latest release) is shown and
 confirmed one by one, before anything about NERV's own extensions is
@@ -432,9 +457,23 @@ on Linux/macOS, `install.ps1` on Windows). `--tools <names>`
 flag, a hint naming both flags is printed instead. A tool confirmed or
 named here, or already installed on this machine, also stops the steps
 below from ever offering, selecting or re-enabling the extension it
-replaces (`task`, `task-teamwork` for `nerv-task`) — an extension already
+replaces (`task`, `task-teamwork` for `nerv-task`; `release` and its six
+providers `release-bash`, `release-conventional-commits`,
+`release-docker-compose`, `release-github`, `release-script`,
+`release-ssh-compose` for `nerv-release`) — an extension already
 enabled is left exactly as found, since disabling it is the replacing
 tool's own install, never nerv's.
+
+After the extensions (and before the closing wizard), when a tool is
+installed — before or in this run — and its settings are still in your
+user `config.yaml`, it offers `nerv migrate --user`: on a terminal it
+shows the steps its dry run lists, under `=== Move settings to the
+NERV-ecosystem tools ===`, and asks `Run nerv migrate --user now? [y/N]`;
+only a `y` writes anything (with the usual backups). Without a terminal it
+prints a hint naming `nerv migrate --user --dry-run` (to see the steps),
+then `nerv migrate --user`. It covers the user configuration
+only: a repository's own move is `nerv migrate`'s, which `nerv doctor`
+reports.
 
 Materializes the embedded core plugin, registers it in Claude Code's
 `settings.json`, refreshes the plugin cache, applies model/effort
@@ -483,7 +522,7 @@ Flags:
                         task,task-<provider>,release,deploy,release-<provider>
                         (each brings what it requires)
   --tools <names>       Comma-separated NERV-ecosystem tools to install (such as
-                        nerv-task), skipping the confirm prompt
+                        nerv-task,nerv-release), skipping the confirm prompt
   --no-tools            Skip the NERV-ecosystem tools step entirely
 ```
 

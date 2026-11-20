@@ -140,7 +140,9 @@ lists the steps to take ([commands.md](commands.md#nerv-doctor)).
   timer store, ...) from its own global `task.yaml`
   (`~/.config/ai-workflow/task.yaml`), not from NERV's user `config.yaml`
   any more. Run `nerv migrate --user` once to move them there (see
-  [commands.md](commands.md#nerv-migrate)).
+  [commands.md](commands.md#nerv-migrate)); `nerv install` and `nerv
+  upgrade` offer it, and `nerv doctor` reports it as `tool config`. The
+  same goes for nerv-release and its global `release.yaml`.
 - **Extra reviewer sessions appear on every tool use.** That's the
   `security-guidance` plugin's own hook (installed independently), not
   Nerv by Gentle-AI. Nerv by Gentle-AI's own review relay only runs after an

@@ -24,12 +24,12 @@ gentle-ai. A newer major version is reported and left alone; a failed
 release lookup or upgrade is only a warning, and install continues with
 the gentle-ai it found.
 
-First offers the NERV-ecosystem tools (nerv-task today): on a terminal with
-neither --tools nor --no-tools, each tool's state (not installed, its
-version, or outdated against its latest release) is shown and confirmed
-one by one, before anything about NERV's own extensions is asked; a
-confirmed tool's official install script then runs (install.sh on
-Linux/macOS, install.ps1 on Windows).
+First offers the NERV-ecosystem tools (nerv-task, nerv-release): on a
+terminal with neither --tools nor --no-tools, each tool's state (not
+installed, its version, or outdated against its latest release) is shown
+and confirmed one by one, before anything about NERV's own extensions is
+asked; a confirmed tool's official install script then runs (install.sh
+on Linux/macOS, install.ps1 on Windows).
 
 Then materializes the embedded NERV plugin under <home>/.nerv/marketplace,
 registers it in Claude Code's settings.json, refreshes the plugin cache,
@@ -52,9 +52,15 @@ with it; a requirement this nerv does not ship is refused.
 Old /task:* copies in <home>/.claude/commands/task, which shadow the task
 extension's commands, are reported, and removed when you confirm on a terminal.
 
-An extension a tool replaces (task, task-teamwork for nerv-task) is never
-offered, selected or re-enabled once that tool is installed, or chosen in
-this run's ecosystem-tools step above.
+An extension a tool replaces (task, task-teamwork for nerv-task; release
+and its six providers for nerv-release) is never offered, selected or
+re-enabled once that tool is installed, or chosen in this run's
+ecosystem-tools step above.
+
+Then, when such a tool is installed and its settings are still in the
+user config.yaml, it offers nerv migrate --user: on a terminal it shows
+the steps and asks [y/N] (nothing is written without a y); otherwise it
+prints a hint naming the command.
 
 Unless --no-configure is given,
 it then runs the interactive setup wizard when stdin is a terminal, or
@@ -100,6 +106,12 @@ func runInstall(args []string, stdout, stderr io.Writer, opts options) int {
 	// sets it, since it offers the ecosystem tools itself afterwards, with
 	// action "upgrade" instead of "install".
 	skipEcosystemTools := fs.Bool("skip-ecosystem-tools", false, "")
+	// skipMigrateOffer is internal: only nerv upgrade's own install run sets
+	// it, since the upgrade offers nerv migrate itself afterwards. It is
+	// separate from --skip-ecosystem-tools because an older nerv's upgrade
+	// passes that flag alone, and its first install of this version must
+	// still offer the migration.
+	skipMigrateOffer := fs.Bool("skip-migrate-offer", false, "")
 
 	if err := fs.Parse(args); err != nil {
 		fmt.Fprint(stderr, installUsage)
@@ -130,8 +142,9 @@ func runInstall(args []string, stdout, stderr io.Writer, opts options) int {
 	// S11/F2: the ecosystem tools are offered before NERV's own
 	// extensions, so a tool chosen in this run (not only one already
 	// installed on this machine) also suppresses the extensions it
-	// replaces (task, task-teamwork for nerv-task) -- a user who accepts
-	// nerv-task is never also asked about them.
+	// replaces (task, task-teamwork for nerv-task; release and its
+	// providers for nerv-release) -- a user who accepts a tool is never
+	// also asked about them.
 	var selectedTools []ecosystem.Tool
 	if !*skipEcosystemTools {
 		var ecoErr error
@@ -164,6 +177,14 @@ func runInstall(args []string, stdout, stderr io.Writer, opts options) int {
 	})
 	if code := mapInstallError(stdout, err); code != 0 {
 		return code
+	}
+
+	// S3: a tool installed (before or in this run) whose settings are
+	// still in the user config.yaml gets nerv migrate --user offered.
+	// nerv upgrade's own install run (--skip-migrate-offer) leaves it to
+	// the upgrade, which offers it once after its own tools step.
+	if !*skipMigrateOffer {
+		offerToolMigration(context.Background(), stdout, opts, home)
 	}
 
 	if *noConfigure {

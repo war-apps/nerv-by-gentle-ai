@@ -32,7 +32,15 @@ func newDoctorWorld(t *testing.T) *doctorWorld {
 	w := &doctorWorld{t: t, home: t.TempDir(), top: filepath.Join(t.TempDir(), "repo")}
 	w.opts = testOptions(w.home)
 	w.opts.ExtensionsFS = nerv.ExtensionsFS()
-	w.opts.LookPath = func(name string) (string, error) { return "/usr/bin/" + name, nil }
+	// Every tool is found except the NERV-ecosystem tools (nerv-task,
+	// nerv-release): with one installed, the release: section below would
+	// be a pending release.yaml move (S3); withCatalogueTools adds them.
+	w.opts.LookPath = func(name string) (string, error) {
+		if strings.HasPrefix(name, "nerv-") {
+			return "", os.ErrNotExist
+		}
+		return "/usr/bin/" + name, nil
+	}
 	w.runner = &runnertest.FakeRunner{
 		Default: runnertest.Response{ExitCode: 1},
 		Responses: map[string]runnertest.Response{
