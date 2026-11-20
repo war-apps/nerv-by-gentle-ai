@@ -106,6 +106,12 @@ func runInstall(args []string, stdout, stderr io.Writer, opts options) int {
 	// sets it, since it offers the ecosystem tools itself afterwards, with
 	// action "upgrade" instead of "install".
 	skipEcosystemTools := fs.Bool("skip-ecosystem-tools", false, "")
+	// skipMigrateOffer is internal: only nerv upgrade's own install run sets
+	// it, since the upgrade offers nerv migrate itself afterwards. It is
+	// separate from --skip-ecosystem-tools because an older nerv's upgrade
+	// passes that flag alone, and its first install of this version must
+	// still offer the migration.
+	skipMigrateOffer := fs.Bool("skip-migrate-offer", false, "")
 
 	if err := fs.Parse(args); err != nil {
 		fmt.Fprint(stderr, installUsage)
@@ -175,9 +181,9 @@ func runInstall(args []string, stdout, stderr io.Writer, opts options) int {
 
 	// S3: a tool installed (before or in this run) whose settings are
 	// still in the user config.yaml gets nerv migrate --user offered.
-	// nerv upgrade's own install run (--skip-ecosystem-tools) leaves it
-	// to the upgrade, which offers it once after its own tools step.
-	if !*skipEcosystemTools {
+	// nerv upgrade's own install run (--skip-migrate-offer) leaves it to
+	// the upgrade, which offers it once after its own tools step.
+	if !*skipMigrateOffer {
 		offerToolMigration(context.Background(), stdout, opts, home)
 	}
 

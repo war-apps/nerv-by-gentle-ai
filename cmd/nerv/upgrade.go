@@ -320,7 +320,7 @@ func runNewInstall(ctx context.Context, bin string, stdout, stderr io.Writer, op
 	// this spawns must not run it again. The ecosystem tools step is
 	// skipped too: runUpgrade runs its own, with action "upgrade" instead
 	// of "install", once this nested install returns.
-	args = append(args, "--skip-gentle-ai-upgrade", "--skip-ecosystem-tools")
+	args = append(args, "--skip-gentle-ai-upgrade", "--skip-ecosystem-tools", "--skip-migrate-offer")
 	runBinary := opts.RunBinary
 	if runBinary == nil {
 		runBinary = execBinary

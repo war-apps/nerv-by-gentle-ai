@@ -238,18 +238,38 @@ func TestUpgrade_OffersMigrateWhenAToolsSectionsArePending(t *testing.T) {
 
 // nerv upgrade's nested install never offers the migration itself: the
 // upgrade offers it once, after its own ecosystem-tools step.
-func TestInstall_SkipEcosystemToolsAlsoSkipsTheMigrateOffer(t *testing.T) {
+func TestInstall_SkipMigrateOfferSkipsTheMigrateOffer(t *testing.T) {
 	home, user := migrateOfferHome(t, releaseUserConfig)
 	opts := withCatalogueTools(testOptions(home), "nerv-release")
 	opts.Runner = baseInstallRunner()
 
-	code, out := runInstallCLI(t, opts, "--skip-ecosystem-tools", "--no-skills", "--no-configure")
+	code, out := runInstallCLI(t, opts, "--skip-ecosystem-tools", "--skip-migrate-offer", "--no-skills", "--no-configure")
 	if code != 0 {
 		t.Fatalf("exit %d\n%s", code, out)
 	}
 	lacks(t, "the output", out, "nerv migrate")
 	if got := readFile(t, user); got != releaseUserConfig {
 		t.Errorf("config.yaml changed:\n%s", got)
+	}
+}
+
+// The install an older nerv's upgrade launches passes only
+// --skip-ecosystem-tools (6.5.1 knows no --skip-migrate-offer): the first
+// upgrade into this version must still offer nerv migrate.
+func TestInstall_SkipEcosystemToolsAloneStillOffersMigrate(t *testing.T) {
+	home, user := migrateOfferHome(t, releaseUserConfig)
+	opts := withCatalogueTools(testOptions(home), "nerv-release")
+	opts.Runner = baseInstallRunner()
+
+	code, out := runInstallCLI(t, opts, "--skip-gentle-ai-upgrade", "--skip-ecosystem-tools", "--no-skills", "--no-configure")
+	if code != 0 {
+		t.Fatalf("exit %d\n%s", code, out)
+	}
+	if !strings.Contains(out, "nerv migrate --user") {
+		t.Errorf("the install an older upgrade launches does not offer nerv migrate:\n%s", out)
+	}
+	if got := readFile(t, user); got != releaseUserConfig {
+		t.Errorf("config.yaml changed without consent:\n%s", got)
 	}
 }
 

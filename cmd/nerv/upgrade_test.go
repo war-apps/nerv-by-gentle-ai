@@ -276,9 +276,10 @@ func (w *upgradeWorld) assertUntouched() {
 // upgrade gentle-ai again, since upgradeGentleAI above already did (S5);
 // --skip-ecosystem-tools tells it not to offer the ecosystem tools
 // either, since runUpgrade offers them itself afterwards, with action
-// "upgrade" instead of "install".
+// "upgrade" instead of "install"; --skip-migrate-offer tells it not to
+// offer nerv migrate, which runUpgrade also offers itself afterwards.
 func skippingGentleAIInstall(bin string, extra ...string) installCall {
-	return installCall{Bin: bin, Args: append([]string{"install"}, append(extra, "--skip-gentle-ai-upgrade", "--skip-ecosystem-tools")...)}
+	return installCall{Bin: bin, Args: append([]string{"install"}, append(extra, "--skip-gentle-ai-upgrade", "--skip-ecosystem-tools", "--skip-migrate-offer")...)}
 }
 
 var defaultReleases = []fakeRelease{
