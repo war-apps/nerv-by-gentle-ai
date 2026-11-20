@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/war-apps/nerv-by-gentle-ai/internal/ecosystem"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/migrate"
 	"github.com/war-apps/nerv-kit-by-gentle-ai/selfupgrade"
 )
 
@@ -153,4 +154,67 @@ func suppressedExtensions(ctx context.Context, opts options, home string, select
 		installedOrSelected[t.Name] = true
 	}
 	return ecosystem.ReplacedExtensions(catalogue, installedOrSelected)
+}
+
+// offerToolMigration offers, after the ecosystem-tools step of "nerv
+// install"/"nerv upgrade" (S3), the user-scope nerv migrate when a
+// catalogue tool is installed (including one this run just installed)
+// and its settings are still in the user config.yaml: the steps nerv
+// migrate --user would take, as its dry run shows them, then a [y/N]
+// prompt on a terminal; without one, only a hint naming the command.
+// Nothing is written without a "y". It covers the user configuration
+// only: install and upgrade work on no repository (nerv migrate and nerv
+// doctor cover the repository's own move). It never changes the exit
+// code: a plan that cannot be computed or applied is a warning.
+func offerToolMigration(ctx context.Context, stdout io.Writer, opts options, home string) {
+	o := migrate.Options{Home: home, User: true, ExtensionsFS: opts.ExtensionsFS, Now: opts.Now()}
+	setToolFileTargets(ctx, opts, home, &o)
+	if o.TaskYAMLHome == "" && o.ReleaseYAMLHome == "" {
+		return
+	}
+	plan, err := migrate.Compute(o)
+	if err != nil {
+		fmt.Fprintf(stdout, "\nWarning: nerv migrate --user cannot run: %v\n", err)
+		return
+	}
+	moves := pendingToolFileMoves(plan, o)
+	if len(moves) == 0 {
+		return
+	}
+	var tools []string
+	for _, m := range moves {
+		tools = append(tools, m.Tool)
+	}
+	subject := strings.Join(tools, " and ") + " reads its settings from its own file, but your user config.yaml still has them"
+	if len(tools) > 1 {
+		subject = strings.Join(tools, " and ") + " read their settings from their own files, but your user config.yaml still has them"
+	}
+	if opts.IsTerminal == nil || !opts.IsTerminal() || opts.Stdin == nil {
+		fmt.Fprintf(stdout, "\n%s: run `nerv migrate --user --dry-run` to see the steps, then `nerv migrate --user`.\n", subject)
+		return
+	}
+	fmt.Fprintln(stdout, "\n=== Move settings to the NERV-ecosystem tools ===")
+	fmt.Fprintf(stdout, "%s. nerv migrate --user would take these steps:\n", subject)
+	fmt.Fprint(stdout, migrate.Render(plan))
+	fmt.Fprint(stdout, "Run nerv migrate --user now? [y/N]: ")
+	line, sawNewline := readAnswer(opts.Stdin)
+	if !sawNewline {
+		fmt.Fprintln(stdout)
+	}
+	if answer := strings.ToLower(strings.TrimSpace(line)); answer != "y" && answer != "yes" {
+		fmt.Fprintln(stdout, "Not migrated: run `nerv migrate --user` when you are ready.")
+		return
+	}
+	backups, err := migrate.Apply(plan, o.Now)
+	if len(backups) > 0 {
+		fmt.Fprintln(stdout, "Backups:")
+		for _, b := range backups {
+			fmt.Fprintf(stdout, "  - %s\n", b)
+		}
+	}
+	if err != nil {
+		fmt.Fprintf(stdout, "Warning: nerv migrate --user: %v\n", err)
+		return
+	}
+	fmt.Fprintf(stdout, "nerv migrate: %d change(s) written\n", len(plan.Changes))
 }

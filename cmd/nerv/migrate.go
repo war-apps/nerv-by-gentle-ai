@@ -165,6 +165,66 @@ func catalogueToolInstalled(ctx context.Context, opts options, home, name string
 	return false
 }
 
+// setToolFileTargets points o at the own files of every catalogue tool
+// installed (S2, S12): nerv-task's task.yaml and nerv-release's
+// release.yaml, the repository's when o.RepoRoot is set and, with o.User,
+// the global ones. A tool not installed leaves its targets "", so its
+// sections keep meaning nerv's own extension, unchanged. nerv migrate,
+// nerv doctor and the install/upgrade offer all build their options here.
+func setToolFileTargets(ctx context.Context, opts options, home string, o *migrate.Options) {
+	// The global files sit next to the user config.yaml nerv migrates, in
+	// the directory paths.Resolve already chose: the real environment
+	// (XDG_CONFIG_HOME, %AppData%) applies to the real home only, never to
+	// a fake one.
+	global := func(tool string) string {
+		return filepath.Join(filepath.Dir(paths.Resolve(home).UserConfig), tool+".yaml")
+	}
+	if catalogueToolInstalled(ctx, opts, home, "nerv-task") {
+		if o.RepoRoot != "" {
+			o.TaskYAMLRepo = aiworkflow.ProjectConfigPath(o.RepoRoot, taskYAMLTool)
+		}
+		if o.User {
+			o.TaskYAMLHome = global(taskYAMLTool)
+		}
+	}
+	if catalogueToolInstalled(ctx, opts, home, "nerv-release") {
+		if o.RepoRoot != "" {
+			o.ReleaseYAMLRepo = aiworkflow.ProjectConfigPath(o.RepoRoot, releaseYAMLTool)
+		}
+		if o.User {
+			o.ReleaseYAMLHome = global(releaseYAMLTool)
+		}
+	}
+}
+
+// toolFileMove is one tool's own file a plan writes: a task.yaml or
+// release.yaml move still pending (S3).
+type toolFileMove struct {
+	Tool, Path string
+}
+
+// pendingToolFileMoves is the tool files plan writes, of the targets o
+// set (setToolFileTargets), nerv-task's before nerv-release's.
+func pendingToolFileMoves(plan *migrate.Plan, o migrate.Options) []toolFileMove {
+	targets := []toolFileMove{
+		{"nerv-task", o.TaskYAMLRepo}, {"nerv-task", o.TaskYAMLHome},
+		{"nerv-release", o.ReleaseYAMLRepo}, {"nerv-release", o.ReleaseYAMLHome},
+	}
+	var moves []toolFileMove
+	for _, target := range targets {
+		if target.Path == "" {
+			continue
+		}
+		for _, c := range plan.Changes {
+			if c.Path == target.Path {
+				moves = append(moves, target)
+				break
+			}
+		}
+	}
+	return moves
+}
+
 // exitError carries the exit code of a step that printed its own error.
 type exitError struct{ code int }
 
@@ -186,31 +246,7 @@ func migrateRun(ctx context.Context, cwd string, dryRun, user, install, force bo
 	if top != "" {
 		o.OriginURL = originURL(ctx, opts, top)
 	}
-	// S12: nerv-task's own files (task.yaml) only become the target of
-	// this step once nerv-task is actually installed; otherwise tasks:
-	// keeps meaning nerv's own task extension, unchanged.
-	if catalogueToolInstalled(ctx, opts, home, "nerv-task") {
-		if top != "" {
-			o.TaskYAMLRepo = aiworkflow.ProjectConfigPath(top, taskYAMLTool)
-		}
-		if user {
-			// The global task.yaml sits next to the user config.yaml nerv
-			// migrates, in the directory paths.Resolve already chose: the
-			// real environment (XDG_CONFIG_HOME, %AppData%) applies to the
-			// real home only, never to a fake one.
-			o.TaskYAMLHome = filepath.Join(filepath.Dir(paths.Resolve(home).UserConfig), taskYAMLTool+".yaml")
-		}
-	}
-	// S2: nerv-release's own files (release.yaml) become the target of
-	// release: and deploy: only once nerv-release is installed.
-	if catalogueToolInstalled(ctx, opts, home, "nerv-release") {
-		if top != "" {
-			o.ReleaseYAMLRepo = aiworkflow.ProjectConfigPath(top, releaseYAMLTool)
-		}
-		if user {
-			o.ReleaseYAMLHome = filepath.Join(filepath.Dir(paths.Resolve(home).UserConfig), releaseYAMLTool+".yaml")
-		}
-	}
+	setToolFileTargets(ctx, opts, home, &o)
 	plan, err := migrate.Compute(o)
 	if err != nil {
 		return err

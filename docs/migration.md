@@ -178,6 +178,12 @@ you set it in the global `release.yaml` yourself. The tool's file is
 written before `config.yaml` loses the moved keys, both are backed up,
 `--dry-run` lists the steps, and a second run moves nothing.
 
+You do not have to remember it: `nerv install` and `nerv upgrade` offer
+`nerv migrate --user` once a tool is installed and its settings are still
+in your user `config.yaml` (showing the dry run, then asking; without a
+terminal, a hint), and `nerv doctor` reports a pending `task.yaml` or
+`release.yaml` move, in the user configuration and in the repository.
+
 ## From 5.0.0-alpha.1
 
 In 5.0.0-alpha.1 the release extension was called ship: its section was

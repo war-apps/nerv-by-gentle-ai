@@ -345,9 +345,13 @@ Checks that everything NERV needs is in order and changes nothing:
   NERV plugin installed, enabled and at this binary's version, its skills,
   and the user configuration (a warning names its `tasks:`, `release:` and
   `deploy:` keys that no longer apply, with `nerv migrate --user` as the
-  step);
+  step; a `tool config` warning names a pending move of its settings to
+  the global `task.yaml` or `release.yaml` of nerv-task or nerv-release,
+  when that tool is installed);
 - in the repository: `.ai-workflow/config.yaml` with `enabled: true`, a
-  pending `nerv migrate`, the project extensions and providers, the
+  pending `nerv migrate` (naming `.ai-workflow/task.yaml` or
+  `.ai-workflow/release.yaml` when it moves settings there, for an
+  installed nerv-task or nerv-release), the project extensions and providers, the
   `release:`, `deploy:` and `tasks:` sections (read from the project file
   only) with the extensions they need, the origin remote and the base branch.
 
@@ -427,6 +431,10 @@ never stops the others; naming an unknown tool in `--tools` refuses and
 sets `nerv upgrade`'s own exit code to 1, when nothing else already set
 it to a non-zero value.
 
+Then it offers `nerv migrate --user` the same way `nerv install` does
+(see "nerv install" below); the install it ran above leaves that offer to
+it, so it is asked once.
+
 ### nerv install
 
 Before any of that, when gentle-ai is on PATH and already 4.x, it
@@ -455,6 +463,17 @@ providers `release-bash`, `release-conventional-commits`,
 `release-ssh-compose` for `nerv-release`) — an extension already
 enabled is left exactly as found, since disabling it is the replacing
 tool's own install, never nerv's.
+
+After the extensions (and before the closing wizard), when a tool is
+installed — before or in this run — and its settings are still in your
+user `config.yaml`, it offers `nerv migrate --user`: on a terminal it
+shows the steps its dry run lists, under `=== Move settings to the
+NERV-ecosystem tools ===`, and asks `Run nerv migrate --user now? [y/N]`;
+only a `y` writes anything (with the usual backups). Without a terminal it
+prints a hint naming `nerv migrate --user --dry-run` (to see the steps),
+then `nerv migrate --user`. It covers the user configuration
+only: a repository's own move is `nerv migrate`'s, which `nerv doctor`
+reports.
 
 Materializes the embedded core plugin, registers it in Claude Code's
 `settings.json`, refreshes the plugin cache, applies model/effort

@@ -53,7 +53,8 @@ over it either way. That install is told not to upgrade gentle-ai again
 
 Then offers the NERV-ecosystem tools (nerv-task, nerv-release), the same way
 install does, but running "<tool> upgrade" for a confirmed or named tool
-instead of its install script.
+instead of its install script, then nerv migrate --user the same way
+install does, when a tool's settings are still in the user config.yaml.
 
 Flags:
   --alpha    Also consider alpha prereleases (the newest of stable and alpha)
@@ -147,6 +148,9 @@ func runUpgrade(args []string, stdout, stderr io.Writer, opts options) int {
 				code = exitCodeFor(ecoErr)
 			}
 		}
+		// S3: then nerv migrate --user, when a tool's settings are still
+		// in the user config.yaml (the nested install above skipped it).
+		offerToolMigration(ctx, stdout, opts, home)
 	}
 
 	if code == 0 && (replaceErr != nil || gentleErr != nil) {

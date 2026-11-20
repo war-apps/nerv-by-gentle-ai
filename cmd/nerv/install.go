@@ -57,6 +57,11 @@ and its six providers for nerv-release) is never offered, selected or
 re-enabled once that tool is installed, or chosen in this run's
 ecosystem-tools step above.
 
+Then, when such a tool is installed and its settings are still in the
+user config.yaml, it offers nerv migrate --user: on a terminal it shows
+the steps and asks [y/N] (nothing is written without a y); otherwise it
+prints a hint naming the command.
+
 Unless --no-configure is given,
 it then runs the interactive setup wizard when stdin is a terminal, or
 prints the "run nerv configure" hint otherwise.
@@ -166,6 +171,14 @@ func runInstall(args []string, stdout, stderr io.Writer, opts options) int {
 	})
 	if code := mapInstallError(stdout, err); code != 0 {
 		return code
+	}
+
+	// S3: a tool installed (before or in this run) whose settings are
+	// still in the user config.yaml gets nerv migrate --user offered.
+	// nerv upgrade's own install run (--skip-ecosystem-tools) leaves it
+	// to the upgrade, which offers it once after its own tools step.
+	if !*skipEcosystemTools {
+		offerToolMigration(context.Background(), stdout, opts, home)
 	}
 
 	if *noConfigure {
