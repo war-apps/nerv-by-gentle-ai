@@ -342,9 +342,9 @@ func TestRunInstall_Terminal_NervTaskSelected_SuppressesTaskExtensions(t *testin
 	opts.IsTerminal = func() bool { return true }
 	opts.Runner = baseInstallRunner()
 	opts.GOOS = "linux"
-	// "y" confirms nerv-task (asked first); "n" declines release (asked
-	// next, since it is not replaced by any catalogue tool).
-	opts.Stdin = strings.NewReader("y\nn\n")
+	// "y" confirms nerv-task (asked first); "n" declines nerv-release
+	// (asked second), so release stays offered; "n" declines it.
+	opts.Stdin = strings.NewReader("y\nn\nn\n")
 
 	code := run([]string{"install", "--no-skills", "--no-configure"}, &stdout, &stderr, opts)
 
@@ -362,7 +362,7 @@ func TestRunInstall_Terminal_NervTaskSelected_SuppressesTaskExtensions(t *testin
 		t.Errorf("task/task-teamwork were enabled after nerv-task was selected:\n%s", out)
 	}
 	if !strings.Contains(out, "Install release (") {
-		t.Errorf("release (not replaced by any tool) was not asked:\n%s", out)
+		t.Errorf("release (nerv-release declined) was not asked:\n%s", out)
 	}
 }
 
@@ -378,9 +378,10 @@ func TestRunInstall_Terminal_NervTaskDeclined_StillOffersTaskExtensions(t *testi
 	opts.IsTerminal = func() bool { return true }
 	opts.Runner = baseInstallRunner()
 	opts.GOOS = "linux"
-	// "n" declines nerv-task (asked first); "y\ny\ny\n" accepts task, its
-	// provider task-teamwork, and release, same as before F2.
-	opts.Stdin = strings.NewReader("n\ny\ny\ny\n")
+	// "n" declines nerv-task and "n" nerv-release (asked first);
+	// "y\ny\ny\n" accepts task, its provider task-teamwork, and release,
+	// same as before F2.
+	opts.Stdin = strings.NewReader("n\nn\ny\ny\ny\n")
 
 	code := run([]string{"install", "--no-skills", "--no-configure"}, &stdout, &stderr, opts)
 
@@ -396,5 +397,97 @@ func TestRunInstall_Terminal_NervTaskDeclined_StillOffersTaskExtensions(t *testi
 	}
 	if !strings.Contains(out, "claude plugin install task@nerv") || !strings.Contains(out, "claude plugin install task-teamwork@nerv") {
 		t.Errorf("task/task-teamwork were not enabled after being accepted:\n%s", out)
+	}
+}
+
+// S1: accepting nerv-release in this run's ecosystem-tools step
+// suppresses the release extension and its six providers: none is asked
+// or enabled, while task (not replaced by nerv-release) is still offered.
+func TestRunInstall_Terminal_NervReleaseSelected_SuppressesReleaseExtensions(t *testing.T) {
+	home := t.TempDir()
+	seedReleaseFamilyForCLI(t, home)
+	var stdout, stderr bytes.Buffer
+	opts := testOptions(home)
+	opts.ExtensionsFS = nerv.ExtensionsFS()
+	opts.IsTerminal = func() bool { return true }
+	opts.Runner = baseInstallRunner()
+	opts.GOOS = "linux"
+	// "n" declines nerv-task, "y" confirms nerv-release; "n" declines task.
+	opts.Stdin = strings.NewReader("n\ny\nn\n")
+
+	code := run([]string{"install", "--no-skills", "--no-configure"}, &stdout, &stderr, opts)
+
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0; stdout:\n%s", code, stdout.String())
+	}
+	assertReleaseSuppressed(t, stdout.String())
+	if !strings.Contains(stdout.String(), "Install task (") {
+		t.Errorf("task (not replaced by nerv-release) was not asked:\n%s", stdout.String())
+	}
+}
+
+// S1: a nerv-release already installed on this machine suppresses the
+// release extensions even with --no-tools, and --with release is refused
+// naming the reason.
+func TestRunInstall_NervReleaseInstalled_SuppressesReleaseExtensions(t *testing.T) {
+	newOpts := func(home, answers string) options {
+		opts := testOptions(home)
+		opts.ExtensionsFS = nerv.ExtensionsFS()
+		opts.IsTerminal = func() bool { return true }
+		opts.Runner = baseInstallRunner()
+		opts.GOOS = "linux"
+		opts.LookPath = func(name string) (string, error) {
+			if name == "nerv-release" {
+				return "/usr/bin/nerv-release", nil
+			}
+			return "", errNotFoundForTest
+		}
+		opts.Stdin = strings.NewReader(answers)
+		return opts
+	}
+
+	t.Run("terminal offer", func(t *testing.T) {
+		home := t.TempDir()
+		seedReleaseFamilyForCLI(t, home)
+		var stdout, stderr bytes.Buffer
+		// "y" accepts task, "y" its provider task-teamwork.
+		code := run([]string{"install", "--no-skills", "--no-configure", "--no-tools"}, &stdout, &stderr, newOpts(home, "y\ny\n"))
+		if code != 0 {
+			t.Fatalf("exit code = %d, want 0; stdout:\n%s", code, stdout.String())
+		}
+		assertReleaseSuppressed(t, stdout.String())
+		if !strings.Contains(stdout.String(), "claude plugin install task@nerv") {
+			t.Errorf("task was not installed after being accepted:\n%s", stdout.String())
+		}
+	})
+
+	t.Run("with release refused", func(t *testing.T) {
+		home := t.TempDir()
+		seedReleaseFamilyForCLI(t, home)
+		var stdout, stderr bytes.Buffer
+		code := run([]string{"install", "--no-skills", "--no-configure", "--no-tools", "--with", "release-github"}, &stdout, &stderr, newOpts(home, ""))
+		if code == 0 {
+			t.Fatalf("exit code = 0, want a refusal; stdout:\n%s", stdout.String())
+		}
+		if !strings.Contains(stdout.String()+stderr.String(), "release-github is already replaced by a NERV-ecosystem tool") {
+			t.Errorf("want the replaced-by-a-tool refusal:\n%s%s", stdout.String(), stderr.String())
+		}
+	})
+}
+
+// assertReleaseSuppressed fails when install output asks about, or
+// enables, the release extension or any of its six providers.
+func assertReleaseSuppressed(t *testing.T, out string) {
+	t.Helper()
+	for _, name := range []string{
+		"release", "release-bash", "release-conventional-commits", "release-docker-compose",
+		"release-github", "release-script", "release-ssh-compose",
+	} {
+		if strings.Contains(out, "Install "+name+" (") {
+			t.Errorf("%s was asked although nerv-release replaces it:\n%s", name, out)
+		}
+		if strings.Contains(out, "claude plugin install "+name+"@nerv") {
+			t.Errorf("%s was enabled although nerv-release replaces it:\n%s", name, out)
+		}
 	}
 }

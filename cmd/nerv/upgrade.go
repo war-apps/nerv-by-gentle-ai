@@ -51,7 +51,7 @@ checksum) — so gentle-ai keeps getting its chance and NERV stays laid
 over it either way. That install is told not to upgrade gentle-ai again
 (it already ran once, right here).
 
-Then offers the NERV-ecosystem tools (nerv-task today), the same way
+Then offers the NERV-ecosystem tools (nerv-task, nerv-release), the same way
 install does, but running "<tool> upgrade" for a confirmed or named tool
 instead of its install script.
 

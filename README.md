@@ -108,6 +108,7 @@ works on a machine without `nerv`.
 | Tool | Repository | Replaces |
 |---|---|---|
 | [`nerv-task`](https://github.com/war-apps/nerv-task-by-gentle-ai) | `war-apps/nerv-task-by-gentle-ai` | the `task` and `task-teamwork` extensions |
+| [`nerv-release`](https://github.com/war-apps/nerv-release-by-gentle-ai) | `war-apps/nerv-release-by-gentle-ai` | the `release` extension and its providers (`release-bash`, `release-conventional-commits`, `release-docker-compose`, `release-github`, `release-script`, `release-ssh-compose`) |
 
 `nerv install` and `nerv upgrade` also offer the catalogue, after NERV's
 own work: each tool's state (not installed, installed with its version,
@@ -129,6 +130,12 @@ nerv-task's own `task.yaml` files instead of `.ai-workflow/config.yaml`
 then on, configure task tracking through nerv-task's own commands and
 [its documentation](https://github.com/war-apps/nerv-task-by-gentle-ai),
 not NERV's.
+
+Likewise, once `nerv-release` is installed, `/nerv:init` offers
+`nerv-release init` instead of `/release:setup` and
+`/release:deploy-setup`; configure releases and deploys through
+nerv-release's own commands and
+[its documentation](https://github.com/war-apps/nerv-release-by-gentle-ai).
 
 ## Requirements
 

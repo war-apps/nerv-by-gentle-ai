@@ -135,16 +135,17 @@ func runMigrate(args []string, stdout, stderr io.Writer, opts options) int {
 // imports nerv-task's module.
 const taskYAMLTool = "task"
 
-// nervTaskInstalled reports whether nerv-task (the ecosystem catalogue
-// tool, S12) is installed on this machine: on PATH, or in its default
-// install directory (internal/ecosystem's own detection).
-func nervTaskInstalled(ctx context.Context, opts options, home string) bool {
+// catalogueToolInstalled reports whether the ecosystem catalogue tool
+// named name (S12) is installed on this machine: on PATH, or in its
+// default install directory (internal/ecosystem's own detection). A name
+// the catalogue does not list is never installed.
+func catalogueToolInstalled(ctx context.Context, opts options, home, name string) bool {
 	goos := opts.GOOS
 	if goos == "" {
 		goos = runtime.GOOS
 	}
 	for _, t := range ecosystem.Catalogue() {
-		if t.Name != "nerv-task" {
+		if t.Name != name {
 			continue
 		}
 		return ecosystem.Detect(ctx, t, opts.Runner, opts.LookPath, goos, home, opts.Getenv).Installed
@@ -176,7 +177,7 @@ func migrateRun(ctx context.Context, cwd string, dryRun, user, install, force bo
 	// S12: nerv-task's own files (task.yaml) only become the target of
 	// this step once nerv-task is actually installed; otherwise tasks:
 	// keeps meaning nerv's own task extension, unchanged.
-	if nervTaskInstalled(ctx, opts, home) {
+	if catalogueToolInstalled(ctx, opts, home, "nerv-task") {
 		if top != "" {
 			o.TaskYAMLRepo = aiworkflow.ProjectConfigPath(top, taskYAMLTool)
 		}

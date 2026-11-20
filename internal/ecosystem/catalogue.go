@@ -1,12 +1,13 @@
 // Package ecosystem is the catalogue of released NERV-ecosystem tools --
 // standalone companion CLIs/plugins that replace one or more of nerv's own
-// extensions (today: nerv-task, replacing the task and task-teamwork
-// extensions; nerv-release joins in P4) -- plus the detection, release
-// lookup and execution glue "nerv install" and "nerv upgrade" need to offer
-// them. Every tool implements the S10 contract: "<tool> version [--json]",
-// install, upgrade, configure, init, and ships its official install
-// scripts as scripts/install.sh and scripts/install.ps1 on its main
-// branch; nerv drives a tool only through these.
+// extensions (nerv-task, replacing the task and task-teamwork extensions;
+// nerv-release, replacing the release extension and its six providers) --
+// plus the detection, release lookup and execution glue "nerv install" and
+// "nerv upgrade" need to offer them. Every tool implements the S10
+// contract: "<tool> version [--json]", install, upgrade, configure, init,
+// and ships its official install scripts as scripts/install.sh and
+// scripts/install.ps1 on its main branch; nerv drives a tool only through
+// these.
 package ecosystem
 
 // Tool is one released ecosystem tool nerv can offer to install or
@@ -36,6 +37,16 @@ func Catalogue() []Tool {
 			Binary:      "nerv-task",
 			Description: "task tracking and time logging (/task:*), replacing the task and task-teamwork extensions",
 			Replaces:    []string{"task", "task-teamwork"},
+		},
+		{
+			Name:        "nerv-release",
+			Repo:        "war-apps/nerv-release-by-gentle-ai",
+			Binary:      "nerv-release",
+			Description: "release and deploy (/release:*), replacing the release extension and its providers",
+			Replaces: []string{
+				"release", "release-bash", "release-conventional-commits", "release-docker-compose",
+				"release-github", "release-script", "release-ssh-compose",
+			},
 		},
 	}
 }

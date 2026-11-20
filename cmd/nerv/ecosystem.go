@@ -15,7 +15,7 @@ import (
 // install's and upgrade's usage strings. verb is "install" or "upgrade".
 func ecosystemToolsFlagsUsage(verb string) string {
 	return fmt.Sprintf(`  --tools <names>       Comma-separated NERV-ecosystem tools to %s (such as
-                        nerv-task), skipping the confirm prompt
+                        nerv-task,nerv-release), skipping the confirm prompt
   --no-tools            Skip the NERV-ecosystem tools step entirely
 `, verb)
 }

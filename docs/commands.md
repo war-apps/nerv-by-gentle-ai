@@ -95,9 +95,10 @@ resolves the TDD mode and test runner per feature. It then offers, in one
 multi-select question, the configuration flows available on the machine:
 `/nerv:configure` (always); the tasks repository setup, `nerv-task init`
 when nerv-task is installed or `/task:setup` when the task extension is
-installed without nerv-task (never both); `/release:setup` and
-`/release:deploy-setup` when the release extension is installed; and
-"None" to skip this step. It runs each selected flow in that order. Use
+installed without nerv-task (never both); the release repository setup,
+`nerv-release init` when nerv-release is installed or `/release:setup` and
+`/release:deploy-setup` when the release extension is installed without
+nerv-release (never both); and "None" to skip this step. It runs each selected flow in that order. Use
 it once per repository.
 
 ```
@@ -420,8 +421,8 @@ reported and left alone, and a failed release lookup or upgrade is only a
 warning — install continues with the gentle-ai it found, and the exit
 code is unaffected.
 
-Next, it offers the NERV-ecosystem tools (`nerv-task` today; see the
-README's "NERV ecosystem" section): on a terminal with neither `--tools`
+Next, it offers the NERV-ecosystem tools (`nerv-task`, then
+`nerv-release`; see the README's "NERV ecosystem" section): on a terminal with neither `--tools`
 nor `--no-tools`, every catalogue tool's state (not installed, installed
 with its version, or outdated against its latest release) is shown and
 confirmed one by one, before anything about NERV's own extensions is
@@ -432,7 +433,10 @@ on Linux/macOS, `install.ps1` on Windows). `--tools <names>`
 flag, a hint naming both flags is printed instead. A tool confirmed or
 named here, or already installed on this machine, also stops the steps
 below from ever offering, selecting or re-enabling the extension it
-replaces (`task`, `task-teamwork` for `nerv-task`) — an extension already
+replaces (`task`, `task-teamwork` for `nerv-task`; `release` and its six
+providers `release-bash`, `release-conventional-commits`,
+`release-docker-compose`, `release-github`, `release-script`,
+`release-ssh-compose` for `nerv-release`) — an extension already
 enabled is left exactly as found, since disabling it is the replacing
 tool's own install, never nerv's.
 
@@ -483,7 +487,7 @@ Flags:
                         task,task-<provider>,release,deploy,release-<provider>
                         (each brings what it requires)
   --tools <names>       Comma-separated NERV-ecosystem tools to install (such as
-                        nerv-task), skipping the confirm prompt
+                        nerv-task,nerv-release), skipping the confirm prompt
   --no-tools            Skip the NERV-ecosystem tools step entirely
 ```
 

@@ -24,12 +24,12 @@ gentle-ai. A newer major version is reported and left alone; a failed
 release lookup or upgrade is only a warning, and install continues with
 the gentle-ai it found.
 
-First offers the NERV-ecosystem tools (nerv-task today): on a terminal with
-neither --tools nor --no-tools, each tool's state (not installed, its
-version, or outdated against its latest release) is shown and confirmed
-one by one, before anything about NERV's own extensions is asked; a
-confirmed tool's official install script then runs (install.sh on
-Linux/macOS, install.ps1 on Windows).
+First offers the NERV-ecosystem tools (nerv-task, nerv-release): on a
+terminal with neither --tools nor --no-tools, each tool's state (not
+installed, its version, or outdated against its latest release) is shown
+and confirmed one by one, before anything about NERV's own extensions is
+asked; a confirmed tool's official install script then runs (install.sh
+on Linux/macOS, install.ps1 on Windows).
 
 Then materializes the embedded NERV plugin under <home>/.nerv/marketplace,
 registers it in Claude Code's settings.json, refreshes the plugin cache,
@@ -52,9 +52,10 @@ with it; a requirement this nerv does not ship is refused.
 Old /task:* copies in <home>/.claude/commands/task, which shadow the task
 extension's commands, are reported, and removed when you confirm on a terminal.
 
-An extension a tool replaces (task, task-teamwork for nerv-task) is never
-offered, selected or re-enabled once that tool is installed, or chosen in
-this run's ecosystem-tools step above.
+An extension a tool replaces (task, task-teamwork for nerv-task; release
+and its six providers for nerv-release) is never offered, selected or
+re-enabled once that tool is installed, or chosen in this run's
+ecosystem-tools step above.
 
 Unless --no-configure is given,
 it then runs the interactive setup wizard when stdin is a terminal, or
@@ -130,8 +131,9 @@ func runInstall(args []string, stdout, stderr io.Writer, opts options) int {
 	// S11/F2: the ecosystem tools are offered before NERV's own
 	// extensions, so a tool chosen in this run (not only one already
 	// installed on this machine) also suppresses the extensions it
-	// replaces (task, task-teamwork for nerv-task) -- a user who accepts
-	// nerv-task is never also asked about them.
+	// replaces (task, task-teamwork for nerv-task; release and its
+	// providers for nerv-release) -- a user who accepts a tool is never
+	// also asked about them.
 	var selectedTools []ecosystem.Tool
 	if !*skipEcosystemTools {
 		var ecoErr error

@@ -113,11 +113,19 @@ creates no `odd/` file.
      - `/task:setup` — the `tasks:` section: task provider and connection
        check. Offered only when the task extension is installed and
        nerv-task is not.
-   - `/release:setup` — the `release:` section: projects, build providers,
-     version engine. Offered only when the release extension is installed
-     (release is still a nerv extension until P4).
-   - `/release:deploy-setup` — the `deploy:` section: git host and
-     targets. Offered only when the release extension is installed.
+   - **Release repository setup** — one of:
+     - `nerv-release init` — the release tool's own repository setup
+       (release and deploy). Offered instead of `/release:setup` and
+       `/release:deploy-setup` when nerv-release is installed (its binary
+       on `PATH` or in its default directory): nerv-release is installed
+       means the release extension is being replaced, so its own `init`
+       runs in place of the extension's two setup flows.
+     - `/release:setup` — the `release:` section: projects, build
+       providers, version engine. Offered only when the release extension
+       is installed and nerv-release is not.
+     - `/release:deploy-setup` — the `deploy:` section: git host and
+       targets. Offered only when the release extension is installed and
+       nerv-release is not.
    - **None** — skip this step; always offered alongside the flows above.
 
    A flow whose extension or tool is not installed is not offered; say once
@@ -125,9 +133,11 @@ creates no `odd/` file.
    asking and wait. Selecting None skips this step. Run each selected flow
    in the order above, one after the other: Follow the selected command's
    file from its first step, with no arguments (`/nerv:configure` with
-   `all`), or, for `nerv-task init`, run that CLI command directly. A
-   `nerv-task init`/`/task:setup` choice is never both offered, so at most
-   one of the two ever runs. `/release:deploy-setup` stops when the
+   `all`), or run the CLI command directly for `nerv-task init` and
+   `nerv-release init`. A `nerv-task init`/`/task:setup` choice is never
+   both offered, so at most one of the two ever runs; likewise
+   `nerv-release init` is never offered together with `/release:setup` or
+   `/release:deploy-setup`. `/release:deploy-setup` stops when the
    `release:` section is missing, so it runs after `/release:setup`. A flow
    that stops or fails is reported and the next selected flow still runs.
 
