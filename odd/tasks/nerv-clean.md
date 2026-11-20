@@ -18,7 +18,7 @@ Branches: `feat/release-tool-migration` (N1-N4, release 6.6.0), then `feat/nerv-
 
 | ID | Specs | Route | Status | Commit |
 |---|---|---|---|---|
-| N1 | S1 | pending | pending | |
+| N1 | S1 | delegated writer (context backstop) | done: catalogue entry, generalized catalogueToolInstalled, offer/suppression, /nerv:init, docs | 24e3592 |
 | N2 | S2 | pending | pending | |
 | N3 | S3 | pending | pending | |
 | N4 | S4 | pending | pending | |
@@ -35,3 +35,4 @@ C1: frozen personal-key constants in migrate, migrate decoupled from ExtensionsF
 
 - **L1** (2026-11-20, user) "si" to moving on to P5 after nerv-release 1.0.1; P5 found to depend on the unfinished nerv side of P4 (catalogue + release.yaml migration), so both are planned here in that order.
 - **L2** (2026-11-20) Mapping (explorer): catalogue `internal/ecosystem/catalogue.go:31-41` (nerv-task only; release URLs derive from Repo/Binary); `cmd/nerv/migrate.go:141-153` hardcodes `nervTaskInstalled`; `internal/migrate/taskyaml.go` `migrateSection(dstPrefix)`, `removeMigrated`, `verifyTaskYAML` reusable; repo `personalKeys` (`tasks.go:123`) walks task providers only; no code offers migrate from install/upgrade (doctor only, and doctor's Compute never sets the task.yaml paths). P5 removal: ~13.8k production lines in 12 internal packages + ~2.2k in cmd/nerv with no core importer; `internal/extension`, `internal/plugin`, `workflowconfig/scope.go`, `configure`, `doctor`, `migrate` need surgery. nerv-release reads `defaults.release`/`defaults.deploy` (verified: nerv-release `internal/workflowconfig/scope.go:19-24,158`).
+- **L3** (2026-11-20) N1 done. Pre-existing on Windows at the branch base (verified with the change stashed): 4 release integration tests in cmd/nerv (removed with C2) and `TestUpgrade_StableReplacesBinaryAndRunsInstall` (`mode = -rw-rw-rw-, want 0755`, core; open). Adding a catalogue tool shifts the stdin answers of terminal install tests, and an `HTTPClient` override needs an `EcosystemAPIBase` entry per tool or the release lookup reaches GitHub.
