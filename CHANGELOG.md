@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [6.6.0] - 2026-11-20
+
+### Added
+- ecosystem: offer nerv-release in the tool catalogue (24e3592)
+- migrate: move release and deploy settings to nerv-release's release.yaml (dcaa899)
+- migrate: offer nerv migrate from install and upgrade, and report it in doctor (987bfab)
+
+### Fixed
+- install: offer nerv migrate on the first upgrade from an older nerv (be36373)
+- migrate: the task.yaml move keeps quoted strings that look like numbers,
+  bools or nulls (`"010"`, `"true"`) as strings, writes task.yaml before the
+  user config.yaml loses its `tasks:` section, and resolves YAML aliases (dcaa899)
+
 ## [6.5.1] - 2026-11-18
 
 Security fixes. Upgrading from 6.5.0: run `nerv upgrade`. A repository's
