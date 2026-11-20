@@ -19,6 +19,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -66,6 +67,14 @@ type Options struct {
 	// kit aiworkflow.ProjectConfigPath(RepoRoot, "task")); "" skips the
 	// S12 repository step.
 	TaskYAMLRepo string
+	// ReleaseYAMLHome is nerv-release's global release.yaml path (next
+	// to the user config.yaml); "" skips the user release move (S2:
+	// nerv-release is not installed). Only used with User.
+	ReleaseYAMLHome string
+	// ReleaseYAMLRepo is nerv-release's repository release.yaml path
+	// (typically kit aiworkflow.ProjectConfigPath(RepoRoot, "release"));
+	// "" skips the repository release move.
+	ReleaseYAMLRepo string
 }
 
 // Kind is what a Change does.
@@ -157,6 +166,9 @@ func Compute(o Options) (*Plan, error) {
 		if err := moveUserTaskYAML(p, o, user); err != nil {
 			return nil, err
 		}
+		if err := moveUserReleaseYAML(p, o, user); err != nil {
+			return nil, err
+		}
 		user.finish(p)
 	}
 	return p, nil
@@ -172,6 +184,10 @@ type userState struct {
 	// moved is set when the previous config.yml moves to path: path does
 	// not exist yet, and original is the previous file's content.
 	moved bool
+	// destinations are the tool files (the global task.yaml and
+	// release.yaml) the user config's sections move to: they are written
+	// before the user config loses those sections.
+	destinations []Change
 }
 
 // set records a personal key moved into the user configuration.
@@ -179,19 +195,20 @@ func (u *userState) finish(p *Plan) {
 	if u.doc == nil {
 		return
 	}
+	first := u.destinations
 	text := []byte(u.doc.String())
-	if u.exists && bytes.Equal(text, u.original) {
-		return
+	unchanged := u.exists && bytes.Equal(text, u.original)
+	empty := !u.exists && !u.moved && len(bytes.TrimSpace(text)) == 0
+	if !unchanged && !empty {
+		c := Change{Kind: Write, Path: u.path, New: text, User: true, Why: "your user configuration"}
+		if u.exists {
+			c.Old = u.original
+		}
+		first = append(slices.Clone(first), c)
 	}
-	if !u.exists && !u.moved && len(bytes.TrimSpace(text)) == 0 {
-		return
-	}
-	c := Change{Kind: Write, Path: u.path, New: text, User: true, Why: "your user configuration"}
-	if u.exists {
-		c.Old = u.original
-	}
-	// The user file is written before the old one is renamed.
-	p.Changes = append([]Change{c}, p.Changes...)
+	// The tool files the user's sections move to are written first, then
+	// the user file, before the old one is renamed.
+	p.Changes = append(first, p.Changes...)
 }
 
 // Apply writes the plan as one transaction: each changed or removed file

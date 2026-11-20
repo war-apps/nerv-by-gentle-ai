@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 
 	nerv "github.com/war-apps/nerv-by-gentle-ai"
@@ -48,6 +49,8 @@ Exit codes: 0 nothing failed (there may be warnings); 1 a check failed;
 `
 
 const stepMigrate = "Run nerv migrate --dry-run to see the steps, then nerv migrate"
+
+const stepMigrateUser = "Run nerv migrate --user --dry-run to see the steps, then nerv migrate --user"
 
 func runDoctor(args []string, stdout, stderr io.Writer, opts options) int {
 	fs := flag.NewFlagSet("doctor", flag.ContinueOnError)
@@ -131,6 +134,7 @@ func (d *doctorRun) machine() {
 	d.plugin()
 	d.skills()
 	d.userConfig()
+	d.toolConfig()
 }
 
 func (d *doctorRun) settings() *claude.Settings {
@@ -194,7 +198,7 @@ func (d *doctorRun) skills() {
 // --user moves, or one that does not parse.
 func (d *doctorRun) userConfig() {
 	const name = "user config"
-	const step = "Run nerv migrate --user --dry-run to see the steps, then nerv migrate --user"
+	const step = stepMigrateUser
 	if err := d.paths.RefusePreviousUser(); err != nil {
 		d.add(name, doctor.Fail, d.paths.PreviousUserConfig+" is from an earlier nerv: no nerv command reads it", step)
 		return
@@ -219,6 +223,26 @@ func (d *doctorRun) userConfig() {
 		default:
 			d.add(name, doctor.OK, d.paths.UserConfig, "")
 		}
+	}
+}
+
+// toolConfig reports a pending move of the user config.yaml's settings
+// to the own file of a catalogue tool installed (S3): nerv-task's global
+// task.yaml or nerv-release's global release.yaml. It adds nothing when
+// none is pending, or when nerv migrate --user cannot plan (userConfig
+// already reports a configuration that does not load).
+func (d *doctorRun) toolConfig() {
+	o := migrate.Options{Home: d.home, User: true, ExtensionsFS: d.opts.ExtensionsFS, Now: d.opts.Now()}
+	setToolFileTargets(d.ctx, d.opts, d.home, &o)
+	if o.TaskYAMLHome == "" && o.ReleaseYAMLHome == "" {
+		return
+	}
+	plan, err := migrate.Compute(o)
+	if err != nil {
+		return
+	}
+	for _, m := range pendingToolFileMoves(plan, o) {
+		d.add("tool config", doctor.Warn, m.Tool+" is installed, but your user config.yaml still has its settings: nerv migrate --user moves them to "+m.Path, stepMigrateUser)
 	}
 }
 
@@ -310,12 +334,25 @@ func (d *doctorRun) projectConfig(top string) (*config.Document, bool) {
 // migration checks whether nerv migrate has steps to take in the
 // repository.
 func (d *doctorRun) migration(top, origin string) {
-	plan, err := migrate.Compute(migrate.Options{RepoRoot: top, Home: d.home, ExtensionsFS: d.opts.ExtensionsFS, OriginURL: origin, Now: d.opts.Now()})
+	o := migrate.Options{RepoRoot: top, Home: d.home, ExtensionsFS: d.opts.ExtensionsFS, OriginURL: origin, Now: d.opts.Now()}
+	setToolFileTargets(d.ctx, d.opts, d.home, &o)
+	plan, err := migrate.Compute(o)
 	switch {
 	case err != nil:
 		d.add("migration", doctor.Fail, "nerv migrate cannot run: "+err.Error(), "Fix what nerv migrate reports, then run it")
 	case !plan.Empty():
-		d.add("migration", doctor.Warn, fmt.Sprintf("nerv migrate has %d step(s) to take", len(plan.Changes)), stepMigrate)
+		detail := fmt.Sprintf("nerv migrate has %d step(s) to take", len(plan.Changes))
+		// S3: a pending task.yaml/release.yaml move is named.
+		for i, m := range pendingToolFileMoves(plan, o) {
+			if i == 0 {
+				detail += ", including moving settings to "
+			} else {
+				detail += " and "
+			}
+			rel, _ := filepath.Rel(top, m.Path)
+			detail += filepath.ToSlash(rel) + " (" + m.Tool + " is installed)"
+		}
+		d.add("migration", doctor.Warn, detail, stepMigrate)
 	default:
 		d.add("migration", doctor.OK, "nothing to migrate", "")
 	}

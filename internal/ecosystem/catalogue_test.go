@@ -5,26 +5,63 @@ import (
 	"testing"
 )
 
-func TestCatalogue_ListsNervTask(t *testing.T) {
+func TestCatalogue_ListsNervTaskThenNervRelease(t *testing.T) {
 	tools := Catalogue()
-	if len(tools) != 1 {
-		t.Fatalf("Catalogue() = %d tools, want 1 (nerv-task only; nerv-release joins in P4)", len(tools))
+	if len(tools) != 2 {
+		t.Fatalf("Catalogue() = %d tools, want 2 (nerv-task, nerv-release)", len(tools))
 	}
-	got := tools[0]
-	if got.Name != "nerv-task" {
-		t.Errorf("Name = %q, want nerv-task", got.Name)
+	tests := []struct {
+		name     string
+		got      Tool
+		repo     string
+		replaces []string
+	}{
+		{"nerv-task", tools[0], "war-apps/nerv-task-by-gentle-ai", []string{"task", "task-teamwork"}},
+		{"nerv-release", tools[1], "war-apps/nerv-release-by-gentle-ai", []string{
+			"release", "release-bash", "release-conventional-commits", "release-docker-compose",
+			"release-github", "release-script", "release-ssh-compose",
+		}},
 	}
-	if got.Repo != "war-apps/nerv-task-by-gentle-ai" {
-		t.Errorf("Repo = %q, want war-apps/nerv-task-by-gentle-ai", got.Repo)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.got.Name != tt.name {
+				t.Errorf("Name = %q, want %q", tt.got.Name, tt.name)
+			}
+			if tt.got.Repo != tt.repo {
+				t.Errorf("Repo = %q, want %q", tt.got.Repo, tt.repo)
+			}
+			if tt.got.Binary != tt.name {
+				t.Errorf("Binary = %q, want %q", tt.got.Binary, tt.name)
+			}
+			if tt.got.Description == "" {
+				t.Error("Description is empty")
+			}
+			if !slices.Equal(tt.got.Replaces, tt.replaces) {
+				t.Errorf("Replaces = %v, want %v", tt.got.Replaces, tt.replaces)
+			}
+		})
 	}
-	if got.Binary != "nerv-task" {
-		t.Errorf("Binary = %q, want nerv-task", got.Binary)
+}
+
+func TestReplacingTool_CatalogueNamesNervReleaseForEveryReleaseExtension(t *testing.T) {
+	for _, ext := range []string{
+		"release", "release-bash", "release-conventional-commits", "release-docker-compose",
+		"release-github", "release-script", "release-ssh-compose",
+	} {
+		got, ok := ReplacingTool(Catalogue(), ext)
+		if !ok || got.Name != "nerv-release" {
+			t.Errorf("ReplacingTool(Catalogue(), %q) = %q, %v, want nerv-release, true", ext, got.Name, ok)
+		}
 	}
-	if got.Description == "" {
-		t.Error("Description is empty")
+	if got, ok := ReplacingTool(Catalogue(), "task-teamwork"); !ok || got.Name != "nerv-task" {
+		t.Errorf("ReplacingTool(Catalogue(), task-teamwork) = %q, %v, want nerv-task, true", got.Name, ok)
 	}
-	if !slices.Equal(got.Replaces, []string{"task", "task-teamwork"}) {
-		t.Errorf("Replaces = %v, want [task task-teamwork]", got.Replaces)
+}
+
+func TestReplacedExtensions_CatalogueOnlyNervReleaseInstalled(t *testing.T) {
+	got := ReplacedExtensions(Catalogue(), map[string]bool{"nerv-release": true})
+	if slices.Contains(got, "task") || len(got) != 7 || got[0] != "release" {
+		t.Errorf("ReplacedExtensions = %v, want the 7 release extensions only", got)
 	}
 }
 

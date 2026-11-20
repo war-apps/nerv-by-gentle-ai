@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
@@ -90,5 +91,33 @@ func TestMigrate_TaskYAMLUntouchedWhenNervTaskNotInstalled(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(filepath.Dir(user), "task.yaml")); err == nil {
 		t.Error("task.yaml was written without nerv-task installed")
+	}
+}
+
+// catalogueToolInstalled answers per catalogue tool: nerv-release on PATH
+// is installed, nerv-task (not found) is not -- so nerv-release alone never
+// turns on the task.yaml move -- and an unknown name never is.
+func TestCatalogueToolInstalled_PerTool(t *testing.T) {
+	home := t.TempDir()
+	opts := testOptions(home)
+	opts.GOOS = "linux"
+	opts.LookPath = func(name string) (string, error) {
+		if name == "nerv-release" {
+			return "/usr/bin/nerv-release", nil
+		}
+		return "", os.ErrNotExist
+	}
+	tests := []struct {
+		name string
+		want bool
+	}{
+		{"nerv-release", true},
+		{"nerv-task", false},
+		{"not-a-tool", false},
+	}
+	for _, tt := range tests {
+		if got := catalogueToolInstalled(context.Background(), opts, home, tt.name); got != tt.want {
+			t.Errorf("catalogueToolInstalled(%q) = %v, want %v", tt.name, got, tt.want)
+		}
 	}
 }

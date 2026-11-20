@@ -220,3 +220,20 @@ func TestTaskYAML_SkippedWhenPathsAreEmpty(t *testing.T) {
 		t.Errorf("changes without TaskYAMLHome: %s", migrate.Render(p))
 	}
 }
+
+// The task move keeps quoted lookalike strings as strings too (shared
+// helpers with the release move).
+func TestUserTaskYAML_QuotedLookalikesStayStrings(t *testing.T) {
+	for _, v := range quotedLookalikes {
+		t.Run(v, func(t *testing.T) {
+			w := taskYAMLWorld(t)
+			w.write(w.userPaths().UserConfig, "defaults:\n  tasks:\n    k: \""+v+"\"\n    l: [\""+v+"\"]\n")
+			o := w.taskYAMLOptions(true)
+			o.RepoRoot = ""
+			w.migrate(o)
+			got := yamlMap(t, w.read(o.TaskYAMLHome))
+			defaults, _ := got["defaults"].(map[string]any)
+			assertStringsKept(t, defaults, v)
+		})
+	}
+}
