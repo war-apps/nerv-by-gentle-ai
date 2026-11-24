@@ -35,9 +35,9 @@ func TestSignalContext_CancelsOnInterruptTerminateAndHangup(t *testing.T) {
 	}
 }
 
-func TestDefaultOptions_WireTheRealSignalContextAndEngine(t *testing.T) {
+func TestDefaultOptions_WireTheRealSignalContext(t *testing.T) {
 	opts := defaultOptions()
-	if opts.SignalContext == nil || opts.ComputeVersions == nil {
-		t.Fatal("defaultOptions leaves the signal context or the engine unset")
+	if opts.SignalContext == nil {
+		t.Fatal("defaultOptions leaves the signal context unset")
 	}
 }

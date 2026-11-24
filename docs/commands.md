@@ -123,10 +123,6 @@ isn't taking effect.
 | Command | What it does |
 |---|---|
 | `nerv version` | Print the binary and plugin versions |
-| `nerv version next` | Compute the next release version with the native engine (release extension) |
-| `nerv release` | Build, test and package origin's code into a local artifact; no git writes (release extension) |
-| `nerv release setup --import` | Import an existing semantic-release config into the `release:` section |
-| `nerv deploy` | Release and deploy a release artifact: release commit, tag, push, targets, git host release (release extension) |
 | `nerv migrate` | Move a repository (and, with `--user`, the user configuration) from nerv 4.2.0 or 5.0.0-alpha.1 |
 | `nerv doctor` | Check that NERV is in order on this machine and in the repository, and list the steps to take |
 | `nerv upgrade` | Replace the nerv binary with the newest release (`--alpha`, `--rc`), upgrade gentle-ai within its 4.x major version, then run nerv's install — gentle-ai still gets upgraded and install still runs, with the running executable, when nerv itself cannot be replaced |
@@ -201,79 +197,15 @@ the former tasks, Teamwork and commands sections, and the flags
 `--repo-provider`, `--repo-project-id`, `--repo-tasklist-id`,
 `--install-commands` and `--skip-commands` are gone.
 
-### nerv version next
+### Moved to nerv-release
 
-Computes the next semantic version of the repository, or of each project of
-its `release:` section, with nerv's native engine (no semantic-release, node or
-npm), and prints the 12 outputs of `cycjimmy/semantic-release-action` as
-text, JSON or GitHub Actions output lines. Its flags and outputs are the
-ones it had with semantic-release. Flags, formats, monorepo key naming and
-exit codes: [release-commands.md](release-commands.md#nerv-version-next).
-
-```
-nerv version next --branch develop --json
-```
-
-```
-nerv version next --offline --format env >> "$GITHUB_OUTPUT"
-```
-
-### nerv release
-
-Builds, tests and packages what is on origin, in a throwaway clone, in each
-project's build provider (`docker-compose` or `bash`), per project in dependency
-order, and leaves the artifact `.nerv/artifacts/<project>/<version>/`. It
-never writes to git. It asks for confirmation (`--yes` to skip; required
-without a terminal); `--dry-run` runs every stage and writes no artifact;
-`--expect <project>=<version>` packages only the approved versions;
-`--version <semver>` skips the version computation (it must fit the branch
-and be newer than the branch's last release; the notes and CHANGELOG
-section are still written from the commits since then) and takes the
-channel from the branch's `branches` entry. Flow, failure handling and exit codes:
-[release-commands.md](release-commands.md#nerv-release).
-
-```
-nerv release --dry-run
-nerv release --branch develop --project api
-```
-
-### nerv release setup --import
-
-Translates an existing JSON or YAML semantic-release config (`package.json`
-`release`, `.releaserc.json`, `.releaserc.yaml`/`.yml`) into the `release:`
-section, once, and lists every part it cannot translate (the `npm` and
-`exec` plugins, `presetConfig.types`, `extends`, maintenance branches). A
-`.js` config is reported, never imported. An engine key the `release:` section
-already sets to another value is never replaced silently: the import
-refuses (exit 1) and lists each key with its current and imported values;
-`--force` replaces them and prints each replaced value. A 4.2.0 `release:`
-section (one with `semantic_release:` or the presets) is refused: `nerv
-migrate` converts it. `--dry-run` prints the result and writes nothing. See
-[release-commands.md](release-commands.md#importing-a-semantic-release-config).
-
-```
-nerv release setup --import --dry-run
-nerv release setup --import
-nerv release setup --import --force
-```
-
-### nerv deploy
-
-Releases and deploys an artifact `nerv release` left: it preflights every
-target's tools and data before any push, then makes the release commit, the
-lightweight tag and the channel note, pushes them atomically, runs each
-target's publish, deploy and verify, and creates the git host release.
-`--dry-run` prepares the release in a clone and shows the steps; `--target`
-selects targets; `--rebase` re-applies the release on origin's moved branch.
-See [deploy.md](deploy.md).
-
-```
-nerv deploy --artifact .nerv/artifacts/api/1.4.0 --dry-run
-nerv deploy --artifact .nerv/artifacts/api/1.4.0 --yes
-```
-
-`nerv pipeline` was removed: its steps moved to release and deploy
-([deploy.md](deploy.md#migrating-from-nerv-pipeline)).
+`nerv version next`, `nerv release`, `nerv release setup --import` and
+`nerv deploy` moved to the nerv-release tool (`nerv install --tools
+nerv-release`): they are now `nerv-release version next`, `nerv-release
+build`, `nerv-release setup --import` and `nerv-release deploy`. Run with
+nerv, each prints a line naming its replacement and exits 2. The hidden `nerv provider`
+command is gone. `nerv pipeline` was removed earlier; its steps are
+nerv-release's build and deploy.
 
 ### nerv migrate
 
