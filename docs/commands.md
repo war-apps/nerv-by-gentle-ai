@@ -422,8 +422,10 @@ nerv install --no-configure --no-skills
 
 ### nerv uninstall
 
-Removes NERV's `settings.json` registration, uninstalls the cached plugin,
-and removes the materialized marketplace directory.
+Removes NERV's `settings.json` registration, uninstalls the cached plugin
+and every other enabled plugin of the nerv marketplace, and removes the
+materialized marketplace directory. The binary, the user config and each
+repository's `.ai-workflow/` stay.
 
 ```
 Usage: nerv uninstall [flags]
