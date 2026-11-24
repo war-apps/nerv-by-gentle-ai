@@ -1,7 +1,7 @@
 // Package ecosystem is the catalogue of released NERV-ecosystem tools --
-// standalone companion CLIs/plugins that replace one or more of nerv's own
-// extensions (nerv-task, replacing the task and task-teamwork extensions;
-// nerv-release, replacing the release extension and its six providers) --
+// standalone companion CLIs/plugins that replace the extensions nerv used
+// to ship (nerv-task, replacing the task and task-teamwork extensions;
+// nerv-release, replacing the release extension and its providers) --
 // plus the detection, release lookup and execution glue "nerv install" and
 // "nerv upgrade" need to offer them. Every tool implements the S10
 // contract: "<tool> version [--json]", install, upgrade, configure, init,
@@ -22,9 +22,12 @@ type Tool struct {
 	Binary string
 	// Description is a one-line summary, shown next to its state.
 	Description string
-	// Replaces are the nerv extension names this tool makes redundant:
-	// nerv must never offer, select or re-enable them once the tool is
-	// installed, or selected in this run.
+	// Commands names the slash commands the tool brings, such as
+	// "/task:*": a user without the tool goes without them.
+	Commands string
+	// Replaces are the plugins of the nerv marketplace this tool replaces,
+	// which nerv no longer ships: nerv install and nerv upgrade disable
+	// them (they are orphans, with no source left).
 	Replaces []string
 }
 
@@ -36,6 +39,7 @@ func Catalogue() []Tool {
 			Repo:        "war-apps/nerv-task-by-gentle-ai",
 			Binary:      "nerv-task",
 			Description: "task tracking and time logging (/task:*), replacing the task and task-teamwork extensions",
+			Commands:    "/task:*",
 			Replaces:    []string{"task", "task-teamwork"},
 		},
 		{
@@ -43,47 +47,14 @@ func Catalogue() []Tool {
 			Repo:        "war-apps/nerv-release-by-gentle-ai",
 			Binary:      "nerv-release",
 			Description: "release and deploy (/release:*), replacing the release extension and its providers",
+			Commands:    "/release:*",
 			Replaces: []string{
 				"release", "release-bash", "release-conventional-commits", "release-docker-compose",
 				"release-github", "release-script", "release-ssh-compose",
+				// The deploy extension and its providers, merged into
+				// release in 5.2.0.
+				"deploy", "deploy-bash", "deploy-github", "deploy-ssh-compose",
 			},
 		},
 	}
-}
-
-// ReplacedExtensions is the deduplicated union, first-seen order, of
-// every tool's Replaces whose Name is set in installed (a set of tool
-// names considered installed, or selected in this run): the nerv
-// extension names install/upgrade/configure must never again offer,
-// select or re-enable.
-func ReplacedExtensions(tools []Tool, installed map[string]bool) []string {
-	var out []string
-	seen := make(map[string]bool)
-	for _, t := range tools {
-		if !installed[t.Name] {
-			continue
-		}
-		for _, name := range t.Replaces {
-			if seen[name] {
-				continue
-			}
-			seen[name] = true
-			out = append(out, name)
-		}
-	}
-	return out
-}
-
-// ReplacingTool finds the tool in tools whose Replaces names extension, so
-// a refusal or a skip message can name it ("nerv-task already replaces
-// task-teamwork").
-func ReplacingTool(tools []Tool, extension string) (Tool, bool) {
-	for _, t := range tools {
-		for _, name := range t.Replaces {
-			if name == extension {
-				return t, true
-			}
-		}
-	}
-	return Tool{}, false
 }

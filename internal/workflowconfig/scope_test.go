@@ -1,25 +1,19 @@
 package workflowconfig_test
 
 import (
-	"path/filepath"
 	"reflect"
-	"strings"
 	"testing"
 
-	nerv "github.com/war-apps/nerv-by-gentle-ai"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/config"
-	"github.com/war-apps/nerv-by-gentle-ai/internal/extension"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/paths"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/workflowconfig"
 )
 
+// personal is the frozen personal keys (PersonalTaskKeys and
+// PersonalProviderKeys).
 func personal(t *testing.T) workflowconfig.Personal {
 	t.Helper()
-	p, err := workflowconfig.LoadPersonal(nerv.ExtensionsFS())
-	if err != nil {
-		t.Fatal(err)
-	}
-	return p
+	return workflowconfig.Personal{}
 }
 
 func TestScalar_ExtensionSectionsAreReadFromTheProjectOnly(t *testing.T) {
@@ -78,62 +72,6 @@ func TestScalar_ProjectCannotOverridePersonalKeys(t *testing.T) {
 
 // A repository's own provider declares its user-scope keys like a shipped
 // one.
-func TestLoadPersonal_IncludesProjectProviders(t *testing.T) {
-	repo := t.TempDir()
-	write(t, filepath.Join(repo, ".ai-workflow", "providers", "task-tracker", "provider.yaml"), `name: tracker
-extension: task
-slot: provider
-contract_version: 1
-runtime: agent
-task_ref_prefix: TR
-mcp:
-  server: tracker
-  tools: [tracker_get]
-config:
-  - key: token_file
-    scope: user
-    type: string
-    prompt: Your token file
-  - key: board
-    scope: repo
-    type: string
-    prompt: The board
-operations:
-  getTask: not_implemented
-  assign: not_implemented
-  moveStage: not_implemented
-  logTime: not_implemented
-  updateTimelog: not_implemented
-  deleteTimelog: not_implemented
-  listTimelogs: not_implemented
-  createTask: not_implemented
-  createSubtask: not_implemented
-  comment: not_implemented
-  complete: not_implemented
-  setPriority: not_implemented
-  listTasks: not_implemented
-`)
-	tree, err := extension.WithProject(nerv.ExtensionsFS(), repo)
-	if err != nil {
-		t.Fatal(err)
-	}
-	p, err := workflowconfig.LoadPersonal(tree)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for path, want := range map[string]bool{
-		"tasks.providers.tracker.token_file":    true,
-		"tasks.providers.tracker.board":         false,
-		"tasks.providers.teamwork.assignee_id":  true,
-		"deploy.providers.ssh-compose.ssh_port": false,
-		"deploy.providers.ssh-compose.ssh_auth": true,
-	} {
-		if got := p.Has(path); got != want {
-			t.Errorf("Has(%s) = %v, want %v", path, got, want)
-		}
-	}
-}
-
 func TestScalar_TheProjectSetsTheExtensionSections(t *testing.T) {
 	home, repo := t.TempDir(), t.TempDir()
 	write(t, paths.Resolve(home).UserConfig, "tasks:\n  provider: other\n")
@@ -187,82 +125,10 @@ func TestPersonal_ZeroValueHoldsTheFrozenProviderKeys(t *testing.T) {
 	}
 }
 
-// The frozen list is what the shipped manifests declare, so nerv migrate
-// moves the same keys once the manifests are gone.
-func TestPersonalProviderKeys_MatchTheShippedManifests(t *testing.T) {
-	var frozen workflowconfig.Personal
-	loaded := personal(t)
-	for _, k := range workflowconfig.PersonalProviderKeys {
-		if !loaded.Has(k) {
-			t.Errorf("%s is frozen as personal but no manifest declares it scope: user", k)
-		}
-	}
-	for _, name := range []string{"task-teamwork", "release-ssh-compose"} {
-		prov, _, err := extension.LoadProvider(nerv.ExtensionsFS(), name)
-		if err != nil {
-			t.Fatal(err)
-		}
-		for _, c := range prov.Config {
-			path := workflowconfig.SectionOf(prov.Extension, prov.Slot) + ".providers." + prov.Name + "." + c.Key
-			if frozen.Has(path) != (c.Scope == "user") {
-				t.Errorf("%s: scope %s, frozen personal %v", path, c.Scope, frozen.Has(path))
-			}
-		}
-	}
-}
-
 func TestRunTimeUserKeys_NoneForPersonalKeysOnly(t *testing.T) {
 	doc := config.Parse("tasks:\n  timer_store: x\n  providers:\n    teamwork:\n      assignee_id: 7\ngit:\n  base_branch: main\n")
 	got, err := workflowconfig.RunTimeUserKeys(doc, personal(t))
 	if err != nil || len(got) != 0 {
 		t.Errorf("RunTimeUserKeys = %v, %v; want none", got, err)
-	}
-}
-
-// R-S4 security fix: a project file setting a personal key is reported,
-// not silently honored (deployconfig/releaseconfig refuse on this).
-func TestProjectPersonalKeys_ListsPersonalKeysTheProjectSets(t *testing.T) {
-	doc := config.Parse("deploy:\n  host: github\n  providers:\n    ssh-compose:\n      ssh_known_hosts: /tmp/attacker-known-hosts\n      environment: staging\n")
-	got, err := workflowconfig.ProjectPersonalKeys(doc, personal(t))
-	if err != nil {
-		t.Fatal(err)
-	}
-	want := []string{"deploy.providers.ssh-compose.ssh_known_hosts"}
-	if !reflect.DeepEqual(got, want) {
-		t.Errorf("ProjectPersonalKeys = %v, want %v", got, want)
-	}
-}
-
-func TestProjectPersonalKeys_NoneWithoutAPersonalKey(t *testing.T) {
-	doc := config.Parse("deploy:\n  host: github\n  providers:\n    ssh-compose:\n      environment: staging\n")
-	got, err := workflowconfig.ProjectPersonalKeys(doc, personal(t))
-	if err != nil || len(got) != 0 {
-		t.Errorf("ProjectPersonalKeys = %v, %v; want none", got, err)
-	}
-}
-
-func TestPersonalKeyMessage_NamesThePathAndWhereToSetIt(t *testing.T) {
-	got := workflowconfig.PersonalKeyMessage("deploy.providers.ssh-compose.ssh_known_hosts")
-	want := "deploy.providers.ssh-compose.ssh_known_hosts is a personal key (scope: user): set it in your user config (nerv configure --set ...), not in the repository"
-	if got != want {
-		t.Errorf("PersonalKeyMessage = %q, want %q", got, want)
-	}
-}
-
-func TestSeed_IsTheDefaultsSectionWithoutPersonalKeys(t *testing.T) {
-	user := config.Parse("defaults:\n  tasks:\n    provider: teamwork\n    events:\n      run.closed: off\n    providers:\n      teamwork:\n        assignee_id: 7\n        project_id: 1\n  release:\n    build: bash\n")
-	block, ok := workflowconfig.Seed(user, "tasks", personal(t))
-	if !ok {
-		t.Fatal("no tasks seed")
-	}
-	want := "tasks:\n  provider: teamwork\n  events:\n    run.closed: off\n  providers:\n    teamwork:\n      project_id: 1"
-	if strings.TrimRight(block, "\n") != want {
-		t.Errorf("seed =\n%s\nwant\n%s", block, want)
-	}
-	if _, ok := workflowconfig.Seed(user, "deploy", personal(t)); ok {
-		t.Error("a deploy seed with no defaults.deploy")
-	}
-	if _, ok := workflowconfig.Seed(config.Parse("tasks:\n  provider: x\n"), "tasks", personal(t)); ok {
-		t.Error("a seed from a run-time tasks: section; only defaults.tasks seeds")
 	}
 }

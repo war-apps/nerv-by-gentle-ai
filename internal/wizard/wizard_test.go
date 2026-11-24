@@ -375,7 +375,8 @@ func TestRun_ModelsSection_CustomModelID_InvalidThenValid_AppliesOverride(t *tes
 // ---------------------------------------------------------------------------
 // Case group G (tests/configure.test.ps1's ~426-548): only git.base_branch
 // answered -> exactly one line differs, plus a repo init driven by the same
-// answers file. Without the task extension, the repo flow asks no provider key.
+// answers file. Neither the wizard nor its repo flow asks a task provider key
+// (nerv-task configures its providers).
 // ---------------------------------------------------------------------------
 
 func TestRun_BaseBranchChange_RepoInit(t *testing.T) {
@@ -393,7 +394,7 @@ func TestRun_BaseBranchChange_RepoInit(t *testing.T) {
 			"git -C " + repoDir + " rev-parse --show-toplevel": {Stdout: repoDir + "\n", ExitCode: 0},
 		},
 	}
-	deps := configure.Deps{Home: home, FS: nerv.PluginFS(), ExtensionsFS: nerv.ExtensionsFS(), Runner: runner, Now: fixedNow, LookPath: lookPathNone}
+	deps := configure.Deps{Home: home, FS: nerv.PluginFS(), Runner: runner, Now: fixedNow, LookPath: lookPathNone}
 
 	opts := wizard.Options{Paths: paths, SkipSkills: true, SkipModels: true, NoRefresh: true}
 

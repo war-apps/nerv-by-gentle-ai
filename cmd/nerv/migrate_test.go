@@ -7,7 +7,6 @@ import (
 	"strings"
 	"testing"
 
-	nerv "github.com/war-apps/nerv-by-gentle-ai"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/paths"
 	"github.com/war-apps/nerv-kit-by-gentle-ai/runner/runnertest"
 )
@@ -42,7 +41,6 @@ func migrateRepo(t *testing.T, fixture string) (top string, opts options) {
 		}
 	}
 	opts = testOptions(t.TempDir())
-	opts.ExtensionsFS = nerv.ExtensionsFS()
 	opts.Runner = &runnertest.FakeRunner{Responses: map[string]runnertest.Response{
 		"git -C . rev-parse --show-toplevel":       {Stdout: top + "\n"},
 		"git -C " + top + " remote get-url origin": {Stdout: "git@github.com:dirm-s-a/dim.comprobantes.api.git\n"},
@@ -68,7 +66,7 @@ func TestMigrate_DryRunPrintsEveryChangeAndWritesNothing(t *testing.T) {
 		"  1. Create .ai-workflow/config.yaml: the new project configuration, from .nerv/nerv.yaml\n",
 		". Move .nerv/nerv.yaml to .nerv/nerv.yaml.migrated: a copy of the old configuration, so an older nerv does not read it\n",
 		"\nHow the configuration changes:\n  - ",
-		"\nNext, install the extensions it uses: nerv install --with task,task-teamwork\n",
+		"\nNext, install the tools it uses: nerv install --tools nerv-task\n",
 		"nerv migrate: dry run: 3 change(s), nothing was written",
 	} {
 		if !strings.Contains(out, want) {
@@ -114,7 +112,6 @@ func TestMigrate_WritesThenASecondRunHasNothingToDo(t *testing.T) {
 
 func TestMigrate_OutsideARepositoryRefusesUnlessUser(t *testing.T) {
 	opts := testOptions(t.TempDir())
-	opts.ExtensionsFS = nerv.ExtensionsFS()
 	opts.Runner = &runnertest.FakeRunner{Responses: map[string]runnertest.Response{
 		"git -C . rev-parse --show-toplevel": {Stderr: "fatal: not a git repository", ExitCode: 128},
 	}}
@@ -133,7 +130,6 @@ func TestMigrate_OutsideARepositoryRefusesUnlessUser(t *testing.T) {
 func TestMigrate_UserRunTimeKeysMoveUnderDefaults(t *testing.T) {
 	home := t.TempDir()
 	opts := testOptions(home)
-	opts.ExtensionsFS = nerv.ExtensionsFS()
 	opts.Runner = &runnertest.FakeRunner{Responses: map[string]runnertest.Response{
 		"git -C . rev-parse --show-toplevel": {Stderr: "fatal: not a git repository", ExitCode: 128},
 	}}
@@ -177,9 +173,13 @@ func TestMigrate_UsageErrors(t *testing.T) {
 	}
 }
 
+// --install runs nerv install with the tool that replaces the plugins the
+// old configuration used (nerv-task for task, task-teamwork): its install
+// script runs and no extension plugin is installed.
 func TestMigrate_InstallRunsTheInstallStep(t *testing.T) {
 	_, opts := migrateRepo(t, "dim.comprobantes.api")
-	seedReleaseFamilyForCLI(t, opts.Home)
+	seedInstalledPluginsForCLI(t, opts.Home)
+	opts.GOOS = "linux"
 	runner := opts.Runner.(*runnertest.FakeRunner)
 	for k, v := range baseInstallRunner().Responses {
 		runner.Responses[k] = v
@@ -188,10 +188,14 @@ func TestMigrate_InstallRunsTheInstallStep(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("exit %d\n%s\n%s", code, out, errOut)
 	}
-	for _, plugin := range []string{"task@nerv", "task-teamwork@nerv"} {
-		if !strings.Contains(out, "claude plugin install "+plugin) {
-			t.Errorf("%s not installed:\n%s", plugin, out)
-		}
+	if !strings.Contains(out, "=== Install nerv-task ===") {
+		t.Errorf("nerv-task was not installed:\n%s", out)
+	}
+	if strings.Contains(out, "=== Install nerv-release ===") {
+		t.Errorf("nerv-release was installed although no release plugin was used:\n%s", out)
+	}
+	if got := pluginInstalls(runner); len(got) != 1 || got[0] != "nerv@nerv" {
+		t.Errorf("claude plugin install ran for %v, want only nerv@nerv", got)
 	}
 }
 

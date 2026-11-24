@@ -1,18 +1,17 @@
 // Package wizard implements the interactive half of "nerv configure": the
 // terminal setup wizard, driven over an injected io.Reader/io.Writer so it
 // can be scripted in tests (and via a real --answers file) exactly the
-// same way. It walks prerequisites, required-skills, user-config, task
-// providers, models, repos, and apply-and-refresh sections in order, with
+// same way. It walks prerequisites, required-skills, user-config, models,
+// repos, and apply-and-refresh sections in order, with
 // the per-role models editor folded directly into the models section
 // instead of shelling out to a separate command.
 //
 // Every configuration write goes through configure.Store, config.SetManagedValue
 // (via configure.Set), or config.SetModelsBlock — the same primitives
 // "nerv configure --set"/"--set-model" already use — so there is exactly
-// one place in the whole program that ever writes configuration text. Task
-// provider settings go through configure.SetProviderSettings, the same
-// format-preserving editor, and repo initialization reuses
-// configure.InitRepo rather than reimplementing its file write.
+// one place in the whole program that ever writes configuration text, and
+// repo initialization reuses configure.InitRepo rather than reimplementing
+// its file write.
 package wizard
 
 import (
@@ -36,9 +35,8 @@ type Options struct {
 	// Paths is the resolved set of filesystem locations the wizard reads
 	// and writes (see configure.ResolvePaths).
 	Paths configure.Paths
-	// SettingsPath overrides the Claude Code settings.json path the Task
-	// providers section reads (which extensions and providers are enabled) and
-	// the closing "apply and refresh" step's install.Deps uses. Empty means
+	// SettingsPath overrides the Claude Code settings.json path the
+	// closing "apply and refresh" step's install.Deps uses. Empty means
 	// the default "<Home>/.claude/settings.json".
 	SettingsPath string
 	SkipSkills   bool
@@ -51,15 +49,13 @@ type Options struct {
 // print the closing restart reminder.
 type Summary struct {
 	// Changed is true when any section actually wrote something (user
-	// config, task provider settings, the models block, or a repo's
-	// .ai-workflow/config.yaml).
+	// config, the models block, or a repo's .ai-workflow/config.yaml).
 	Changed bool
 }
 
 // Run drives the interactive NERV setup wizard end to end: prerequisites,
 // the optional required-skills install, user-scope config (git, skills
-// stacks, critical paths, artifacts), the task provider settings when the
-// task extension is enabled, the optional per-role models editor, the
+// stacks, critical paths, artifacts), the optional per-role models editor, the
 // optional per-repo .ai-workflow/config.yaml init loop, and the closing
 // apply/refresh step.
 //
@@ -88,15 +84,6 @@ func Run(deps Deps, in io.Reader, out io.Writer, opts Options) (Summary, error) 
 	}
 	summary.Changed = summary.Changed || uc.Changed
 
-	taskEnabled, providers := taskPlugins(deps, opts, out)
-	if taskEnabled {
-		changed, err := runTaskProvidersSection(deps, opts.Paths, providers, s, out)
-		if err != nil {
-			return summary, err
-		}
-		summary.Changed = summary.Changed || changed
-	}
-
 	if !opts.SkipModels {
 		changed, err := runModelsSection(deps, opts.Paths, s, out)
 		if err != nil {
@@ -106,7 +93,7 @@ func Run(deps Deps, in io.Reader, out io.Writer, opts Options) (Summary, error) 
 	}
 
 	if !opts.SkipRepos {
-		changed, err := runReposSection(deps, s, out, uc.BaseBranch, providers, opts.Paths.Config)
+		changed, err := runReposSection(deps, s, out, uc.BaseBranch)
 		if err != nil {
 			return summary, err
 		}
@@ -164,8 +151,7 @@ func toolLine(found bool, yes, no string) string {
 
 // runApplyAndRefreshSection is the closing section: optionally applies the
 // resolved models: block to the plugin cache (install.ApplyModels) and
-// refreshes the "claude plugin" cache (install.RefreshCache, which also
-// refreshes the enabled extensions and providers) — the same tail install.Install
+// refreshes the "claude plugin" cache (install.RefreshCache) — the same tail install.Install
 // itself runs after registering settings.json.
 func runApplyAndRefreshSection(ctx context.Context, deps Deps, opts Options, s *session, out io.Writer) error {
 	fmt.Fprintln(out)
@@ -181,7 +167,6 @@ func runApplyAndRefreshSection(ctx context.Context, deps Deps, opts Options, s *
 		Home:         deps.Home,
 		SettingsPath: opts.SettingsPath,
 		FS:           deps.FS,
-		ExtensionsFS: deps.ExtensionsFS,
 		Runner:       deps.Runner,
 		Now:          deps.Now,
 		LookPath:     deps.LookPath,

@@ -95,8 +95,9 @@ Flags:
   --dry-run      List the steps; write nothing
   --user         Also migrate the user configuration (alone when the
                  directory is not inside a git repository)
-  --install      Then install the plugins the repository used (nerv install
-                 --with ..., which also offers to remove old /task:* copies)
+  --install      Then run nerv install --no-configure, with --tools naming
+                 the NERV-ecosystem tools that replace the plugins the
+                 repository used (it also offers to remove old /task:* copies)
   --force        Move a change whose orchestrator lock is still held
   --cwd <dir>    A directory inside the repository (default ".")
 
@@ -248,7 +249,6 @@ func migrateRun(ctx context.Context, cwd string, dryRun, user, install, force bo
 	if err != nil {
 		return err
 	}
-	line := plan.InstallCommand()
 	switch {
 	case plan.Empty():
 		fmt.Fprint(stdout, migrate.Render(plan))
@@ -273,9 +273,9 @@ func migrateRun(ctx context.Context, cwd string, dryRun, user, install, force bo
 		}
 		fmt.Fprintf(stdout, "\nnerv migrate: %d change(s) written\n", len(plan.Changes))
 	}
-	if install && line != "" && !dryRun {
-		with := strings.TrimPrefix(line, "nerv install --with ")
-		if code := runInstall([]string{"--with", with, "--no-configure"}, stdout, stderr, opts); code != 0 {
+	if install && len(plan.Tools) > 0 && !dryRun {
+		args := []string{"--tools", strings.Join(plan.Tools, ","), "--no-configure"}
+		if code := runInstall(args, stdout, stderr, opts); code != 0 {
 			return &exitError{code}
 		}
 	}

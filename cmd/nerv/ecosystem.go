@@ -5,9 +5,11 @@ import (
 	"fmt"
 	"io"
 	"runtime"
+	"slices"
 	"strings"
 
 	"github.com/war-apps/nerv-by-gentle-ai/internal/ecosystem"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/install"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/migrate"
 	"github.com/war-apps/nerv-kit-by-gentle-ai/selfupgrade"
 )
@@ -29,9 +31,8 @@ func ecosystemToolsFlagsUsage(verb string) string {
 // flag, the ones confirmed from a one-by-one [y/N] prompt showing each
 // tool's state and, best-effort, its latest release. Without a terminal
 // and neither flag, it only prints a hint naming --tools/--no-tools. It
-// returns the tools this run installed or upgraded (F2: install calls
-// this before offering its own extensions, so a tool chosen here also
-// suppresses the extensions it replaces).
+// returns the tools this run installed or upgraded (S6: a tool chosen
+// here counts as installed when the plugins it replaces are disabled).
 func offerEcosystemTools(ctx context.Context, stdout io.Writer, opts options, home, action, toolsFlag string, noTools bool) ([]ecosystem.Tool, error) {
 	catalogue := ecosystem.Catalogue()
 	if len(catalogue) == 0 {
@@ -134,26 +135,33 @@ func ecosystemLatest(ctx context.Context, opts options, t ecosystem.Tool) (strin
 	return ecosystem.Latest(ctx, t, client)
 }
 
-// suppressedExtensions is the nerv extension names this run must never
-// offer, select or re-enable (U2/S11/F2): every catalogue tool's
-// Replaces, for a tool already installed on this machine, or selected
-// (installed or upgraded) in this same run by offerEcosystemTools.
-func suppressedExtensions(ctx context.Context, opts options, home string, selected []ecosystem.Tool) []string {
-	catalogue := ecosystem.Catalogue()
-	installedOrSelected := map[string]bool{}
+// orphanFamilies is, per catalogue tool, the extension plugins of the
+// nerv marketplace it replaces, which nerv no longer ships (S6): disabled
+// by nerv install and nerv upgrade, quietly when the tool is installed on
+// this machine or selected (installed or upgraded) in this same run by
+// offerEcosystemTools, with a warning naming the tool otherwise.
+func orphanFamilies(ctx context.Context, opts options, home string, selected []ecosystem.Tool) []install.OrphanFamily {
 	goos := opts.GOOS
 	if goos == "" {
 		goos = runtime.GOOS
 	}
-	for _, t := range catalogue {
-		if ecosystem.Detect(ctx, t, opts.Runner, opts.LookPath, goos, home, opts.Getenv).Installed {
-			installedOrSelected[t.Name] = true
-		}
+	var families []install.OrphanFamily
+	for _, t := range ecosystem.Catalogue() {
+		installed := slices.ContainsFunc(selected, func(s ecosystem.Tool) bool { return s.Name == t.Name }) ||
+			ecosystem.Detect(ctx, t, opts.Runner, opts.LookPath, goos, home, opts.Getenv).Installed
+		families = append(families, install.OrphanFamily{Tool: t.Name, Commands: t.Commands, Plugins: t.Replaces, ToolInstalled: installed})
 	}
-	for _, t := range selected {
-		installedOrSelected[t.Name] = true
+	return families
+}
+
+// disableOrphans is nerv upgrade's orphan step (S6), after its own
+// ecosystem-tools step: install.DisableOrphans over orphanFamilies. A
+// failure is a warning; it never changes the exit code.
+func disableOrphans(ctx context.Context, stdout io.Writer, opts options, home string, selected []ecosystem.Tool) {
+	deps := install.Deps{Home: home, SettingsPath: opts.Settings, Runner: opts.Runner, Now: opts.Now, Stdout: stdout}
+	if err := install.DisableOrphans(ctx, deps, orphanFamilies(ctx, opts, home, selected)); err != nil {
+		fmt.Fprintf(stdout, "Warning: disabling the extension plugins nerv no longer ships: %v\n", err)
 	}
-	return ecosystem.ReplacedExtensions(catalogue, installedOrSelected)
 }
 
 // offerToolMigration offers, after the ecosystem-tools step of "nerv

@@ -5,14 +5,17 @@ import (
 	"regexp"
 	"strings"
 	"testing"
-
-	"github.com/war-apps/nerv-by-gentle-ai/internal/taskprovider"
 )
 
+// taskResults are the outcomes the task dispatcher reports per provider,
+// in contract order, frozen as the task extension's contract last
+// declared them (nerv-task owns the contract now).
+var taskResults = []string{"ok", "skipped", "blocked", "failed", "needs_input"}
+
 // Every place that lists the dispatcher's result values names exactly
-// taskprovider.Results.
+// taskResults.
 func TestTaskEnvelope_ResultListsMatchContract(t *testing.T) {
-	want := strings.Join(taskprovider.Results, " | ")
+	want := strings.Join(taskResults, " | ")
 	listRe := regexp.MustCompile(`ok \| skipped \| blocked \| failed[^\n]*`)
 	for _, src := range []struct {
 		fsys fs.FS

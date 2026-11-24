@@ -2,8 +2,9 @@
 // files: the user-scope "<os.UserConfigDir()>/ai-workflow/config.yaml" and
 // the project-scope "<repo>/.ai-workflow/config.yaml" (see internal/paths
 // for the path catalogue). Values merge key by key, with the project
-// winning, except the extensions' sections (tasks, release, deploy), which
-// come from the project only but for their personal keys (scope.go).
+// winning, except the sections of the extensions nerv used to ship (tasks,
+// release, deploy), which come from the project only but for their
+// personal keys (scope.go).
 //
 // The 4.2.0 files, "~/.claude/nerv/nerv.yaml" and "<repo>/.nerv/nerv.yaml",
 // are never read as configuration: when only an old file exists, the scope
@@ -36,8 +37,7 @@ type Config struct {
 	// has only its old file.
 	Hints []string
 	// Personal are the keys under Sections that Scalar still reads from
-	// the user file (LoadPersonal); the zero value holds PersonalTaskKeys and
-	// PersonalProviderKeys.
+	// the user file: PersonalTaskKeys and PersonalProviderKeys.
 	Personal Personal
 }
 

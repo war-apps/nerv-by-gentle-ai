@@ -1,7 +1,6 @@
 // Package configure implements the "nerv configure" use case: reading and
 // editing the user-scope config.yaml, per-role model overrides, project-scope
-// repo initialization, and the task provider settings described by the
-// embedded provider manifests. It is the non-interactive half of "nerv configure"; the interactive
+// and repo initialization. It is the non-interactive half of "nerv configure"; the interactive
 // setup wizard lives in internal/wizard.
 //
 // This package owns file I/O (Store) and process launches (through
@@ -32,10 +31,6 @@ type Deps struct {
 	// so "agents/misato.md" and "skills-manifest.json" are
 	// top-level entries.
 	FS fs.FS
-	// ExtensionsFS holds the optional extensions and providers, typically
-	// nerv.ExtensionsFS(): the task provider manifests that describe the
-	// provider settings InitRepo and the wizard accept. Nil holds none.
-	ExtensionsFS fs.FS
 	// Runner launches "git" (InitRepo) and "gentle-ai"/PATH lookups
 	// (Print's prerequisites).
 	Runner runner.Runner

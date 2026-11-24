@@ -388,6 +388,7 @@ func TestRunConfigure_RemovedTaskFlags_Exit2(t *testing.T) {
 		{"--init-repo", repo, "--repo-provider", "teamwork"},
 		{"--init-repo", repo, "--repo-project-id", "1"},
 		{"--init-repo", repo, "--repo-tasklist-id", "1"},
+		{"--init-repo", repo, "--repo-provider-config", "teamwork.project_id=1"},
 		{"--install-commands"},
 		{"--skip-commands", "--no-refresh"},
 	} {
@@ -400,7 +401,7 @@ func TestRunConfigure_RemovedTaskFlags_Exit2(t *testing.T) {
 			t.Errorf("%v: expected the usage text on stderr, got %q", args, stderr.String())
 		}
 	}
-	for _, removed := range []string{"--repo-provider ", "--repo-project-id", "--repo-tasklist-id", "--install-commands", "--skip-commands", "Teamwork"} {
+	for _, removed := range []string{"--repo-provider ", "--repo-project-id", "--repo-tasklist-id", "--install-commands", "--skip-commands", "Teamwork", "--repo-provider-config", "provider.yaml"} {
 		if strings.Contains(configureUsage, removed) {
 			t.Errorf("configureUsage still mentions %q", removed)
 		}
@@ -412,128 +413,44 @@ func TestRunConfigure_RemovedTaskFlags_Exit2(t *testing.T) {
 
 func initRepoOptions(home, repo string) options {
 	opts := testOptions(home)
-	opts.ExtensionsFS = nerv.ExtensionsFS()
 	opts.Runner = &runnertest.FakeRunner{Responses: map[string]runnertest.Response{
 		"git -C " + repo + " rev-parse --show-toplevel": {Stdout: repo + "\n"},
 	}}
 	return opts
 }
 
-// S3: --repo-provider-config writes tasks.providers.<provider>.<key> into the
-// new project file, keeping --repo-base and the rest of the file as before.
-func TestRunConfigure_InitRepo_ProviderConfig_WritesProviderKeys(t *testing.T) {
-	home := t.TempDir()
-	repo := t.TempDir()
-
-	var stdout, stderr bytes.Buffer
-	code := run([]string{"configure", "--init-repo", repo, "--repo-base", "main",
-		"--repo-provider-config", "teamwork.project_id=111",
-		"--repo-provider-config", "teamwork.tasklist_id=222",
-	}, &stdout, &stderr, initRepoOptions(home, repo))
-	if code != 0 {
-		t.Fatalf("exit code = %d, want 0 (stdout=%q stderr=%q)", code, stdout.String(), stderr.String())
-	}
-	data, err := os.ReadFile(filepath.Join(repo, ".ai-workflow/config.yaml"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	doc := config.Parse(string(data))
-	for key, want := range map[string]string{
-		"enabled":                              "true",
-		"git.base_branch":                      "main",
-		"tasks.providers.teamwork.project_id":  "111",
-		"tasks.providers.teamwork.tasklist_id": "222",
-	} {
-		if got, _ := doc.Scalar(key); got != want {
-			t.Errorf("%s = %q, want %q:\n%s", key, got, want, data)
-		}
-	}
-	if _, found := doc.Scalar("tasks.provider"); found {
-		t.Errorf("tasks.provider written without being asked:\n%s", data)
-	}
-}
-
-// --init-repo copies the user file's defaults.tasks into the new project
-// file and lists each copied value; the user's run-time tasks: is ignored.
-func TestRunConfigure_InitRepo_SeedsTasksFromTheUserDefaults(t *testing.T) {
+// --init-repo writes the project file with --repo-base, and no tasks:
+// section: the user file's defaults.tasks is no longer copied (nerv-task
+// owns the tasks configuration).
+func TestRunConfigure_InitRepo_WritesNoTasksSection(t *testing.T) {
 	home := t.TempDir()
 	repo := t.TempDir()
 	user := paths.Resolve(home).UserConfig
 	if err := os.MkdirAll(filepath.Dir(user), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(user, []byte("tasks:\n  provider: other\ndefaults:\n  tasks:\n    provider: teamwork\n"), 0o644); err != nil {
+	if err := os.WriteFile(user, []byte("defaults:\n  tasks:\n    provider: teamwork\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	var stdout, stderr bytes.Buffer
-	code := run([]string{"configure", "--init-repo", repo}, &stdout, &stderr, initRepoOptions(home, repo))
+	code := run([]string{"configure", "--init-repo", repo, "--repo-base", "main"}, &stdout, &stderr, initRepoOptions(home, repo))
 	if code != 0 {
 		t.Fatalf("exit code = %d (stdout=%q stderr=%q)", code, stdout.String(), stderr.String())
 	}
-	if !strings.Contains(stdout.String(), "Changed:\n  tasks.provider:  -> teamwork (from defaults.tasks)\n") {
-		t.Errorf("stdout does not list the seed:\n%s", stdout.String())
+	if strings.Contains(stdout.String(), "defaults.tasks") {
+		t.Errorf("stdout lists a seed:\n%s", stdout.String())
 	}
-	data, _ := os.ReadFile(filepath.Join(repo, ".ai-workflow/config.yaml"))
-	if got, _ := config.Parse(string(data)).Scalar("tasks.provider"); got != "teamwork" {
-		t.Errorf("tasks.provider = %q, want teamwork:\n%s", got, data)
+	data, err := os.ReadFile(filepath.Join(repo, ".ai-workflow/config.yaml"))
+	if err != nil {
+		t.Fatal(err)
 	}
-}
-
-// S3: --repo-provider-config is refused (exit 1, naming the problem, writing
-// nothing) for a provider with no embedded manifest, a key outside its
-// config, or a value that is not valid for the key's type; used without
-// --init-repo it is a usage error.
-func TestRunConfigure_InitRepo_ProviderConfig_Refusals(t *testing.T) {
-	cases := []struct {
-		entry, want string
-	}{
-		{"jira.site=x", "Unknown task provider 'jira'"},
-		{"teamwork.bogus=1", "Unknown key 'bogus' for task provider 'teamwork'"},
-		{"teamwork.project_id=abc", "Invalid value 'abc' for tasks.providers.teamwork.project_id: expected int"},
-		{"teamwork.billable=maybe", "Invalid value 'maybe' for tasks.providers.teamwork.billable: expected bool"},
-		{"teamwork.stages=x", "Invalid value 'x' for tasks.providers.teamwork.stages: expected map"},
-		{"teamwork=1", "Invalid --repo-provider-config entry 'teamwork=1'"},
-		{"teamwork.project_id", "Invalid --repo-provider-config entry 'teamwork.project_id'"},
+	doc := config.Parse(string(data))
+	for key, want := range map[string]string{"enabled": "true", "git.base_branch": "main"} {
+		if got, _ := doc.Scalar(key); got != want {
+			t.Errorf("%s = %q, want %q:\n%s", key, got, want, data)
+		}
 	}
-	for _, tc := range cases {
-		t.Run(tc.entry, func(t *testing.T) {
-			home := t.TempDir()
-			repo := t.TempDir()
-			var stdout, stderr bytes.Buffer
-			code := run([]string{"configure", "--init-repo", repo, "--repo-provider-config", tc.entry}, &stdout, &stderr, initRepoOptions(home, repo))
-			if code != 1 {
-				t.Fatalf("exit code = %d, want 1 (stdout=%q)", code, stdout.String())
-			}
-			if !strings.Contains(stdout.String(), tc.want) {
-				t.Errorf("stdout = %q, want it to contain %q", stdout.String(), tc.want)
-			}
-			if _, err := os.Stat(filepath.Join(repo, ".nerv")); err == nil {
-				t.Error("a refused entry wrote the repository config")
-			}
-		})
-	}
-
-	home := t.TempDir()
-	var stdout, stderr bytes.Buffer
-	code := run([]string{"configure", "--set", "git.worktree=ask", "--repo-provider-config", "teamwork.project_id=1"}, &stdout, &stderr, initRepoOptions(home, home))
-	if code != 2 {
-		t.Errorf("without --init-repo: exit code = %d, want 2 (stdout=%q)", code, stdout.String())
-	}
-	if !strings.Contains(stderr.String(), "--repo-provider-config requires --init-repo") {
-		t.Errorf("stderr = %q, want the --init-repo requirement", stderr.String())
-	}
-}
-
-// --help says --repo-provider-config values are checked against the
-// provider's provider.yaml, shipped or the project's own.
-func TestRunConfigure_HelpNamesShippedAndProjectProviders(t *testing.T) {
-	var stdout, stderr bytes.Buffer
-	code := run([]string{"configure", "--help"}, &stdout, &stderr, testOptions(t.TempDir()))
-	if code != 2 {
-		t.Fatalf("configure --help exit = %d, want 2", code)
-	}
-	help := stderr.String()
-	if strings.Contains(help, "embedded provider.yaml") || !strings.Contains(help, "against the provider's provider.yaml (shipped,\n                             or the project's in .ai-workflow/providers/)") {
-		t.Errorf("configure --help:\n%s", help)
+	if doc.KeyExists("tasks") {
+		t.Errorf("a tasks: section was written:\n%s", data)
 	}
 }

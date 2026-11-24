@@ -279,7 +279,7 @@ func (w *upgradeWorld) assertUntouched() {
 // "upgrade" instead of "install"; --skip-migrate-offer tells it not to
 // offer nerv migrate, which runUpgrade also offers itself afterwards.
 func skippingGentleAIInstall(bin string, extra ...string) installCall {
-	return installCall{Bin: bin, Args: append([]string{"install"}, append(extra, "--skip-gentle-ai-upgrade", "--skip-ecosystem-tools", "--skip-migrate-offer")...)}
+	return installCall{Bin: bin, Args: append([]string{"install"}, append(extra, "--skip-gentle-ai-upgrade", "--skip-ecosystem-tools", "--skip-migrate-offer", "--skip-orphan-cleanup")...)}
 }
 
 var defaultReleases = []fakeRelease{

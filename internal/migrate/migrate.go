@@ -110,20 +110,20 @@ type Plan struct {
 	// Notes say what was translated; Warnings what has no equivalent or
 	// needs the user's hand.
 	Notes, Warnings []string
-	// Plugins are the extensions and providers the old configuration used, in
-	// install order.
-	Plugins []string
+	// Tools are the NERV-ecosystem tools that replace the extensions the
+	// old configuration used, in install order.
+	Tools []string
 }
 
 // Empty reports whether the plan changes nothing.
 func (p *Plan) Empty() bool { return len(p.Changes) == 0 }
 
-// InstallCommand is the nerv install line for the plugins ("" for none).
+// InstallCommand is the nerv install line for the tools ("" for none).
 func (p *Plan) InstallCommand() string {
-	if len(p.Plugins) == 0 {
+	if len(p.Tools) == 0 {
 		return ""
 	}
-	return "nerv install --with " + strings.Join(p.Plugins, ",")
+	return "nerv install --tools " + strings.Join(p.Tools, ",")
 }
 
 func (p *Plan) note(format string, args ...any) {
@@ -540,7 +540,7 @@ func Render(p *Plan) string {
 		if b.Len() > 0 {
 			b.WriteString("\n")
 		}
-		fmt.Fprintf(&b, "Next, install the extensions it uses: %s\n", line)
+		fmt.Fprintf(&b, "Next, install the tools it uses: %s\n", line)
 	}
 	return b.String()
 }

@@ -257,7 +257,7 @@ func translateConfig(p *Plan, o Options, data []byte) (*config.Document, error) 
 		return nil, err
 	}
 
-	// The plugins the old configuration used, in install order.
+	// The tools that replace the extensions the old configuration used.
 	effective, from := provider, "the project"
 	if !providerSet {
 		effective, from = userProvider(o), "the user config"
@@ -266,8 +266,8 @@ func translateConfig(p *Plan, o Options, data []byte) (*config.Document, error) 
 		effective, from = teamwork, "the 4.2.0 default"
 	}
 	if effective == teamwork {
-		p.Plugins = append(p.Plugins, "task", "task-teamwork")
-		p.note("tasks.provider: teamwork (%s): the task extension and its task-teamwork provider", from)
+		p.Tools = append(p.Tools, "nerv-task")
+		p.note("tasks.provider: teamwork (%s): the nerv-task tool", from)
 	}
 	return doc, nil
 }

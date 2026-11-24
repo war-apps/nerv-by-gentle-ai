@@ -7,7 +7,6 @@ import (
 	"strings"
 	"testing"
 
-	nerv "github.com/war-apps/nerv-by-gentle-ai"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/paths"
 	"github.com/war-apps/nerv-kit-by-gentle-ai/runner/runnertest"
 )
@@ -19,7 +18,6 @@ import (
 // XDG_CONFIG_HOME or %AppData%.
 func nervTaskInstalledOpts(home string) options {
 	opts := testOptions(home)
-	opts.ExtensionsFS = nerv.ExtensionsFS()
 	opts.GOOS = "linux"
 	opts.LookPath = func(name string) (string, error) {
 		if name == "nerv-task" {
@@ -72,7 +70,6 @@ func TestMigrate_TaskYAMLMovesWhenNervTaskIsInstalled(t *testing.T) {
 func TestMigrate_TaskYAMLUntouchedWhenNervTaskNotInstalled(t *testing.T) {
 	home := t.TempDir()
 	opts := testOptions(home)
-	opts.ExtensionsFS = nerv.ExtensionsFS()
 	opts.GOOS = "linux"
 	opts.Runner = &runnertest.FakeRunner{Responses: map[string]runnertest.Response{
 		"git -C . rev-parse --show-toplevel": {Stderr: "fatal: not a git repository", ExitCode: 128},

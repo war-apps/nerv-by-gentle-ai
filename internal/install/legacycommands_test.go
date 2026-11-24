@@ -142,28 +142,3 @@ func TestInstall_LegacyCommands_NoneFoundIsSilent(t *testing.T) {
 		t.Errorf("output mentions old copies when there are none:\n%s", out)
 	}
 }
-
-// L8 gap: RefreshCache also refreshes every enabled extension, at its own
-// embedded version, and leaves the ones not enabled alone.
-func TestRefreshCache_RefreshesEnabledExtensions(t *testing.T) {
-	home := t.TempDir()
-	seedInstalledIDs(t, home, pluginVersion(t), "task@nerv")
-	settings := filepath.Join(home, ".claude", "settings.json")
-	if err := os.WriteFile(settings, []byte(`{"enabledPlugins":{"nerv@nerv":true,"task@nerv":true}}`), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	runner := baseRunner()
-	var stdout bytes.Buffer
-	deps := install.Deps{Home: home, FS: nerv.PluginFS(), ExtensionsFS: fakeExtensions(), Runner: runner, Now: fixedNow, LookPath: lookPathAll, Stdout: &stdout}
-
-	if err := install.RefreshCache(context.Background(), deps); err != nil {
-		t.Fatalf("RefreshCache() error = %v; output:\n%s", err, stdout.String())
-	}
-	log := runnerLog(runner.Calls)
-	if !strings.Contains(log, "claude plugin install task@nerv") {
-		t.Errorf("enabled extension not refreshed: %s", log)
-	}
-	if strings.Contains(log, "task-teamwork@nerv") {
-		t.Errorf("an extension that is not enabled was refreshed: %s", log)
-	}
-}

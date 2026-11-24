@@ -66,19 +66,6 @@ func ProjectConfig(repoRoot string) string {
 	return filepath.Join(repoRoot, filepath.FromSlash(ProjectConfigFile))
 }
 
-// ProjectExtensionsDir holds the repository's own extensions, one folder
-// per extension with its extension.yaml: "<repoRoot>/.ai-workflow/extensions".
-func ProjectExtensionsDir(repoRoot string) string {
-	return filepath.Join(repoRoot, ProjectDirName, "extensions")
-}
-
-// ProjectProvidersDir holds the repository's own providers, one
-// <extension>-<name> folder per provider with its provider.yaml:
-// "<repoRoot>/.ai-workflow/providers".
-func ProjectProvidersDir(repoRoot string) string {
-	return filepath.Join(repoRoot, ProjectDirName, "providers")
-}
-
 // PreviousProjectConfig is "<repoRoot>/.ai-workflow.yml", the project
 // configuration before the .ai-workflow/ folder (see
 // PreviousProjectConfigFile).

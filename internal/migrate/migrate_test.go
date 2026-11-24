@@ -356,7 +356,7 @@ func TestODD_StrictTDDBecomesTheDefaultMode(t *testing.T) {
 func TestPlugins_InstallLineNamesWhatTheRepositoryUsed(t *testing.T) {
 	for _, fixture := range []string{comprobantes, legacyFull} {
 		w := newWorld(t, fixture)
-		if got, want := w.plan(w.options(false)).InstallCommand(), "nerv install --with task,task-teamwork"; got != want {
+		if got, want := w.plan(w.options(false)).InstallCommand(), "nerv install --tools nerv-task"; got != want {
 			t.Errorf("%s: %q, want %q", fixture, got, want)
 		}
 	}
@@ -369,7 +369,7 @@ func TestPlugins_InstallLineNamesWhatTheRepositoryUsed(t *testing.T) {
 	// Without a project provider, the user's decides (new file first, then
 	// the old one), and with none at all the 4.2.0 default, teamwork.
 	w.write(".nerv/nerv.yaml", "enabled: true\n")
-	if got := w.plan(w.options(false)).InstallCommand(); got != "nerv install --with task,task-teamwork" {
+	if got := w.plan(w.options(false)).InstallCommand(); got != "nerv install --tools nerv-task" {
 		t.Errorf("no provider anywhere: %q, want the 4.2.0 default teamwork", got)
 	}
 	w.write(w.userPaths().LegacyUserConfig, "tasks:\n  provider: none\n")
@@ -377,7 +377,7 @@ func TestPlugins_InstallLineNamesWhatTheRepositoryUsed(t *testing.T) {
 		t.Errorf("old user file says none: %q, want no install line", got)
 	}
 	w.write(w.userPaths().UserConfig, "tasks:\n  provider: teamwork\n")
-	if got := w.plan(w.options(false)).InstallCommand(); got != "nerv install --with task,task-teamwork" {
+	if got := w.plan(w.options(false)).InstallCommand(); got != "nerv install --tools nerv-task" {
 		t.Errorf("new user config says teamwork: %q", got)
 	}
 }
@@ -410,7 +410,7 @@ func TestDryRun_WritesNothing(t *testing.T) {
 		"Delete openspec/changes/tw-1-feature/proposal.md: its content is in odd/tasks/tw-1-feature.md\n",
 		"Create "+w.userPaths().UserConfig+": your user configuration\n",
 		"\nHow the configuration changes:\n  - ",
-		"\nNext, install the extensions it uses: nerv install --with ")
+		"\nNext, install the tools it uses: nerv install --tools nerv-task\n")
 	lacks(t, "the rendered plan", diff, "--- ", "+++ ", "@@ ")
 	if after := treeHash(t, w.root, w.home); after != before {
 		t.Error("planning changed the files")
