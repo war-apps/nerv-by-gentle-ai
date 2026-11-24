@@ -7,10 +7,15 @@
   <a href="https://www.gnu.org/software/bash/"><img alt="Bash hooks" src="https://img.shields.io/badge/Bash-hooks-4EAA25?style=for-the-badge&logo=gnubash&logoColor=white"></a>
   <a href="https://www.markdownguide.org/"><img alt="Markdown agents and skills" src="https://img.shields.io/badge/Markdown-agents_%26_skills-000000?style=for-the-badge&logo=markdown&logoColor=white"></a>
   <a href="https://mermaid.js.org/"><img alt="Mermaid diagrams" src="https://img.shields.io/badge/Mermaid-diagrams-FF3670?style=for-the-badge&logo=mermaid&logoColor=white"></a>
-  <a href="https://yaml.org/"><img alt="YAML config" src="https://img.shields.io/badge/YAML-.ai--workflow.yml-CB171E?style=for-the-badge&logo=yaml&logoColor=white"></a>
+  <a href="https://yaml.org/"><img alt="YAML config" src="https://img.shields.io/badge/YAML-.ai--workflow%2Fconfig.yaml-CB171E?style=for-the-badge&logo=yaml&logoColor=white"></a>
   <a href="https://github.com/Gentleman-Programming/gentle-ai"><img alt="ODD and RDD" src="https://img.shields.io/badge/ODD-RDD-0aa?style=for-the-badge"></a>
   <a href="https://github.com/Gentleman-Programming/engram"><img alt="Engram memory" src="https://img.shields.io/badge/Engram-memory-2d3748?style=for-the-badge"></a>
   <a href="https://skills.sh/"><img alt="skills.sh" src="https://img.shields.io/badge/skills.sh-manifest-333?style=for-the-badge"></a>
+  <a href="https://github.com/war-apps/nerv-task-by-gentle-ai"><img alt="nerv-task" src="https://img.shields.io/badge/NERV-nerv--task-8a2be2?style=for-the-badge"></a>
+  <a href="https://github.com/war-apps/nerv-release-by-gentle-ai"><img alt="nerv-release" src="https://img.shields.io/badge/NERV-nerv--release-8a2be2?style=for-the-badge"></a>
+  <a href="https://github.com/war-apps/nerv-kit-by-gentle-ai"><img alt="nerv-kit" src="https://img.shields.io/badge/nerv--kit-shared_library-5a4fcf?style=for-the-badge"></a>
+  <a href="https://www.gnu.org/software/bash/"><img alt="Bash and PowerShell installers" src="https://img.shields.io/badge/install-sh_%7C_ps1-4EAA25?style=for-the-badge&logo=gnubash&logoColor=white"></a>
+  <a href="https://goreleaser.com/"><img alt="GoReleaser" src="https://img.shields.io/badge/GoReleaser-releases-0F9D9A?style=for-the-badge"></a>
   <a href="https://git-scm.com/"><img alt="git" src="https://img.shields.io/badge/git-gitflow-F05032?style=for-the-badge&logo=git&logoColor=white"></a>
 </p>
 
@@ -32,6 +37,11 @@ agent.
 
 **Claude Code only, for now.** Nerv by Gentle-AI targets Claude Code; OpenCode,
 Codex and Pi are not supported yet.
+
+**What's new in 7.0:** task tracking and releases moved out of nerv into
+the standalone NERV-ecosystem tools. See [CHANGELOG.md](CHANGELOG.md) and
+[docs/migration.md](docs/migration.md#from-66-extensions-moved-to-tools)
+("From 6.6: extensions moved to tools").
 
 ## Relation to gentle-ai
 
@@ -120,16 +130,17 @@ on the old file.
   or `brew upgrade gentle-ai`, then `gentle-ai sync` (`gentle-ai upgrade`
   from 3.x cannot reach 4.x on go installs).
 - Claude Code with plugin marketplaces support (2.1+).
-- git — only needed to contribute to this repository (cloning, building,
-  work-unit commits). Installing and running `nerv` itself does not require
-  git.
+- git — required to use NERV in a repository (`nerv configure
+  --init-repo`, the wizard's repository step, `nerv doctor`, and the
+  pipeline's commits and worktrees). Only installing the binary works
+  without it.
 - bash available to hooks (Git Bash on Windows).
 - **PowerShell is no longer required on any platform** — the `nerv` binary
   replaces every PowerShell script.
 - Go 1.26+ — only needed to install with `go install` instead of
   downloading a prebuilt binary (optional on every platform; see "Install"
   below).
-- Engram (`engram` on PATH) is optional — without it `nerv install` skips
+- [Engram](https://github.com/Gentleman-Programming/engram) (`engram` on PATH) is optional — without it `nerv install` skips
   the "nerv" knowledge-base check (see [docs/integration.md](docs/integration.md#operations)).
 
 ## Install
@@ -183,6 +194,13 @@ nerv install
 From then on, `nerv upgrade` keeps it current, the same as on Linux and
 macOS (see "Updating" below).
 
+Verify the install with `nerv version` (binary and plugin versions), then
+`nerv doctor`, which checks gentle-ai, Claude Code, Engram, the plugin, its
+skills and the configuration, and lists the steps still to take.
+
+Problems? See [docs/troubleshooting.md](docs/troubleshooting.md) and run
+`nerv doctor`.
+
 ### Channels
 
 - `stable` (default) — the latest GitHub Release, published from `main`.
@@ -193,30 +211,40 @@ macOS (see "Updating" below).
 
 ### What `nerv install` does
 
-1. Runs a gentle-ai preflight check (warns if missing or not 4.x; refuses
-   with `--require-gentle-ai`).
-2. Upgrades gentle-ai to its newest 4.x release when it is on PATH at
+1. Upgrades gentle-ai to its newest 4.x release when it is on PATH at
    4.x and that release is newer (`gentle-ai upgrade gentle-ai`, then
    `gentle-ai sync`), before laying NERV's own files over it below. A
    newer major version is reported and left alone; a failed release
    lookup or upgrade is only a warning (install continues with the
    gentle-ai it found).
-3. Materializes the embedded core plugin under `~/.nerv/marketplace`, and
-   disables the extension plugins an earlier nerv shipped (see
-   "NERV ecosystem" above).
-4. Registers that directory marketplace in Claude Code's `settings.json`.
-5. Refreshes the plugin cache (`claude plugin uninstall`/`install`).
-6. Applies model/effort assignments to the cached agents.
-7. Ensures the Engram `nerv` knowledge-base project exists (skipped when
+2. Offers the NERV-ecosystem tools (`nerv-task`, `nerv-release`): on a
+   terminal each tool's state is shown and confirmed one by one, and a
+   confirmed tool's install script (`install.sh`/`install.ps1`) runs.
+3. Runs a gentle-ai preflight check (warns if missing or not 4.x; refuses
+   with `--require-gentle-ai`).
+4. Materializes the embedded core plugin under `~/.nerv/marketplace`.
+5. Registers that directory marketplace in Claude Code's `settings.json`,
+   and in the same write disables the extension plugins nerv no longer
+   ships (`task@nerv`, `task-teamwork@nerv`, `release@nerv`, its providers
+   and the `deploy@nerv` plugins), uninstalling them from the plugin cache.
+   When the tool that replaces them is missing, a warning names what is
+   unavailable and the install command (`nerv install --tools <tool>`).
+6. Refreshes the plugin cache (`claude plugin uninstall`/`install`).
+7. Reports old `/task:*` copies in `~/.claude/commands/task/`, which
+   shadow nerv-task's commands, and removes them when you confirm.
+8. Applies model/effort assignments to the cached agents.
+9. Ensures the Engram `nerv` knowledge-base project exists (skipped when
    `engram` is not on PATH).
-8. Installs the skills the plugin defaults reference. Missing external
-   skills go through `npx skills add`. Missing gentle-ai skills need
-   `gentle-ai sync --agents claude-code --skills ...`; in a terminal
-   `nerv install` asks first (default No), because that sync also rewrites
-   gentle-ai's own managed files (e.g. `~/.claude/CLAUDE.md`). Without a
-   terminal it never runs and a remedy line per missing skill is printed.
-9. Runs the interactive configuration wizard when stdin is a terminal, or
-   prints the `nerv configure` hint otherwise.
+10. Installs the skills the plugin defaults reference. Missing external
+    skills go through `npx skills add`. Missing gentle-ai skills need
+    `gentle-ai sync --agents claude-code --skills ...`; in a terminal
+    `nerv install` asks first (default No), because that sync also rewrites
+    gentle-ai's own managed files (e.g. `~/.claude/CLAUDE.md`). Without a
+    terminal it never runs and a remedy line per missing skill is printed.
+11. When an installed tool's settings are still in the user `config.yaml`,
+    offers `nerv migrate --user` (`[y/N]` on a terminal, a hint otherwise).
+12. Runs the interactive configuration wizard when stdin is a terminal, or
+    prints the `nerv configure` hint otherwise.
 
 Flags: `--no-configure` (skip the closing wizard/hint entirely),
 `--no-skills` (skip installing skills), `--require-gentle-ai` (fail with
@@ -237,7 +265,9 @@ the binary cannot be replaced or the download/checksum fails, gentle-ai
 still gets its upgrade attempt and `nerv install` still runs with the
 running executable, so NERV's files stay laid over gentle-ai's; `nerv
 upgrade` still exits 1 for the failed replace. See
-[docs/commands.md](docs/commands.md#nerv-upgrade).
+[docs/commands.md](docs/commands.md#nerv-upgrade). After an upgrade,
+`nerv doctor` lists anything still pending (such as a repository's
+`nerv migrate`).
 
 **Upgrading from a release with the task or release extension.** Install
 the tool that replaces it (`nerv install --tools nerv-task,nerv-release`),
@@ -254,8 +284,26 @@ are reported by `nerv install` and removed only after you confirm. See
 nerv uninstall
 ```
 
-Removes NERV's `settings.json` registration, uninstalls the cached plugin,
-and removes the materialized marketplace directory.
+Removes NERV's `settings.json` registration, uninstalls the cached plugin
+and every other enabled plugin of the nerv marketplace, and removes the
+materialized marketplace directory. It leaves the `nerv` binary, the user
+configuration and each repository's `.ai-workflow/` in place.
+
+## CLI commands
+
+| Command | What it does |
+|---|---|
+| `nerv version` | Print the binary and plugin versions |
+| `nerv configure` | Run the setup wizard, or configure non-interactively |
+| `nerv install` | Install NERV (plugin, cache, skills, Engram KB, tools) |
+| `nerv uninstall` | Uninstall NERV |
+| `nerv apply-models` | Apply `models:` overrides to the cached agents |
+| `nerv skills` | Install or verify the skills NERV's defaults reference |
+| `nerv migrate` | Move a repository (`--user`: the user configuration) to the current layout |
+| `nerv doctor` | Check NERV on this machine and in the repository, and list the steps to take |
+| `nerv upgrade` | Replace the binary with the newest release, then run its install |
+
+See [docs/commands.md](docs/commands.md#nerv-cli) for flags and examples.
 
 ## Setup
 
@@ -417,7 +465,7 @@ example YAML, and how to configure per-role models and effort (wizard,
   (activation, artifacts, the nerv-task events, Engram project
   detection).
 - [docs/configuration.md](docs/configuration.md) — the configuration
-  configuration schema and how to configure per-role models and effort.
+  schema and how to configure per-role models and effort.
 - [docs/releases.md](docs/releases.md) — versioning, release channels,
   and how to cut a release.
 - [docs/migration.md](docs/migration.md) — `nerv migrate`: moving a
