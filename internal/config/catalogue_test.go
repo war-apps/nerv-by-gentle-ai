@@ -176,3 +176,16 @@ func TestDefaults_HoldNoTaskKeys(t *testing.T) {
 		t.Error("ValidateManagedKey(tasks.provider) = nil, want an unknown-key error")
 	}
 }
+
+// Every managed key the wizard asks about has a help text saying what it
+// does and what its values change.
+func TestKeyHelp_EveryManagedKeyHasHelp(t *testing.T) {
+	for _, key := range config.ManagedKeys() {
+		if help := config.KeyHelp(key); strings.TrimSpace(help) == "" {
+			t.Errorf("KeyHelp(%q) is empty", key)
+		}
+	}
+	if help := config.KeyHelp("not.a.key"); help != "" {
+		t.Errorf("KeyHelp of an unknown key = %q, want empty", help)
+	}
+}

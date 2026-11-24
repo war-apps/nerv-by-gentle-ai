@@ -1211,3 +1211,63 @@ func TestRun_ModelsSection_KeepsTasksBlock(t *testing.T) {
 		t.Errorf("tasks: block changed by the models write:\n%s", got)
 	}
 }
+
+// Every question carries its help, indented, right before it; without
+// Color the output has no escape sequences.
+func TestRun_HelpPrecedesEachQuestionWithoutColor(t *testing.T) {
+	root := t.TempDir()
+	home := t.TempDir()
+	writeFixture(t, filepath.Join(root, "config.yml"))
+	deps := configure.Deps{Home: home, FS: nerv.PluginFS(), Runner: noRunner(), Now: fixedNow, LookPath: lookPathNone}
+	opts := skipAll()
+	opts.Paths = testPaths(root, home)
+
+	var out bytes.Buffer
+	if _, err := wizard.Run(deps, strings.NewReader(strings.Repeat("\n", 12)), &out, opts); err != nil {
+		t.Fatalf("Run() error = %v; output:\n%s", err, out.String())
+	}
+	text := out.String()
+	for _, q := range []struct{ help, prompt string }{
+		{"  " + firstLine(config.KeyHelp("git.base_branch")), "Base branch ["},
+		{"  " + firstLine(config.KeyHelp("git.worktree")), "Worktree policy (ask|always|never)"},
+		{"  " + firstLine(config.KeyHelp("critical_paths")), "Critical paths (comma-separated)"},
+		{"  " + firstLine(config.KeyHelp("artifacts.commit")), "Artifacts commit policy"},
+	} {
+		h, p := strings.Index(text, q.help), strings.Index(text, q.prompt)
+		if h < 0 || p < 0 || h > p {
+			t.Errorf("help %q not right before %q:\n%s", q.help, q.prompt, text)
+		}
+	}
+	if strings.Contains(text, "\x1b[") {
+		t.Errorf("escape sequences without Color:\n%q", text)
+	}
+}
+
+// With Color, section headers and question labels are bold and the help
+// is dimmed.
+func TestRun_ColorStylesHeadersLabelsAndHelp(t *testing.T) {
+	root := t.TempDir()
+	home := t.TempDir()
+	writeFixture(t, filepath.Join(root, "config.yml"))
+	deps := configure.Deps{Home: home, FS: nerv.PluginFS(), Runner: noRunner(), Now: fixedNow, LookPath: lookPathNone}
+	opts := skipAll()
+	opts.Paths = testPaths(root, home)
+	opts.Color = true
+
+	var out bytes.Buffer
+	if _, err := wizard.Run(deps, strings.NewReader(strings.Repeat("\n", 12)), &out, opts); err != nil {
+		t.Fatalf("Run() error = %v; output:\n%s", err, out.String())
+	}
+	text := out.String()
+	for _, want := range []string{
+		"\x1b[1;36m--- User config ---\x1b[0m",
+		"\x1b[1mWorktree policy\x1b[0m",
+		"  \x1b[90m" + firstLine(config.KeyHelp("git.worktree")) + "\x1b[0m",
+	} {
+		if !strings.Contains(text, want) {
+			t.Errorf("output lacks %q:\n%q", want, text)
+		}
+	}
+}
+
+func firstLine(s string) string { return strings.SplitN(s, "\n", 2)[0] }

@@ -41,8 +41,10 @@ func menuOf(tokens []string) map[string]string {
 // "audit-passes", "all"), "reset <target>" to clear one, "done" to finish,
 // then one write through config.SetModelsBlock + configure.Store.Save.
 func runModelsSection(deps Deps, paths configure.Paths, s *session, out io.Writer) (bool, error) {
-	fmt.Fprintln(out)
-	fmt.Fprintln(out, "--- Models ---")
+	s.heading("--- Models ---")
+	s.help("Which model and effort each NERV role runs with (Misato plans, the\n" +
+		"MAGI vote, the pilots write code...). No keeps the defaults and\n" +
+		"gentle-ai's assignments; change them later with nerv configure.")
 	configureNow, err := s.yesNo("Configure per-role model and effort now?", false)
 	if err != nil {
 		return false, err

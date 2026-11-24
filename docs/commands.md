@@ -142,6 +142,12 @@ nerv configure --set-model aoba=opus/high
 nerv configure --init-repo . --repo-base develop
 ```
 
+Each question of the wizard is preceded by a short help saying what the
+setting does and what each value changes. On a terminal that shows ANSI
+colors the section headers and questions are bold and the help is grey;
+set `NO_COLOR` (or `TERM=dumb`) for plain text, which is also what piped
+or `--answers` output gets.
+
 The wizard asks nothing about tasks: task settings belong to nerv-task
 (`nerv-task configure`, `nerv-task init`). Its former "Task providers"
 section and `--repo-provider-config` were removed in 7.0, after the
