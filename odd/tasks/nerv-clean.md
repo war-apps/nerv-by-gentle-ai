@@ -23,7 +23,7 @@ Branches: `feat/release-tool-migration` (N1-N4, release 6.6.0), then `feat/nerv-
 | N3 | S3 | delegated writer | done: install/upgrade offer (dry run + y/N, hint without terminal, user scope), doctor user + repo checks, shared setToolFileTargets | 987bfab |
 | N4 | S4 | inline | done: nerv 6.6.0 published (PR #192 → develop, release/6.6.0 PR #193 → main, back-merge #194); "tested against" was already 4.5.0 since 6.5.1, bumped to 4.6.0 on feat/nerv-clean | 7418c96 |
 | C1 | S5, S7 | inline | done: frozen workflowconfig.PersonalProviderKeys (guarded against the manifests), migrate without ExtensionsFS/OriginURL, legacy conversions (release.go, ship.go, deploy.go, script.go) replaced by refusals naming the section (legacy.go), checkLoads removed, docs/migration.md; independent verifier (item 1): one blocker fixed | 1c051ca, 8de42e1 |
-| C2 | S5, S8 | delegated writer (context backstop) | done: nerv release [setup], deploy, version next answer "moved to the nerv-release tool" (exit 2), hidden provider removed (unknown command), usage and docs/commands.md updated, their tests removed | |
+| C2 | S5, S8 | delegated writer (context backstop) | done: nerv release [setup], deploy, version next answer "moved to the nerv-release tool" (exit 2), hidden provider removed (unknown command), usage and docs/commands.md updated, their tests removed | 1c2a421 |
 | C3 | S5 | pending | pending | |
 | C4 | S5, S6 | pending | pending | |
 | C5 | S5, S6, S8 | pending | pending | |
