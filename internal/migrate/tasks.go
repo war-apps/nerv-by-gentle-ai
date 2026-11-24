@@ -118,12 +118,20 @@ func migrateTasks(p *Plan, doc *config.Document, where string) error {
 // personalKeys are the keys of the project file that belong to the user:
 // models, and every task provider key that is personal
 // (workflowconfig.PersonalProviderKeys). With user they move to the user
-// configuration (unless it already sets them); otherwise they are
-// reported.
-func personalKeys(p *Plan, doc *config.Document, where string, user *userState) error {
+// configuration (unless it, or the global task.yaml at taskYAMLHome when
+// nerv-task owns them, already sets them); otherwise they are reported.
+func personalKeys(p *Plan, doc *config.Document, where string, user *userState, taskYAMLHome string) error {
 	root, err := parseYAML(doc.String())
 	if err != nil {
 		return refuse("%s is not valid YAML: %v", where, err)
+	}
+	var taskYAML *config.Document
+	if user != nil && taskYAMLHome != "" {
+		data, _, err := readOptional(taskYAMLHome)
+		if err != nil {
+			return err
+		}
+		taskYAML = config.Parse(string(data))
 	}
 	if block, ok := doc.Block("models"); ok && value(mapping(root, ""), "models") != nil {
 		switch {
@@ -155,6 +163,12 @@ func personalKeys(p *Plan, doc *config.Document, where string, user *userState) 
 				if existing, set := user.doc.Scalar(path); set {
 					p.warn("%s: %s: kept in the project file, the user config already sets it to %s", where, path, existing)
 					continue
+				}
+				if taskYAML != nil {
+					if existing, set := taskYAML.Scalar(strings.TrimPrefix(path, "tasks.")); set {
+						p.warn("%s: %s: kept in the project file, the global task.yaml already sets it to %s", where, path, existing)
+						continue
+					}
 				}
 				var opts []config.ScalarOption
 				if strings.HasPrefix(v, "{") || strings.HasPrefix(v, "[") {

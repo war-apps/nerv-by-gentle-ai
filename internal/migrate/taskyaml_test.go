@@ -236,3 +236,25 @@ func TestUserTaskYAML_QuotedLookalikesStayStrings(t *testing.T) {
 		})
 	}
 }
+
+// A repository's personal task key that the global task.yaml already sets
+// stays in the project file and is reported: a second --user run does not
+// move it into the user config after the first moved the user's own value
+// to task.yaml, so the runs settle.
+func TestUserTaskYAML_RepoPersonalKeyAlreadyInTaskYAMLIsKept(t *testing.T) {
+	w := taskYAMLWorld(t)
+	w.write(w.userPaths().UserConfig, "tasks:\n  providers:\n    teamwork:\n      assignee_id: 7\n")
+	w.write(".ai-workflow/config.yaml", "tasks:\n  providers:\n    teamwork:\n      assignee_id: 9\n")
+	w.migrate(w.taskYAMLOptions(true))
+	if got := yamlMap(t, w.read(w.taskYAMLHome())); !reflect.DeepEqual(got, yamlMap(t, "providers:\n  teamwork:\n    assignee_id: 7\n")) {
+		t.Fatalf("global task.yaml after the first run = %v", got)
+	}
+
+	p := w.plan(w.taskYAMLOptions(true))
+	if !p.Empty() {
+		t.Errorf("the second run plans changes:\n%s", migrate.Render(p))
+	}
+	if !anyContains(p.Warnings, "tasks.providers.teamwork.assignee_id: kept in the project file, the global task.yaml already sets it to 7") {
+		t.Errorf("no kept warning in %q", p.Warnings)
+	}
+}

@@ -189,7 +189,7 @@ func planRepo(p *Plan, o Options, user *userState) error {
 		if err := refuseScriptTargets(doc, "deploy", paths.ProjectConfigFile); err != nil {
 			return err
 		}
-		if err := personalKeys(p, doc, paths.ProjectConfigFile, user); err != nil {
+		if err := personalKeys(p, doc, paths.ProjectConfigFile, user, o.TaskYAMLHome); err != nil {
 			return err
 		}
 		if err := moveRepoTaskYAML(p, o, doc); err != nil {
