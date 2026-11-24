@@ -424,7 +424,7 @@ example YAML, and how to configure per-role models and effort (wizard,
   repository and the user configuration from nerv 4.2.0 or 5.0.0-alpha.1
   (configuration files, openspec to ODD), the move of `tasks:`, `release:`
   and `deploy:` to the NERV-ecosystem tools, and everything that left nerv
-  with the extensions in 6.7 and what replaces it.
+  with the extensions in 7.0 and what replaces it.
 - [docs/troubleshooting.md](docs/troubleshooting.md) — known limitations
   and troubleshooting.
 
