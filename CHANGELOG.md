@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [7.0.0] - 2026-11-24
+
+nerv no longer ships extensions: tasks and releases are the nerv-task and
+nerv-release tools (`nerv install --tools nerv-task,nerv-release`). Upgrading
+from 6.6: run `nerv upgrade`; it offers the tools and disables the task,
+release and deploy plugins nerv no longer ships, saying how to install the
+tool that replaces them. `nerv release`, `nerv deploy` and `nerv version next`
+now point to their nerv-release commands; see docs/migration.md, "From 6.6:
+extensions moved to tools". nerv is now tested against gentle-ai 4.6.0.
+
+### Breaking
+- remove nerv release, deploy, version next and provider (1c2a421)
+- remove extension support from the core and disable orphaned plugins (29aa085)
+
+### Added
+- doctor: report old nerv plugins in the repository's Claude settings (d2fabe3)
+
+### Changed
+- migrate: freeze personal keys and refuse legacy release sections (1c051ca)
+- remove the release and deploy engine packages (dfcf19c)
+- remove the extension plugins and their embed (32b3eeb)
+
+### Fixed
+- migrate: refuse a 4.2.0 release section in the project file (8de42e1)
+- install: treat a failed tool install as not installed for orphans (2d54e3d)
+- upgrade: install a chosen tool that is not installed (8f038a9)
+- migrate: keep a repo personal task key the global task.yaml sets (7d93ae4)
+
 ## [6.6.0] - 2026-11-20
 
 ### Added
