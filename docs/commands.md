@@ -238,8 +238,12 @@ Checks that everything NERV needs is in order and changes nothing:
 - in the repository: `.ai-workflow/config.yaml` with `enabled: true`, a
   pending `nerv migrate` (naming `.ai-workflow/task.yaml` or
   `.ai-workflow/release.yaml` when it moves settings there, for an
-  installed nerv-task or nerv-release), the origin remote and the base
-  branch. Task, release and deploy settings are the tools' own to check.
+  installed nerv-task or nerv-release), the extension plugins nerv no
+  longer ships that the repository's `.claude/settings.json` or
+  `.claude/settings.local.json` still enable (an `old plugins` warning:
+  `nerv install` and `nerv upgrade` clean only your user settings), the
+  origin remote and the base branch. Task, release and deploy settings are
+  the tools' own to check.
 
 Each check prints `[ok]`, `[!!]` (should be changed), `[xx]` (NERV cannot
 work until it is fixed) or `[--]` (optional, not set up). Then come the
