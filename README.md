@@ -7,10 +7,15 @@
   <a href="https://www.gnu.org/software/bash/"><img alt="Bash hooks" src="https://img.shields.io/badge/Bash-hooks-4EAA25?style=for-the-badge&logo=gnubash&logoColor=white"></a>
   <a href="https://www.markdownguide.org/"><img alt="Markdown agents and skills" src="https://img.shields.io/badge/Markdown-agents_%26_skills-000000?style=for-the-badge&logo=markdown&logoColor=white"></a>
   <a href="https://mermaid.js.org/"><img alt="Mermaid diagrams" src="https://img.shields.io/badge/Mermaid-diagrams-FF3670?style=for-the-badge&logo=mermaid&logoColor=white"></a>
-  <a href="https://yaml.org/"><img alt="YAML config" src="https://img.shields.io/badge/YAML-.ai--workflow.yml-CB171E?style=for-the-badge&logo=yaml&logoColor=white"></a>
+  <a href="https://yaml.org/"><img alt="YAML config" src="https://img.shields.io/badge/YAML-.ai--workflow%2Fconfig.yaml-CB171E?style=for-the-badge&logo=yaml&logoColor=white"></a>
   <a href="https://github.com/Gentleman-Programming/gentle-ai"><img alt="ODD and RDD" src="https://img.shields.io/badge/ODD-RDD-0aa?style=for-the-badge"></a>
   <a href="https://github.com/Gentleman-Programming/engram"><img alt="Engram memory" src="https://img.shields.io/badge/Engram-memory-2d3748?style=for-the-badge"></a>
   <a href="https://skills.sh/"><img alt="skills.sh" src="https://img.shields.io/badge/skills.sh-manifest-333?style=for-the-badge"></a>
+  <a href="https://github.com/war-apps/nerv-task-by-gentle-ai"><img alt="nerv-task" src="https://img.shields.io/badge/NERV-nerv--task-8a2be2?style=for-the-badge"></a>
+  <a href="https://github.com/war-apps/nerv-release-by-gentle-ai"><img alt="nerv-release" src="https://img.shields.io/badge/NERV-nerv--release-8a2be2?style=for-the-badge"></a>
+  <a href="https://github.com/war-apps/nerv-kit-by-gentle-ai"><img alt="nerv-kit" src="https://img.shields.io/badge/nerv--kit-shared_library-5a4fcf?style=for-the-badge"></a>
+  <a href="https://www.gnu.org/software/bash/"><img alt="Bash and PowerShell installers" src="https://img.shields.io/badge/install-sh_%7C_ps1-4EAA25?style=for-the-badge&logo=gnubash&logoColor=white"></a>
+  <a href="https://goreleaser.com/"><img alt="GoReleaser" src="https://img.shields.io/badge/GoReleaser-releases-0F9D9A?style=for-the-badge"></a>
   <a href="https://git-scm.com/"><img alt="git" src="https://img.shields.io/badge/git-gitflow-F05032?style=for-the-badge&logo=git&logoColor=white"></a>
 </p>
 
