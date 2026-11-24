@@ -459,3 +459,10 @@ func oddDocument(name string, state changeState, tdd *tddDefault, read func(stri
 	entry("(%s, nerv migrate): the change's run files moved to `odd/%s/nerv/` and its lock to `.nerv/locks/%s.lock`. Next step: resume the run from `nerv/state.yaml`.", date, name, name)
 	return b.String()
 }
+
+func orDefault(v, d string) string {
+	if v == "" {
+		return d
+	}
+	return v
+}

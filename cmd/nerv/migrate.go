@@ -242,10 +242,7 @@ func migrateRun(ctx context.Context, cwd string, dryRun, user, install, force bo
 		}
 		top = "" // --user outside a repository: the user configuration only.
 	}
-	o := migrate.Options{RepoRoot: top, Home: home, User: user, ExtensionsFS: opts.ExtensionsFS, Now: opts.Now(), Force: force}
-	if top != "" {
-		o.OriginURL = originURL(ctx, opts, top)
-	}
+	o := migrate.Options{RepoRoot: top, Home: home, User: user, Now: opts.Now(), Force: force}
 	setToolFileTargets(ctx, opts, home, &o)
 	plan, err := migrate.Compute(o)
 	if err != nil {

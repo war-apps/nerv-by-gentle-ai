@@ -232,7 +232,7 @@ func (d *doctorRun) userConfig() {
 // none is pending, or when nerv migrate --user cannot plan (userConfig
 // already reports a configuration that does not load).
 func (d *doctorRun) toolConfig() {
-	o := migrate.Options{Home: d.home, User: true, ExtensionsFS: d.opts.ExtensionsFS, Now: d.opts.Now()}
+	o := migrate.Options{Home: d.home, User: true, Now: d.opts.Now()}
 	setToolFileTargets(d.ctx, d.opts, d.home, &o)
 	if o.TaskYAMLHome == "" && o.ReleaseYAMLHome == "" {
 		return
@@ -279,7 +279,7 @@ func (d *doctorRun) repository(cwd string) {
 	d.report.Section("This repository (" + top + ")")
 	project, ok := d.projectConfig(top)
 	origin := originURL(d.ctx, d.opts, top)
-	d.migration(top, origin)
+	d.migration(top)
 	if !ok {
 		return
 	}
@@ -333,8 +333,8 @@ func (d *doctorRun) projectConfig(top string) (*config.Document, bool) {
 
 // migration checks whether nerv migrate has steps to take in the
 // repository.
-func (d *doctorRun) migration(top, origin string) {
-	o := migrate.Options{RepoRoot: top, Home: d.home, ExtensionsFS: d.opts.ExtensionsFS, OriginURL: origin, Now: d.opts.Now()}
+func (d *doctorRun) migration(top string) {
+	o := migrate.Options{RepoRoot: top, Home: d.home, Now: d.opts.Now()}
 	setToolFileTargets(d.ctx, d.opts, d.home, &o)
 	plan, err := migrate.Compute(o)
 	switch {

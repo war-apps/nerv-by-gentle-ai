@@ -6,7 +6,6 @@ import (
 	"reflect"
 	"testing"
 
-	nerv "github.com/war-apps/nerv-by-gentle-ai"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/migrate"
 	"gopkg.in/yaml.v3"
 )
@@ -35,7 +34,7 @@ func yamlMap(t *testing.T, text string) map[string]any {
 }
 
 func userOnly(w world) migrate.Options {
-	return migrate.Options{Home: w.home, User: true, ExtensionsFS: nerv.ExtensionsFS(), Now: now}
+	return migrate.Options{Home: w.home, User: true, Now: now}
 }
 
 // nerv migrate --user moves the user file's run-time task, release and
@@ -143,7 +142,7 @@ func TestRepoSeed_TasksProviderFromTheUser(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			w := userWorld(t, user, "enabled: true\n")
-			o := w.options(false, "")
+			o := w.options(false)
 			p, _ := w.migrate(o)
 			got := yamlMap(t, w.read(".ai-workflow/config.yaml"))
 			if want := map[string]any{"enabled": true, "tasks": map[string]any{"provider": "teamwork"}}; !reflect.DeepEqual(got, want) {
@@ -166,7 +165,7 @@ func TestRepoSeed_TasksProviderFromTheUser(t *testing.T) {
 func TestRepoSeed_ProjectProviderWins(t *testing.T) {
 	w := userWorld(t, "defaults:\n  tasks:\n    provider: other\n", "enabled: true\ntasks:\n  provider: teamwork\n")
 	before := treeHash(t, w.root, w.home)
-	if p := w.plan(w.options(false, "")); !p.Empty() {
+	if p := w.plan(w.options(false)); !p.Empty() {
 		t.Errorf("changes: %s", migrate.Render(p))
 	}
 	if treeHash(t, w.root, w.home) != before {

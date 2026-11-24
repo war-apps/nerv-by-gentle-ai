@@ -167,7 +167,7 @@ func suppressedExtensions(ctx context.Context, opts options, home string, select
 // doctor cover the repository's own move). It never changes the exit
 // code: a plan that cannot be computed or applied is a warning.
 func offerToolMigration(ctx context.Context, stdout io.Writer, opts options, home string) {
-	o := migrate.Options{Home: home, User: true, ExtensionsFS: opts.ExtensionsFS, Now: opts.Now()}
+	o := migrate.Options{Home: home, User: true, Now: opts.Now()}
 	setToolFileTargets(ctx, opts, home, &o)
 	if o.TaskYAMLHome == "" && o.ReleaseYAMLHome == "" {
 		return

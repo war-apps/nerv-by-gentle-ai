@@ -31,10 +31,32 @@ const DefaultsKey = "defaults"
 // stay readable from the user file.
 var PersonalTaskKeys = []string{"tasks.timer_store", "tasks.stale_after_hours", "tasks.rounding_minutes"}
 
-// Personal is the set of personal keys under Sections: PersonalTaskKeys
-// and every provider config key whose manifest declares scope: user, at
-// <section>.providers.<provider>.<key>. The zero value holds only
-// PersonalTaskKeys.
+// PersonalProviderKeys are the scope: user keys of the providers nerv
+// shipped (task-teamwork and release-ssh-compose), frozen as their last
+// manifests declared them: nerv migrate moves them out of nerv's files
+// without reading any manifest.
+var PersonalProviderKeys = []string{
+	"tasks.providers.teamwork.assignee_id",
+	"tasks.providers.teamwork.default_project_id",
+	"tasks.providers.teamwork.default_tasklist_id",
+	"tasks.providers.teamwork.rounding_minutes",
+	"tasks.providers.teamwork.billable",
+	"tasks.providers.teamwork.stages",
+	"tasks.providers.teamwork.stage_variants",
+	"tasks.providers.teamwork.comment_labels",
+	"tasks.providers.teamwork.comment_rest",
+	"tasks.providers.teamwork.known_projects",
+	"deploy.providers.ssh-compose.infisical_domain",
+	"deploy.providers.ssh-compose.ssh_auth",
+	"deploy.providers.ssh-compose.ssh_key_file",
+	"deploy.providers.ssh-compose.ssh_known_hosts",
+	"deploy.providers.ssh-compose.ssh_connect_timeout",
+}
+
+// Personal is the set of personal keys under Sections: PersonalTaskKeys,
+// PersonalProviderKeys and every provider config key whose manifest
+// declares scope: user, at <section>.providers.<provider>.<key>. The zero
+// value holds PersonalTaskKeys and PersonalProviderKeys.
 type Personal struct {
 	keys map[string]bool
 }
@@ -88,7 +110,7 @@ func SectionOf(extensionName, slot string) string {
 // Has reports whether path, or a key it is under, is personal.
 func (p Personal) Has(path string) bool {
 	for k := path; k != ""; {
-		if slices.Contains(PersonalTaskKeys, k) || p.keys[k] {
+		if slices.Contains(PersonalTaskKeys, k) || slices.Contains(PersonalProviderKeys, k) || p.keys[k] {
 			return true
 		}
 		i := strings.LastIndex(k, ".")

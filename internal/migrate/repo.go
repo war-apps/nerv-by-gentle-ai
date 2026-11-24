@@ -5,15 +5,10 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 
 	"github.com/war-apps/nerv-by-gentle-ai/internal/config"
-	"github.com/war-apps/nerv-by-gentle-ai/internal/deployconfig"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/paths"
-	"github.com/war-apps/nerv-by-gentle-ai/internal/releaseconfig"
-	"github.com/war-apps/nerv-by-gentle-ai/internal/releaseplan"
-	"github.com/war-apps/nerv-by-gentle-ai/internal/versioning"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/workflowconfig"
 )
 
@@ -158,7 +153,7 @@ func planRepo(p *Plan, o Options, user *userState) error {
 	var doc *config.Document
 	switch {
 	case oldExists:
-		doc, err = translateConfig(p, o, oldData, user)
+		doc, err = translateConfig(p, o, oldData)
 		if err != nil {
 			return err
 		}
@@ -168,29 +163,12 @@ func planRepo(p *Plan, o Options, user *userState) error {
 			current = prevText
 		}
 		doc = config.Parse(string(current))
-		if doc.KeyExists(releaseconfig.AlphaSectionKey) {
-			// The 5.0.0-alpha.1 ship: section is today's release: under its
-			// old name, with the keys of before the version and build slots.
+		if doc.KeyExists(alphaSection) {
 			where := paths.ProjectConfigFile
 			if prevExists {
 				where = paths.PreviousProjectConfigFile
 			}
-			if err := migrateShip(p, doc, where); err != nil {
-				return err
-			}
-			p.Plugins = append(p.Plugins, "release")
-		} else if legacy := releaseconfig.LegacyKeys(current); len(legacy) > 0 {
-			// A 4.2.0 release: section has today's key: its 4.2.0 keys
-			// tell it apart.
-			p.note("%s: the release: section is the 4.2.0 one (%s)", paths.ProjectConfigFile, strings.Join(legacy, ", "))
-			if doc, _, err = migrateRelease(p, o, doc); err != nil {
-				return err
-			}
-			p.Plugins = append(p.Plugins, "release")
-		} else if doc.KeyExists(releaseconfig.SectionKey) {
-			if err := moveReleaseKeys(p, doc); err != nil {
-				return err
-			}
+			return refuseLegacySection(where, alphaSection, "5.0.0-alpha.1")
 		}
 	}
 	if doc != nil {
@@ -205,28 +183,19 @@ func planRepo(p *Plan, o Options, user *userState) error {
 			// moveRepoTaskYAML move it right back out on every run.
 			seedTaskProvider(p, o, doc)
 		}
-		renameScriptTargets(p, doc, "deploy", paths.ProjectConfigFile)
-		if err := personalKeys(p, doc, paths.ProjectConfigFile, o.ExtensionsFS, user); err != nil {
+		if err := refuseScriptTargets(doc, "deploy", paths.ProjectConfigFile); err != nil {
+			return err
+		}
+		if err := personalKeys(p, doc, paths.ProjectConfigFile, user); err != nil {
 			return err
 		}
 		if err := moveRepoTaskYAML(p, o, doc); err != nil {
 			return err
 		}
-		// nerv's own release:/deploy: loaders check the sections before
-		// they move to nerv-release's release.yaml; once nerv-release owns
-		// them, a personal key left in the project file is reported by
-		// moveRepoReleaseYAML instead of refused here.
-		checkText := doc.String()
-		if o.ReleaseYAMLRepo != "" {
-			checkText = withoutReleasePersonal(doc)
-		}
 		if err := moveRepoReleaseYAML(p, o, doc); err != nil {
 			return err
 		}
 		text := doc.String()
-		if err := checkLoads(checkText); err != nil {
-			return err
-		}
 		switch {
 		case oldExists && newExists && string(newData) != text:
 			return refuse("%s and %s both exist: nerv migrate does not merge them; merge the old one into %s by hand, or remove %s and run nerv migrate again", oldPath, newPath, paths.ProjectConfigFile, paths.ProjectConfigFile)
@@ -251,7 +220,7 @@ func planRepo(p *Plan, o Options, user *userState) error {
 	} else if tdd != nil {
 		p.warn("odd.tdd: the repository has no %s to record strict_tdd in; run nerv configure --init, then nerv migrate again", paths.ProjectConfigFile)
 	}
-	if err := moveProjectDeployProviders(p, root); err != nil {
+	if err := refuseProjectDeployProviders(root); err != nil {
 		return err
 	}
 	ignore := filepath.Join(paths.RuntimeDir(root), ".gitignore")
@@ -268,74 +237,21 @@ func planRepo(p *Plan, o Options, user *userState) error {
 	return nil
 }
 
-// checkLoads refuses a migrated project file that today's strict loaders
-// of the release: and deploy: sections reject.
-func checkLoads(text string) error {
-	dir, err := os.MkdirTemp("", "nerv-migrate-check-*")
-	if err != nil {
-		return err
-	}
-	defer os.RemoveAll(dir)
-	if err := os.MkdirAll(filepath.Dir(paths.ProjectConfig(dir)), 0o700); err != nil {
-		return err
-	}
-	if err := os.WriteFile(paths.ProjectConfig(dir), []byte(text), 0o600); err != nil {
-		return err
-	}
-	if _, err := releaseconfig.Load(dir); err != nil && !errors.Is(err, releaseconfig.ErrNotConfigured) {
-		return refuse("the migrated %s does not load: %v", paths.ProjectConfigFile, strings.ReplaceAll(err.Error(), dir+string(filepath.Separator), ""))
-	}
-	if _, err := deployconfig.Load(dir); err != nil && !errors.Is(err, deployconfig.ErrNotConfigured) {
-		return refuse("the migrated %s does not load: %v", paths.ProjectConfigFile, strings.ReplaceAll(err.Error(), dir+string(filepath.Separator), ""))
-	}
-	return nil
-}
-
 // translateConfig turns a 4.2.0 project nerv.yaml into .ai-workflow/config.yaml.
-func translateConfig(p *Plan, o Options, data []byte, user *userState) (*config.Document, error) {
+// Its pipeline: and release: sections are refused: they targeted the
+// release and deploy engines, which left nerv for nerv-release.
+func translateConfig(p *Plan, o Options, data []byte) (*config.Document, error) {
 	where := paths.ProjectConfigFile
 	doc := config.Parse(string(data))
+	for _, section := range []string{"pipeline", "release"} {
+		if doc.KeyExists(section) {
+			return nil, refuseLegacySection(".nerv/nerv.yaml", section, "4.2.0")
+		}
+	}
 	rewriteHeader(doc)
 	provider, providerSet := doc.Scalar("tasks.provider")
 	if err := migrateTasks(p, doc, where); err != nil {
 		return nil, err
-	}
-	var dep *deployTranslation
-	hadPipeline := doc.KeyExists("pipeline")
-	if hadPipeline {
-		var err error
-		if dep, err = translatePipeline(p, []byte(doc.String()), o.ExtensionsFS, user); err != nil {
-			return nil, err
-		}
-		doc.SetBlock("pipeline", "")
-		p.note("pipeline: removed (nerv pipeline was removed)")
-	}
-	hadRelease := doc.KeyExists("release")
-	githubRelease := false
-	if hadRelease {
-		var err error
-		if doc, githubRelease, err = migrateRelease(p, o, doc); err != nil {
-			return nil, err
-		}
-	}
-	if (dep != nil || githubRelease) && !doc.KeyExists("deploy") {
-		if dep == nil {
-			dep = &deployTranslation{}
-		}
-		switch {
-		case isGitHub(o.OriginURL):
-			dep.host = githubHost
-		case o.OriginURL == "":
-			p.warn("deploy.host: the repository has no origin, so no git host is written: set deploy.host when it has one")
-		default:
-			p.warn("deploy.host: origin %s is not GitHub and nerv ships no other git host provider yet: no tag release is created on the host", o.OriginURL)
-		}
-		block, err := deployBlock(dep)
-		if err != nil {
-			return nil, err
-		}
-		doc.SetBlock("deploy", block)
-		p.note("deploy: written (git writes, the tag and the host release are nerv deploy's now)")
 	}
 
 	// The plugins the old configuration used, in install order.
@@ -350,55 +266,7 @@ func translateConfig(p *Plan, o Options, data []byte, user *userState) (*config.
 		p.Plugins = append(p.Plugins, "task", "task-teamwork")
 		p.note("tasks.provider: teamwork (%s): the task extension and its task-teamwork provider", from)
 	}
-	if hadRelease || dep != nil {
-		// release brings its deploy providers with it (providers: bundled).
-		p.Plugins = append(p.Plugins, "release")
-	}
-	p.Plugins = slices.Compact(p.Plugins)
 	return doc, nil
-}
-
-// migrateRelease converts the 4.2.0 release: section of doc into today's
-// and imports the repository's semantic-release configuration into it. It
-// reports whether that configuration released on GitHub.
-func migrateRelease(p *Plan, o Options, doc *config.Document) (*config.Document, bool, error) {
-	release, err := translateRelease(p, []byte(doc.String()), o.RepoRoot)
-	if err != nil {
-		return nil, false, err
-	}
-	doc.SetBlock("release", release.block)
-	githubRelease := false
-	imported, err := versioning.Import(o.RepoRoot)
-	var manual *versioning.ManualMigrationError
-	switch {
-	case errors.As(err, &manual):
-		p.warn("%v; write release.providers.conventional-commits' branches and release_rules from it (see /release:setup)", err)
-	case errors.Is(err, versioning.ErrNoSemanticReleaseConfig):
-		p.note("no semantic-release configuration: the version engine's default branches apply (main; develop alpha; release/* rc on beta; hotfix/* beta)")
-	case err != nil:
-		p.warn("the semantic-release configuration cannot be imported: %v", err)
-	default:
-		engine, err := releaseplan.EngineYAML(imported.Config)
-		if err != nil {
-			return nil, false, refuse("importing %s: %v", imported.Source, err)
-		}
-		text, notes, err := releaseconfig.ImportSection([]byte(doc.String()), releaseconfig.EngineProvider, engine, false)
-		if err != nil {
-			return nil, false, refuse("importing %s into the release: section: %v", imported.Source, err)
-		}
-		doc = config.Parse(text)
-		for _, n := range notes {
-			p.note("%s", n)
-		}
-		for _, w := range imported.Warnings {
-			if w.Where == "@semantic-release/github" {
-				githubRelease = true
-			}
-			p.warn("semantic-release %s: %s", imported.Source, w)
-		}
-		p.note("the semantic-release configuration of %s was imported into release.providers.conventional-commits; it is no longer used", imported.Source)
-	}
-	return doc, githubRelease, nil
 }
 
 // userProvider is the tasks.provider of the user's configuration (today's

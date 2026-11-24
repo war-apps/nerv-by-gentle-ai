@@ -175,6 +175,42 @@ func TestRunTimeUserKeys_ListsWhatNoLongerApplies(t *testing.T) {
 	}
 }
 
+func TestPersonal_ZeroValueHoldsTheFrozenProviderKeys(t *testing.T) {
+	doc := config.Parse("tasks:\n  provider: teamwork\n  stale_after_hours: 8\n  providers:\n    teamwork:\n      assignee_id: 7\n      tasklist_id: 3\n      stages: { inDev: DEV }\ndeploy:\n  providers:\n    ssh-compose:\n      ssh_auth: key\n      ssh_port: 2222\n")
+	got, err := workflowconfig.RunTimeUserKeys(doc, workflowconfig.Personal{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"tasks.provider", "tasks.providers.teamwork.tasklist_id", "deploy.providers.ssh-compose.ssh_port"}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("RunTimeUserKeys = %v, want %v", got, want)
+	}
+}
+
+// The frozen list is what the shipped manifests declare, so nerv migrate
+// moves the same keys once the manifests are gone.
+func TestPersonalProviderKeys_MatchTheShippedManifests(t *testing.T) {
+	var frozen workflowconfig.Personal
+	loaded := personal(t)
+	for _, k := range workflowconfig.PersonalProviderKeys {
+		if !loaded.Has(k) {
+			t.Errorf("%s is frozen as personal but no manifest declares it scope: user", k)
+		}
+	}
+	for _, name := range []string{"task-teamwork", "release-ssh-compose"} {
+		prov, _, err := extension.LoadProvider(nerv.ExtensionsFS(), name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, c := range prov.Config {
+			path := workflowconfig.SectionOf(prov.Extension, prov.Slot) + ".providers." + prov.Name + "." + c.Key
+			if frozen.Has(path) != (c.Scope == "user") {
+				t.Errorf("%s: scope %s, frozen personal %v", path, c.Scope, frozen.Has(path))
+			}
+		}
+	}
+}
+
 func TestRunTimeUserKeys_NoneForPersonalKeysOnly(t *testing.T) {
 	doc := config.Parse("tasks:\n  timer_store: x\n  providers:\n    teamwork:\n      assignee_id: 7\ngit:\n  base_branch: main\n")
 	got, err := workflowconfig.RunTimeUserKeys(doc, personal(t))

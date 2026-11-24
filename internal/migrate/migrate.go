@@ -47,10 +47,6 @@ type Options struct {
 	// User migrates the user configuration, and moves the repository's
 	// personal keys into it.
 	User bool
-	// ExtensionsFS holds the provider manifests (task and deploy).
-	ExtensionsFS fs.FS
-	// OriginURL is the repository's origin URL ("" when it has none).
-	OriginURL string
 	// Now names the backups and dates a lock's heartbeat.
 	Now time.Time
 	// Host is this machine's name, compared with a lock's host (""
@@ -160,7 +156,7 @@ func Compute(o Options) (*Plan, error) {
 		}
 	}
 	if user != nil {
-		if err := moveUserDefaults(p, user, o.ExtensionsFS); err != nil {
+		if err := moveUserDefaults(p, user); err != nil {
 			return nil, err
 		}
 		if err := moveUserTaskYAML(p, o, user); err != nil {

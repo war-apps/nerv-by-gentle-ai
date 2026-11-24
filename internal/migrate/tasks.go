@@ -1,12 +1,11 @@
 package migrate
 
 import (
-	"io/fs"
 	"slices"
 	"strings"
 
 	"github.com/war-apps/nerv-by-gentle-ai/internal/config"
-	"github.com/war-apps/nerv-by-gentle-ai/internal/configure"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/workflowconfig"
 	"gopkg.in/yaml.v3"
 )
 
@@ -117,10 +116,11 @@ func migrateTasks(p *Plan, doc *config.Document, where string) error {
 }
 
 // personalKeys are the keys of the project file that belong to the user:
-// models, and every task provider key whose manifest scope is user. With
-// user they move to the user configuration (unless it already sets them);
-// otherwise they are reported.
-func personalKeys(p *Plan, doc *config.Document, where string, fsys fs.FS, user *userState) error {
+// models, and every task provider key that is personal
+// (workflowconfig.PersonalProviderKeys). With user they move to the user
+// configuration (unless it already sets them); otherwise they are
+// reported.
+func personalKeys(p *Plan, doc *config.Document, where string, user *userState) error {
 	root, err := parseYAML(doc.String())
 	if err != nil {
 		return refuse("%s is not valid YAML: %v", where, err)
@@ -137,21 +137,12 @@ func personalKeys(p *Plan, doc *config.Document, where string, fsys fs.FS, user 
 			p.note("%s: models moved to the user config %s", where, user.path)
 		}
 	}
-	providers, err := configure.EmbeddedProviders(fsys)
-	if err != nil {
-		return err
-	}
-	for _, pr := range providers {
-		name := pr.Manifest.Name
-		section := mapping(root, "tasks.providers."+name)
-		for _, key := range keys(section) {
-			path := configure.ProviderKeyPath(name, key)
-			c, known := pr.Key(key)
-			if !known && key != "enabled" {
-				p.warn("%s: %s is not a setting of the %s provider (kept; nerv ignores it)", where, path, name)
-				continue
-			}
-			if !known || c.Scope != "user" {
+	var personal workflowconfig.Personal
+	providers := mapping(root, "tasks.providers")
+	for _, name := range keys(providers) {
+		for _, key := range keys(mapping(providers, name)) {
+			path := "tasks.providers." + name + "." + key
+			if !personal.Has(path) {
 				continue
 			}
 			v, scalar := doc.Scalar(path)

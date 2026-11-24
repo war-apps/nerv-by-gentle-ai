@@ -6,6 +6,7 @@ import (
 
 	"github.com/war-apps/nerv-by-gentle-ai/internal/config"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/paths"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/workflowconfig"
 )
 
 // releaseSections are the sections nerv-release reads from its own
@@ -21,13 +22,8 @@ var releaseDefaultsSections = []string{"defaults.release", "defaults.deploy"}
 // the ssh-compose deploy provider's machine-local settings. nerv-release
 // reads them from the global release.yaml only; they never move from a
 // repository into any release.yaml.
-var releasePersonalKeys = []string{
-	"deploy.providers.ssh-compose.infisical_domain",
-	"deploy.providers.ssh-compose.ssh_auth",
-	"deploy.providers.ssh-compose.ssh_key_file",
-	"deploy.providers.ssh-compose.ssh_known_hosts",
-	"deploy.providers.ssh-compose.ssh_connect_timeout",
-}
+var releasePersonalKeys = slices.DeleteFunc(slices.Clone(workflowconfig.PersonalProviderKeys),
+	func(k string) bool { return !strings.HasPrefix(k, "deploy.") })
 
 func isReleasePersonal(path string) bool { return slices.Contains(releasePersonalKeys, path) }
 

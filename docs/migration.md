@@ -20,6 +20,26 @@ with `run "nerv migrate" to move it` (`nerv migrate --user` for the user
 file), and the SessionStart hook does not activate NERV. A 4.2.0 file is
 reported the same way, and the repository is treated as unconfigured.
 
+### Older release and deploy sections
+
+Since 6.7, `nerv migrate` no longer converts the release and deploy
+configuration of an older nerv: those engines left nerv for
+[nerv-release](https://github.com/war-apps/nerv-release-by-gentle-ai). It
+refuses (exit 1, nothing written) and names the file and the section to move
+by hand:
+
+- a 4.2.0 `pipeline:` or `release:` section in `.nerv/nerv.yaml`;
+- a 5.0.0-alpha.1 `ship:` section;
+- a 5.x deploy target with `provider: bash` (rename it `provider: script`);
+- a 5.x project deploy provider, `.ai-workflow/providers/deploy-<name>/` with
+  `extension: deploy` (move it to `release-<name>/` with `extension: release`).
+
+Rewrite the section by hand as nerv-release's `release:` and `deploy:`
+sections, or run `nerv migrate` with nerv 6.6 first, which still converts
+them as described below, and then this version's. A 4.2.0 `release:` already
+moved into `.ai-workflow/config.yaml` goes to nerv-release's `release.yaml`
+as it is, and nerv-release reports its 4.2.0 keys.
+
 ## What it changes
 
 | 4.2.0 | Now |
@@ -34,10 +54,7 @@ reported the same way, and the repository is treated as unconfigured.
 | a project file without `tasks.provider`, when the user file has one | The project gets `tasks.provider` from `defaults.tasks.provider`, or else from the old user `tasks.provider`. |
 | `tasks.provider: jira` or `github-projects`, `tasks.providers.jira` / `.github-projects` | Dropped and reported: those providers were removed. |
 | `tasks.providers.teamwork.task_ref_prefix` | Dropped: the provider's manifest fixes the prefix. |
-| `ship:` (5.0.0-alpha.1) | `release:`, today's section (see [From 5.0.0-alpha.1](#from-500-alpha1)). |
-| `release:` (4.2.0) | `release:`, today's section (see [Release](#release)). A 4.2.0 `release:` already in `.ai-workflow.yml` or `.ai-workflow/config.yaml` is told apart by its 4.2.0 keys (`semantic_release:`, the presets) and converted in place. |
-| the semantic-release configuration (`package.json` `release`, `.releaserc*`) | Imported into `release:` by the same code as `nerv release setup --import`. Its warnings are printed. |
-| `pipeline:` | `deploy:` (see [Deploy](#deploy)) |
+| `ship:` (5.0.0-alpha.1), `release:` (4.2.0), `pipeline:` | Refused since 6.7 (see [Older release and deploy sections](#older-release-and-deploy-sections)); nerv 6.6 converts them as [Release](#release), [Deploy](#deploy) and [From 5.0.0-alpha.1](#from-500-alpha1) describe. |
 | `openspec/changes/<change>/`, in flight, FULL | `odd/tasks/<change>.md`, with its run files in `odd/<change>/nerv/` and its lock in `.nerv/locks/<change>.lock` (see [ODD](#odd)) |
 | `openspec/changes/<change>/`, in flight, DIRECT or LIGHT | `.nerv/runs/<change>/`, with no ODD document, and its lock in `.nerv/locks/<change>.lock` (see [ODD](#odd)) |
 | `openspec/changes/archive/`, `openspec/specs/` | They stay where they are, read-only. |
@@ -273,12 +290,11 @@ The `deploy:` section, `defaults.deploy`, the user keys under
   uninstalls them from Claude Code's plugin cache, and refuses `--with
   deploy` with `deploy was merged into the release extension: install
   release, which brings every deploy provider`.
-- `nerv migrate` rewrites every `provider: bash` of `deploy.targets` to
-  `provider: script`, comments kept (with `--user`, also in
-  `defaults.deploy`), and moves each project deploy provider to
-  `release-<name>`, its `extension:` rewritten. A `release-<name>` folder
-  that already exists, or a project deploy provider named `bash`, is
-  refused: rename it by hand.
+- `nerv migrate` up to 6.6 rewrites every `provider: bash` of
+  `deploy.targets` to `provider: script`, comments kept (with `--user`, also
+  in `defaults.deploy`), and moves each project deploy provider to
+  `release-<name>`, its `extension:` rewritten. Since 6.7 it refuses both,
+  naming what to rename by hand.
 - Until then `nerv deploy` refuses a `provider: bash` target before any git
   write, with `the bash deploy target is now named script (release-script):
   set provider: script, or run nerv migrate (nothing was written)`.

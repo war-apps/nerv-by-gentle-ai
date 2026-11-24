@@ -21,10 +21,7 @@ func moveRepoTaskYAML(p *Plan, o Options, doc *config.Document) error {
 	if o.TaskYAMLRepo == "" {
 		return nil
 	}
-	personal, err := workflowconfig.LoadPersonal(o.ExtensionsFS)
-	if err != nil {
-		return err
-	}
+	var personal workflowconfig.Personal
 	skip := func(leaf string) bool { return personal.Has("tasks." + leaf) }
 
 	existing, exists, err := readOptional(o.TaskYAMLRepo)
