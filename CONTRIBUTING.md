@@ -4,8 +4,9 @@
 
 Thank you for your interest in contributing to Nerv by Gentle-AI — a
 governance overlay plugin for Claude Code, distributed as a single Go
-binary (`nerv`) plus the Claude Code plugin tree it embeds: the core
-and the optional extensions with their providers.
+binary (`nerv`) plus the Claude Code plugin tree it embeds (the core
+plugin). Task tracking and releases live in the separate nerv-task and
+nerv-release tools.
 
 **Claude Code only, for now.** This project targets Claude Code exclusively;
 OpenCode, Codex, and Pi support is out of scope until it lands deliberately.
@@ -85,7 +86,7 @@ while testing; exercise them through the fakes in `go test ./...` instead.
 - **SOLID** — small interfaces per package (filesystem root, command
   runner, clock), package boundaries drawn by responsibility
   (`internal/config`, `internal/claude`, `internal/plugin`,
-  `internal/wizard`, `internal/release`, …), not by "everything the
+  `internal/wizard`, `internal/migrate`, …), not by "everything the
   installer does."
 
 ## Releases

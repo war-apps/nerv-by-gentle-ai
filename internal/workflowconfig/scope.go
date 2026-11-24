@@ -22,7 +22,8 @@ var Sections = []string{"tasks", "release", "deploy"}
 // to the tools' own files.
 const DefaultsKey = "defaults"
 
-// PersonalTaskKeys are the task extension's own machine-local keys: a
+// PersonalTaskKeys are nerv-task's own machine-local keys (frozen from
+// the task extension nerv used to ship): a
 // user's timer store and staleness threshold, and the older
 // tasks.rounding_minutes, which a user-scope provider key replaces. They
 // stay readable from the user file.

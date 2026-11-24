@@ -1,7 +1,7 @@
 // Package paths is the single catalogue of every filesystem location nerv
 // resolves from a user's home directory or a repository root: the
 // user-scope config.yaml and the project-scope .ai-workflow/config.yaml
-// with its project extensions and providers (plus the earlier locations
+// (plus the earlier locations
 // nerv no longer reads, kept only to point at "nerv migrate"), the .nerv/
 // runtime folder, gentle-ai's state.json, the Claude Code skills directory,
 // settings.json, the materialized marketplace, installed_plugins.json, and
@@ -24,8 +24,8 @@ import (
 )
 
 // ProjectDirName is the repository's committed nerv folder: the project
-// configuration (config.yaml), the project extensions (extensions/<name>/)
-// and the project providers (providers/<extension>-<name>/).
+// configuration (config.yaml), next to the NERV-ecosystem tools' own files
+// (task.yaml, release.yaml, providers/), which nerv does not read.
 const ProjectDirName = ".ai-workflow"
 
 // ProjectConfigFile is the project-scope configuration file, relative to

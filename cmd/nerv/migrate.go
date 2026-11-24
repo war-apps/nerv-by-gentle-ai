@@ -42,22 +42,12 @@ Moves a repository (and, with --user, your user configuration) from nerv
     that relied on it keeps its provider;
   - tasks.rounding_minutes moves to tasks.providers.teamwork, and the
     removed jira and github-projects providers are dropped;
-  - the 4.2.0 release: section becomes today's release: section (in
-    .ai-workflow.yml or .ai-workflow/config.yaml too, told apart by its
-    4.2.0 keys), each project's
-    presets become build: bash with the commands 4.2.0 ran (a TODO(nerv migrate) comment marks
-    what has no exact equivalent), and the semantic-release configuration
-    is imported into release.providers.conventional-commits (as nerv
-    release setup --import does);
-  - the 5.0.0-alpha.1 ship: section becomes release: (in either file):
-    its version engine keys move under release.providers.conventional-commits,
-    and each project's build: { mode: compose|script, ... } becomes
-    build: docker-compose|bash, with file and test_service under the
-    project's providers.docker-compose, shared_host under providers.bash,
-    and images, version_files and coverage on the project itself; a file
-    with both ship: and release: is refused;
-  - pipeline: becomes deploy: (one release-ssh-compose target per
-    environment), with deploy.host github when origin is on GitHub;
+  - an older nerv's release and deploy configuration (a 4.2.0 release:
+    or pipeline: section, the 5.0.0-alpha.1 ship: section, a 5.x deploy
+    target with provider: bash or a deploy-<name> project provider) is no
+    longer converted: nerv migrate refuses, naming the file and the
+    section to rewrite by hand for nerv-release (or run nerv migrate with
+    nerv 6.6 first);
   - when nerv-task is installed, tasks: moves to nerv-task's own files
     instead: the project file's tasks: to .ai-workflow/task.yaml (repo
     keys), and, with --user, the user config's personal tasks: keys and
@@ -102,8 +92,8 @@ Flags:
   --cwd <dir>    A directory inside the repository (default ".")
 
 Exit codes: 0 migrated, nothing to migrate, or a dry run; 1 refused (not a
-repository, both the old and the new file exist, both ship: and release:,
-a result that does not load, a lock still held); 2 usage or environment error.
+repository, both the old and the new file exist, an older release or
+deploy section, a lock still held); 2 usage or environment error.
 `
 
 func runMigrate(args []string, stdout, stderr io.Writer, opts options) int {
@@ -170,7 +160,7 @@ func catalogueToolInstalled(ctx context.Context, opts options, home, name string
 // installed (S2, S12): nerv-task's task.yaml and nerv-release's
 // release.yaml, the repository's when o.RepoRoot is set and, with o.User,
 // the global ones. A tool not installed leaves its targets "", so its
-// sections keep meaning nerv's own extension, unchanged. nerv migrate,
+// sections stay in config.yaml, unchanged. nerv migrate,
 // nerv doctor and the install/upgrade offer all build their options here.
 func setToolFileTargets(ctx context.Context, opts options, home string, o *migrate.Options) {
 	// The global files sit next to the user config.yaml nerv migrates, in

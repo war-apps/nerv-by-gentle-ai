@@ -6,15 +6,25 @@
   test plan and code disagree on; a scenario the user explicitly declined
   during the corner-case interview is a recorded decision, not a missing
   case, and will not surface as a finding.
-- **Teamwork is the only task provider shipped today.** Task tracking is the
-  optional `task` extension, and `task-teamwork` is its only
-  provider. Another provider is a new `task-<name>` provider with a valid `provider.yaml`; see
-  "Adding a provider" in [integration.md](integration.md#task-extension).
-- **No task question, no timer, no task event.** The task extension is not
+- **Task tracking is a separate tool.** It is the nerv-task tool, with its
+  own providers; see [integration.md](integration.md#task-tracking-nerv-task).
+- **No task question, no timer, no task event.** The nerv-task tool is not
   installed: the orchestrator emits task events only when the agent type
-  `task:dispatcher` is available. Install it with `nerv install --with task`
-  (or `--with task-teamwork`) and restart Claude Code. A `tasks:` block in
-  the configuration alone does nothing; core ignores it and never deletes it.
+  `task:dispatcher` is available. Install it with
+  `nerv install --tools nerv-task` and restart Claude Code. A `tasks:`
+  block in nerv's configuration alone does nothing; core ignores it, and
+  `nerv migrate` moves it to nerv-task's `task.yaml`.
+- **`Warning: disabled task@nerv, task-teamwork@nerv: ...` (or
+  `release@nerv` and its providers) after `nerv install` or
+  `nerv upgrade`.** nerv no longer ships those extension plugins, so it
+  disabled them; their `/task:*` or `/release:*` commands are back once
+  you install the tool the warning names (`nerv install --tools nerv-task`
+  or `nerv-release`). See
+  [migration.md](migration.md#from-66-extensions-moved-to-tools).
+- **`nerv release`, `nerv deploy` or `nerv version next` prints "moved to
+  the nerv-release tool" and exits 2.** They are nerv-release's commands
+  now: `nerv-release build`, `nerv-release deploy`,
+  `nerv-release version next`.
 - **"Task events pending" in the run summary.** A provider answered
   `blocked` or `failed` (for example, missing MCP tools); the run went on
   without it. Fix the cause named in the envelope's `error`, then run
@@ -113,21 +123,19 @@ lists the steps to take ([commands.md](commands.md#nerv-doctor)).
   gatekeeper
   check greps the commit message for this before it lands.
 - **`issue.deferred` or `/task:start` blocks with "tasklist not found."** A
-  stale `tasks.providers.teamwork.tasklist_id` (or `project_id`) in
-  the configuration. Fix the config (project or user scope), then replay the
-  pending envelope with `/task:replay {feature}`; the task extension never
+  stale Teamwork `tasklist_id` (or `project_id`) in
+  nerv-task's configuration. Fix it, then replay the
+  pending envelope with `/task:replay {feature}`; nerv-task never
   silently creates the task elsewhere.
 - **Old `/task:*` copies in `~/.claude/commands/task/`.** An older release
-  copied the commands there. The `task` extension now serves them itself;
+  copied the commands there. The nerv-task tool now serves them itself;
   `nerv install` reports the old copies and removes them only after you
   confirm.
-- **`/task:*` duplicated.** `task@nerv` (the extension) and `task@nerv-task`
-  (the ecosystem tool's own plugin) are both enabled, so Claude Code shows
-  two copies of every `/task:*` command. `nerv-task install` disables
-  `task@nerv` for you once it runs; rerun it (or `nerv install`, which
-  offers nerv-task and suppresses `task@nerv` the moment it is confirmed
-  or already installed — see the README's "NERV ecosystem" section)
-  instead of removing either plugin by hand.
+- **`/task:*` duplicated.** `task@nerv` (the old extension) and
+  `task@nerv-task` (the tool's own plugin) are both enabled, so Claude
+  Code shows two copies of every `/task:*` command. Run `nerv install` (or
+  `nerv upgrade`): it disables `task@nerv` and every other extension
+  plugin nerv no longer ships, instead of you removing them by hand.
 - **`config.yaml is not valid YAML: ... found unknown escape character`.**
   An older nerv wrote a Windows path (such as a `git.worktree_pattern`
   like `D:\.worktrees\{repo}\{slug}`) into a double-quoted scalar without

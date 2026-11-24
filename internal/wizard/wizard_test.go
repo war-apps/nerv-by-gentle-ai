@@ -442,7 +442,7 @@ func TestRun_BaseBranchChange_RepoInit(t *testing.T) {
 	}
 	for _, gone := range []string{"Task providers", "Task provider for this repo", "Slash commands", "/task:*"} {
 		if strings.Contains(out.String(), gone) {
-			t.Errorf("output mentions %q without the task extension:\n%s", gone, out.String())
+			t.Errorf("output mentions %q, which belongs to nerv-task now:\n%s", gone, out.String())
 		}
 	}
 }
