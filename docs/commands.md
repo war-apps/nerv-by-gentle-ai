@@ -144,7 +144,7 @@ nerv configure --init-repo . --repo-base develop
 
 The wizard asks nothing about tasks: task settings belong to nerv-task
 (`nerv-task configure`, `nerv-task init`). Its former "Task providers"
-section and `--repo-provider-config` were removed in 6.7, after the
+section and `--repo-provider-config` were removed in 7.0, after the
 earlier `--repo-provider`, `--repo-project-id`, `--repo-tasklist-id`,
 `--install-commands` and `--skip-commands`.
 

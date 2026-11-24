@@ -22,7 +22,7 @@ reported the same way, and the repository is treated as unconfigured.
 
 ### Older release and deploy sections
 
-Since 6.7, `nerv migrate` no longer converts the release and deploy
+Since 7.0, `nerv migrate` no longer converts the release and deploy
 configuration of an older nerv: those engines left nerv for
 [nerv-release](https://github.com/war-apps/nerv-release-by-gentle-ai). It
 refuses (exit 1, nothing written) and names the file and the section to move
@@ -55,7 +55,7 @@ them as [its migration guide](https://github.com/war-apps/nerv-by-gentle-ai/blob
 | a project file without `tasks.provider`, when the user file has one | The project gets `tasks.provider` from `defaults.tasks.provider`, or else from the old user `tasks.provider`. |
 | `tasks.provider: jira` or `github-projects`, `tasks.providers.jira` / `.github-projects` | Dropped and reported: those providers were removed. |
 | `tasks.providers.teamwork.task_ref_prefix` | Dropped: the provider's manifest fixes the prefix. |
-| `ship:` (5.0.0-alpha.1), `release:` (4.2.0), `pipeline:` | Refused since 6.7 (see [Older release and deploy sections](#older-release-and-deploy-sections)); nerv 6.6 converts them as [its migration guide](https://github.com/war-apps/nerv-by-gentle-ai/blob/v6.6.0/docs/migration.md) describes. |
+| `ship:` (5.0.0-alpha.1), `release:` (4.2.0), `pipeline:` | Refused since 7.0 (see [Older release and deploy sections](#older-release-and-deploy-sections)); nerv 6.6 converts them as [its migration guide](https://github.com/war-apps/nerv-by-gentle-ai/blob/v6.6.0/docs/migration.md) describes. |
 | `openspec/changes/<change>/`, in flight, FULL | `odd/tasks/<change>.md`, with its run files in `odd/<change>/nerv/` and its lock in `.nerv/locks/<change>.lock` (see [ODD](#odd)) |
 | `openspec/changes/<change>/`, in flight, DIRECT or LIGHT | `.nerv/runs/<change>/`, with no ODD document, and its lock in `.nerv/locks/<change>.lock` (see [ODD](#odd)) |
 | `openspec/changes/archive/`, `openspec/specs/` | They stay where they are, read-only. |
@@ -141,7 +141,7 @@ terminal, a hint), and `nerv doctor` reports a pending `task.yaml` or
 ## From 6.6: extensions moved to tools
 
 Up to 6.6, nerv shipped optional extensions as Claude Code plugins of its
-own marketplace, and the engines behind them in its binary. Since 6.7
+own marketplace, and the engines behind them in its binary. Since 7.0
 they are separate tools of the NERV ecosystem, installed with
 `nerv install --tools <tool>` (or offered by `nerv install` and
 `nerv upgrade` on a terminal):
@@ -204,7 +204,7 @@ The orchestrator is unchanged: it still emits its task events when the
 
 The conversions from 5.0.0-alpha.1 (`ship:`, `nerv ship`) and 5.2.0 (the
 separate `deploy` extension, `provider: bash` deploy targets,
-`deploy-<name>` project providers) are refused since 6.7 (see
+`deploy-<name>` project providers) are refused since 7.0 (see
 [Older release and deploy sections](#older-release-and-deploy-sections));
 [nerv 6.6's migration guide](https://github.com/war-apps/nerv-by-gentle-ai/blob/v6.6.0/docs/migration.md) describes how that version converts
 them. The `deploy@nerv` plugins of 5.2.0 are disabled with the other
