@@ -53,7 +53,7 @@ over it either way. That install is told not to upgrade gentle-ai again
 
 Then offers the NERV-ecosystem tools (nerv-task, nerv-release), the same way
 install does, but running "<tool> upgrade" for a confirmed or named tool
-instead of its install script. Then disables the extension plugins nerv
+that is installed, and its install script for one that is not. Then disables the extension plugins nerv
 no longer ships the same way install does: with a tool declined or not
 asked, it says which were disabled and how to install the tool (nerv
 install --tools <tool>). Then nerv migrate --user the same way install

@@ -82,12 +82,56 @@ func TestOfferEcosystemTools_UpgradeActionRunsToolUpgrade(t *testing.T) {
 	opts := testOptions(home)
 	run := &runnertest.FakeRunner{}
 	opts.Runner = run
+	opts.LookPath = func(name string) (string, error) {
+		if name == "nerv-task" {
+			return "/usr/bin/nerv-task", nil
+		}
+		return "", errNotFoundForTest
+	}
 
 	if _, err := offerEcosystemTools(context.Background(), &stdout, opts, home, "upgrade", "nerv-task", false); err != nil {
 		t.Fatalf("offerEcosystemTools() error = %v", err)
 	}
-	if len(run.Calls) != 1 || run.Calls[0].Name != "nerv-task" || len(run.Calls[0].Args) != 1 || run.Calls[0].Args[0] != "upgrade" {
-		t.Fatalf("Calls = %+v, want one nerv-task upgrade call (PATH-resolved, no detected state)", run.Calls)
+	var upgrades int
+	for _, c := range run.Calls {
+		if len(c.Args) == 1 && c.Args[0] == "upgrade" {
+			upgrades++
+		}
+	}
+	if upgrades != 1 {
+		t.Fatalf("Calls = %+v, want one nerv-task upgrade call", run.Calls)
+	}
+}
+
+// nerv upgrade installs a chosen tool that is not installed: "<tool>
+// upgrade" cannot run without the tool.
+func TestOfferEcosystemTools_UpgradeActionInstallsAToolThatIsNotInstalled(t *testing.T) {
+	var stdout bytes.Buffer
+	home := t.TempDir()
+	opts := testOptions(home)
+	opts.GOOS = "linux"
+	run := &runnertest.FakeRunner{}
+	opts.Runner = run
+
+	done, err := offerEcosystemTools(context.Background(), &stdout, opts, home, "upgrade", "nerv-task", false)
+	if err != nil {
+		t.Fatalf("offerEcosystemTools() error = %v", err)
+	}
+	want := "sh -c curl -fsSL https://raw.githubusercontent.com/war-apps/nerv-task-by-gentle-ai/main/scripts/install.sh | sh"
+	var installed, upgraded bool
+	for _, c := range run.Calls {
+		line := c.Name + " " + strings.Join(c.Args, " ")
+		installed = installed || line == want
+		upgraded = upgraded || (len(c.Args) == 1 && c.Args[0] == "upgrade")
+	}
+	if !installed || upgraded {
+		t.Fatalf("Calls = %+v, want the install script and no upgrade call", run.Calls)
+	}
+	if !strings.Contains(stdout.String(), "=== Install nerv-task ===") {
+		t.Errorf("stdout lacks the install heading:\n%s", stdout.String())
+	}
+	if len(done) != 1 || done[0].Name != "nerv-task" {
+		t.Errorf("done = %+v, want nerv-task", done)
 	}
 }
 
@@ -117,6 +161,38 @@ func TestOfferEcosystemTools_Interactive_ConfirmedYes_ShowsStateAndInstalls(t *t
 	}
 	if len(run.Calls) != 1 || run.Calls[0].Name != "sh" {
 		t.Fatalf("Calls = %+v, want exactly one sh call after confirming yes", run.Calls)
+	}
+}
+
+// nerv upgrade asks to install a tool that is not installed, and to
+// upgrade one that is.
+func TestOfferEcosystemTools_InteractiveUpgrade_AsksInstallForAMissingTool(t *testing.T) {
+	var stdout bytes.Buffer
+	home := t.TempDir()
+	opts := testOptions(home)
+	opts.IsTerminal = func() bool { return true }
+	opts.Stdin = strings.NewReader("n\nn\n")
+	opts.LookPath = func(name string) (string, error) {
+		if name == "nerv-release" {
+			return "/usr/bin/nerv-release", nil
+		}
+		return "", errNotFoundForTest
+	}
+	opts.Runner = &runnertest.FakeRunner{}
+	opts.GOOS = "linux"
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"tag_name":"v1.1.0"}`))
+	}))
+	defer srv.Close()
+	opts.HTTPClient = srv.Client()
+	opts.EcosystemAPIBase = map[string]string{"nerv-task": srv.URL, "nerv-release": srv.URL}
+
+	if _, err := offerEcosystemTools(context.Background(), &stdout, opts, home, "upgrade", "", false); err != nil {
+		t.Fatalf("offerEcosystemTools() error = %v", err)
+	}
+	out := stdout.String()
+	if !strings.Contains(out, "Install nerv-task? [y/N]: ") || !strings.Contains(out, "Upgrade nerv-release? [y/N]: ") {
+		t.Errorf("stdout lacks the install/upgrade prompts:\n%s", out)
 	}
 }
 

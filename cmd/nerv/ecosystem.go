@@ -73,8 +73,12 @@ func offerEcosystemTools(ctx context.Context, stdout io.Writer, opts options, ho
 			}
 			fmt.Fprintf(stdout, "%s: %s — %s\n", t.Name, ecosystem.RenderState(state, latest), t.Description)
 		}
-		confirm = func(t ecosystem.Tool, _ ecosystem.State) bool {
-			fmt.Fprintf(stdout, "%s %s? [y/N]: ", verb, t.Name)
+		confirm = func(t ecosystem.Tool, state ecosystem.State) bool {
+			v := verb
+			if !state.Installed {
+				v = "Install"
+			}
+			fmt.Fprintf(stdout, "%s %s? [y/N]: ", v, t.Name)
 			line, sawNewline := readAnswer(opts.Stdin)
 			if !sawNewline {
 				fmt.Fprintln(stdout)
@@ -94,7 +98,17 @@ func offerEcosystemTools(ctx context.Context, stdout io.Writer, opts options, ho
 	}
 	var done []ecosystem.Tool
 	for _, t := range selected {
-		if runEcosystemAction(ctx, stdout, opts, action, t, states[t.Name].Path, goos) {
+		state, detected := states[t.Name]
+		if !detected {
+			state = ecosystem.Detect(ctx, t, opts.Runner, opts.LookPath, goos, home, opts.Getenv)
+		}
+		// "<tool> upgrade" needs the tool: one that is not installed is
+		// installed instead.
+		toolAction := action
+		if action == "upgrade" && !state.Installed {
+			toolAction = "install"
+		}
+		if runEcosystemAction(ctx, stdout, opts, toolAction, t, state.Path, goos) {
 			done = append(done, t)
 		}
 	}

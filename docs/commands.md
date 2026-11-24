@@ -311,8 +311,9 @@ After that install (whether or not it actually ran anything), it offers
 the NERV-ecosystem tools the same way `nerv install` does — every
 catalogue tool's state shown and confirmed one by one on a terminal,
 `--tools <names>` / `--no-tools` controlling the step the same way — but
-running `<tool> upgrade` for each confirmed or named tool instead of its
-install script. Then it disables the extension plugins nerv no longer
+running `<tool> upgrade` for each confirmed or named tool that is
+installed instead of its install script (a tool that is not installed is
+asked as "Install" and gets its install script). Then it disables the extension plugins nerv no longer
 ships, the way `nerv install` does (see "nerv install" below), after its
 tools step, so it knows which tools are installed. A failed individual tool upgrade is only a warning and
 never stops the others; naming an unknown tool in `--tools` refuses and
