@@ -324,7 +324,8 @@ func TestUpgrade_StableReplacesBinaryAndRunsInstall(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if info.Mode().Perm() != 0o755 {
+	// Windows has no execute bit: Go reports a writable file as 0666.
+	if runtime.GOOS != "windows" && info.Mode().Perm() != 0o755 {
 		t.Errorf("mode = %v, want 0755", info.Mode().Perm())
 	}
 	entries, _ := os.ReadDir(filepath.Dir(w.exe))
