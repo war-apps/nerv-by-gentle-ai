@@ -180,6 +180,13 @@ func run(args []string, stdout, stderr io.Writer, opts options) int {
 
 // runVersion prints the binary and plugin versions; `nerv version next`
 // moved to nerv-release. Any other argument is a usage error.
+// versionUsage documents "nerv version".
+const versionUsage = `Usage: nerv version [--json]
+
+Print the nerv binary version and the version of the NERV plugin it ships.
+With --json, print {"binary":"...","plugin":"..."}.
+`
+
 func runVersion(args []string, stdout, stderr io.Writer, opts options) int {
 	if len(args) > 0 && args[0] == "next" {
 		fmt.Fprintln(stderr, movedToNervRelease([]string{"version", "next"}))
@@ -187,9 +194,13 @@ func runVersion(args []string, stdout, stderr io.Writer, opts options) int {
 	}
 	jsonOutput := false
 	for _, arg := range args {
-		if arg == "--json" {
+		switch arg {
+		case "--json":
 			jsonOutput = true
 			continue
+		case "-h", "--help":
+			fmt.Fprint(stdout, versionUsage)
+			return 0
 		}
 		fmt.Fprint(stderr, usage)
 		return 2
