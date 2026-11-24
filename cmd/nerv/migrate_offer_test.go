@@ -8,7 +8,6 @@ import (
 	"strings"
 	"testing"
 
-	nerv "github.com/war-apps/nerv-by-gentle-ai"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/paths"
 )
 
@@ -25,7 +24,6 @@ const taskUserConfig = "tasks:\n  timer_store: ~/t.json\n"
 func withCatalogueTools(opts options, tools ...string) options {
 	previous := opts.LookPath
 	opts.GOOS = "linux"
-	opts.ExtensionsFS = nerv.ExtensionsFS()
 	opts.LookPath = func(name string) (string, error) {
 		if slices.Contains(tools, name) {
 			return "/usr/bin/" + name, nil
@@ -69,8 +67,8 @@ func TestInstall_OffersMigrateWhenAToolsSectionsArePending_Yes(t *testing.T) {
 	opts := withCatalogueTools(testOptions(home), "nerv-release")
 	opts.Runner = baseInstallRunner()
 	opts.IsTerminal = func() bool { return true }
-	// "n" declines the task extension install offers, "y" the migration.
-	opts.Stdin = strings.NewReader("n\ny\n")
+	// "y" accepts the migration.
+	opts.Stdin = strings.NewReader("y\n")
 
 	code, out := runInstallCLI(t, opts, "--no-tools", "--no-skills", "--no-configure")
 	if code != 0 {
@@ -305,6 +303,7 @@ func TestDoctor_SeesAPendingToolFileMove(t *testing.T) {
 	t.Run("repository release.yaml", func(t *testing.T) {
 		w := newDoctorWorld(t)
 		w.opts = withCatalogueTools(w.opts, "nerv-release")
+		w.write(filepath.Join(w.top, ".ai-workflow", "config.yaml"), "enabled: true\nrelease:\n  projects:\n    - name: api\n      path: .\n      build: bash\n")
 		before := treeHash(t, w.top)
 
 		_, out, _ := w.doctor()

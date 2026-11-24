@@ -5,7 +5,6 @@ import (
 	"reflect"
 	"testing"
 
-	nerv "github.com/war-apps/nerv-by-gentle-ai"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/migrate"
 )
 
@@ -21,7 +20,7 @@ func (w world) taskYAMLHome() string { return filepath.Join(w.home, "task.yaml")
 func (w world) taskYAMLRepo() string { return filepath.Join(w.root, ".ai-workflow", "task.yaml") }
 
 func (w world) taskYAMLOptions(user bool) migrate.Options {
-	o := migrate.Options{RepoRoot: w.root, Home: w.home, User: user, ExtensionsFS: nerv.ExtensionsFS(), Now: now, TaskYAMLRepo: w.taskYAMLRepo()}
+	o := migrate.Options{RepoRoot: w.root, Home: w.home, User: user, Now: now, TaskYAMLRepo: w.taskYAMLRepo()}
 	if user {
 		o.TaskYAMLHome = w.taskYAMLHome()
 	}
@@ -215,7 +214,7 @@ func TestTaskYAML_DryRunWritesNothing(t *testing.T) {
 func TestTaskYAML_SkippedWhenPathsAreEmpty(t *testing.T) {
 	w := taskYAMLWorld(t)
 	w.write(w.userPaths().UserConfig, "tasks:\n  timer_store: ~/t.json\n")
-	o := migrate.Options{Home: w.home, User: true, ExtensionsFS: nerv.ExtensionsFS(), Now: now}
+	o := migrate.Options{Home: w.home, User: true, Now: now}
 	if p := w.plan(o); !p.Empty() {
 		t.Errorf("changes without TaskYAMLHome: %s", migrate.Render(p))
 	}

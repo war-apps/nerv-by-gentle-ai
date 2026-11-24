@@ -20,8 +20,8 @@ func InstalledPlugins(path string) (PluginInstallInfo, bool, error) {
 	return InstalledPlugin(path, "nerv@nerv")
 }
 
-// InstalledPlugin is InstalledPlugins for any plugin id, such as an
-// extension's "task@nerv".
+// InstalledPlugin is InstalledPlugins for any plugin id, such as the
+// orphaned "task@nerv" of the task extension an earlier nerv shipped.
 func InstalledPlugin(path, id string) (PluginInstallInfo, bool, error) {
 	return claudeplugin.InstalledPlugin(path, id)
 }

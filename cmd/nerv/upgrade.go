@@ -53,8 +53,11 @@ over it either way. That install is told not to upgrade gentle-ai again
 
 Then offers the NERV-ecosystem tools (nerv-task, nerv-release), the same way
 install does, but running "<tool> upgrade" for a confirmed or named tool
-instead of its install script, then nerv migrate --user the same way
-install does, when a tool's settings are still in the user config.yaml.
+instead of its install script. Then disables the extension plugins nerv
+no longer ships the same way install does: with a tool declined or not
+asked, it says which were disabled and how to install the tool (nerv
+install --tools <tool>). Then nerv migrate --user the same way install
+does, when a tool's settings are still in the user config.yaml.
 
 Flags:
   --alpha    Also consider alpha prereleases (the newest of stable and alpha)
@@ -142,12 +145,17 @@ func runUpgrade(args []string, stdout, stderr io.Writer, opts options) int {
 	}
 
 	if home, homeErr := configure.ResolveHome(opts.Home); homeErr == nil {
-		if _, ecoErr := offerEcosystemTools(ctx, stdout, opts, home, "upgrade", *tools, *noTools); ecoErr != nil {
+		selected, ecoErr := offerEcosystemTools(ctx, stdout, opts, home, "upgrade", *tools, *noTools)
+		if ecoErr != nil {
 			fmt.Fprintf(stdout, "nerv upgrade: %v\n", ecoErr)
 			if code == 0 {
 				code = exitCodeFor(ecoErr)
 			}
 		}
+		// S6: the extension plugins nerv no longer ships are disabled once
+		// the tools step is over (the nested install above left them),
+		// saying how to install a tool that was declined.
+		disableOrphans(ctx, stdout, opts, home, selected)
 		// S3: then nerv migrate --user, when a tool's settings are still
 		// in the user config.yaml (the nested install above skipped it).
 		offerToolMigration(ctx, stdout, opts, home)
@@ -319,8 +327,9 @@ func runNewInstall(ctx context.Context, bin string, stdout, stderr io.Writer, op
 	// upgrade (whether or not it actually upgraded anything): the install
 	// this spawns must not run it again. The ecosystem tools step is
 	// skipped too: runUpgrade runs its own, with action "upgrade" instead
-	// of "install", once this nested install returns.
-	args = append(args, "--skip-gentle-ai-upgrade", "--skip-ecosystem-tools", "--skip-migrate-offer")
+	// of "install", once this nested install returns, then disables the
+	// orphaned extension plugins itself (--skip-orphan-cleanup).
+	args = append(args, "--skip-gentle-ai-upgrade", "--skip-ecosystem-tools", "--skip-migrate-offer", "--skip-orphan-cleanup")
 	runBinary := opts.RunBinary
 	if runBinary == nil {
 		runBinary = execBinary

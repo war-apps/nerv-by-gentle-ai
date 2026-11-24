@@ -21,7 +21,7 @@ func TestPrevious_ProjectFileMovesToTheFolder(t *testing.T) {
 	w.write(".ai-workflow.yml", old)
 	before := treeHash(t, w.root)
 
-	p := w.plan(w.options(false, ""))
+	p := w.plan(w.options(false))
 	diff := migrate.Render(p)
 	contains(t, "the rendered plan", diff, "1. Create .ai-workflow/config.yaml: the new project configuration, from .ai-workflow.yml\n", ". Delete .ai-workflow.yml: replaced by .ai-workflow/config.yaml (a backup is kept under .nerv/backups/)\n")
 	lacks(t, "the rendered plan", diff, "--- ", "+++ ", "@@ ")
@@ -29,7 +29,7 @@ func TestPrevious_ProjectFileMovesToTheFolder(t *testing.T) {
 		t.Fatal("planning changed the files")
 	}
 
-	_, backups := w.migrate(w.options(false, ""))
+	_, backups := w.migrate(w.options(false))
 	want := "# .ai-workflow/config.yaml -- NERV project configuration\nenabled: true\ngit:\n  base_branch: develop\n"
 	if got := w.read(".ai-workflow/config.yaml"); got != want {
 		t.Errorf(".ai-workflow/config.yaml =\n%s\nwant\n%s", got, want)
@@ -53,7 +53,7 @@ func TestPrevious_ProjectFileMovesToTheFolder(t *testing.T) {
 	}
 
 	after := treeHash(t, w.root)
-	p = w.plan(w.options(false, ""))
+	p = w.plan(w.options(false))
 	if !p.Empty() {
 		t.Errorf("the second plan has changes:\n%s", migrate.Render(p))
 	}
@@ -65,19 +65,6 @@ func TestPrevious_ProjectFileMovesToTheFolder(t *testing.T) {
 	}
 }
 
-// A 4.2.0 release: section in the previous file is converted on the way.
-func TestPrevious_LegacyReleaseSectionIsConvertedAndMoved(t *testing.T) {
-	w := world{t: t, root: filepath.Join(t.TempDir(), "repo"), home: t.TempDir()}
-	w.write(".ai-workflow.yml", "enabled: true\nrelease:\n  semantic_release: { version: 24.2.3 }\n  projects:\n    - name: api\n      path: .\n      presets: [dotnet]\n      dotnet: { project_file: Api.csproj }\n")
-	w.migrate(w.options(false, ""))
-	text := w.read(".ai-workflow/config.yaml")
-	contains(t, ".ai-workflow/config.yaml", text, "\nrelease:", "build: bash")
-	lacks(t, ".ai-workflow/config.yaml", text, "presets:", "semantic_release:")
-	if w.exists(".ai-workflow.yml") {
-		t.Error(".ai-workflow.yml is still there")
-	}
-}
-
 // The previous and the new project file both existing is refused, unless
 // they are identical, and nothing is written.
 func TestPrevious_BothProjectFiles(t *testing.T) {
@@ -85,7 +72,7 @@ func TestPrevious_BothProjectFiles(t *testing.T) {
 	w.write(".ai-workflow.yml", "enabled: true\n")
 	w.write(".ai-workflow/config.yaml", "enabled: false\n")
 	before := treeHash(t, w.root)
-	_, err := migrate.Compute(w.options(false, ""))
+	_, err := migrate.Compute(w.options(false))
 	if !refusal.Is(err) || !strings.Contains(err.Error(), "both exist") {
 		t.Fatalf("Compute = %v, want the both-exist refusal", err)
 	}
@@ -94,7 +81,7 @@ func TestPrevious_BothProjectFiles(t *testing.T) {
 	}
 
 	w.write(".ai-workflow/config.yaml", "enabled: true\n")
-	w.migrate(w.options(false, ""))
+	w.migrate(w.options(false))
 	if w.exists(".ai-workflow.yml") || w.read(".ai-workflow/config.yaml") != "enabled: true\n" {
 		t.Error("identical files: want the previous one removed and the new one unchanged")
 	}
@@ -109,7 +96,7 @@ func TestPrevious_UserFileMovesToConfigYAML(t *testing.T) {
 	old := "# ai-workflow/config.yml -- NERV user-scope configuration\ngit:\n  worktree: ask\n"
 	w.write(up.PreviousUserConfig, old)
 	before := treeHash(t, w.home)
-	o := w.options(true, "")
+	o := w.options(true)
 	o.RepoRoot = ""
 	p := w.plan(o)
 	contains(t, "the rendered plan", migrate.Render(p), "Move "+up.PreviousUserConfig+" to "+up.PreviousUserConfig+migrate.MigratedSuffix+": a copy of the old user configuration; your settings move to "+up.UserConfig+"\n")

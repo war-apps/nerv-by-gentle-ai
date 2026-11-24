@@ -2,93 +2,63 @@ package workflowconfig
 
 import (
 	"fmt"
-	"io/fs"
 	"slices"
 	"strings"
 
 	"github.com/war-apps/nerv-by-gentle-ai/internal/config"
-	"github.com/war-apps/nerv-by-gentle-ai/internal/extension"
-	"github.com/war-apps/nerv-by-gentle-ai/internal/plugin"
 	"gopkg.in/yaml.v3"
 )
 
-// Sections are the extensions' sections (the task, release and deploy
-// extensions). At run time they are read from the project file only,
-// except their personal keys (Personal), which keep being read from the
-// user file.
+// Sections are the sections of the extensions nerv used to ship (task,
+// release and deploy), now read by the NERV-ecosystem tools from their own
+// files: nerv keeps them only so nerv migrate can move them there. They
+// are never read from the user file, except their personal keys
+// (Personal).
 var Sections = []string{"tasks", "release", "deploy"}
 
 // DefaultsKey is the user file's section of seeds: defaults.<section> has
-// the shape of the project's <section>, never applies at run time, and is
-// copied into a project by the flow that writes that section there
-// (/nerv:init and nerv configure --init-repo for tasks:, /release:setup,
-// /release:deploy-setup) when the project lacks the key.
+// the shape of the project's <section> and never applies at run time;
+// nerv migrate moves defaults.tasks, defaults.release and defaults.deploy
+// to the tools' own files.
 const DefaultsKey = "defaults"
 
-// PersonalTaskKeys are the task extension's own machine-local keys: a
+// PersonalTaskKeys are nerv-task's own machine-local keys (frozen from
+// the task extension nerv used to ship): a
 // user's timer store and staleness threshold, and the older
 // tasks.rounding_minutes, which a user-scope provider key replaces. They
 // stay readable from the user file.
 var PersonalTaskKeys = []string{"tasks.timer_store", "tasks.stale_after_hours", "tasks.rounding_minutes"}
 
-// Personal is the set of personal keys under Sections: PersonalTaskKeys
-// and every provider config key whose manifest declares scope: user, at
-// <section>.providers.<provider>.<key>. The zero value holds only
-// PersonalTaskKeys.
-type Personal struct {
-	keys map[string]bool
+// PersonalProviderKeys are the scope: user keys of the providers nerv
+// shipped (task-teamwork and release-ssh-compose), frozen as their last
+// manifests declared them: nerv migrate moves them out of nerv's files
+// without reading any manifest.
+var PersonalProviderKeys = []string{
+	"tasks.providers.teamwork.assignee_id",
+	"tasks.providers.teamwork.default_project_id",
+	"tasks.providers.teamwork.default_tasklist_id",
+	"tasks.providers.teamwork.rounding_minutes",
+	"tasks.providers.teamwork.billable",
+	"tasks.providers.teamwork.stages",
+	"tasks.providers.teamwork.stage_variants",
+	"tasks.providers.teamwork.comment_labels",
+	"tasks.providers.teamwork.comment_rest",
+	"tasks.providers.teamwork.known_projects",
+	"deploy.providers.ssh-compose.infisical_domain",
+	"deploy.providers.ssh-compose.ssh_auth",
+	"deploy.providers.ssh-compose.ssh_key_file",
+	"deploy.providers.ssh-compose.ssh_known_hosts",
+	"deploy.providers.ssh-compose.ssh_connect_timeout",
 }
 
-// LoadPersonal reads the user-scope provider keys from the provider
-// manifests of fsys (typically nerv.ExtensionsFS(), or extension.WithProject
-// over it); a nil fsys has none.
-func LoadPersonal(fsys fs.FS) (Personal, error) {
-	p := Personal{keys: map[string]bool{}}
-	if fsys == nil {
-		return p, nil
-	}
-	entries, err := fs.ReadDir(fsys, ".")
-	if err != nil {
-		return Personal{}, fmt.Errorf("listing extensions and providers: %w", err)
-	}
-	for _, e := range entries {
-		if !e.IsDir() {
-			continue
-		}
-		if _, err := fs.Stat(fsys, e.Name()+"/"+extension.ProviderFile); err != nil {
-			continue
-		}
-		prov, _, err := extension.LoadProvider(fsys, e.Name())
-		if err != nil {
-			return Personal{}, err
-		}
-		for _, c := range prov.Config {
-			if c.Scope == "user" {
-				p.keys[SectionOf(prov.Extension, prov.Slot)+".providers."+prov.Name+"."+c.Key] = true
-			}
-		}
-	}
-	return p, nil
-}
-
-// SectionOf is the configuration section of a provider of slot of an
-// extension: tasks for the task extension, deploy for the release
-// extension's host and target slots (nerv deploy's), the extension's name
-// otherwise.
-func SectionOf(extensionName, slot string) string {
-	switch {
-	case extensionName == plugin.TaskPlugin:
-		return "tasks"
-	case extensionName == plugin.ReleasePlugin && (slot == "host" || slot == "target"):
-		return "deploy"
-	}
-	return extensionName
-}
+// Personal is the set of personal keys under Sections, frozen:
+// PersonalTaskKeys and PersonalProviderKeys.
+type Personal struct{}
 
 // Has reports whether path, or a key it is under, is personal.
 func (p Personal) Has(path string) bool {
 	for k := path; k != ""; {
-		if slices.Contains(PersonalTaskKeys, k) || p.keys[k] {
+		if slices.Contains(PersonalTaskKeys, k) || slices.Contains(PersonalProviderKeys, k) {
 			return true
 		}
 		i := strings.LastIndex(k, ".")
@@ -122,35 +92,6 @@ func RunTimeUserKeys(doc *config.Document, personal Personal) ([]string, error) 
 	return out, nil
 }
 
-// PersonalKeysOf lists the personal keys doc's <section> holds.
-func PersonalKeysOf(doc *config.Document, section string, personal Personal) ([]string, error) {
-	return keysOf(doc, section, personal.Has)
-}
-
-// ProjectPersonalKeys lists the personal keys (Personal) that doc, a
-// project file, sets under any of Sections. A project must never set
-// one (R-S4): its value belongs in the user's global configuration
-// instead, never in a cloned repository, so deployconfig and
-// releaseconfig report or refuse one instead of silently reading it.
-func ProjectPersonalKeys(doc *config.Document, personal Personal) ([]string, error) {
-	var out []string
-	for _, section := range Sections {
-		keys, err := PersonalKeysOf(doc, section, personal)
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, keys...)
-	}
-	return out, nil
-}
-
-// PersonalKeyMessage is the refusal text for path, a personal key a
-// project file must not set (ProjectPersonalKeys): its value belongs in
-// the user's own configuration instead.
-func PersonalKeyMessage(path string) string {
-	return fmt.Sprintf("%s is a personal key (scope: user): set it in your user config (nerv configure --set ...), not in the repository", path)
-}
-
 // Defaults is the user document's defaults: section as a document of its
 // own (its keys at column 0), or nil when it has none.
 func Defaults(user *config.Document) *config.Document {
@@ -166,28 +107,6 @@ func Defaults(user *config.Document) *config.Document {
 		lines[i] = strings.TrimPrefix(l, "  ")
 	}
 	return config.Parse(strings.Join(lines, "\n"))
-}
-
-// Seed is the user's defaults.<section> as a top-level <section>: block for
-// a project, without its personal keys (they never go into a committed
-// file). ok is false when there is no seed, or nothing but personal keys.
-func Seed(user *config.Document, section string, personal Personal) (block string, ok bool) {
-	defaults := Defaults(user)
-	if defaults == nil {
-		return "", false
-	}
-	text, found := defaults.Block(section)
-	if !found {
-		return "", false
-	}
-	doc := config.Parse(strings.TrimRight(text, "\n") + "\n")
-	if err := Strip(doc, section, personal.Has); err != nil {
-		return "", false
-	}
-	if text, found = doc.Block(section); !found {
-		return "", false
-	}
-	return strings.TrimRight(text, "\n") + "\n", true
 }
 
 // Strip removes from doc's <section> every key drop reports (a section

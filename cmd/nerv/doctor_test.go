@@ -11,7 +11,6 @@ import (
 	"strings"
 	"testing"
 
-	nerv "github.com/war-apps/nerv-by-gentle-ai"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/paths"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/skills"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/version"
@@ -31,10 +30,8 @@ func newDoctorWorld(t *testing.T) *doctorWorld {
 	t.Helper()
 	w := &doctorWorld{t: t, home: t.TempDir(), top: filepath.Join(t.TempDir(), "repo")}
 	w.opts = testOptions(w.home)
-	w.opts.ExtensionsFS = nerv.ExtensionsFS()
 	// Every tool is found except the NERV-ecosystem tools (nerv-task,
-	// nerv-release): with one installed, the release: section below would
-	// be a pending release.yaml move (S3); withCatalogueTools adds them.
+	// nerv-release).
 	w.opts.LookPath = func(name string) (string, error) {
 		if strings.HasPrefix(name, "nerv-") {
 			return "", os.ErrNotExist
@@ -58,7 +55,7 @@ func newDoctorWorld(t *testing.T) *doctorWorld {
 	}
 	p := paths.Resolve(w.home)
 	w.write(p.InstalledPlugins, `{"plugins":{"nerv@nerv":[{"installPath":"/cache/nerv","version":"`+want+`"}]}}`)
-	w.write(p.Settings, `{"enabledPlugins":{"nerv@nerv":true,"release@nerv":true}}`)
+	w.write(p.Settings, `{"enabledPlugins":{"nerv@nerv":true}}`)
 	manifest, err := skills.LoadManifestFS(w.opts.PluginFS)
 	if err != nil {
 		t.Fatal(err)
@@ -66,7 +63,7 @@ func newDoctorWorld(t *testing.T) *doctorWorld {
 	for _, s := range manifest.Skills {
 		w.write(filepath.Join(p.SkillsDir, s.Name, "SKILL.md"), "# "+s.Name+"\n")
 	}
-	w.write(filepath.Join(w.top, ".ai-workflow", "config.yaml"), "enabled: true\nrelease:\n  projects:\n    - name: api\n      path: .\n      build: bash\n")
+	w.write(filepath.Join(w.top, ".ai-workflow", "config.yaml"), "enabled: true\n")
 	return w
 }
 
@@ -101,13 +98,10 @@ func TestDoctor_Healthy(t *testing.T) {
 		"\nThis repository ("+w.top+"):\n",
 		"  [ok]  config       .ai-workflow/config.yaml, enabled\n",
 		"  [ok]  migration    nothing to migrate\n",
-		"  [ok]  release      1 project(s)\n",
-		"  [--]  deploy       not configured\n",
 		"  [ok]  origin       git@github.com:acme/widgets.git\n",
 		"  [ok]  base branch  develop\n",
-		": healthy\n",
-		"\nOptional:\n  - Run /release:deploy-setup in Claude Code to deploy releases with nerv deploy\n")
-	lacks(t, "the report", out, "Next steps:", "[!!]", "[xx]")
+		": healthy\n")
+	lacks(t, "the report", out, "Next steps:", "Optional:", "[!!]", "[xx]")
 }
 
 // Problems on both sides: the failures exit 1 and their steps come first,
@@ -115,8 +109,7 @@ func TestDoctor_Healthy(t *testing.T) {
 func TestDoctor_ListsTheStepsFailuresFirst(t *testing.T) {
 	w := newDoctorWorld(t)
 	delete(w.runner.Responses, "gentle-ai --version")
-	w.write(paths.Resolve(w.home).Settings, `{"enabledPlugins":{"nerv@nerv":true}}`)
-	w.write(filepath.Join(w.top, ".ai-workflow", "config.yaml"), "enabled: true\nrelease:\n  projects:\n    - name: api\n      path: .\n      build: bash\ntasks:\n  provider: teamwork\n")
+	delete(w.runner.Responses, "git -C "+w.top+" rev-parse --verify --quiet refs/heads/develop")
 	before := treeHash(t, w.top)
 
 	code, out, _ := w.doctor()
@@ -125,10 +118,9 @@ func TestDoctor_ListsTheStepsFailuresFirst(t *testing.T) {
 	}
 	contains(t, "the report", out,
 		"  [xx]  gentle-ai    not found on PATH\n",
-		"  [!!]  release      configured, but the release extension is not installed\n",
-		"  [!!]  tasks        tasks.provider is teamwork, but task and task-teamwork is not installed\n",
+		"  [!!]  base branch  develop does not exist\n",
 		": not ready\n",
-		"Next steps:\n  1. Install gentle-ai 4.x (https://github.com/Gentleman-Programming/gentle-ai)\n  2. Run nerv install --with release\n  3. Run nerv install --with task,task-teamwork\n")
+		"Next steps:\n  1. Install gentle-ai 4.x (https://github.com/Gentleman-Programming/gentle-ai)\n  2. Create the develop branch, or set git.base_branch in .ai-workflow/config.yaml\n")
 	if treeHash(t, w.top) != before {
 		t.Error("nerv doctor changed the repository")
 	}
@@ -150,7 +142,6 @@ func TestDoctor_UserRunTimeKeysNoLongerApply(t *testing.T) {
 	}
 	contains(t, "the report", out,
 		"  [!!]  user config  tasks.provider, tasks.providers.teamwork.project_id no longer apply: tasks, release and deploy are read from each project's .ai-workflow/config.yaml\n",
-		"  [--]  tasks        no task provider (tasks.provider)\n",
 		// nerv migrate copies the user's tasks.provider into the project.
 		"  [!!]  migration    nerv migrate has 2 step(s) to take\n",
 		"Next steps:\n  1. Run nerv migrate --user --dry-run to see the steps, then nerv migrate --user\n  2. Run nerv migrate --dry-run to see the steps, then nerv migrate\n")
@@ -171,22 +162,24 @@ func TestDoctor_UserPersonalKeysAndDefaultsAreFine(t *testing.T) {
 		t.Fatalf("exit %d\n%s", code, out)
 	}
 	contains(t, "the report", out,
-		"  [ok]  user config  "+user+"\n",
-		"  [--]  tasks        no task provider (tasks.provider)\n")
+		"  [ok]  user config  "+user+"\n")
 	lacks(t, "the report", out, "nerv migrate --user")
 }
 
-// The project's tasks.provider is the one checked, as before.
-func TestDoctor_ProjectTasksProviderStillChecked(t *testing.T) {
+// nerv doctor no longer checks the release:, deploy: and tasks: sections,
+// the extension plugins they needed or the project's own extensions and
+// providers: the NERV-ecosystem tools own them now (S5).
+func TestDoctor_NoExtensionChecks(t *testing.T) {
 	w := newDoctorWorld(t)
-	w.write(paths.Resolve(w.home).Settings, `{"enabledPlugins":{"nerv@nerv":true,"release@nerv":true,"task@nerv":true,"task-teamwork@nerv":true}}`)
-	w.write(paths.Resolve(w.home).UserConfig, "defaults:\n  tasks:\n    provider: other\n")
-	w.write(filepath.Join(w.top, ".ai-workflow", "config.yaml"), "enabled: true\nrelease:\n  projects:\n    - name: api\n      path: .\n      build: bash\ntasks:\n  provider: teamwork\n")
+	w.write(paths.Resolve(w.home).Settings, `{"enabledPlugins":{"nerv@nerv":true,"task@nerv":true}}`)
+	w.write(filepath.Join(w.top, ".ai-workflow", "config.yaml"), "enabled: true\nrelease:\n  projects:\n    - name: api\n      path: .\n      build: bash\ndeploy:\n  targets: []\ntasks:\n  provider: teamwork\n")
+	w.write(filepath.Join(w.top, ".ai-workflow", "providers", "task-acme", "provider.yaml"), "name: acme\n")
 	code, out, _ := w.doctor()
 	if code != 0 {
 		t.Fatalf("exit %d\n%s", code, out)
 	}
-	contains(t, "the report", out, "  [ok]  tasks        teamwork\n")
+	contains(t, "the report", out, "  [ok]  base branch  develop\n", ": healthy\n")
+	lacks(t, "the report", out, "]  release ", "]  deploy ", "]  tasks ", "project extensions", "nerv install --with", "/release:")
 }
 
 // A 4.2.0 repository: nerv migrate is the step, listed once although two

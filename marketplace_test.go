@@ -6,12 +6,11 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"sort"
 	"testing"
 )
 
 // marketplaceEntry is one plugin of a marketplace.json, in the shape
-// internal/plugin's MaterializeBundle writes.
+// internal/plugin's Materialize writes.
 type marketplaceEntry struct {
 	Name        string `json:"name"`
 	Source      string `json:"source"`
@@ -19,12 +18,10 @@ type marketplaceEntry struct {
 }
 
 // The repository's .claude-plugin/marketplace.json, which Claude Code reads
-// when the clone itself is registered as a marketplace, lists the core
-// plugin first and then every extension and provider shipped under
-// plugins/, in name order, each with its ./plugins/<name> source and the
-// description of its .claude-plugin/plugin.json: the same bytes nerv
-// install writes into the materialized marketplace.
-func TestRepoMarketplace_ListsEveryShippedPlugin(t *testing.T) {
+// when the clone itself is registered as a marketplace, lists only the core
+// plugin, with its ./plugin source and the description of its
+// .claude-plugin/plugin.json: nerv ships no extension plugin any more.
+func TestRepoMarketplace_ListsOnlyTheCorePlugin(t *testing.T) {
 	description := func(fsys fs.FS, path string) string {
 		t.Helper()
 		data, err := fs.ReadFile(fsys, path)
@@ -41,20 +38,6 @@ func TestRepoMarketplace_ListsEveryShippedPlugin(t *testing.T) {
 	}
 
 	plugins := []marketplaceEntry{{Name: "nerv", Source: "./plugin", Description: description(PluginFS(), ".claude-plugin/plugin.json")}}
-	entries, err := fs.ReadDir(ExtensionsFS(), ".")
-	if err != nil {
-		t.Fatal(err)
-	}
-	var names []string
-	for _, e := range entries {
-		if e.IsDir() {
-			names = append(names, e.Name())
-		}
-	}
-	sort.Strings(names)
-	for _, name := range names {
-		plugins = append(plugins, marketplaceEntry{Name: name, Source: "./plugins/" + name, Description: description(ExtensionsFS(), name+"/.claude-plugin/plugin.json")})
-	}
 
 	want, err := json.MarshalIndent(struct {
 		Name  string `json:"name"`
@@ -75,6 +58,6 @@ func TestRepoMarketplace_ListsEveryShippedPlugin(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !bytes.Equal(got, want) {
-		t.Errorf(".claude-plugin/marketplace.json is stale; it must list the core and every folder of plugins/:\n--- got\n%s\n--- want\n%s", got, want)
+		t.Errorf(".claude-plugin/marketplace.json is stale; it must list only the core plugin:\n--- got\n%s\n--- want\n%s", got, want)
 	}
 }

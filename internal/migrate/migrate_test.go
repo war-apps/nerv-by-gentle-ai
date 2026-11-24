@@ -1,37 +1,26 @@
 package migrate_test
 
 import (
-	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"io/fs"
 	"os"
 	"path/filepath"
-	"reflect"
 	"slices"
 	"sort"
 	"strings"
 	"testing"
 	"time"
 
-	nerv "github.com/war-apps/nerv-by-gentle-ai"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/config"
-	"github.com/war-apps/nerv-by-gentle-ai/internal/configure"
-	"github.com/war-apps/nerv-by-gentle-ai/internal/deployconfig"
-	"github.com/war-apps/nerv-by-gentle-ai/internal/deployprovider"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/migrate"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/paths"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/refusal"
-	"github.com/war-apps/nerv-by-gentle-ai/internal/releaseconfig"
-	"github.com/war-apps/nerv-by-gentle-ai/internal/releaseplan"
-	"github.com/war-apps/nerv-by-gentle-ai/internal/versioning"
 )
 
 const (
 	comprobantes = "dim.comprobantes.api"
-	factura      = "dim-factura-electronica-service"
 	legacyFull   = "legacy-full"
-	githubOrigin = "https://github.com/dirm-s-a/repo.git"
 )
 
 var now = time.Date(2026, 10, 23, 12, 0, 0, 0, time.UTC)
@@ -105,8 +94,8 @@ func (w world) exists(rel string) bool {
 	return err == nil
 }
 
-func (w world) options(user bool, origin string) migrate.Options {
-	return migrate.Options{RepoRoot: w.root, Home: w.home, User: user, ExtensionsFS: nerv.ExtensionsFS(), OriginURL: origin, Now: now}
+func (w world) options(user bool) migrate.Options {
+	return migrate.Options{RepoRoot: w.root, Home: w.home, User: user, Now: now}
 }
 
 func (w world) plan(o migrate.Options) *migrate.Plan {
@@ -179,7 +168,7 @@ func treeHash(t *testing.T, dirs ...string) string {
 func TestConfig_ProjectFileMovesKeepingCommentsAndOrder(t *testing.T) {
 	w := newWorld(t, comprobantes)
 	old := w.read(".nerv/nerv.yaml")
-	w.migrate(w.options(false, githubOrigin))
+	w.migrate(w.options(false))
 
 	if w.exists(".nerv/nerv.yaml") {
 		t.Error(".nerv/nerv.yaml still exists: an old nerv would read stale configuration")
@@ -187,17 +176,10 @@ func TestConfig_ProjectFileMovesKeepingCommentsAndOrder(t *testing.T) {
 	if got := w.read(".nerv/nerv.yaml.migrated"); got != old {
 		t.Error(".nerv/nerv.yaml.migrated is not the old file")
 	}
-	text := w.read(".ai-workflow/config.yaml")
-	prefix := old[:strings.Index(old, "release:")]
-	if !strings.HasPrefix(text, prefix) {
-		t.Errorf(".ai-workflow/config.yaml does not keep the old file's head byte for byte:\n%s", text)
-	}
-	contains(t, ".ai-workflow/config.yaml", text,
-		"# No build servers: the shared T2 host aborts dotnet with",
-		// yaml.v3 writes a flow mapping without the inner spaces.
-		`env: {MSBUILDDISABLENODEREUSE: "1", UseSharedCompilation: "false", DOTNET_CLI_USE_MSBUILD_SERVER: "0"}`)
-	if strings.Index(text, "git:") > strings.Index(text, "tasks:") || strings.Index(text, "tasks:") > strings.Index(text, "release:") {
-		t.Errorf("the key order changed:\n%s", text)
+	// The file holds nothing to convert: it moves byte for byte, its
+	// comments and key order kept.
+	if text := w.read(".ai-workflow/config.yaml"); text != old {
+		t.Errorf(".ai-workflow/config.yaml is not the old file byte for byte:\n%s", text)
 	}
 }
 
@@ -207,7 +189,7 @@ func TestConfig_UserFileMovesToTheUserConfig(t *testing.T) {
 	w := newWorld(t, comprobantes)
 	up := w.userPaths()
 	w.write(up.LegacyUserConfig, "# ~/.claude/nerv/nerv.yaml -- NERV user-scope configuration\ngit:\n  worktree: ask\nmodels:\n  misato: { model: fable, effort: max }\n")
-	w.migrate(migrate.Options{Home: w.home, User: true, ExtensionsFS: nerv.ExtensionsFS(), Now: now})
+	w.migrate(migrate.Options{Home: w.home, User: true, Now: now})
 
 	got := w.read(up.UserConfig)
 	want := "# the user config.yaml -- NERV user-scope configuration\ngit:\n  worktree: ask\nmodels:\n  misato: { model: fable, effort: max }\n"
@@ -222,20 +204,14 @@ func TestConfig_UserFileMovesToTheUserConfig(t *testing.T) {
 	}
 }
 
-// Rule 1: personal keys of the project file are reported without --user.
-// A tasks: personal key (assignee_id) is harmless left in the project
-// (Config.Scalar already ignores it there) and stays; a deploy: personal
-// key (infisical_domain, ssh_auth, ...) would make the migrated
-// deploy.targets[].config refuse to load (deployconfig.Load, R-S4), so
-// it is dropped from every target instead, reported with the --user
-// hint, and the migrated file still loads.
+// Rule 1: personal keys of the project file are reported without --user,
+// and stay there.
 func TestPersonalKeys_ReportedWithoutUser(t *testing.T) {
 	w := newWorld(t, legacyFull)
-	p, _ := w.migrate(w.options(false, githubOrigin))
+	p, _ := w.migrate(w.options(false))
 	text := w.read(".ai-workflow/config.yaml")
 	contains(t, ".ai-workflow/config.yaml", text, "models:\n  misato: { model: fable, effort: high }", "assignee_id: 42")
-	lacks(t, ".ai-workflow/config.yaml", text, "infisical_domain", "ssh_auth", "ssh_key_file")
-	for _, want := range []string{"models: personal settings", "tasks.providers.teamwork.assignee_id: a personal setting", "config.infisical_domain: a personal setting", "run nerv migrate --user"} {
+	for _, want := range []string{"models: personal settings", "tasks.providers.teamwork.assignee_id: a personal setting", "run nerv migrate --user"} {
 		if !anyContains(p.Warnings, want) {
 			t.Errorf("no warning %q in %q", want, p.Warnings)
 		}
@@ -249,22 +225,20 @@ func TestPersonalKeys_ReportedWithoutUser(t *testing.T) {
 // config, and the project file keeps only repository settings.
 func TestPersonalKeys_MoveWithUser(t *testing.T) {
 	w := newWorld(t, legacyFull)
-	w.migrate(w.options(true, githubOrigin))
+	w.migrate(w.options(true))
 	project := w.read(".ai-workflow/config.yaml")
 	user := w.read(w.userPaths().UserConfig)
-	lacks(t, ".ai-workflow/config.yaml", project, "models:", "assignee_id", "infisical_domain", "ssh_auth", "ssh_key_file")
+	lacks(t, ".ai-workflow/config.yaml", project, "models:", "assignee_id")
 	contains(t, "user config", user,
 		"models:\n  misato: { model: fable, effort: high }",
-		"tasks:\n  providers:\n    teamwork:\n      assignee_id: 42",
-		"deploy:\n  providers:\n    ssh-compose:\n",
-		"infisical_domain: \"https://infisical.acme\"", "ssh_auth: key", "ssh_key_file: ~/.ssh/id_deploy")
+		"tasks:\n  providers:\n    teamwork:\n      assignee_id: 42")
 	contains(t, ".ai-workflow/config.yaml", project, "project_id: 100", "tasklist_id: 200")
 }
 
 // Rule 2: tasks.rounding_minutes moves to the teamwork provider.
 func TestTasks_RoundingMinutesMovesToTeamwork(t *testing.T) {
 	w := newWorld(t, legacyFull)
-	w.migrate(w.options(false, githubOrigin))
+	w.migrate(w.options(false))
 	doc := config.Parse(w.read(".ai-workflow/config.yaml"))
 	if v, ok := doc.Scalar("tasks.providers.teamwork.rounding_minutes"); !ok || v != "30" {
 		t.Errorf("tasks.providers.teamwork.rounding_minutes = %q, %v; want 30", v, ok)
@@ -279,7 +253,7 @@ func TestTasks_RoundingMinutesMovesToTeamwork(t *testing.T) {
 func TestTasks_RemovedProvidersAreDropped(t *testing.T) {
 	w := newWorld(t, legacyFull)
 	w.write(".nerv/nerv.yaml", strings.Replace(w.read(".nerv/nerv.yaml"), "  provider: teamwork\n", "  provider: github-projects\n", 1))
-	p, _ := w.migrate(w.options(false, githubOrigin))
+	p, _ := w.migrate(w.options(false))
 	text := w.read(".ai-workflow/config.yaml")
 	lacks(t, ".ai-workflow/config.yaml", text, "jira", "github-projects", "task_ref_prefix")
 	for _, want := range []string{"tasks.provider: github-projects was removed", "tasks.providers.jira: the jira provider was removed"} {
@@ -289,277 +263,6 @@ func TestTasks_RemovedProvidersAreDropped(t *testing.T) {
 	}
 	if !anyContains(p.Notes, "task_ref_prefix dropped") {
 		t.Errorf("no note on task_ref_prefix in %q", p.Notes)
-	}
-}
-
-// Rule 2: the migrated task settings load with the task providers' strict
-// rules: every key is declared, its value has the declared type, and the
-// project file holds only repository-scope keys once --user moved the rest.
-func TestTasks_MigratedSettingsLoadWithTheProviderManifests(t *testing.T) {
-	providers, err := configure.EmbeddedProviders(nerv.ExtensionsFS())
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, fixture := range []string{comprobantes, factura, legacyFull} {
-		t.Run(fixture, func(t *testing.T) {
-			w := newWorld(t, fixture)
-			w.migrate(w.options(true, githubOrigin))
-			check := func(file, scope string) {
-				text := w.read(file)
-				for _, pr := range providers {
-					for _, c := range pr.Manifest.Config {
-						v, ok := config.Parse(text).Scalar(configure.ProviderKeyPath(pr.Manifest.Name, c.Key))
-						if !ok {
-							continue
-						}
-						if scope == "repo" && c.Scope != "repo" {
-							t.Errorf("%s: %s is a %s-scope key", file, c.Key, c.Scope)
-						}
-						if c.Scalar() {
-							if err := configure.ValidateProviderValue(pr.Manifest.Name, c, v); err != nil {
-								t.Errorf("%s: %v", file, err)
-							}
-						}
-					}
-				}
-			}
-			check(".ai-workflow/config.yaml", "repo")
-			if w.exists(w.userPaths().UserConfig) {
-				check(w.userPaths().UserConfig, "user")
-			}
-		})
-	}
-}
-
-// Rule 3: the 4.2.0 release: becomes today's release:, the presets become
-// build: bash with the commands 4.2.0 ran, the project's own stage
-// commands win, and the result loads with today's strict loader.
-func TestRelease_LegacyReleaseBecomesScriptModeRelease(t *testing.T) {
-	w := newWorld(t, comprobantes)
-	old := w.read(".nerv/nerv.yaml")
-	w.migrate(w.options(false, githubOrigin))
-	rel, err := releaseconfig.Load(w.root)
-	if err != nil {
-		t.Fatalf("releaseconfig.Load: %v", err)
-	}
-	if err := rel.CheckBuild(); err != nil {
-		t.Fatalf("CheckBuild: %v", err)
-	}
-	api, _ := rel.Project("api")
-	if api.Build != "bash" {
-		t.Fatalf("build = %q, want bash", api.Build)
-	}
-	if !slices.Equal(api.VersionFiles, []string{"src/Api/Dim.Comprobantes.Api.csproj"}) {
-		t.Errorf("version_files = %q, want the dotnet project_file", api.VersionFiles)
-	}
-	for _, stage := range []string{"restore", "lint", "build", "test", "coverage"} {
-		if !strings.Contains(old, "run: "+api.Stages[stage].Run) {
-			t.Errorf("stages.%s = %q, not the project's own 4.2.0 command", stage, api.Stages[stage].Run)
-		}
-	}
-	pkg := api.Stages["package"].Run
-	contains(t, "stages.package", pkg,
-		"docker build -f docker/Dockerfile -t ghcr.io/dirm-s-a/dim.comprobantes.api:\"$NERV_RELEASE_VERSION\"",
-		"docker build -f docker/LoginBroker.Dockerfile -t ghcr.io/dirm-s-a/dim.comprobantes.api-login-broker:\"$NERV_RELEASE_VERSION\"")
-	// L22: the pushed images are build.images, which release saves and records
-	// for deploy to push: the script saves nothing itself.
-	lacks(t, "stages.package", pkg, "docker save")
-	// The images keep 4.2.0's tag kinds in the mapping form.
-	all := []string{"version", "channel", "latest"}
-	if want := []releaseconfig.BuildImage{
-		{Name: "ghcr.io/dirm-s-a/dim.comprobantes.api", Tags: all},
-		{Name: "ghcr.io/dirm-s-a/dim.comprobantes.api-login-broker", Tags: all},
-	}; !reflect.DeepEqual(api.Images, want) {
-		t.Errorf("images = %+v, want %+v", api.Images, want)
-	}
-	text := w.read(".ai-workflow/config.yaml")
-	contains(t, ".ai-workflow/config.yaml", text, "\nrelease:")
-	lacks(t, ".ai-workflow/config.yaml", text, "\nship:", "presets:", "semantic_release:", "4.2.0 pushed", "records no image references")
-}
-
-// S1: a 4.2.0 release: section already in .ai-workflow/config.yaml (no old
-// .nerv/nerv.yaml) is told apart by its 4.2.0 keys and converted in place;
-// today's release: section is left alone.
-func TestRelease_LegacySectionInTheProjectFileIsConverted(t *testing.T) {
-	w := world{t: t, root: filepath.Join(t.TempDir(), "repo"), home: t.TempDir()}
-	w.write(".ai-workflow/config.yaml", "enabled: true\nrelease:\n  semantic_release: { version: 24.2.3 }\n  projects:\n    - name: api\n      path: .\n      presets: [dotnet]\n      dotnet: { project_file: Api.csproj }\n")
-	p, _ := w.migrate(w.options(false, ""))
-	text := w.read(".ai-workflow/config.yaml")
-	contains(t, ".ai-workflow/config.yaml", text, "\nrelease:", "build: bash", "dotnet build")
-	lacks(t, ".ai-workflow/config.yaml", text, "presets:", "semantic_release:")
-	if _, err := releaseconfig.Load(w.root); err != nil {
-		t.Fatalf("releaseconfig.Load: %v", err)
-	}
-	if !slices.Contains(p.Plugins, "release") {
-		t.Errorf("plugins = %v, want release", p.Plugins)
-	}
-
-	current := "enabled: true\nrelease:\n  projects:\n    - name: api\n      path: .\n      build: bash\n      stages: { build: { run: make } }\n"
-	w.write(".ai-workflow/config.yaml", current)
-	w.migrate(w.options(false, ""))
-	if got := w.read(".ai-workflow/config.yaml"); got != current {
-		t.Errorf("today's release: section changed:\n%s", got)
-	}
-}
-
-// Rule 3: the presets without an equivalent (nuget, npm push) get a TODO
-// comment and a report line; the dotnet preset's commands and coverage
-// threshold, node's install and scripts, and the hooks move over.
-func TestRelease_PresetsWithoutAnEquivalentGetATODO(t *testing.T) {
-	w := newWorld(t, legacyFull)
-	p, _ := w.migrate(w.options(false, githubOrigin))
-	rel, err := releaseconfig.Load(w.root)
-	if err != nil {
-		t.Fatalf("releaseconfig.Load: %v", err)
-	}
-	web, _ := rel.Project("web")
-	if got := web.Stages["restore"]; got.Run != "pnpm install --frozen-lockfile" || got.Workdir != "web" {
-		t.Errorf("web restore = %+v", got)
-	}
-	if web.Stages["build"].Run != "pnpm run build" || web.Stages["test"].Run != "pnpm run test" {
-		t.Errorf("web build/test = %q / %q", web.Stages["build"].Run, web.Stages["test"].Run)
-	}
-	if _, ok := web.Stages["lint"]; ok {
-		t.Error("web has a lint stage, but package.json has no lint script")
-	}
-	lib, _ := rel.Project("lib")
-	if lib.Stages["lint"].Run != "dotnet format lib/Lib.csproj --verify-no-changes --no-restore" {
-		t.Errorf("lib lint = %q, want the project's own", lib.Stages["lint"].Run)
-	}
-	if lib.Stages["build"].Run != `dotnet build lib/Lib.csproj -c Release --no-restore --disable-build-servers -p:Version="$NERV_RELEASE_VERSION"` {
-		t.Errorf("lib build = %q", lib.Stages["build"].Run)
-	}
-	contains(t, "lib test", lib.Stages["test"].Run, `--collect "XPlat Code Coverage" --results-directory "$NERV_RELEASE_ARTIFACTS_DIR/coverage"`)
-	if lib.Coverage == nil || lib.Coverage.Line != 80 {
-		t.Errorf("lib coverage = %+v, want line 80", lib.Coverage)
-	}
-	if lib.Stages["build"].Env["MSBUILDDISABLENODEREUSE"] != "1" {
-		t.Errorf("lib build env = %v, want the build-server-safe environment", lib.Stages["build"].Env)
-	}
-	contains(t, "lib package", lib.Stages["package"].Run, "dotnet pack lib/Lib.csproj", "docker build -f lib/Dockerfile", `--build-arg CHANNEL="$channel_tag"`, `--build-arg TAG=v-"$NERV_RELEASE_TAG"`)
-	if len(lib.Hooks["before_build"]) != 1 {
-		t.Errorf("hooks.before_build = %v, want kept", lib.Hooks["before_build"])
-	}
-	text := w.read(".ai-workflow/config.yaml")
-	contains(t, ".ai-workflow/config.yaml", text,
-		migrate.TODOPrefix+" 4.2.0 pushed the packages to https://api.nuget.org/v3/index.json",
-		migrate.TODOPrefix+` 4.2.0 ran "npm publish --access restricted"`,
-		migrate.TODOPrefix+" 4.2.0 dropped --disable-build-servers")
-	for _, want := range []string{"stages.publish dropped", "hooks.success dropped", "nuget push", "npm publish has no deploy provider"} {
-		if !anyContains(p.Warnings, want) {
-			t.Errorf("no warning %q in %q", want, p.Warnings)
-		}
-	}
-}
-
-// Rule 3: the semantic-release configuration is imported into
-// release.providers.conventional-commits through versioning.Import, with
-// its warnings reported.
-func TestRelease_ImportsTheSemanticReleaseConfiguration(t *testing.T) {
-	w := newWorld(t, comprobantes)
-	p, _ := w.migrate(w.options(false, githubOrigin))
-	rel, err := releaseconfig.Load(w.root)
-	if err != nil {
-		t.Fatal(err)
-	}
-	imported, err := versioning.Import(w.root)
-	if err != nil {
-		t.Fatal(err)
-	}
-	engine := rel.Providers[releaseconfig.EngineProvider]
-	branches, _ := engine["branches"].([]any)
-	if len(branches) != len(imported.Config.Branches) {
-		t.Fatalf("branches = %+v, want the imported %+v", branches, imported.Config.Branches)
-	}
-	for i, b := range branches {
-		name, channel := b, any(nil)
-		if m, ok := b.(map[string]any); ok {
-			name, channel = m["name"], m["channel"]
-		}
-		want := imported.Config.Branches[i]
-		if name != want.Name || (channel != nil && channel != want.Channel) || (channel == nil && want.Channel != "") {
-			t.Errorf("branch %d = %+v, want %+v", i, b, want)
-		}
-	}
-	if changelog, _ := engine["changelog"].(map[string]any); changelog["file"] != "src/Api/CHANGELOG.md" {
-		t.Errorf("changelog = %v, want the imported file src/Api/CHANGELOG.md", engine["changelog"])
-	}
-	for _, want := range []string{"@semantic-release/exec", "@semantic-release/npm", "@semantic-release/github"} {
-		if !anyContains(p.Warnings, want) {
-			t.Errorf("no import warning for %s in %q", want, p.Warnings)
-		}
-	}
-}
-
-// Rule 4: pipeline: becomes release-ssh-compose targets plus the
-// release-github host, loadable by deployconfig and the provider manifest;
-// what has no equivalent is reported.
-func TestDeploy_PipelineBecomesTargetsAndHost(t *testing.T) {
-	w := newWorld(t, legacyFull)
-	p, _ := w.migrate(w.options(false, githubOrigin))
-	d, err := deployconfig.Load(w.root)
-	if err != nil {
-		t.Fatalf("deployconfig.Load: %v", err)
-	}
-	if d.Host != "github" {
-		t.Errorf("host = %q, want github", d.Host)
-	}
-	m, err := deployprovider.Load(nerv.ExtensionsFS(), "release-ssh-compose")
-	if err != nil {
-		t.Fatal(err)
-	}
-	var names []string
-	for _, tg := range d.Targets {
-		names = append(names, tg.Name)
-		if tg.Provider != "ssh-compose" {
-			t.Errorf("%s provider = %q", tg.Name, tg.Provider)
-		}
-		for k, v := range tg.Config {
-			c, ok := m.Key(k)
-			if !ok {
-				t.Errorf("%s: config.%s is not a key of ssh-compose", tg.Name, k)
-				continue
-			}
-			if !deployprovider.ValidValue(c.Type, v) {
-				t.Errorf("%s: config.%s = %q is not a valid %s", tg.Name, k, v, c.Type)
-			}
-		}
-		want := map[string]string{"environment": tg.Name, "source": "infisical", "infisical_project_id": "p-1", "infisical_app_path": "/app", "ssh_port": "2222", "verify_timeout": "300s"}
-		for k, v := range want {
-			if tg.Config[k] != v {
-				t.Errorf("%s: config.%s = %q, want %q", tg.Name, k, tg.Config[k], v)
-			}
-		}
-	}
-	if !slices.Equal(names, []string{"staging", "production"}) {
-		t.Errorf("targets = %q, want staging, production in order", names)
-	}
-	for _, want := range []string{"selection: branches has no equivalent", "pipeline.sync", "pipeline.registry", "pipeline.dotnet", "pipeline.images"} {
-		if !anyContains(p.Warnings, want) {
-			t.Errorf("no warning %q in %q", want, p.Warnings)
-		}
-	}
-	lacks(t, ".ai-workflow/config.yaml", w.read(".ai-workflow/config.yaml"), "pipeline:")
-}
-
-// Rule 4: a repository whose semantic-release published GitHub releases
-// gets deploy.host github when origin is GitHub, and a report otherwise.
-func TestDeploy_GitHubHostFollowsOrigin(t *testing.T) {
-	w := newWorld(t, comprobantes)
-	w.migrate(w.options(false, githubOrigin))
-	d, err := deployconfig.Load(w.root)
-	if err != nil || d.Host != "github" {
-		t.Fatalf("deploy = %+v, %v; want host github", d, err)
-	}
-
-	w = newWorld(t, comprobantes)
-	p, _ := w.migrate(w.options(false, "https://gitlab.com/acme/repo.git"))
-	d, err = deployconfig.Load(w.root)
-	if err != nil || d.Host != "" {
-		t.Fatalf("deploy = %+v, %v; want no host for a GitLab origin", d, err)
-	}
-	if !anyContains(p.Warnings, "is not GitHub") {
-		t.Errorf("no warning about the origin in %q", p.Warnings)
 	}
 }
 
@@ -590,7 +293,7 @@ func (w world) openspecFixture(strict bool) {
 func TestODD_InFlightChangeBecomesAFeatureDocument(t *testing.T) {
 	w := newWorld(t, comprobantes)
 	w.openspecFixture(true)
-	p, _ := w.migrate(w.options(false, githubOrigin))
+	p, _ := w.migrate(w.options(false))
 
 	doc := w.read("odd/tasks/tw-1-feature.md")
 	contains(t, "the ODD document", doc,
@@ -634,7 +337,7 @@ func TestODD_StrictTDDBecomesTheDefaultMode(t *testing.T) {
 	for _, strict := range []bool{true, false} {
 		w := newWorld(t, comprobantes)
 		w.openspecFixture(strict)
-		w.migrate(w.options(false, githubOrigin))
+		w.migrate(w.options(false))
 		doc := config.Parse(w.read(".ai-workflow/config.yaml"))
 		mode, _ := doc.Scalar("odd.tdd")
 		runner, _ := doc.Scalar("odd.test_runner")
@@ -651,37 +354,30 @@ func TestODD_StrictTDDBecomesTheDefaultMode(t *testing.T) {
 // Rule 6: the plugins the old configuration used are named in one nerv
 // install line, in install order; release brings its deploy providers.
 func TestPlugins_InstallLineNamesWhatTheRepositoryUsed(t *testing.T) {
-	cases := []struct {
-		fixture, origin, want string
-	}{
-		{comprobantes, githubOrigin, "nerv install --with task,task-teamwork,release"},
-		{legacyFull, githubOrigin, "nerv install --with task,task-teamwork,release"},
-		{comprobantes, "", "nerv install --with task,task-teamwork,release"},
-	}
-	for _, c := range cases {
-		w := newWorld(t, c.fixture)
-		if got := w.plan(w.options(false, c.origin)).InstallCommand(); got != c.want {
-			t.Errorf("%s (origin %q): %q, want %q", c.fixture, c.origin, got, c.want)
+	for _, fixture := range []string{comprobantes, legacyFull} {
+		w := newWorld(t, fixture)
+		if got, want := w.plan(w.options(false)).InstallCommand(), "nerv install --tools nerv-task"; got != want {
+			t.Errorf("%s: %q, want %q", fixture, got, want)
 		}
 	}
 	w := newWorld(t, comprobantes)
 	w.write(".nerv/nerv.yaml", "enabled: true\ntasks:\n  provider: none\n")
-	if got := w.plan(w.options(false, githubOrigin)).InstallCommand(); got != "" {
-		t.Errorf("provider none, no release: %q, want no install line", got)
+	if got := w.plan(w.options(false)).InstallCommand(); got != "" {
+		t.Errorf("provider none: %q, want no install line", got)
 	}
 
 	// Without a project provider, the user's decides (new file first, then
 	// the old one), and with none at all the 4.2.0 default, teamwork.
 	w.write(".nerv/nerv.yaml", "enabled: true\n")
-	if got := w.plan(w.options(false, githubOrigin)).InstallCommand(); got != "nerv install --with task,task-teamwork" {
+	if got := w.plan(w.options(false)).InstallCommand(); got != "nerv install --tools nerv-task" {
 		t.Errorf("no provider anywhere: %q, want the 4.2.0 default teamwork", got)
 	}
 	w.write(w.userPaths().LegacyUserConfig, "tasks:\n  provider: none\n")
-	if got := w.plan(w.options(false, githubOrigin)).InstallCommand(); got != "" {
+	if got := w.plan(w.options(false)).InstallCommand(); got != "" {
 		t.Errorf("old user file says none: %q, want no install line", got)
 	}
 	w.write(w.userPaths().UserConfig, "tasks:\n  provider: teamwork\n")
-	if got := w.plan(w.options(false, githubOrigin)).InstallCommand(); got != "nerv install --with task,task-teamwork" {
+	if got := w.plan(w.options(false)).InstallCommand(); got != "nerv install --tools nerv-task" {
 		t.Errorf("new user config says teamwork: %q", got)
 	}
 }
@@ -689,7 +385,7 @@ func TestPlugins_InstallLineNamesWhatTheRepositoryUsed(t *testing.T) {
 // Rule 7: the runtime folder gets its .gitignore of "*".
 func TestRuntime_GitignoreIsCreated(t *testing.T) {
 	w := newWorld(t, comprobantes)
-	w.migrate(w.options(false, githubOrigin))
+	w.migrate(w.options(false))
 	if got := w.read(".nerv/.gitignore"); got != "*\n" {
 		t.Errorf(".nerv/.gitignore = %q, want \"*\\n\"", got)
 	}
@@ -701,7 +397,7 @@ func TestDryRun_WritesNothing(t *testing.T) {
 	w.openspecFixture(true)
 	w.write(w.userPaths().LegacyUserConfig, "tasks:\n  rounding_minutes: 30\n")
 	before := treeHash(t, w.root, w.home)
-	p := w.plan(w.options(true, githubOrigin))
+	p := w.plan(w.options(true))
 	if p.Empty() {
 		t.Fatal("the plan is empty")
 	}
@@ -714,7 +410,7 @@ func TestDryRun_WritesNothing(t *testing.T) {
 		"Delete openspec/changes/tw-1-feature/proposal.md: its content is in odd/tasks/tw-1-feature.md\n",
 		"Create "+w.userPaths().UserConfig+": your user configuration\n",
 		"\nHow the configuration changes:\n  - ",
-		"\nNext, install the extensions it uses: nerv install --with ")
+		"\nNext, install the tools it uses: nerv install --tools nerv-task\n")
 	lacks(t, "the rendered plan", diff, "--- ", "+++ ", "@@ ")
 	if after := treeHash(t, w.root, w.home); after != before {
 		t.Error("planning changed the files")
@@ -723,13 +419,13 @@ func TestDryRun_WritesNothing(t *testing.T) {
 
 // A second run changes nothing.
 func TestSecondRun_IsANoOp(t *testing.T) {
-	for _, fixture := range []string{comprobantes, factura, legacyFull} {
+	for _, fixture := range []string{comprobantes, legacyFull} {
 		w := newWorld(t, fixture)
 		w.openspecFixture(true)
 		w.write(w.userPaths().LegacyUserConfig, "tasks:\n  rounding_minutes: 30\n")
-		w.migrate(w.options(true, githubOrigin))
+		w.migrate(w.options(true))
 		before := treeHash(t, w.root, w.home)
-		p := w.plan(w.options(true, githubOrigin))
+		p := w.plan(w.options(true))
 		if !p.Empty() {
 			t.Errorf("%s: the second plan has changes:\n%s", fixture, migrate.Render(p))
 		}
@@ -749,7 +445,7 @@ func TestBackups_EveryChangedOrRemovedFile(t *testing.T) {
 	up := w.userPaths()
 	w.write(up.LegacyUserConfig, "tasks:\n  rounding_minutes: 30\n")
 	oldProject := w.read(".nerv/nerv.yaml")
-	_, backups := w.migrate(w.options(true, githubOrigin))
+	_, backups := w.migrate(w.options(true))
 	stamp := now.Format("20060102-150405")
 	backupDir := filepath.Join(w.root, ".nerv", "backups", "migrate-"+stamp)
 	for rel, want := range map[string]string{
@@ -774,7 +470,7 @@ func TestConflict_BothFilesAreRefused(t *testing.T) {
 	w := newWorld(t, comprobantes)
 	w.write(".ai-workflow/config.yaml", "enabled: true\n")
 	before := treeHash(t, w.root)
-	_, err := migrate.Compute(w.options(false, githubOrigin))
+	_, err := migrate.Compute(w.options(false))
 	if !refusal.Is(err) {
 		t.Fatalf("Compute = %v, want a refusal", err)
 	}
@@ -783,78 +479,5 @@ func TestConflict_BothFilesAreRefused(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "both exist") {
 		t.Errorf("error = %v", err)
-	}
-}
-
-// L22: the dim fixtures migrate to build: bash with images, and the
-// release plan of the migrated project saves every image after its package
-// commands and records its reference for release-ssh-compose to push.
-func TestRelease_MigratedDockerPresetPlansTheImageSaves(t *testing.T) {
-	for fixture, want := range map[string][]string{
-		comprobantes: {"ghcr.io/dirm-s-a/dim.comprobantes.api", "ghcr.io/dirm-s-a/dim.comprobantes.api-login-broker"},
-		factura:      {"ghcr.io/dirm-s-a/dim-factura-electronica-service"},
-	} {
-		t.Run(fixture, func(t *testing.T) {
-			w := newWorld(t, fixture)
-			p, _ := w.migrate(w.options(false, githubOrigin))
-			if anyContains(p.Warnings, "will not push them") || anyContains(p.Warnings, "records no image references") || anyContains(p.Warnings, "built locally only") {
-				t.Errorf("the old push warning is left: %q", p.Warnings)
-			}
-			rel, err := releaseconfig.Load(w.root)
-			if err != nil {
-				t.Fatal(err)
-			}
-			proj := rel.Projects[0]
-			artifacts := t.TempDir()
-			// The migrated project's build provider plans it, as nerv
-			// release has it do (through this test binary, TestMain).
-			bp, err := releaseplan.NewBuildProvider(releaseplan.Providers{FS: nerv.ExtensionsFS()}, rel, 0)
-			if err != nil {
-				t.Fatal(err)
-			}
-			planned, err := bp.Plan(context.Background())
-			if err != nil {
-				t.Fatal(err)
-			}
-			plan, err := releaseplan.Build(w.root, proj, releaseplan.Context{Version: "1.4.0-alpha.2", Channel: "alpha", Tag: "v1.4.0-alpha.2", ArtifactsDir: artifacts}, planned)
-			if err != nil {
-				t.Fatal(err)
-			}
-			// On alpha each image is saved as its version and alpha, as
-			// 4.2.0 pushed it, and every reference is recorded.
-			var saves []string
-			for _, img := range plan.Images {
-				saves = append(saves, strings.Join(img.Refs, " "))
-			}
-			var wantSaves []string
-			for _, name := range want {
-				wantSaves = append(wantSaves, name+":1.4.0-alpha.2 "+name+":alpha")
-			}
-			if !slices.Equal(saves, wantSaves) {
-				t.Errorf("plan image references = %q, want %q", saves, wantSaves)
-			}
-			var pkg []releaseplan.Step
-			for _, st := range plan.Stages {
-				if st.Name == "package" {
-					pkg = st.Steps
-				}
-			}
-			if len(pkg) == 0 || pkg[0].Command.Run == "" || !strings.Contains(pkg[0].Command.Run, "docker build") {
-				t.Fatalf("the package stage does not start with the docker builds: %+v", pkg)
-			}
-			var steps []string
-			for _, s := range pkg[1:] {
-				steps = append(steps, strings.Join(s.Exec, " "))
-			}
-			var wantSteps []string
-			for i, name := range want {
-				wantSteps = append(wantSteps,
-					"docker tag "+name+":1.4.0-alpha.2 "+name+":alpha",
-					"docker save -o "+filepath.Join(plan.OutputsDir, plan.Images[i].Tar)+" "+wantSaves[i])
-			}
-			if !slices.Equal(steps, wantSteps) {
-				t.Errorf("package steps = %q, want %q", steps, wantSteps)
-			}
-		})
 	}
 }

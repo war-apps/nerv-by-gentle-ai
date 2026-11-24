@@ -10,7 +10,6 @@
   <a href="https://yaml.org/"><img alt="YAML config" src="https://img.shields.io/badge/YAML-.ai--workflow.yml-CB171E?style=for-the-badge&logo=yaml&logoColor=white"></a>
   <a href="https://github.com/Gentleman-Programming/gentle-ai"><img alt="ODD and RDD" src="https://img.shields.io/badge/ODD-RDD-0aa?style=for-the-badge"></a>
   <a href="https://github.com/Gentleman-Programming/engram"><img alt="Engram memory" src="https://img.shields.io/badge/Engram-memory-2d3748?style=for-the-badge"></a>
-  <a href="https://www.teamwork.com/"><img alt="Teamwork task provider" src="https://img.shields.io/badge/Teamwork-task_provider-FF22B1?style=for-the-badge&logo=teamwork&logoColor=white"></a>
   <a href="https://skills.sh/"><img alt="skills.sh" src="https://img.shields.io/badge/skills.sh-manifest-333?style=for-the-badge"></a>
   <a href="https://git-scm.com/"><img alt="git" src="https://img.shields.io/badge/git-gitflow-F05032?style=for-the-badge&logo=git&logoColor=white"></a>
 </p>
@@ -59,88 +58,61 @@ see or touch it.
 See [docs/integration.md](docs/integration.md) for the full layering,
 activation, and pipeline diagrams.
 
-## Core and optional extensions
-
-The marketplace ships the core and two optional extensions (`task` and
-`release`) with their providers. Each one is installed as its own
-Claude Code plugin:
-
-| Plugin | Required | What it does |
-|---|---|---|
-| `nerv@nerv` | yes | Core: adapts gentle-ai's agents to the NERV pipeline. It holds no task, timer or tracker logic. |
-| `task` | no | The task extension: the `/task:*` commands, local timers, and the `task:dispatcher` agent that turns pipeline events into tracker operations. |
-| `task-teamwork` | no | A task provider for Teamwork, with a `provider.yaml` manifest. |
-| `release` | no | The release extension: versions, builds and deploys. `/release:version`, `/release:setup`, `/release:build` (a local artifact; it never writes to git), `/release:deploy` and `/release:deploy-setup` (release commit, tag, push, images, targets, git host release), `/release:ship` (the next version, the build with its lint and test stages, and the deploy in one go; the deploy is skipped when none is configured), and the `release:versioner`, `release:builder` and `release:deployer` agents. Its providers come with it: the native `conventional-commits` version engine (no semantic-release), the `docker-compose` and `bash` builds, the `github` git host and the `ssh-compose` and `script` targets. |
-| `release-conventional-commits` | no | The release version provider: the native Conventional Commits engine, the `version` slot's default. Installed with `release`. |
-| `release-docker-compose` | no | A release build provider: `docker compose` build, test service and saved images. Installed with `release`. |
-| `release-bash` | no | A release build provider: each stage runs the project's own command. Installed with `release`. |
-| `release-github` | no | A deploy git host provider for GitHub releases (`gh`), with a `provider.yaml` manifest. Installed with `release`. |
-| `release-ssh-compose` | no | A deploy target provider: pushes the artifact's images and updates the containers over SSH with the host's compose script. Installed with `release`. |
-| `release-script` | no | A deploy target provider: runs the repository's own deploy script from the release commit. Installed with `release`. |
-
-When the task extension is installed, the orchestrator emits pipeline events
-(`run.started`, `verification.started`, `audit.ranked`, `issue.deferred`,
-`wave.started`, `run.closed`, `run.halted`) to `task:dispatcher`, which
-answers one envelope per provider. When it is not installed, core emits
-nothing, asks no task question and logs nothing. See
-[docs/integration.md](docs/integration.md#task-extension) for the event
-table, the envelope, the per-event switches and `/task:replay`.
-
-The release extension is independent of the orchestrator: install it with
-`nerv install --with release` (every provider comes with it), run
-`/release:setup` and `/release:deploy-setup` once, then `/release:build`
-leaves a local artifact in `.nerv/artifacts/<project>/<version>/` and
-`/release:deploy` releases it (`/release:ship` does the version, the build and
-the deploy in one go). Both
-always rehearse with a dry run and act only after your explicit yes. A
-repository set up with nerv 4.2.0 or 5.0.0-alpha.1 (`.ai-workflow.yml`)
-migrates with `nerv migrate` (see [docs/migration.md](docs/migration.md));
-until then nerv refuses to run on the old file.
-
 ## NERV ecosystem
 
-Some of NERV's optional extensions are moving out into standalone
-NERV-ecosystem tools: each gets its own repository, CLI, Claude Code
+The marketplace ships one plugin, the core (`nerv@nerv`): it adapts
+gentle-ai's agents to the NERV pipeline and holds no task, timer, tracker,
+release or deploy logic. Task tracking and releases are standalone
+NERV-ecosystem tools: each has its own repository, CLI, Claude Code
 plugin and configuration file, installed by its own script
 (`install.sh`/`install.ps1`) exactly like `nerv` itself — it installs and
 works on a machine without `nerv`.
 
-| Tool | Repository | Replaces |
+| Tool | Repository | What it brings |
 |---|---|---|
-| [`nerv-task`](https://github.com/war-apps/nerv-task-by-gentle-ai) | `war-apps/nerv-task-by-gentle-ai` | the `task` and `task-teamwork` extensions |
-| [`nerv-release`](https://github.com/war-apps/nerv-release-by-gentle-ai) | `war-apps/nerv-release-by-gentle-ai` | the `release` extension and its providers (`release-bash`, `release-conventional-commits`, `release-docker-compose`, `release-github`, `release-script`, `release-ssh-compose`) |
+| [`nerv-task`](https://github.com/war-apps/nerv-task-by-gentle-ai) | `war-apps/nerv-task-by-gentle-ai` | the `/task:*` commands, local timers, the task providers (such as Teamwork) and the `task:dispatcher` agent the orchestrator emits its task events to |
+| [`nerv-release`](https://github.com/war-apps/nerv-release-by-gentle-ai) | `war-apps/nerv-release-by-gentle-ai` | the `/release:*` commands and the native version, build and deploy engines (`nerv-release version next`, `build`, `deploy`) |
 
-`nerv install` and `nerv upgrade` also offer the catalogue, after NERV's
-own work: each tool's state (not installed, installed with its version,
-or outdated against its latest release) is shown and confirmed one by one
-on a terminal; `--tools <names>` installs or upgrades the named tools
-outright, and `--no-tools` skips the step. Confirming a tool here, or one
-already installed on this machine, also stops NERV from ever offering,
-selecting or re-enabling the extension it replaces — even one already
-enabled is left exactly as found, since disabling it is the tool's own
-install, never NERV's. See
+`nerv install` and `nerv upgrade` offer the catalogue: each tool's state
+(not installed, installed with its version, or outdated against its
+latest release) is shown and confirmed one by one on a terminal;
+`--tools <names>` installs or upgrades the named tools outright, and
+`--no-tools` skips the step. See
 [docs/commands.md](docs/commands.md#nerv-install) for the full flow and
 flags.
 
-Once `nerv-task` is installed, `/nerv:init` offers `nerv-task init`
-instead of `/task:setup`, and `nerv migrate` moves the `tasks:` section to
-nerv-task's own `task.yaml` files instead of `.ai-workflow/config.yaml`
-(see [docs/commands.md](docs/commands.md#nerv-migrate) and
-[docs/configuration.md](docs/configuration.md#tasks-task-extension)). From
-then on, configure task tracking through nerv-task's own commands and
-[its documentation](https://github.com/war-apps/nerv-task-by-gentle-ai),
-not NERV's.
+When nerv-task is installed (the `task:dispatcher` agent is available),
+the orchestrator emits pipeline events (`run.started`,
+`verification.started`, `audit.ranked`, `issue.deferred`, `wave.started`,
+`run.closed`, `run.halted`) to `task:dispatcher`, which answers one
+envelope per provider. When it is not installed, core emits nothing, asks
+no task question and logs nothing. See
+[docs/integration.md](docs/integration.md#task-tracking-nerv-task).
+nerv-release is independent of the orchestrator.
 
-Likewise, once `nerv-release` is installed, `/nerv:init` offers
-`nerv-release init` instead of `/release:setup` and
-`/release:deploy-setup`; configure releases and deploys through
-nerv-release's own commands and
-[its documentation](https://github.com/war-apps/nerv-release-by-gentle-ai).
+With a tool installed, `/nerv:init` offers its repository setup
+(`nerv-task init`, `nerv-release init`), and `nerv migrate` moves the
+`tasks:`, `release:` and `deploy:` sections out of `.ai-workflow/config.yaml`
+into the tool's own `task.yaml` or `release.yaml` (see
+[docs/configuration.md](docs/configuration.md#task-release-and-deploy-settings)).
+From then on, configure them through the tools' own commands and
+documentation, not NERV's.
+
+Up to 6.6 these were optional extensions nerv shipped itself (`task`,
+`task-teamwork`, `release` and its six providers) with `nerv release`,
+`nerv deploy` and `nerv version next`. `nerv install` and `nerv upgrade`
+disable those plugins when they find them, and say how to install the
+tool that replaces them; see
+[docs/migration.md](docs/migration.md#from-66-extensions-moved-to-tools)
+for everything that moved. A repository set up with nerv 4.2.0 or
+5.0.0-alpha.1 (`.ai-workflow.yml`) migrates with `nerv migrate` (see
+[docs/migration.md](docs/migration.md)); until then nerv refuses to run
+on the old file.
 
 ## Requirements
 
 - **gentle-ai 4.x** — major version 4 is required; minor and
-  patch are free. Tested against 4.5.0. Within 4.x, `nerv install` and
+  patch are free. Tested against 4.6.0. Within 4.x, `nerv install` and
   `nerv upgrade` keep gentle-ai on its newest 4.x release automatically
   (`gentle-ai upgrade gentle-ai`, then `gentle-ai sync`); on 3.x, upgrade
   by hand with
@@ -229,8 +201,9 @@ macOS (see "Updating" below).
    newer major version is reported and left alone; a failed release
    lookup or upgrade is only a warning (install continues with the
    gentle-ai it found).
-3. Materializes the embedded core plugin, and the extensions and providers
-   you install, under `~/.nerv/marketplace`.
+3. Materializes the embedded core plugin under `~/.nerv/marketplace`, and
+   disables the extension plugins an earlier nerv shipped (see
+   "NERV ecosystem" above).
 4. Registers that directory marketplace in Claude Code's `settings.json`.
 5. Refreshes the plugin cache (`claude plugin uninstall`/`install`).
 6. Applies model/effort assignments to the cached agents.
@@ -247,11 +220,9 @@ macOS (see "Updating" below).
 
 Flags: `--no-configure` (skip the closing wizard/hint entirely),
 `--no-skills` (skip installing skills), `--require-gentle-ai` (fail with
-exit 1 when gentle-ai is missing or not 4.x), `--with <names>` (install
-extensions and providers such as `task,task-teamwork` or
-`release`; in a terminal, install offers the task extension, its providers,
-then the release extension, which brings every provider it ships with it,
-unasked).
+exit 1 when gentle-ai is missing or not 4.x), `--tools <names>` (install
+the named NERV-ecosystem tools, such as `nerv-task,nerv-release`, without
+asking) and `--no-tools` (skip the tools step).
 
 ### Updating
 
@@ -268,14 +239,14 @@ running executable, so NERV's files stay laid over gentle-ai's; `nerv
 upgrade` still exits 1 for the failed replace. See
 [docs/commands.md](docs/commands.md#nerv-upgrade).
 
-**Upgrading from a release with built-in tasks.** An existing `tasks:`
-block in `.ai-workflow/config.yaml` keeps working once the task extension is
-installed. The task settings that are not personal are read from the project
-only: `nerv migrate --user` moves the ones in `~/.config/ai-workflow/config.yaml`
-under `defaults.tasks`, which seeds new projects. Without the extension, core ignores the block and never
-deletes it. Copies of the `/task:*` commands that an older release put in
-`~/.claude/commands/task/` are reported by `nerv install` and removed only
-after you confirm. See [docs/configuration.md](docs/configuration.md#tasks-task-extension).
+**Upgrading from a release with the task or release extension.** Install
+the tool that replaces it (`nerv install --tools nerv-task,nerv-release`),
+then run `nerv migrate` in each repository and `nerv migrate --user` once:
+they move the `tasks:`, `release:` and `deploy:` settings into the tools'
+own files. Core ignores those sections until then. Copies of the
+`/task:*` commands that an older release put in `~/.claude/commands/task/`
+are reported by `nerv install` and removed only after you confirm. See
+[docs/migration.md](docs/migration.md#from-66-extensions-moved-to-tools).
 
 ### Uninstall
 
@@ -307,9 +278,7 @@ only the answers you confirm.
 
 **Activation per repository.** A repo opts in by writing
 `.ai-workflow/config.yaml` with `enabled: true` — run
-`nerv configure --init-repo <path>` (with `--repo-base`, and a repeatable
-`--repo-provider-config <provider>.<key>=<value>` for task-provider
-settings), or `/nerv:init` from inside Claude Code for the same thing
+`nerv configure --init-repo <path>` (with `--repo-base`), or `/nerv:init` from inside Claude Code for the same thing
 through guided questions. Running `--init-repo` on a repo that already has
 `.ai-workflow/config.yaml` leaves its content as written.
 `/nerv:status` reports the resolved config and, while a run is in progress,
@@ -344,11 +313,9 @@ The wizard walks through these sections:
 5. **Repos** (`--skip-repos`) — optionally writes `.ai-workflow/config.yaml` in one
    or more local git repositories, leaving an already-initialized repo
    untouched.
-6. **Task providers** — shown only when the `task` extension is enabled. It prompts
-   each enabled provider's scalar config keys, read from its
-   `provider.yaml`, plus the default task provider for new repositories
-   (`defaults.tasks.provider`) when more than one provider is enabled. The `/task:*` commands are served by the `task` extension itself,
-   so nothing is copied to `~/.claude/commands/task/`.
+
+Task settings are not part of the wizard: they belong to nerv-task
+(`nerv-task configure`).
 
 The closing step (`--no-refresh` to skip) applies the resolved `models:`
 block to the plugin cache and refreshes it.
@@ -365,11 +332,7 @@ FULL runs.
 
 Outside the wizard, the plugin stays self-contained apart from these
 requirements: **gentle-ai 4.x** installed and configured (`gentle-ai
-install`), **Claude Code** (plus, for the optional `task-teamwork`
-provider, Teamwork's official MCP server, which the provider's plugin
-registers as `teamwork`, the claude.ai Teamwork connector, or a server
-registered with a fixed token: see
-[plugins/task-teamwork/README.md](plugins/task-teamwork/README.md)), and **Engram** (optional — used for
+install`), **Claude Code**, and **Engram** (optional — used for
 the shared `nerv` knowledge base and per-repo memory detection).
 
 ## Manual setup
@@ -384,7 +347,7 @@ Non-interactive configuration:
 nerv configure --print --json
 nerv configure --set key=value --set key2=value2 --json
 nerv configure --set-model role=model[/effort] --set-model role2=from:<gentle-ai-phase> --json
-nerv configure --init-repo <path> --repo-base <branch> [--repo-provider-config <provider>.<key>=<value> ...]
+nerv configure --init-repo <path> --repo-base <branch>
 ```
 
 `--set` and `--set-model` are repeatable flags — pass every changed key of
@@ -403,9 +366,8 @@ nerv apply-models
 
 Where files live: user scope `~/.config/ai-workflow/config.yaml` (personal
 defaults, never committed), project scope `<repo>/.ai-workflow/config.yaml`
-(committed, next to the repository's own extensions and providers in
-`.ai-workflow/extensions/` and `.ai-workflow/providers/`; see
-[docs/extensions.md](docs/extensions.md#project-extensions-and-providers)),
+(committed, next to the NERV-ecosystem tools' own `task.yaml` and
+`release.yaml`; see [docs/configuration.md](docs/configuration.md)),
 and the plugin cache under
 `~/.claude/plugins/cache/nerv/nerv/<version>/`.
 
@@ -438,8 +400,9 @@ for the manual journey suite and the `claude plugin eval` corpus.
 Every Nerv by Gentle-AI setting lives in two scope copies of one schema
 (user `~/.config/ai-workflow/config.yaml` and project `<repo>/.ai-workflow/config.yaml`,
 project overriding user key by key) with sections for skills, per-role
-model/effort overrides, critical paths, artifacts and git. The `tasks:`
-section belongs to the optional task extension; core ignores it.
+model/effort overrides, critical paths, artifacts and git. Task, release
+and deploy settings belong to nerv-task and nerv-release; core ignores
+them.
 
 See [docs/configuration.md](docs/configuration.md) for the full schema,
 example YAML, and how to configure per-role models and effort (wizard,
@@ -451,31 +414,17 @@ example YAML, and how to configure per-role models and effort (wizard,
   Claude Code slash commands and the `nerv` CLI, with usage and examples.
 - [docs/integration.md](docs/integration.md) — how Nerv by Gentle-AI
   integrates with gentle-ai, the agent roles table, and operations
-  (activation, artifacts, the task extension and its events, Engram project
+  (activation, artifacts, the nerv-task events, Engram project
   detection).
 - [docs/configuration.md](docs/configuration.md) — the configuration
   configuration schema and how to configure per-role models and effort.
 - [docs/releases.md](docs/releases.md) — versioning, release channels,
   and how to cut a release.
-- [docs/release-commands.md](docs/release-commands.md) — the release extension
-  for your own repositories: `nerv version next` / `/release:version` (the next
-  semantic version of a repo or of each monorepo project, from the native
-  engine), `nerv release` / `/release:build` (build, test and package what is on
-  origin into a local artifact) and the `release:` section, which
-  `/release:setup` writes interactively (importing an existing semantic-release
-  config with `nerv release setup --import`).
-- [docs/deploy.md](docs/deploy.md) — the release extension's deploy: `nerv deploy` /
-  `/release:deploy` (release commit, tag, push, targets, git host release from
-  an artifact), the `deploy:` section (`/release:deploy-setup`) and the provider
-  contract (`release-github`, `release-ssh-compose`, `release-script`).
-- [docs/extensions.md](docs/extensions.md) — the two contracts of the
-  extensions and their providers: `extension.yaml` (an extension and the core) and
-  `provider.yaml` (a provider and its extension), with the common
-  request/response envelope.
 - [docs/migration.md](docs/migration.md) — `nerv migrate`: moving a
-  repository and the user configuration from nerv 4.2.0 or 5.0.0-alpha.1 (configuration
-  files, `release:` and `deploy:`, the semantic-release import, openspec to
-  ODD, the extensions to install).
+  repository and the user configuration from nerv 4.2.0 or 5.0.0-alpha.1
+  (configuration files, openspec to ODD), the move of `tasks:`, `release:`
+  and `deploy:` to the NERV-ecosystem tools, and everything that left nerv
+  with the extensions in 6.7 and what replaces it.
 - [docs/troubleshooting.md](docs/troubleshooting.md) — known limitations
   and troubleshooting.
 

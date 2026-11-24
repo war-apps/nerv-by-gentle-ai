@@ -50,16 +50,9 @@ func TestSoloFull_DirectAndLightRunFilesLiveUnderNervRuns(t *testing.T) {
 	assertPluginContains(t, soloODDRef, ".nerv/locks/{run-id}.lock")
 }
 
-// The task plugin's replay finds the task-events file in either layout.
+// The orchestrator names the task-events file in either layout, so a replay
+// finds it.
 func TestSoloFull_ReplayFindsTaskEventsInEitherLayout(t *testing.T) {
-	for _, path := range []string{"task/commands/replay.md", "task/skills/task/SKILL.md"} {
-		data, err := fs.ReadFile(ExtensionsFS(), path)
-		if err != nil {
-			t.Fatalf("reading %s: %v", path, err)
-		}
-		assertContainsAll(t, path, normalizeSpace(string(data)),
-			"`odd/{feature}/nerv/task-events.yaml`", "`.nerv/runs/{run-id}/task-events.yaml`")
-	}
 	assertPluginContains(t, "skills/nerv-orchestrator/references/task-events.md",
 		"`odd/{feature}/nerv/task-events.yaml`", "`.nerv/runs/{run-id}/task-events.yaml`")
 }

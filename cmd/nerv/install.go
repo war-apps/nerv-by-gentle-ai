@@ -27,35 +27,23 @@ the gentle-ai it found.
 First offers the NERV-ecosystem tools (nerv-task, nerv-release): on a
 terminal with neither --tools nor --no-tools, each tool's state (not
 installed, its version, or outdated against its latest release) is shown
-and confirmed one by one, before anything about NERV's own extensions is
-asked; a confirmed tool's official install script then runs (install.sh
-on Linux/macOS, install.ps1 on Windows).
+and confirmed one by one; a confirmed tool's official install script then
+runs (install.sh on Linux/macOS, install.ps1 on Windows).
 
 Then materializes the embedded NERV plugin under <home>/.nerv/marketplace,
 registers it in Claude Code's settings.json, refreshes the plugin cache,
 applies model/effort assignments to the cached agents, ensures the Engram
-"nerv" knowledge base, and installs skills. It also installs the optional
-extensions and providers named by --with, keeps the ones already enabled up
-to date, and, when stdin is a terminal, offers the others, in this order:
-  1. the task extension (the /task:* commands);
-  2. its providers (task-<name>), only once task is installed;
-  3. the release extension (nerv release, the version engine, nerv deploy).
-An extension whose extension.yaml says providers: bundled (release)
-installs all its providers with it, without asking: release brings
-release-conventional-commits, release-docker-compose and release-bash (the
-version and build), and release-github, release-ssh-compose and
-release-script (the deploy). task's providers are suggested: each is offered
-after task.
-Requirements: a provider requires its extension, and is offered only once
-its extension is installed or chosen. An extension or provider named in --with brings what it requires
-with it; a requirement this nerv does not ship is refused.
-Old /task:* copies in <home>/.claude/commands/task, which shadow the task
-extension's commands, are reported, and removed when you confirm on a terminal.
+"nerv" knowledge base, and installs skills. Old /task:* copies in
+<home>/.claude/commands/task, which shadow the /task:* commands, are
+reported, and removed when you confirm on a terminal.
 
-An extension a tool replaces (task, task-teamwork for nerv-task; release
-and its six providers for nerv-release) is never offered, selected or
-re-enabled once that tool is installed, or chosen in this run's
-ecosystem-tools step above.
+The extension plugins nerv no longer ships (task and task-teamwork,
+replaced by nerv-task; release, its providers and the older deploy ones,
+replaced by nerv-release) are disabled: removed from settings.json and
+uninstalled from the plugin cache. When the tool that replaces them is
+not installed (declined, or not asked without a terminal), install says
+which were disabled and how to install the tool (nerv install --tools
+<tool>): their /task:* or /release:* commands are unavailable until then.
 
 Then, when such a tool is installed and its settings are still in the
 user config.yaml, it offers nerv migrate --user: on a terminal it shows
@@ -70,16 +58,13 @@ Flags:
   --require-gentle-ai   Fail (exit 1) when gentle-ai is missing or not 4.x
   --no-skills           Skip installing skills
   --no-configure        Skip the closing wizard/hint entirely
-  --with <names>        Comma-separated extensions and providers to install, such as
-                        task,task-<provider>,release,release-<provider>
-                        (each brings what it requires)
 ` + ecosystemToolsFlagsUsage("install")
 
 const uninstallUsage = `Usage: nerv uninstall [flags]
 
 Removes NERV's settings.json registration, uninstalls the cached plugin and
-every enabled extension and provider,
-and removes the materialized marketplace directory.
+every other enabled plugin of the nerv marketplace, and removes the
+materialized marketplace directory.
 `
 
 const applyModelsUsage = `Usage: nerv apply-models [flags]
@@ -95,7 +80,6 @@ func runInstall(args []string, stdout, stderr io.Writer, opts options) int {
 	requireGentleAI := fs.Bool("require-gentle-ai", false, "")
 	noSkills := fs.Bool("no-skills", false, "")
 	noConfigure := fs.Bool("no-configure", false, "")
-	with := fs.String("with", "", "")
 	tools := fs.String("tools", "", "")
 	noTools := fs.Bool("no-tools", false, "")
 	// skipGentleAIUpgrade is internal: only nerv upgrade's own install run
@@ -112,6 +96,11 @@ func runInstall(args []string, stdout, stderr io.Writer, opts options) int {
 	// passes that flag alone, and its first install of this version must
 	// still offer the migration.
 	skipMigrateOffer := fs.Bool("skip-migrate-offer", false, "")
+	// skipOrphanCleanup is internal: only nerv upgrade's own install run
+	// sets it, since the upgrade disables the orphaned extension plugins
+	// itself, after its own ecosystem-tools step. An older nerv's upgrade
+	// does not pass it, so its first install of this version disables them.
+	skipOrphanCleanup := fs.Bool("skip-orphan-cleanup", false, "")
 
 	if err := fs.Parse(args); err != nil {
 		fmt.Fprint(stderr, installUsage)
@@ -139,12 +128,9 @@ func runInstall(args []string, stdout, stderr io.Writer, opts options) int {
 		}
 	}
 
-	// S11/F2: the ecosystem tools are offered before NERV's own
-	// extensions, so a tool chosen in this run (not only one already
-	// installed on this machine) also suppresses the extensions it
-	// replaces (task, task-teamwork for nerv-task; release and its
-	// providers for nerv-release) -- a user who accepts a tool is never
-	// also asked about them.
+	// S11: the ecosystem tools are offered first, so a tool chosen in
+	// this run (not only one already installed on this machine) counts as
+	// installed when the extension plugins it replaces are disabled (S6).
 	var selectedTools []ecosystem.Tool
 	if !*skipEcosystemTools {
 		var ecoErr error
@@ -159,22 +145,19 @@ func runInstall(args []string, stdout, stderr io.Writer, opts options) int {
 		Home:                        home,
 		SettingsPath:                opts.Settings,
 		FS:                          opts.PluginFS,
-		ExtensionsFS:                opts.ExtensionsFS,
 		Runner:                      opts.Runner,
 		Now:                         opts.Now,
 		LookPath:                    opts.LookPath,
 		ConfirmSync:                 syncConfirmer(opts, stdout),
-		ConfirmExtension:            extensionConfirmer(opts, stdout),
 		ConfirmRemoveLegacyCommands: legacyCommandsConfirmer(opts, stdout),
 		Stdout:                      stdout,
 	}
 
-	err = install.Install(context.Background(), deps, install.Options{
-		RequireGentleAI:      *requireGentleAI,
-		NoSkills:             *noSkills,
-		Extensions:           splitList(*with),
-		SuppressedExtensions: suppressedExtensions(context.Background(), opts, home, selectedTools),
-	})
+	installOpts := install.Options{RequireGentleAI: *requireGentleAI, NoSkills: *noSkills}
+	if !*skipOrphanCleanup {
+		installOpts.Orphans = orphanFamilies(context.Background(), opts, home, selectedTools)
+	}
+	err = install.Install(context.Background(), deps, installOpts)
 	if code := mapInstallError(stdout, err); code != 0 {
 		return code
 	}
@@ -195,7 +178,7 @@ func runInstall(args []string, stdout, stderr io.Writer, opts options) int {
 		return 0
 	}
 
-	wizDeps := configure.Deps{Home: home, FS: opts.PluginFS, ExtensionsFS: opts.ExtensionsFS, Runner: opts.Runner, Now: opts.Now, LookPath: opts.LookPath, Getenv: opts.Getenv}
+	wizDeps := configure.Deps{Home: home, FS: opts.PluginFS, Runner: opts.Runner, Now: opts.Now, LookPath: opts.LookPath, Getenv: opts.Getenv}
 	wizPaths := configure.ResolvePaths(home, "")
 	wizOpts := wizard.Options{Paths: wizPaths, SettingsPath: opts.Settings}
 	if _, err := wizard.Run(wizDeps, opts.Stdin, stdout, wizOpts); err != nil {
@@ -227,7 +210,6 @@ func runUninstall(args []string, stdout, stderr io.Writer, opts options) int {
 		Home:         home,
 		SettingsPath: opts.Settings,
 		FS:           opts.PluginFS,
-		ExtensionsFS: opts.ExtensionsFS,
 		Runner:       opts.Runner,
 		Now:          opts.Now,
 		LookPath:     opts.LookPath,

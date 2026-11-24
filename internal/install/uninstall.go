@@ -9,8 +9,9 @@ import (
 	"github.com/war-apps/nerv-by-gentle-ai/internal/paths"
 )
 
-// Uninstall tolerantly runs "claude plugin uninstall" for every enabled
-// extension and provider of the nerv marketplace, then removes NERV's
+// Uninstall tolerantly runs "claude plugin uninstall" for every other
+// enabled plugin of the nerv marketplace (such as the extensions and
+// providers an earlier nerv shipped), then removes NERV's
 // settings.json registration (backed up and written atomically, like
 // Install's own registration step) including every other "*@nerv" id,
 // runs "claude plugin uninstall nerv@nerv" and "claude plugin marketplace

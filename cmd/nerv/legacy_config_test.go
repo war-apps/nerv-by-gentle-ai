@@ -79,36 +79,3 @@ func TestLegacyConfig_ApplyModelsHints(t *testing.T) {
 		t.Errorf("stderr %q: want exactly one hint line naming %s", stderr.String(), old)
 	}
 }
-
-func TestLegacyConfig_ReleaseRefusesAsUnconfiguredWithTheHint(t *testing.T) {
-	f := newReleaseFixture(t, "")
-	old := filepath.Join(f.top, ".nerv", "nerv.yaml")
-	writeLegacy(t, old, releaseMonorepoYAML)
-
-	code, _, stderr := f.run(t, "--yes")
-	if code != 1 || !strings.Contains(stderr, "no release: section in .ai-workflow/config.yaml") {
-		t.Fatalf("exit %d, stderr %q: want the not-configured refusal", code, stderr)
-	}
-	got := hintLines(stderr, old)
-	if len(got) != 1 {
-		t.Fatalf("stderr %q: want exactly one hint line naming %s", stderr, old)
-	}
-	// L12: in text mode the hint is indented under the refusal it explains.
-	if !strings.HasPrefix(got[0], "  ") {
-		t.Errorf("hint line %q is not indented", got[0])
-	}
-}
-
-func TestLegacyConfig_VersionNextIsTheWholeRepositoryWithTheHint(t *testing.T) {
-	f := newNextFixture(t, "")
-	old := filepath.Join(f.top, ".nerv", "nerv.yaml")
-	writeLegacy(t, old, "release:\n  projects:\n    - name: api\n      path: api\n")
-
-	code, _, stderr := f.run(t, "--project", "api")
-	if code != 1 || !strings.Contains(stderr, "no release: section in .ai-workflow/config.yaml") {
-		t.Fatalf("exit %d, stderr %q: want the single-project refusal", code, stderr)
-	}
-	if got := hintLines(stderr, old); len(got) != 1 {
-		t.Errorf("stderr %q: want exactly one hint line naming %s", stderr, old)
-	}
-}

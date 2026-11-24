@@ -11,20 +11,16 @@ import (
 	"path/filepath"
 	"strings"
 
-	nerv "github.com/war-apps/nerv-by-gentle-ai"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/claude"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/config"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/configstore"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/configure"
-	"github.com/war-apps/nerv-by-gentle-ai/internal/deployconfig"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/doctor"
-	"github.com/war-apps/nerv-by-gentle-ai/internal/extension"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/gentleai"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/install"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/migrate"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/paths"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/refusal"
-	"github.com/war-apps/nerv-by-gentle-ai/internal/releaseconfig"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/skills"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/version"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/workflowconfig"
@@ -35,10 +31,9 @@ const doctorUsage = `Usage: nerv doctor [--json] [--cwd <dir>]
 Check that everything NERV needs is in order, on this machine (gentle-ai,
 Claude Code, engram, the NERV plugin and its skills, the user
 configuration) and in the repository (its configuration, a pending
-nerv migrate, the origin remote and base branch, the project extensions
-and providers, and the release:, deploy: and tasks: sections with the
-extensions they need). It changes nothing: it lists what it found, then
-the steps to take and the optional ones.
+nerv migrate, the origin remote and the base branch). It changes
+nothing: it lists what it found, then the steps to take and the optional
+ones.
 
 Flags:
   --json         Print the results as JSON
@@ -214,7 +209,7 @@ func (d *doctorRun) userConfig() {
 		d.add(name, doctor.OK, "none: the defaults apply", "")
 	default:
 		d.user = doc
-		runTime, err := workflowconfig.RunTimeUserKeys(doc, d.personal())
+		runTime, err := workflowconfig.RunTimeUserKeys(doc, workflowconfig.Personal{})
 		switch {
 		case err != nil:
 			d.add(name, doctor.Fail, d.paths.UserConfig+": "+err.Error(), "Fix "+d.paths.UserConfig)
@@ -232,7 +227,7 @@ func (d *doctorRun) userConfig() {
 // none is pending, or when nerv migrate --user cannot plan (userConfig
 // already reports a configuration that does not load).
 func (d *doctorRun) toolConfig() {
-	o := migrate.Options{Home: d.home, User: true, ExtensionsFS: d.opts.ExtensionsFS, Now: d.opts.Now()}
+	o := migrate.Options{Home: d.home, User: true, Now: d.opts.Now()}
 	setToolFileTargets(d.ctx, d.opts, d.home, &o)
 	if o.TaskYAMLHome == "" && o.ReleaseYAMLHome == "" {
 		return
@@ -244,21 +239,6 @@ func (d *doctorRun) toolConfig() {
 	for _, m := range pendingToolFileMoves(plan, o) {
 		d.add("tool config", doctor.Warn, m.Tool+" is installed, but your user config.yaml still has its settings: nerv migrate --user moves them to "+m.Path, stepMigrateUser)
 	}
-}
-
-// personal is the keys of the tasks:, release: and deploy: sections that
-// stay in the user file: the personal task keys and the scope: user keys
-// of the providers nerv ships.
-func (d *doctorRun) personal() workflowconfig.Personal {
-	fsys := d.opts.ExtensionsFS
-	if fsys == nil {
-		fsys = nerv.ExtensionsFS()
-	}
-	p, err := workflowconfig.LoadPersonal(fsys)
-	if err != nil {
-		return workflowconfig.Personal{}
-	}
-	return p
 }
 
 // repository checks the repository the directory cwd is in, if any.
@@ -279,7 +259,7 @@ func (d *doctorRun) repository(cwd string) {
 	d.report.Section("This repository (" + top + ")")
 	project, ok := d.projectConfig(top)
 	origin := originURL(d.ctx, d.opts, top)
-	d.migration(top, origin)
+	d.migration(top)
 	if !ok {
 		return
 	}
@@ -288,15 +268,9 @@ func (d *doctorRun) repository(cwd string) {
 		v, _ := wc.Scalar(key)
 		return v
 	}
-	d.projectExtensions(top)
-	release, deploy := d.release(top), d.deploy(top)
-	d.tasks(scalar("tasks.provider"))
-	switch {
-	case origin != "":
+	if origin != "" {
 		d.add("origin", doctor.OK, origin, "")
-	case release || deploy:
-		d.add("origin", doctor.Warn, "no origin remote: nerv release and nerv deploy work from origin", "Add the origin remote: git remote add origin <url>")
-	default:
+	} else {
 		d.add("origin", doctor.Info, "no origin remote", "")
 	}
 	d.baseBranch(top, scalar("git.base_branch"))
@@ -333,8 +307,8 @@ func (d *doctorRun) projectConfig(top string) (*config.Document, bool) {
 
 // migration checks whether nerv migrate has steps to take in the
 // repository.
-func (d *doctorRun) migration(top, origin string) {
-	o := migrate.Options{RepoRoot: top, Home: d.home, ExtensionsFS: d.opts.ExtensionsFS, OriginURL: origin, Now: d.opts.Now()}
+func (d *doctorRun) migration(top string) {
+	o := migrate.Options{RepoRoot: top, Home: d.home, Now: d.opts.Now()}
 	setToolFileTargets(d.ctx, d.opts, d.home, &o)
 	plan, err := migrate.Compute(o)
 	switch {
@@ -356,92 +330,6 @@ func (d *doctorRun) migration(top, origin string) {
 	default:
 		d.add("migration", doctor.OK, "nothing to migrate", "")
 	}
-}
-
-// projectExtensions checks the extensions and providers under
-// .ai-workflow/, when there are any.
-func (d *doctorRun) projectExtensions(top string) {
-	if !isDir(paths.ProjectExtensionsDir(top)) && !isDir(paths.ProjectProvidersDir(top)) {
-		return
-	}
-	fsys := d.opts.ExtensionsFS
-	if fsys == nil {
-		fsys = nerv.ExtensionsFS()
-	}
-	merged, err := extension.WithProject(fsys, top)
-	if err != nil {
-		d.add("project extensions", doctor.Fail, err.Error(), "Fix the folder it names under .ai-workflow/")
-		return
-	}
-	d.add("project extensions", doctor.OK, fmt.Sprintf("%d valid", len(extension.ProjectFolders(merged))), "")
-}
-
-// release checks the release: section and that the release extension is
-// installed, and reports whether the section is there.
-func (d *doctorRun) release(top string) bool {
-	rel, err := releaseconfig.Load(top)
-	if errors.Is(err, releaseconfig.ErrNotConfigured) {
-		d.add("release", doctor.Info, "not configured", "Run /release:setup in Claude Code to build and package releases with nerv release")
-		return false
-	}
-	if err == nil {
-		err = rel.CheckBuild()
-	}
-	if err != nil {
-		d.add("release", doctor.Fail, err.Error(), "Fix the release: section of .ai-workflow/config.yaml (/release:setup helps)")
-		return true
-	}
-	if !d.extensionEnabled("release") {
-		d.add("release", doctor.Warn, "configured, but the release extension is not installed", "Run nerv install --with release")
-		return true
-	}
-	d.add("release", doctor.OK, fmt.Sprintf("%d project(s)", len(rel.Projects)), "")
-	return true
-}
-
-// deploy checks the deploy: section and that the release extension, whose
-// providers nerv deploy runs, is installed, and reports whether the section
-// is there.
-func (d *doctorRun) deploy(top string) bool {
-	dep, err := deployconfig.Load(top)
-	switch {
-	case errors.Is(err, deployconfig.ErrNotConfigured):
-		d.add("deploy", doctor.Info, "not configured", "Run /release:deploy-setup in Claude Code to deploy releases with nerv deploy")
-		return false
-	case err != nil:
-		d.add("deploy", doctor.Fail, err.Error(), "Fix the deploy: section of .ai-workflow/config.yaml (/release:deploy-setup helps)")
-	case !d.extensionEnabled("release"):
-		d.add("deploy", doctor.Warn, "configured, but the release extension is not installed", "Run nerv install --with release")
-	default:
-		d.add("deploy", doctor.OK, fmt.Sprintf("%d target(s)", len(dep.Targets)), "")
-	}
-	return true
-}
-
-// tasks checks that the task extension and the provider tasks.provider
-// names are installed.
-func (d *doctorRun) tasks(provider string) {
-	if provider == "" {
-		d.add("tasks", doctor.Info, "no task provider (tasks.provider)", "")
-		return
-	}
-	var missing []string
-	for _, name := range []string{"task", "task-" + provider} {
-		if !d.extensionEnabled(name) {
-			missing = append(missing, name)
-		}
-	}
-	if len(missing) > 0 {
-		d.add("tasks", doctor.Warn, "tasks.provider is "+provider+", but "+strings.Join(missing, " and ")+" is not installed", "Run nerv install --with "+strings.Join(missing, ","))
-		return
-	}
-	d.add("tasks", doctor.OK, provider, "")
-}
-
-// extensionEnabled reports whether Claude Code has the extension or
-// provider plugin <name>@nerv enabled.
-func (d *doctorRun) extensionEnabled(name string) bool {
-	return d.settings().PluginEnabled(name + "@" + install.MarketplaceName)
 }
 
 // baseBranch checks that git.base_branch exists, locally or on origin.
@@ -475,9 +363,4 @@ func configDefault(key string) string {
 func isFile(path string) bool {
 	info, err := os.Stat(path)
 	return err == nil && !info.IsDir()
-}
-
-func isDir(path string) bool {
-	info, err := os.Stat(path)
-	return err == nil && info.IsDir()
 }

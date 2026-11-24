@@ -8,11 +8,6 @@ import (
 	"github.com/war-apps/nerv-kit-by-gentle-ai/claudeplugin"
 )
 
-// pluginManifestPath is every plugin's own manifest, relative to its root;
-// Extensions (extensions.go) reads it to discover and describe each
-// extension and provider folder.
-const pluginManifestPath = ".claude-plugin/plugin.json"
-
 // marketplace identifies nerv's own directory marketplace: the core
 // plugin's name and this repository's maintainer, exactly as nerv always
 // registered it before Materialize moved to nerv-kit.
@@ -25,21 +20,12 @@ type Result = claudeplugin.Result
 
 // Materialize writes the whole tree from src under dest/plugin, byte-exact,
 // and writes dest/.claude-plugin/marketplace.json registering it as a
-// directory marketplace named "nerv". It is MaterializeBundle with no
-// extensions and providers.
+// directory marketplace named "nerv". It is idempotent: a file whose
+// bytes already match the source is left untouched, and files under
+// dest/plugin or dest/plugins (where an earlier nerv materialized its
+// extension plugins) that are no longer present in src are removed. It
+// never writes or removes anything outside dest/plugin, dest/plugins and
+// dest/.claude-plugin.
 func Materialize(src fs.FS, dest string) (Result, error) {
 	return claudeplugin.Materialize(src, dest, marketplace)
-}
-
-// MaterializeBundle writes the core plugin tree from core under
-// dest/plugin and every extension and provider folder of extensions (one
-// folder per plugin, see Extensions) under dest/plugins/<name>, byte-exact,
-// then writes dest/.claude-plugin/marketplace.json listing the core plugin
-// first and the extensions in name order. It is idempotent: a file whose
-// bytes already match the source is left untouched, and files under
-// dest/plugin or dest/plugins that are no longer present in a source are
-// removed. It never writes or removes anything outside dest/plugin,
-// dest/plugins and dest/.claude-plugin. A nil extensions writes none.
-func MaterializeBundle(core, extensions fs.FS, dest string) (Result, error) {
-	return claudeplugin.MaterializeBundle(core, extensions, dest, marketplace)
 }

@@ -1,5 +1,5 @@
 ---
-description: Bootstrap NERV for this repository — writes .ai-workflow/config.yaml and the skill registry, then offers the configuration flows (NERV, tasks, release, deploy)
+description: Bootstrap NERV for this repository — writes .ai-workflow/config.yaml and the skill registry, then offers the configuration flows (NERV, nerv-task, nerv-release)
 ---
 
 # /nerv:init
@@ -18,10 +18,10 @@ creates no `odd/` file.
 
 2. **Read existing config.** Read the user config (the path `nerv configure --print --json` reports as `config_path`: `~/.config/ai-workflow/config.yaml` on Linux, `%AppData%\ai-workflow\config.yaml` on Windows) (user scope) if
    present, and `<repo>/.ai-workflow/config.yaml` (project scope) if present. Merge
-   per the standard precedence (project overrides user key by key), except
-   `tasks:`, `release:` and `deploy:`, which come from the project file only
-   (the user file's run-time keys there no longer apply; its `defaults:`
-   section is a seed, see step 4). Never
+   per the standard precedence (project overrides user key by key). A
+   `tasks:`, `release:` or `deploy:` section is not NERV's: those settings
+   belong to the nerv-task and nerv-release tools, and `nerv migrate` moves
+   them to the tools' own files. Never
    read the old `~/.claude/nerv/nerv.yaml` or `<repo>/.nerv/nerv.yaml` as
    configuration: if one exists without its new file, say once that
    `nerv migrate` moves it, and continue as if it were absent.
@@ -44,14 +44,7 @@ creates no `odd/` file.
 4. **Write `.ai-workflow/config.yaml`.** Compose the project file with `enabled: true`
    plus the resolved answers, following the schema in the approved NERV
    config (see `skills/nerv-orchestrator/SKILL.md` → Configuration
-   resolution). **Seed `tasks:`** from the user file's `defaults.tasks`
-   (same shape as `tasks:`), once: copy each of its keys the project file
-   does not set (the project's value always wins), and never copy a
-   personal key into the project (a `tasks.providers.<name>.<key>` whose
-   `provider.yaml` declares `scope: user`, `tasks.timer_store`,
-   `tasks.stale_after_hours`, `tasks.rounding_minutes`). Show each copied
-   key and value in the diff or summary as "copied from your
-   `defaults.tasks`". No `defaults.tasks`: write no `tasks:` section.
+   resolution). Write no `tasks:`, `release:` or `deploy:` section.
    Append a fully commented-out `models:`
    block showing the syntax and today's plugin defaults, so the user can see
    how to override a role's model/effort without guessing a value:
@@ -104,45 +97,33 @@ creates no `odd/` file.
    The options, in this order, each with its command's one-line purpose:
    - `/nerv:configure` — NERV's user configuration: git, skills, models,
      repository. Always offered.
-   - **Tasks repository setup** — one of:
-     - `nerv-task init` — the task tool's own repository setup. Offered
-       instead of `/task:setup` when nerv-task is installed (its binary on
-       `PATH` or in its default directory): nerv-task is installed means the
-       task extension is being replaced, so its own `init` runs in place of
-       the extension's setup flow.
-     - `/task:setup` — the `tasks:` section: task provider and connection
-       check. Offered only when the task extension is installed and
-       nerv-task is not.
-   - **Release repository setup** — one of:
-     - `nerv-release init` — the release tool's own repository setup
-       (release and deploy). Offered instead of `/release:setup` and
-       `/release:deploy-setup` when nerv-release is installed (its binary
-       on `PATH` or in its default directory): nerv-release is installed
-       means the release extension is being replaced, so its own `init`
-       runs in place of the extension's two setup flows.
-     - `/release:setup` — the `release:` section: projects, build
-       providers, version engine. Offered only when the release extension
-       is installed and nerv-release is not.
-     - `/release:deploy-setup` — the `deploy:` section: git host and
-       targets. Offered only when the release extension is installed and
-       nerv-release is not.
+   - `nerv-task init` — the nerv-task tool's own repository setup (its
+     `.ai-workflow/task.yaml`: task provider and connection check).
+     Offered only when nerv-task is installed (its binary on `PATH` or in
+     its default directory); when nerv-task is not installed it is not
+     offered.
+   - `nerv-release init` — the nerv-release tool's own repository setup
+     (its `.ai-workflow/release.yaml`: release and deploy). Offered only
+     when nerv-release is installed (its binary on `PATH` or in its
+     default directory); when nerv-release is not installed it is not
+     offered.
    - **None** — skip this step; always offered alongside the flows above.
 
-   A flow whose extension or tool is not installed is not offered; say once
-   which extensions are missing and that `nerv install` adds them. STOP after
-   asking and wait. Selecting None skips this step. Run each selected flow
-   in the order above, one after the other: Follow the selected command's
-   file from its first step, with no arguments (`/nerv:configure` with
-   `all`), or run the CLI command directly for `nerv-task init` and
-   `nerv-release init`. A `nerv-task init`/`/task:setup` choice is never
-   both offered, so at most one of the two ever runs; likewise
-   `nerv-release init` is never offered together with `/release:setup` or
-   `/release:deploy-setup`. `/release:deploy-setup` stops when the
-   `release:` section is missing, so it runs after `/release:setup`. A flow
-   that stops or fails is reported and the next selected flow still runs.
+   A flow whose tool is not installed is not offered; say once which tools
+   are missing and that `nerv install --tools <tool>` installs them. NERV
+   itself ships no task or release setup: the tools' own slash commands
+   (`/task:setup`, `/release:setup`, `/release:deploy-setup`) do the same
+   setup and are never offered here in addition to their tool's `init`.
+   STOP after asking and wait. Selecting None skips this step. Run each
+   selected flow in the order above, one after the other: Follow the
+   selected command's file from its first step, with no arguments
+   (`/nerv:configure` with `all`), or
+   run the CLI command directly for `nerv-task init` and
+   `nerv-release init`. A flow that stops or fails is reported and the
+   next selected flow still runs.
 
 7. **Summarize.** Print what was written (`.ai-workflow/config.yaml` path and its
-   resolved keys, marking the ones copied from `defaults.tasks`), which
+   resolved keys), which
    setup flows ran and their result, and remind the user that no restart is required for the
    file itself, but the SessionStart hook only prints the activation
    header that loads the `nerv-orchestrator` skill on the **next** session
