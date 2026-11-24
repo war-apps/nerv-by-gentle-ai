@@ -36,7 +36,8 @@ type Config struct {
 	// has only its old file.
 	Hints []string
 	// Personal are the keys under Sections that Scalar still reads from
-	// the user file (LoadPersonal); the zero value holds PersonalTaskKeys.
+	// the user file (LoadPersonal); the zero value holds PersonalTaskKeys and
+	// PersonalProviderKeys.
 	Personal Personal
 }
 

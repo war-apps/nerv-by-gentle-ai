@@ -30,14 +30,15 @@ func isReleasePersonal(path string) bool { return slices.Contains(releasePersona
 // moveRepoReleaseYAML moves doc's release: and deploy: sections into the
 // repository's own release.yaml (o.ReleaseYAMLRepo), key by key, each keeping its "release."/"deploy."
 // prefix. A personal key (releasePersonalKeys) is never moved: it stays
-// in doc and is reported. A key already set in release.yaml is kept in
-// doc and reported as a conflict. A no-op when o.ReleaseYAMLRepo is "".
+// in doc and is reported, with or without nerv-release. A key already set
+// in release.yaml is kept in doc and reported as a conflict. Otherwise a
+// no-op when o.ReleaseYAMLRepo is "".
 func moveRepoReleaseYAML(p *Plan, o Options, doc *config.Document) error {
-	if o.ReleaseYAMLRepo == "" {
-		return nil
-	}
 	for _, path := range presentReleasePersonal(doc) {
 		p.warn("%s: %s: a personal setting in the project file, kept: nerv-release reads it from your global release.yaml only; set it there and remove it here", paths.ProjectConfigFile, path)
+	}
+	if o.ReleaseYAMLRepo == "" {
+		return nil
 	}
 	existing, exists, err := readOptional(o.ReleaseYAMLRepo)
 	if err != nil {

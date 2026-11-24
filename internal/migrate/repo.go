@@ -163,12 +163,15 @@ func planRepo(p *Plan, o Options, user *userState) error {
 			current = prevText
 		}
 		doc = config.Parse(string(current))
+		where := paths.ProjectConfigFile
+		if prevExists {
+			where = paths.PreviousProjectConfigFile
+		}
 		if doc.KeyExists(alphaSection) {
-			where := paths.ProjectConfigFile
-			if prevExists {
-				where = paths.PreviousProjectConfigFile
-			}
-			return refuseLegacySection(where, alphaSection, "5.0.0-alpha.1")
+			return refuseLegacySection(where, alphaSection, "5.0.0-alpha.1", "")
+		}
+		if err := refuseLegacyRelease(doc, where); err != nil {
+			return err
 		}
 	}
 	if doc != nil {
@@ -245,7 +248,7 @@ func translateConfig(p *Plan, o Options, data []byte) (*config.Document, error) 
 	doc := config.Parse(string(data))
 	for _, section := range []string{"pipeline", "release"} {
 		if doc.KeyExists(section) {
-			return nil, refuseLegacySection(".nerv/nerv.yaml", section, "4.2.0")
+			return nil, refuseLegacySection(".nerv/nerv.yaml", section, "4.2.0", "")
 		}
 	}
 	rewriteHeader(doc)

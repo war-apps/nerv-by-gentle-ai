@@ -28,7 +28,10 @@ configuration of an older nerv: those engines left nerv for
 refuses (exit 1, nothing written) and names the file and the section to move
 by hand:
 
-- a 4.2.0 `pipeline:` or `release:` section in `.nerv/nerv.yaml`;
+- a 4.2.0 `pipeline:` or `release:` section in `.nerv/nerv.yaml`, and a
+  4.2.0 `release:` already moved into `.ai-workflow.yml` or
+  `.ai-workflow/config.yaml` (told apart by its `semantic_release:` key or
+  its projects' presets);
 - a 5.0.0-alpha.1 `ship:` section;
 - a 5.x deploy target with `provider: bash` (rename it `provider: script`);
 - a 5.x project deploy provider, `.ai-workflow/providers/deploy-<name>/` with
@@ -36,9 +39,7 @@ by hand:
 
 Rewrite the section by hand as nerv-release's `release:` and `deploy:`
 sections, or run `nerv migrate` with nerv 6.6 first, which still converts
-them as described below, and then this version's. A 4.2.0 `release:` already
-moved into `.ai-workflow/config.yaml` goes to nerv-release's `release.yaml`
-as it is, and nerv-release reports its 4.2.0 keys.
+them as described below, and then this version's.
 
 ## What it changes
 

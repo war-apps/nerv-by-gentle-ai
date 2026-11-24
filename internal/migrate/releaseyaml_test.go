@@ -265,6 +265,21 @@ func TestReleaseYAML_DryRunWritesNothing(t *testing.T) {
 
 // Without nerv-release installed (ReleaseYAMLHome/ReleaseYAMLRepo left
 // ""), nothing about release:/deploy: changes.
+// Without nerv-release (no release.yaml path) a personal release key of
+// the project file is still reported, and stays where it is.
+func TestRepoReleaseYAML_PersonalKeysAreReportedWithoutNervRelease(t *testing.T) {
+	w := releaseYAMLWorld(t)
+	text := "deploy:\n  host: github\n  providers:\n    ssh-compose:\n      ssh_auth: key\n"
+	w.write(".ai-workflow/config.yaml", text)
+	p, _ := w.migrate(migrate.Options{RepoRoot: w.root, Home: w.home, Now: now})
+	if got := w.read(".ai-workflow/config.yaml"); got != text {
+		t.Errorf("project file changed:\n%s", got)
+	}
+	if !anyContains(p.Warnings, "deploy.providers.ssh-compose.ssh_auth: a personal setting") {
+		t.Errorf("no personal-key warning in %q", p.Warnings)
+	}
+}
+
 func TestReleaseYAML_SkippedWhenPathsAreEmpty(t *testing.T) {
 	w := releaseYAMLWorld(t)
 	w.write(w.userPaths().UserConfig, "deploy:\n  providers:\n    ssh-compose:\n      ssh_auth: key\ndefaults:\n  deploy:\n    host: github\n")
