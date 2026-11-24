@@ -1,7 +1,6 @@
 package migrate
 
 import (
-	"io/fs"
 	"slices"
 	"strings"
 
@@ -14,22 +13,23 @@ import (
 // extensions' sections (tasks, release, deploy) under defaults.<section>:
 // at run time those sections are read from the project only, and a
 // default is what the setup flows copy into a project. The personal keys
-// (workflowconfig.Personal: the scope: user provider keys of fsys's
-// manifests, the timer store) stay where they are. A section whose
-// defaults are already set is reported and left alone.
-func moveUserDefaults(p *Plan, u *userState, fsys fs.FS) error {
+// (workflowconfig.Personal's frozen ones: the scope: user provider keys,
+// the timer store) stay where they are. A section whose defaults are
+// already set is reported and left alone.
+func moveUserDefaults(p *Plan, u *userState) error {
 	// The task conversions first, so a removed provider is dropped rather
 	// than moved into a seed; on a converted file they change nothing.
 	if err := migrateTasks(p, u.doc, "user config"); err != nil {
 		return err
 	}
 	// Both the seeds and a deploy: block that is about to move under them.
-	renameScriptTargets(p, u.doc, "deploy", "user config: deploy")
-	renameScriptTargets(p, u.doc, "defaults", "user config: defaults.deploy")
-	personal, err := workflowconfig.LoadPersonal(fsys)
-	if err != nil {
+	if err := refuseScriptTargets(u.doc, "deploy", "user config"); err != nil {
 		return err
 	}
+	if err := refuseScriptTargets(u.doc, "defaults", "user config"); err != nil {
+		return err
+	}
+	var personal workflowconfig.Personal
 	runTime, err := workflowconfig.RunTimeUserKeys(u.doc, personal)
 	if err != nil {
 		return refuse("the user config %s is not valid YAML: %v", u.path, err)

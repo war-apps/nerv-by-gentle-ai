@@ -7,8 +7,6 @@ import (
 	"syscall"
 )
 
-// cancelSignals cancel a running command's context. SIGHUP is included
-// because nerv release and nerv deploy start git and the build and provider
-// commands in their own session (internal/proc), so a closed terminal no
-// longer reaches them directly.
+// cancelSignals cancel a running command's context. SIGHUP is included so
+// a closed terminal cancels it too.
 var cancelSignals = []os.Signal{os.Interrupt, syscall.SIGTERM, syscall.SIGHUP}

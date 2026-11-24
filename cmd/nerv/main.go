@@ -5,21 +5,21 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"io/fs"
 	"net/http"
 	"os"
+	"os/exec"
+	"os/signal"
+	"strings"
+	"sync"
 	"time"
 
 	nerv "github.com/war-apps/nerv-by-gentle-ai"
-	"github.com/war-apps/nerv-by-gentle-ai/internal/extension"
-	"github.com/war-apps/nerv-by-gentle-ai/internal/proc"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/refusal"
-	"github.com/war-apps/nerv-by-gentle-ai/internal/releaseclone"
-	"github.com/war-apps/nerv-by-gentle-ai/internal/releaseplan"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/version"
-	"github.com/war-apps/nerv-by-gentle-ai/internal/versioning"
 	"github.com/war-apps/nerv-kit-by-gentle-ai/runner"
 )
 
@@ -27,17 +27,6 @@ const usage = `Usage: nerv <command> [flags]
 
 Commands:
   version [--json]     Print the binary and plugin versions
-  version next [flags] Compute the next release version with the native
-                       engine (see "nerv version next --help")
-  release [flags]      Build, test and package origin's code into a local
-                       artifact, no git writes (see "nerv release --help")
-  release setup --import [--dry-run]
-                       Import a semantic-release configuration into the
-                       release: section (see "nerv release setup --help")
-  deploy --artifact <dir> [flags]
-                       Release and deploy a release artifact: release commit,
-                       tag, push, targets, git host release
-                       (see "nerv deploy --help")
   migrate [flags]      Move a repository (and, with --user, the user
                        configuration) from nerv 4.2.0 or 5.0.0-alpha.1
                        (see "nerv migrate --help")
@@ -64,12 +53,9 @@ Maintainer commands:
 // scripted ones.
 type options struct {
 	PluginFS fs.FS
-	// ExtensionsFS holds the optional extension plugins (the task plugin
-	// and its providers). Nil ships none.
-	ExtensionsFS fs.FS
-	Runner       runner.Runner
-	Now          func() time.Time
-	LookPath     func(string) (string, error)
+	Runner   runner.Runner
+	Now      func() time.Time
+	LookPath func(string) (string, error)
 	// Getenv resolves an environment variable (the wizard's herdr
 	// detection, for %APPDATA% on Windows).
 	Getenv func(string) string
@@ -100,32 +86,11 @@ type options struct {
 	// real golang.org/x/term check, which a unit test cannot exercise
 	// directly (it depends on a real OS file descriptor/console).
 	IsTerminal func() bool
-	// ComputeVersions is the `nerv version next` engine (releaseclone.Compute);
-	// tests inject a recorded fake. Nil means releaseclone.Compute.
-	ComputeVersions func(context.Context, releaseclone.ComputeOptions) ([]versioning.Result, error)
 	// SignalContext derives the context a long-running command runs under,
 	// cancelled on SIGINT, SIGTERM and (on Unix) SIGHUP, with a stop function
 	// and the signal received (nil if none). Tests inject a controllable one.
 	// Nil means signalContext.
 	SignalContext func(context.Context) (context.Context, context.CancelFunc, func() os.Signal)
-	// OpenReleaseWorkspace creates the release clone of nerv release; tests inject
-	// a fake. Nil means releaseclone.New.
-	OpenReleaseWorkspace func(context.Context, releaseclone.Options) (releaseWorkspace, error)
-	// ReleaseSteps returns the runner of nerv release's process steps for the
-	// release clone at repoRoot, streaming to output; tests inject a
-	// recorder. Nil means a releaserun.Runner.
-	ReleaseSteps func(repoRoot string, output io.Writer) releaseplan.StepRunner
-	// DeployProc runs nerv deploy's provider commands and the native
-	// release-ssh-compose operations' infisical, ssh and sshpass, and
-	// DeploySleep waits between the health checks; tests inject fakes. Nil
-	// means proc.ExecRunner and a real wait.
-	DeployProc  proc.Runner
-	DeploySleep func(context.Context, time.Duration) error
-	// ReleaseProc runs the release extension's provider steps (the
-	// version engine's and the build providers' `nerv provider
-	// release-<name> <operation>`); tests may inject a fake. Nil means
-	// proc.ExecRunner.
-	ReleaseProc proc.Runner
 	// HTTPClient, ReleaseAPIBase and ReleaseDownloadBase are where nerv
 	// upgrade looks up and downloads releases; tests point them at an
 	// httptest.Server. Nil or empty means a client with a timeout,
@@ -155,16 +120,14 @@ type options struct {
 
 func defaultOptions() options {
 	return options{
-		PluginFS:        pluginFS(),
-		ExtensionsFS:    nerv.ExtensionsFS(),
-		Runner:          runner.ExecRunner{},
-		Now:             time.Now,
-		LookPath:        runner.LookPath,
-		Getenv:          os.Getenv,
-		Stdin:           os.Stdin,
-		IsTerminal:      stdinIsTerminal,
-		ComputeVersions: releaseclone.Compute,
-		SignalContext:   signalContext,
+		PluginFS:      pluginFS(),
+		Runner:        runner.ExecRunner{},
+		Now:           time.Now,
+		LookPath:      runner.LookPath,
+		Getenv:        os.Getenv,
+		Stdin:         os.Stdin,
+		IsTerminal:    stdinIsTerminal,
+		SignalContext: signalContext,
 	}
 }
 
@@ -195,21 +158,15 @@ func run(args []string, stdout, stderr io.Writer, opts options) int {
 		return runApplyModels(args[1:], stdout, stderr, opts)
 	case "skills":
 		return runSkills(args[1:], stdout, stderr, opts)
-	case "release":
-		return runRelease(args[1:], stdout, stderr, opts)
-	case "deploy":
-		return runDeploy(args[1:], stdout, stderr, opts)
+	case "release", "deploy":
+		fmt.Fprintln(stderr, movedToNervRelease(args))
+		return 2
 	case "migrate":
 		return runMigrate(args[1:], stdout, stderr, opts)
 	case "doctor":
 		return runDoctor(args[1:], stdout, stderr, opts)
 	case "upgrade":
 		return runUpgrade(args[1:], stdout, stderr, opts)
-	case "provider":
-		// Hidden: the operations of nerv's native providers, run by their
-		// extension (nerv deploy runs release-ssh-compose's, nerv release
-		// the release-* ones).
-		return runProvider(args[1:], stdout, stderr, opts)
 	case "pipeline":
 		fmt.Fprintln(stderr, pipelineRemoved)
 		return 2
@@ -221,12 +178,12 @@ func run(args []string, stdout, stderr io.Writer, opts options) int {
 	}
 }
 
-// runVersion prints the binary and plugin versions, or, as `nerv version
-// next`, computes the next release version (runVersionNext). Any other
-// argument is a usage error.
+// runVersion prints the binary and plugin versions; `nerv version next`
+// moved to nerv-release. Any other argument is a usage error.
 func runVersion(args []string, stdout, stderr io.Writer, opts options) int {
 	if len(args) > 0 && args[0] == "next" {
-		return runVersionNext(args[1:], stdout, stderr, opts)
+		fmt.Fprintln(stderr, movedToNervRelease([]string{"version", "next"}))
+		return 2
 	}
 	jsonOutput := false
 	for _, arg := range args {
@@ -261,41 +218,100 @@ func runVersion(args []string, stdout, stderr io.Writer, opts options) int {
 
 // pipelineRemoved answers the removed nerv pipeline command with where each
 // of its steps went.
-const pipelineRemoved = `nerv pipeline was removed. Its steps moved:
-  validate and test: nerv release (stages of each project in the release: section)
-  docker and release: nerv release, then nerv deploy
-  deploy: the release-ssh-compose target of the deploy: section (nerv deploy)
+const pipelineRemoved = `nerv pipeline was removed. Its steps moved to the nerv-release tool (nerv install --tools nerv-release):
+  validate and test: nerv-release build (stages of each project in the release: section)
+  docker and release: nerv-release build, then nerv-release deploy
+  deploy: the release-ssh-compose target of the deploy: section (nerv-release deploy)
   sync: not ported yet
-Move the pipeline: section of .ai-workflow/config.yaml with nerv migrate, or by hand (/release:setup and /release:deploy-setup).`
+Move the pipeline: section of .ai-workflow/config.yaml by hand (/release:setup and /release:deploy-setup).`
+
+// movedToNervRelease answers a release command that moved to the
+// nerv-release tool (nerv release, nerv release setup, nerv deploy, nerv
+// version next; args as given to nerv) with the command that replaces it.
+func movedToNervRelease(args []string) string {
+	name, replacement := "nerv "+args[0], "nerv-release "+args[0]
+	switch {
+	case args[0] == "release" && len(args) > 1 && args[1] == "setup":
+		name, replacement = "nerv release setup", "nerv-release setup --import"
+	case args[0] == "release":
+		replacement = "nerv-release build"
+	case args[0] == "version":
+		name, replacement = "nerv version next", "nerv-release version next"
+	}
+	return fmt.Sprintf("%s moved to the nerv-release tool: install it with nerv install --tools nerv-release, then run %s.", name, replacement)
+}
 
 func pluginFS() fs.FS {
 	return nerv.PluginFS()
 }
 
-// releaseProviders calls the release extension's providers from the
-// extensions tree (the embedded one when opts has none: the release
-// extension always ships its own) merged with the project extensions and
-// providers of the repository at top, their stderr streamed to output. An
-// invalid project extension or provider is a refusal.
-func releaseProviders(opts options, top string, output io.Writer) (releaseplan.Providers, error) {
-	fsys := opts.ExtensionsFS
-	if fsys == nil {
-		fsys = nerv.ExtensionsFS()
+// signalNotify and signalStop are signal.Notify and signal.Stop; tests
+// replace them to observe the handler's lifetime without real signals.
+var (
+	signalNotify = signal.Notify
+	signalStop   = signal.Stop
+)
+
+// signalContext returns a context cancelled by the first of cancelSignals,
+// a stop function (call it when the command returns), and received, which
+// reports that signal (nil when none arrived).
+//
+// The signals stop being caught as soon as the context is done (by a signal,
+// the parent or stop), before the cancellation is visible: a second Ctrl-C
+// then gets the default behaviour and ends the process at once instead of
+// being swallowed while the command winds down.
+func signalContext(parent context.Context) (ctx context.Context, stop context.CancelFunc, received func() os.Signal) {
+	ctx, cancel := context.WithCancel(parent)
+	ch := make(chan os.Signal, 1)
+	signalNotify(ch, cancelSignals...)
+	var (
+		mu     sync.Mutex
+		got    os.Signal
+		once   sync.Once
+		closed = make(chan struct{})
+	)
+	release := func() { once.Do(func() { signalStop(ch); close(closed) }) }
+	go func() {
+		select {
+		case sig := <-ch:
+			mu.Lock()
+			got = sig
+			mu.Unlock()
+			release()
+			cancel()
+		case <-ctx.Done():
+			release()
+		}
+	}()
+	stop = func() {
+		cancel()
+		<-closed
 	}
-	fsys, err := projectTree(fsys, top)
-	if err != nil {
-		return releaseplan.Providers{}, err
+	received = func() os.Signal {
+		mu.Lock()
+		defer mu.Unlock()
+		return got
 	}
-	return releaseplan.Providers{FS: fsys, Runner: opts.ReleaseProc, Output: output}, nil
+	return ctx, stop, received
 }
 
-// projectTree is fsys merged with the project extensions and providers of
-// the repository at top (extension.WithProject); an invalid one is a
-// refusal.
-func projectTree(fsys fs.FS, top string) (fs.FS, error) {
-	merged, err := extension.WithProject(fsys, top)
+// gitTopLevel resolves dir to the top level of its git repository. A
+// directory outside any repository is a refusal; a git that cannot run is
+// an environment error.
+func gitTopLevel(ctx context.Context, runner runner.Runner, dir string) (string, error) {
+	out, errOut, code, err := runner.Run(ctx, "git", "-C", dir, "rev-parse", "--show-toplevel")
 	if err != nil {
-		return nil, &refusal.Error{Err: err}
+		if errors.Is(err, exec.ErrNotFound) {
+			return "", errors.New("git is required (git was not found in PATH)")
+		}
+		return "", fmt.Errorf("git rev-parse: %w", err)
 	}
-	return merged, nil
+	if code != 0 {
+		detail := strings.TrimSpace(errOut)
+		if detail != "" {
+			detail = " (" + detail + ")"
+		}
+		return "", &refusal.Error{Err: fmt.Errorf("%s is not inside a git repository%s", dir, detail)}
+	}
+	return strings.TrimSpace(out), nil
 }

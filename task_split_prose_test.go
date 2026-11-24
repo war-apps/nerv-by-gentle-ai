@@ -3,12 +3,14 @@ package nerv
 import (
 	"io/fs"
 	"regexp"
-	"sort"
 	"strings"
 	"testing"
-
-	"github.com/war-apps/nerv-by-gentle-ai/internal/taskprovider"
 )
+
+// taskEvents are the pipeline events the orchestrator emits to
+// task:dispatcher, in name order, frozen as the task extension's contract
+// last declared them (nerv-task owns the contract now).
+var taskEvents = []string{"audit.ranked", "issue.deferred", "run.closed", "run.halted", "run.started", "verification.started", "wave.started"}
 
 // teamworkPattern matches any mention of the Teamwork tracker or its MCP
 // tools, in any case.
@@ -60,12 +62,7 @@ func TestOrchestrator_EmitsEveryTaskEvent(t *testing.T) {
 	const path = "skills/nerv-orchestrator/**"
 	all := text.String()
 	assertContainsAll(t, path, all, "task:dispatcher", "task-events.yaml", "/task:replay")
-	events := make([]string, 0, len(taskprovider.Events))
-	for event := range taskprovider.Events {
-		events = append(events, event)
-	}
-	sort.Strings(events)
-	for _, event := range events {
+	for _, event := range taskEvents {
 		if !strings.Contains(all, "`"+event+"`") {
 			t.Errorf("%s never names the event `%s`", path, event)
 		}
@@ -73,15 +70,4 @@ func TestOrchestrator_EmitsEveryTaskEvent(t *testing.T) {
 	if strings.Contains(all, "tracker_event") {
 		t.Errorf("%s still logs tracker_event; the entry is task_event", path)
 	}
-}
-
-// The task contract keeps the testing move tied to the work unit's
-// verification in the DIRECT and LIGHT tiers.
-func TestTaskContract_TestingMoveFollowsWorkUnitVerification(t *testing.T) {
-	const path = "task/skills/task/SKILL.md"
-	data, err := fs.ReadFile(ExtensionsFS(), path)
-	if err != nil {
-		t.Fatalf("reading %s: %v", path, err)
-	}
-	assertContainsAll(t, path, string(data), "the work unit's check (LIGHT, DIRECT) starts", "**It never calls `complete`.**")
 }

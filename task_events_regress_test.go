@@ -5,21 +5,23 @@ import (
 	"regexp"
 	"strings"
 	"testing"
-
-	"github.com/war-apps/nerv-by-gentle-ai/internal/taskprovider"
 )
 
-// Every place that lists the dispatcher's result values names exactly
-// taskprovider.Results.
+// taskResults are the outcomes the task dispatcher reports per provider,
+// in contract order, frozen as the task extension's contract last
+// declared them (nerv-task owns the contract now).
+var taskResults = []string{"ok", "skipped", "blocked", "failed", "needs_input"}
+
+// Every place in the orchestrator that lists the dispatcher's result values
+// names exactly taskResults.
 func TestTaskEnvelope_ResultListsMatchContract(t *testing.T) {
-	want := strings.Join(taskprovider.Results, " | ")
+	want := strings.Join(taskResults, " | ")
 	listRe := regexp.MustCompile(`ok \| skipped \| blocked \| failed[^\n]*`)
 	for _, src := range []struct {
 		fsys fs.FS
 		path string
 	}{
 		{PluginFS(), "skills/_shared/nerv-artifacts.md"},
-		{ExtensionsFS(), "task/skills/task/SKILL.md"},
 	} {
 		data, err := fs.ReadFile(src.fsys, src.path)
 		if err != nil {

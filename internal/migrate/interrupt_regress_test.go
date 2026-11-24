@@ -29,7 +29,7 @@ func TestInterrupted_ApplyLeavesARepositoryASecondRunFinishes(t *testing.T) {
 	if err := os.Chmod(odd, 0o555); err != nil {
 		t.Fatal(err)
 	}
-	p := w.plan(w.options(false, githubOrigin))
+	p := w.plan(w.options(false))
 	_, err := migrate.Apply(p, now)
 	if err := os.Chmod(odd, 0o755); err != nil {
 		t.Fatal(err)
@@ -43,7 +43,7 @@ func TestInterrupted_ApplyLeavesARepositoryASecondRunFinishes(t *testing.T) {
 	if treeHash(t, w.root) == before {
 		return // rolled back to the old layout: fine
 	}
-	p2, err := migrate.Compute(w.options(false, githubOrigin))
+	p2, err := migrate.Compute(w.options(false))
 	if err != nil {
 		t.Fatalf("after an interrupted Apply, the second nerv migrate refuses: %v", err)
 	}

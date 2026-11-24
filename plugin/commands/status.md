@@ -15,15 +15,15 @@ short and imperative — this is a status check, not a narrative.
    `<repo>/.ai-workflow/config.yaml` (project scope). Print a merged summary: which
    keys came from the project file, which fell back to the user file, and
    which fell back to a built-in default. The project file always wins key
-   by key. Also print one line: `Task extension: installed (task:dispatcher
-   available)` or `Task extension: not installed`; when it is installed, add
+   by key. Also print one line: `nerv-task: installed (task:dispatcher
+   available)` or `nerv-task: not installed`; when it is installed, add
    that `/task:timers` shows the running timers. Also print
    `artifacts.commit: <resolved value>`
    (`with-change` | `at-close` | `never`; built-in default `at-close` when neither file sets it).
 
 3. **gentle-ai version check.** Run `gentle-ai --version` and parse the
    first token as `MAJOR.MINOR.PATCH` (e.g. `4.0.0`). Compare against the
-   version this NERV release was tested against — `4.5.0`, as stated in
+   version this NERV release was tested against — `4.6.0`, as stated in
    this plugin's `README.md`. Print both versions.
    - Major `!= 4`: print "NERV requires gentle-ai 4.x; found X.Y.Z" and
      mark status degraded.

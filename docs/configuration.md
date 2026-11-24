@@ -4,9 +4,10 @@ Every Nerv by Gentle-AI setting lives in one of two files with the same
 schema: user scope `~/.config/ai-workflow/config.yaml` (personal
 defaults, never committed) and project scope `<repo>/.ai-workflow/config.yaml`
 (committed). Project overrides user key by key; a missing key falls back
-to the user file, then to the built-in default. The extensions' sections,
-`tasks:`, `release:` and `deploy:`, are the exception: they are read from the
-project file only (see [Extension sections](#extension-sections-tasks-release-deploy)).
+to the user file, then to the built-in default. Task, release and deploy
+settings are not nerv's: they belong to the nerv-task and nerv-release
+tools and live in their own files (see
+[Task, release and deploy settings](#task-release-and-deploy-settings)).
 `~/.config/ai-workflow` is
 `os.UserConfigDir()`: `$XDG_CONFIG_HOME` when set on Linux,
 `~/Library/Application Support` on macOS and `%AppData%` on Windows. The
@@ -19,14 +20,14 @@ The repository's committed nerv folder is `.ai-workflow/`:
 
 ```
 .ai-workflow/
-  config.yaml                                   # the project configuration
-  extensions/<name>/extension.yaml              # the repository's own extensions
-  providers/<extension>-<name>/provider.yaml    # the repository's own providers (+ scripts, procedures)
+  config.yaml      # nerv's project configuration (this page)
+  task.yaml        # nerv-task's repository settings, when it is installed
+  release.yaml     # nerv-release's repository settings, when it is installed
+  providers/       # the repository's own task or release providers, read by those tools
 ```
 
-Project extensions and providers are checked with the same contract as the
-ones nerv ships and added to them; see
-[extensions.md](extensions.md#project-extensions-and-providers).
+nerv itself reads only `config.yaml`; the other entries belong to the
+NERV-ecosystem tools and are documented with them.
 
 The files used before are no longer read:
 
@@ -62,115 +63,30 @@ git:
                                                   # reuses its own [worktrees] directory as <directory>/{repo}/{slug}
   branch_pattern: "feature/{prefix}-{id}-{slug}"   # {prefix}/{id} come from the run.started task_ref (tw-123)
   commit_ref_pattern: "({PREFIX}-{id})"
-tasks:                              # read only by the optional task extension; core ignores it; project scope, except its personal keys
-  provider: teamwork                # provider for bare task ids; "none" turns the task extension off in this repository
-  ask_when_missing: true            # at run.started with no task, the dispatcher asks for one
-  subtasks_per_wave: false          # whether wave.started creates one subtask per FULL wave
-  events:                           # per-event switches, on (default) | off
-    verification.started: off       # e.g. leave the testing stage move manual
-  providers:                        # one block per installed provider; keys come from its provider.yaml
-    teamwork:
-      assignee_id: 686035           # user scope
-      project_id: 1271726           # project scope
-      tasklist_id: 3951970          # project scope
-      stages: { inDev: DESARROLLO, testing: TESTING, implemented: IMPLEMENTA, blocked: BLOQUEA, canceled: CANCEL, pending: PENDIENTE, analysis: ANALISIS }
-  sources:                          # extra work sources for listings (replaces ~/.claude/work/sources.md)
-    - { name: erp-proveedores, type: google-sheets, ... }
-release:                            # release extension; project scope only, never merged with the user file; see release-commands.md
-  version: conventional-commits     # the version engine (the default); its keys under providers.conventional-commits
-  build: docker-compose             # every project's build provider: docker-compose or bash
-  providers:                        # release.providers.<provider>.<key>, as each provider.yaml declares
-    conventional-commits: { tag_format: "v${version}" }
-    docker-compose: { file: docker-compose.yml }
-  projects:
-    - { name: api, path: ., images: ["ghcr.io/acme/app:${version}"] }
-deploy:                             # release extension's deploy; project scope, except its scope: user provider keys; see deploy.md
-  host: github
-  publish: true                     # push the artifact's images (default)
-  targets:                          # optional
-    - { name: staging, provider: ssh-compose, config: { environment: staging } }
-defaults:                           # user scope only: seeds a project's tasks:, release: and deploy:; never read at run time
-  tasks: { provider: teamwork }
 ```
 
-## Extension sections (`tasks:`, `release:`, `deploy:`)
+## Task, release and deploy settings
 
-The task and release extensions read their sections (`deploy:` is the
-release extension's too) from the
-project file only, so what one repository uses never depends on who runs it.
-The user file keeps two roles:
+nerv 6.6 and earlier shipped optional extensions (the `task` and `release`
+plugins, with their providers) that read `tasks:`, `release:`, `deploy:`
+and their `defaults.<section>` seeds from these files. Those extensions
+are now separate tools with their own configuration files:
 
-- **Personal keys**, still read from the user file at run time: every
-  provider key whose `provider.yaml` declares `scope: user`
-  (`tasks.providers.teamwork.assignee_id` and `billable`,
-  `deploy.providers.ssh-compose.ssh_auth` and `ssh_key_file`,
-  `deploy.providers.ssh-compose.infisical_domain`, ...), and the task
-  extension's machine-local keys `tasks.timer_store`,
-  `tasks.stale_after_hours` and the older `tasks.rounding_minutes`. Treating
-  these three as personal is an assumption of this release: they describe
-  the machine, not the repository.
-- **Defaults**, under `defaults.<section>` with the same shape as the
-  project's section. They never apply at run time. The flow that writes a
-  section into a project copies them once, for the keys the project does
-  not set, and shows what it copied: `/nerv:init` and `nerv configure
-  --init-repo` (and the wizard's repository step) for `tasks:`,
-  `/release:setup` for `release:`, `/release:deploy-setup` for `deploy:`. The
-  project's value always wins, and changing a default later never changes
-  a repository already set up. Personal keys are never copied from
-  `defaults:` into a project.
+| Settings | Tool | Repository file | Personal/global file |
+|---|---|---|---|
+| `tasks:` | [nerv-task](https://github.com/war-apps/nerv-task-by-gentle-ai) | `.ai-workflow/task.yaml` | `task.yaml` next to the user `config.yaml` |
+| `release:`, `deploy:` | [nerv-release](https://github.com/war-apps/nerv-release-by-gentle-ai) | `.ai-workflow/release.yaml` | `release.yaml` next to the user `config.yaml` |
 
-```yaml
-# ~/.config/ai-workflow/config.yaml
-tasks:
-  providers:
-    teamwork: { assignee_id: 686035, billable: true }   # personal: read at run time
-defaults:
-  tasks:
-    provider: teamwork                                  # seed for new repositories
-  deploy:
-    host: github
-```
-
-**Upgrading.** A user file that still holds run-time keys under `tasks:`,
-`release:` or `deploy:` (such as `tasks.provider`) keeps them, but they no
-longer apply. `nerv doctor` warns and names them, and `nerv migrate --user`
-moves them under `defaults.<section>`, keeping the personal keys in place
-and backing the file up first. `nerv migrate` in a repository whose project
-file has no `tasks.provider` copies the user's (`defaults.tasks.provider`,
-or the older `tasks.provider`), so a repository that relied on it keeps its
-provider.
-
-`release:` configures the release extension (`nerv version next` and `nerv release`,
-also `/release:version`, `/release:setup` and `/release:build`): its two
-provider slots, `release.version` (the version engine, by default
-`conventional-commits`) and `release.build` (the build provider of every
-project, overridden by `release.projects[].build`: `docker-compose` or
-`bash`; there is no default and there are no presets); each provider's keys
-under `release.providers.<provider>.<key>` (the engine's branches and
-channels, release rules, note keywords, tag format and changelog; the
-compose file and test service; bash's `shared_host`), which a project
-overrides for its build provider under
-`release.projects[].providers.<provider>`; and the projects, their
-dependencies, images, version files, stages, hooks and coverage. Its full reference is
-[release-commands.md](release-commands.md#configuration-release).
-
-`deploy:` configures the release extension's deploy (`nerv deploy`,
-`/release:deploy`, `/release:deploy-setup`, the deploy half of
-`/release:ship`): the git host provider, the targets with their provider
-config, and the release commit's message and remote. Provider keys with
-`scope: user` (credentials, local paths) go in the user file under
-`deploy.providers.<provider>.`; every other deploy key comes from the
-project file only. Its full reference is
-[deploy.md](deploy.md#configuration).
-
-A 4.2.0 `release:` section (told apart by its 4.2.0 keys, `semantic_release:`
-and the project presets) and the old `pipeline:` section are no longer read:
-a command that finds one refuses and points to `nerv migrate` (or
-`/release:setup`, `/release:deploy-setup`).
-`nerv migrate` translates them, and `nerv release setup --import` imports a
-semantic-release config; see
-[release-commands.md](release-commands.md#migrating-from-the-420-release-section-and-semantic-release)
-and [deploy.md](deploy.md#migrating-from-nerv-pipeline).
+Install them with `nerv install --tools nerv-task,nerv-release`, and set
+their settings through their own commands (`nerv-task init`,
+`nerv-release init`, `nerv-task configure`); see each tool's documentation
+for its schema. nerv reads none of these sections, and only
+`nerv migrate` changes them: it moves a `tasks:`, `release:` or `deploy:` section
+(and the user file's `defaults.<section>` seeds and personal keys) into
+the tool's file when the tool is installed, keeping every key it cannot
+move where it is and reporting it (see
+[commands.md](commands.md#nerv-migrate) and
+[migration.md](migration.md)). `nerv doctor` reports a pending move.
 
 `models:` assigns a per-role `model` and `effort` override, with project
 overriding user key by key like every other section — each entry is an
@@ -196,59 +112,6 @@ step automatically at the end of its own cache refresh.
 and warns when the cached agent frontmatter has drifted from it, so a
 pending `nerv apply-models` run is visible without inspecting the cache by
 hand.
-
-## `tasks:` (task extension)
-
-Core never reads `tasks:`. The block belongs to the optional task extension
-(`task`) and its providers, such as `task-teamwork`. The
-full key reference is in the task extension's contract
-(`plugins/task/skills/task/SKILL.md`, section 1).
-
-- **Scope.** `tasks:` is read from the project file; from the user file only
-  its personal keys count (the `scope: user` provider keys,
-  `tasks.timer_store`, `tasks.stale_after_hours`, `tasks.rounding_minutes`;
-  see [Extension sections](#extension-sections-tasks-release-deploy)).
-- **Per-event switches.** `tasks.events.<event>: off` in the project file
-  stops one pipeline event from reaching any provider in that repository
-  (`defaults.tasks.events` seeds it for new repositories). A run can also
-  switch events off for itself; the dispatcher then answers `skipped` with
-  `reason: switched off`.
-- **Provider settings.** `tasks.providers.<name>.*` holds the keys that the
-  provider's `provider.yaml` declares under `config`, each with its scope
-  (`user` or `repo`), type, default and prompt. `tasks.providers.<name>.enabled:
-  false` keeps a provider installed but stops sending it events.
-- **Setting them.** When the `task` extension is enabled, the `nerv configure`
-  wizard shows a "Task providers" section that prompts each enabled
-  provider's user-scope scalar keys, plus the default task provider for new
-  repositories (`defaults.tasks.provider`) when more than one provider is
-  enabled. `nerv configure --init-repo <path>
-  --repo-provider-config <provider>.<key>=<value>` (repeatable) writes
-  `tasks.providers.<provider>.<key>` into the repository's
-  `.ai-workflow/config.yaml`, after copying the user's `defaults.tasks`
-  there (its personal keys left out; the entries given win), and lists
-  each copied value as `<key>:  -> <value> (from defaults.tasks)`.
-
-**Migration.** A `tasks:` block written by an older release keeps working:
-
-- with the task extension installed, it is read under the layout above, so the
-  Teamwork keys under `tasks.providers.teamwork.*` keep their paths;
-- without it, core ignores the block and never deletes it;
-- copies of the `/task:*` commands that an older release put in
-  `~/.claude/commands/task/` are reported by `nerv install` and removed only
-  after you confirm. The `task` extension now serves those commands itself.
-
-**Once [nerv-task](https://github.com/war-apps/nerv-task-by-gentle-ai) is
-installed**, `tasks:` stops being the task extension's section: nerv-task
-reads its own repository keys from `.ai-workflow/task.yaml`, next to this
-file, and its own personal/global keys from `~/.config/ai-workflow/task.yaml`
-(`%AppData%\ai-workflow\task.yaml` on Windows), instead of from the files
-on this page. `nerv migrate` moves an existing `tasks:` section into those
-files the first time it runs with nerv-task installed (see
-[commands.md](commands.md#nerv-migrate)); from then on, configure task
-settings through nerv-task's own commands (`nerv-task configure`,
-`nerv-task init`) and see its own documentation for the full `task.yaml`
-schema — this page, and the task extension's contract it points to, only
-describe the (now replaced) `tasks:` section.
 
 ### Roles and their gentle-ai equivalents
 

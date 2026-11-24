@@ -79,12 +79,6 @@ func TestProjectPaths(t *testing.T) {
 	if got, want := paths.PreviousProjectConfig(repo), filepath.Join(repo, ".ai-workflow.yml"); got != want {
 		t.Errorf("PreviousProjectConfig = %q, want %q", got, want)
 	}
-	if got, want := paths.ProjectExtensionsDir(repo), filepath.Join(repo, ".ai-workflow", "extensions"); got != want {
-		t.Errorf("ProjectExtensionsDir = %q, want %q", got, want)
-	}
-	if got, want := paths.ProjectProvidersDir(repo), filepath.Join(repo, ".ai-workflow", "providers"); got != want {
-		t.Errorf("ProjectProvidersDir = %q, want %q", got, want)
-	}
 	if got, want := paths.LegacyProjectConfig(repo), filepath.Join(repo, ".nerv", "nerv.yaml"); got != want {
 		t.Errorf("LegacyProjectConfig = %q, want %q", got, want)
 	}

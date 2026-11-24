@@ -32,10 +32,6 @@ type Deps struct {
 	SettingsPath string
 	// FS is the embedded plugin tree, typically nerv.PluginFS().
 	FS fs.FS
-	// ExtensionsFS holds the optional extensions and providers shipped in the same
-	// marketplace, one folder per plugin, typically nerv.ExtensionsFS().
-	// Nil ships none.
-	ExtensionsFS fs.FS
 	// Runner launches "gentle-ai", "claude plugin ...", "engram ...",
 	// and "npx ..." (skills installs).
 	Runner runner.Runner
@@ -48,12 +44,6 @@ type Deps struct {
 	// means no sync: non-interactive callers leave it unset. Injected so this
 	// package never reads os.Stdin.
 	ConfirmSync func(skills []string) bool
-	// ConfirmExtension, when set, is asked whether to install each
-	// extension that is neither requested nor already enabled: the task
-	// plugin first, then its providers only when the task plugin is
-	// installed. Nil suggests nothing: non-interactive callers leave it
-	// unset.
-	ConfirmExtension func(name, description string) bool
 	// ConfirmRemoveLegacyCommands, when set, is asked whether to delete the
 	// old /task:* copies found in <Home>/.claude/commands/task, which shadow
 	// the task plugin's commands. Nil only reports them: non-interactive
@@ -70,17 +60,11 @@ type Options struct {
 	RequireGentleAI bool
 	// NoSkills skips the skills-install step entirely.
 	NoSkills bool
-	// Extensions names the extensions and providers to install (such as "task" or a
-	// "task-<provider>" plugin); their requirements are added. Unknown names are a
-	// RefusalError.
-	Extensions []string
-	// SuppressedExtensions names extensions a NERV-ecosystem tool already
-	// replaces (its own install disables them; nerv must simply never
-	// turn them back on): never offered in the ConfirmExtension
-	// suggestion loop, and a RefusalError when named in Extensions. An
-	// already-enabled one is left exactly as found (disabling it is the
-	// replacing tool's job, not nerv's).
-	SuppressedExtensions []string
+	// Orphans are the plugin families nerv no longer ships: Install
+	// disables every one still enabled or cached (see OrphanFamily). Nil
+	// leaves them alone (nerv upgrade disables them itself, after its
+	// ecosystem-tools step).
+	Orphans []OrphanFamily
 }
 
 // RefusalError marks a rejected install/uninstall/apply-models request —

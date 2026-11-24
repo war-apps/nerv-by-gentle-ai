@@ -279,7 +279,7 @@ func (w *upgradeWorld) assertUntouched() {
 // "upgrade" instead of "install"; --skip-migrate-offer tells it not to
 // offer nerv migrate, which runUpgrade also offers itself afterwards.
 func skippingGentleAIInstall(bin string, extra ...string) installCall {
-	return installCall{Bin: bin, Args: append([]string{"install"}, append(extra, "--skip-gentle-ai-upgrade", "--skip-ecosystem-tools", "--skip-migrate-offer")...)}
+	return installCall{Bin: bin, Args: append([]string{"install"}, append(extra, "--skip-gentle-ai-upgrade", "--skip-ecosystem-tools", "--skip-migrate-offer", "--skip-orphan-cleanup")...)}
 }
 
 var defaultReleases = []fakeRelease{
@@ -324,7 +324,8 @@ func TestUpgrade_StableReplacesBinaryAndRunsInstall(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if info.Mode().Perm() != 0o755 {
+	// Windows has no execute bit: Go reports a writable file as 0666.
+	if runtime.GOOS != "windows" && info.Mode().Perm() != 0o755 {
 		t.Errorf("mode = %v, want 0755", info.Mode().Perm())
 	}
 	entries, _ := os.ReadDir(filepath.Dir(w.exe))
@@ -434,7 +435,7 @@ func TestUpgrade_RunsTheNewBinary(t *testing.T) {
 	if code != 4 {
 		t.Fatalf("exit %d, want 4; stderr %q\n%s", code, errOut, out)
 	}
-	if !strings.Contains(out, "\nnew nerv install --no-configure --skip-gentle-ai-upgrade --skip-ecosystem-tools --skip-migrate-offer\n") || errOut != "oops\n" {
+	if !strings.Contains(out, "\nnew nerv install --no-configure --skip-gentle-ai-upgrade --skip-ecosystem-tools --skip-migrate-offer --skip-orphan-cleanup\n") || errOut != "oops\n" {
 		t.Errorf("stdout:\n%s\nstderr %q", out, errOut)
 	}
 	if got := w.binary(); got != w.script {

@@ -30,7 +30,7 @@ func TestInterrupted_ApplyRollsBackEverything(t *testing.T) {
 	if err := os.Chmod(odd, 0o555); err != nil {
 		t.Fatal(err)
 	}
-	_, err := migrate.Apply(w.plan(w.options(false, githubOrigin)), now)
+	_, err := migrate.Apply(w.plan(w.options(false)), now)
 	if cerr := os.Chmod(odd, 0o755); cerr != nil {
 		t.Fatal(cerr)
 	}
@@ -49,7 +49,7 @@ func TestInterrupted_ApplyRollsBackEverything(t *testing.T) {
 	if w.exists(".nerv/backups") || w.exists(".nerv/.gitignore") {
 		t.Error("the rollback left its backups or .nerv/.gitignore")
 	}
-	w.migrate(w.options(false, githubOrigin))
+	w.migrate(w.options(false))
 	if !w.exists("odd/tasks/tw-1-feature.md") || w.exists("openspec/changes/tw-1-feature") {
 		t.Error("the run after the rollback did not migrate the change")
 	}
@@ -61,7 +61,7 @@ func TestInterrupted_ApplyRollsBackEverything(t *testing.T) {
 func TestInterrupted_RerunFinishesItsOwnHalfWrittenOutput(t *testing.T) {
 	w := newWorld(t, comprobantes)
 	w.openspecFixture(true)
-	p := w.plan(w.options(false, githubOrigin))
+	p := w.plan(w.options(false))
 	if _, err := paths.EnsureRuntimeIgnored(w.root); err != nil {
 		t.Fatal(err)
 	}
@@ -72,7 +72,7 @@ func TestInterrupted_RerunFinishesItsOwnHalfWrittenOutput(t *testing.T) {
 	}
 	doc := w.read("odd/tasks/tw-1-feature.md")
 	// A later day: the document's date would differ, it must be kept.
-	p2, err := migrate.Compute(migrate.Options{RepoRoot: w.root, Home: w.home, ExtensionsFS: w.options(false, "").ExtensionsFS, OriginURL: githubOrigin, Now: now.Add(48 * time.Hour)})
+	p2, err := migrate.Compute(migrate.Options{RepoRoot: w.root, Home: w.home, Now: now.Add(48 * time.Hour)})
 	if err != nil {
 		t.Fatalf("the rerun refuses its own half-written output: %v", err)
 	}
@@ -98,7 +98,7 @@ func TestODD_ForeignDocumentIsStillRefused(t *testing.T) {
 	w := newWorld(t, comprobantes)
 	w.openspecFixture(true)
 	w.write("odd/tasks/tw-1-feature.md", "# tw-1-feature\n\nhand written\n")
-	_, err := migrate.Compute(w.options(false, githubOrigin))
+	_, err := migrate.Compute(w.options(false))
 	if !refusal.Is(err) || !strings.Contains(err.Error(), "already exists") {
 		t.Fatalf("Compute = %v, want the already-exists refusal", err)
 	}
@@ -129,7 +129,7 @@ func TestLock_LiveLockIsRefusedUnlessForced(t *testing.T) {
 			w := newWorld(t, comprobantes)
 			w.openspecFixture(true)
 			w.write(lock, tc.content)
-			o := w.options(false, githubOrigin)
+			o := w.options(false)
 			o.Host = testHost
 			_, err := migrate.Compute(o)
 			if !tc.refused {
@@ -168,7 +168,7 @@ func TestODD_DirectAndLightRunsMoveToTheRuntimeFolder(t *testing.T) {
 			w.openspecFixture(true)
 			c := "openspec/changes/tw-1-feature/"
 			w.write(c+"state.yaml", "dependsOn: []\nnerv:\n  path: "+tier+"\n  branch: feature/tw-1-feature\n")
-			p, _ := w.migrate(w.options(false, githubOrigin))
+			p, _ := w.migrate(w.options(false))
 			if w.exists("odd/tasks/tw-1-feature.md") || w.exists("odd") {
 				t.Errorf("a %s change got an ODD document or an odd/ folder", tier)
 			}
@@ -193,7 +193,7 @@ func TestODD_DirectAndLightRunsMoveToTheRuntimeFolder(t *testing.T) {
 			if !anyContains(p.Notes, "no ODD document") {
 				t.Errorf("no note says the %s change gets no ODD document: %q", tier, p.Notes)
 			}
-			if p2 := w.plan(w.options(false, githubOrigin)); !p2.Empty() {
+			if p2 := w.plan(w.options(false)); !p2.Empty() {
 				t.Errorf("the second plan has changes:\n%s", migrate.Render(p2))
 			}
 		})
@@ -212,7 +212,7 @@ func TestBackups_KeepTheSourceFileMode(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	w.migrate(w.options(false, githubOrigin))
+	w.migrate(w.options(false))
 	dir := filepath.Join(w.root, ".nerv", "backups", "migrate-"+now.Format("20060102-150405"))
 	for _, rel := range []string{".nerv/nerv.yaml", "openspec/changes/tw-1-feature/tasks.md", "openspec/changes/tw-1-feature/proposal.md"} {
 		info, err := os.Stat(filepath.Join(dir, filepath.FromSlash(rel)))

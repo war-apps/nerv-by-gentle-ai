@@ -284,7 +284,9 @@ func TestGuard_MissingPluginJSON_ReturnsEnvironmentError(t *testing.T) {
 	}
 }
 
-func TestApply_BumpsEveryExtensionPluginToTheSameVersion(t *testing.T) {
+// nerv ships one plugin: Apply writes its plugin.json and the CHANGELOG
+// only, and leaves any plugins/<name>/ manifest of an older tree alone.
+func TestApply_WritesOnlyTheCorePluginAndChangelog(t *testing.T) {
 	repo := fixtureRepo(t, "0.1.0")
 	extJSON := filepath.Join(repo, "plugins", "task", ".claude-plugin", "plugin.json")
 	if err := os.MkdirAll(filepath.Dir(extJSON), 0o755); err != nil {
@@ -306,10 +308,10 @@ func TestApply_BumpsEveryExtensionPluginToTheSameVersion(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(got), `"version": "0.2.0"`) {
-		t.Errorf("extension plugin.json not bumped: %q", got)
+	if !strings.Contains(string(got), `"version": "0.1.0"`) {
+		t.Errorf("a plugins/ manifest was bumped: %q", got)
 	}
-	if len(result.Written) != 3 || result.Written[2] != extJSON {
-		t.Errorf("Written = %v, want the extension plugin.json last", result.Written)
+	if len(result.Written) != 2 {
+		t.Errorf("Written = %v, want plugin.json and CHANGELOG.md only", result.Written)
 	}
 }

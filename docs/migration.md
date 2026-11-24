@@ -10,7 +10,7 @@ macOS and Windows.
 nerv migrate --dry-run          # list the steps; nothing is written
 nerv migrate                    # migrate this repository
 nerv migrate --user             # also migrate your user configuration
-nerv migrate --install          # then install the extensions the repository used
+nerv migrate --install          # then install the tools the repository uses
 nerv migrate --force            # also move a change whose lock is still held
 ```
 
@@ -19,6 +19,27 @@ Until it runs, nerv reads neither old file: every command refuses while a
 with `run "nerv migrate" to move it` (`nerv migrate --user` for the user
 file), and the SessionStart hook does not activate NERV. A 4.2.0 file is
 reported the same way, and the repository is treated as unconfigured.
+
+### Older release and deploy sections
+
+Since 7.0, `nerv migrate` no longer converts the release and deploy
+configuration of an older nerv: those engines left nerv for
+[nerv-release](https://github.com/war-apps/nerv-release-by-gentle-ai). It
+refuses (exit 1, nothing written) and names the file and the section to move
+by hand:
+
+- a 4.2.0 `pipeline:` or `release:` section in `.nerv/nerv.yaml`, and a
+  4.2.0 `release:` already moved into `.ai-workflow.yml` or
+  `.ai-workflow/config.yaml` (told apart by its `semantic_release:` key or
+  its projects' presets);
+- a 5.0.0-alpha.1 `ship:` section;
+- a 5.x deploy target with `provider: bash` (rename it `provider: script`);
+- a 5.x project deploy provider, `.ai-workflow/providers/deploy-<name>/` with
+  `extension: deploy` (move it to `release-<name>/` with `extension: release`).
+
+Rewrite the section by hand as nerv-release's `release:` and `deploy:`
+sections, or run `nerv migrate` with nerv 6.6 first, which still converts
+them as [its migration guide](https://github.com/war-apps/nerv-by-gentle-ai/blob/v6.6.0/docs/migration.md) describes, and then this version's.
 
 ## What it changes
 
@@ -34,10 +55,7 @@ reported the same way, and the repository is treated as unconfigured.
 | a project file without `tasks.provider`, when the user file has one | The project gets `tasks.provider` from `defaults.tasks.provider`, or else from the old user `tasks.provider`. |
 | `tasks.provider: jira` or `github-projects`, `tasks.providers.jira` / `.github-projects` | Dropped and reported: those providers were removed. |
 | `tasks.providers.teamwork.task_ref_prefix` | Dropped: the provider's manifest fixes the prefix. |
-| `ship:` (5.0.0-alpha.1) | `release:`, today's section (see [From 5.0.0-alpha.1](#from-500-alpha1)). |
-| `release:` (4.2.0) | `release:`, today's section (see [Release](#release)). A 4.2.0 `release:` already in `.ai-workflow.yml` or `.ai-workflow/config.yaml` is told apart by its 4.2.0 keys (`semantic_release:`, the presets) and converted in place. |
-| the semantic-release configuration (`package.json` `release`, `.releaserc*`) | Imported into `release:` by the same code as `nerv release setup --import`. Its warnings are printed. |
-| `pipeline:` | `deploy:` (see [Deploy](#deploy)) |
+| `ship:` (5.0.0-alpha.1), `release:` (4.2.0), `pipeline:` | Refused since 7.0 (see [Older release and deploy sections](#older-release-and-deploy-sections)); nerv 6.6 converts them as [its migration guide](https://github.com/war-apps/nerv-by-gentle-ai/blob/v6.6.0/docs/migration.md) describes. |
 | `openspec/changes/<change>/`, in flight, FULL | `odd/tasks/<change>.md`, with its run files in `odd/<change>/nerv/` and its lock in `.nerv/locks/<change>.lock` (see [ODD](#odd)) |
 | `openspec/changes/<change>/`, in flight, DIRECT or LIGHT | `.nerv/runs/<change>/`, with no ODD document, and its lock in `.nerv/locks/<change>.lock` (see [ODD](#odd)) |
 | `openspec/changes/archive/`, `openspec/specs/` | They stay where they are, read-only. |
@@ -45,69 +63,7 @@ reported the same way, and the repository is treated as unconfigured.
 | — | `.nerv/.gitignore` (`*`): `.nerv/` now holds runtime files only. |
 
 Comments and key order are kept where possible. Untouched lines are copied
-byte for byte. Rewritten sections (`release:`, `deploy:`) are written again by
-yaml.v3, so a flow mapping loses its inner spaces: `{ a: 1 }` becomes
-`{a: 1}`.
-
-### Release
-
-Each 4.2.0 project becomes a project of today's `release:` section with `build: bash`.
-Its presets turn into the stage commands they ran in 4.2.0:
-
-- **dotnet**:
-  - `dotnet restore`, `dotnet format --verify-no-changes`, `dotnet build -c <configuration> --no-restore -p:Version="$NERV_RELEASE_VERSION"` and `dotnet test -c <configuration> --no-build`;
-  - each with `--disable-build-servers` and the build-server-safe environment;
-  - `project_file` becomes the project's `version_files`;
-  - `coverage_threshold` becomes the project's `coverage.line`, with the test collecting coverage into `$NERV_RELEASE_ARTIFACTS_DIR/coverage`.
-- **node**: the frozen-lockfile install (`npm ci`, `pnpm install --frozen-lockfile`, `yarn install --immutable` or `--frozen-lockfile`), then the `lint`, `build` and `test` scripts that `package.json` defines.
-- **docker**:
-  - one `docker build` per image, with the same tags (the version; the channel off the default channel; `latest` on it), build arguments and labels;
-  - then a `docker save` of those tags into the artifact.
-- **nuget**: `dotnet pack` into the artifact.
-- **npm**: `npm pack` into the artifact.
-
-A stage command the project wrote itself still replaces the presets', as it
-did in 4.2.0. The docker preset's builds go into `stages.package`, and every
-image 4.2.0 pushed becomes an `images` entry of the project `{ name, tags }` with its
-4.2.0 tag kinds (`version` always, the channel off the default channel,
-`latest` on it): `nerv release` tags and saves every reference into the
-artifact after the package commands and records them, and the
-`release-ssh-compose` publish pushes them all, as 4.2.0 did. An image with
-`push: false` is saved by the package commands themselves, with no
-reference to push. `semantic_release:` is dropped. The `publish` stage and the
-`publish`, `success`, `before_publish` and `after_publish` hooks are dropped
-and reported: publishing belongs to `nerv deploy` now.
-
-Where 4.2.0's behaviour has no exact equivalent, the stage gets a
-`# TODO(nerv migrate):` comment and the run prints a warning:
-
-- **NuGet and npm publishing.** No deploy provider publishes them yet.
-- **`--disable-build-servers`.** 4.2.0 dropped the flag for a .NET SDK older than 7.0.100. Script mode keeps it.
-
-### Deploy
-
-Each environment of `pipeline.deploy` (or 4.2.0's default four:
-`production-green`, `production-blue`, `staging`, `development`) becomes one
-`release-ssh-compose` target. It carries the `pipeline.deploy` settings that
-were written: `source`, `infisical.*`, `update_timeout`, `ssh.*`, `verify.*`.
-
-The user-scope settings (`infisical_domain`, `ssh_auth`, `ssh_key_file`,
-`ssh_known_hosts`, `ssh_connect_timeout`) go to the user config under
-`deploy.providers.ssh-compose` with `--user`. Without it, they go into each
-target, and a warning says so.
-
-When origin is on GitHub, `deploy.host: github` is written. That is also
-the case for a repository with only `release:` whose semantic-release
-configuration published GitHub releases: the tag, the release commit and
-the GitHub release are `nerv deploy`'s job now.
-
-Reported, with no equivalent:
-
-- `pipeline.sync`: there is no back-merge after a release;
-- `pipeline.deploy.selection: branches`: a target deploys its environment when the environment's `DOCKER_IMAGE_VERSION` points at the release; choose targets with `nerv deploy --target`;
-- `pipeline.registry`'s credential variables: run `docker login` before `nerv deploy`;
-- `pipeline.images`: the project's `images`, saved into the artifact by nerv release and pushed by the `release-ssh-compose` publish;
-- `pipeline.dotnet`: the release stages already cover validate and test.
+byte for byte.
 
 ### ODD
 
@@ -140,17 +96,15 @@ cannot be checked, so make sure no session there still runs the change.
 A FULL change named `tasks` is left where it is, because it would collide
 with `odd/tasks/`.
 
-## Extensions
+## Tools
 
-The run ends with the exact install line for the extensions and providers
-the old configuration used (each installs as its own Claude Code
-plugin):
-
-- the `task` extension and its `task-teamwork` provider when `tasks.provider` was `teamwork` (also the 4.2.0 default when nothing set it);
-- the `release` extension when the 4.2.0 `release:` section, the 5.0.0-alpha.1 `ship:` section or a `pipeline:` section existed; its providers, the deploy ones (`release-github`, `release-ssh-compose`) included, come with it.
+The run ends with the exact install line for the NERV-ecosystem tools
+that replace what the old configuration used: nerv-task when
+`tasks.provider` was `teamwork` (also the 4.2.0 default when nothing set
+it).
 
 ```
-Next, install the extensions it uses: nerv install --with task,task-teamwork,release
+Next, install the tools it uses: nerv install --tools nerv-task
 ```
 
 `--install` runs that line through `nerv install` (without the closing
@@ -184,104 +138,77 @@ in your user `config.yaml` (showing the dry run, then asking; without a
 terminal, a hint), and `nerv doctor` reports a pending `task.yaml` or
 `release.yaml` move, in the user configuration and in the repository.
 
-## From 5.0.0-alpha.1
+## From 6.6: extensions moved to tools
 
-In 5.0.0-alpha.1 the release extension was called ship: its section was
-`ship:`, its command `nerv ship`, and its configuration lived in
-`<repo>/.ai-workflow.yml`. The rename is a clean break: no command reads
-the old names. Until `nerv migrate` runs, `nerv version next`, `nerv
-release` and `nerv release setup` refuse a `ship:` section (exit 1, the
-file untouched) with `ship: the ship: section of nerv 5.0.0-alpha.1 is no
-longer read ... run nerv migrate to convert it into the release: section`.
+Up to 6.6, nerv shipped optional extensions as Claude Code plugins of its
+own marketplace, and the engines behind them in its binary. Since 7.0
+they are separate tools of the NERV ecosystem, installed with
+`nerv install --tools <tool>` (or offered by `nerv install` and
+`nerv upgrade` on a terminal):
 
-`nerv migrate` does it all in one transaction (dry run, backups, rollback,
-a second run that changes nothing):
+- [nerv-task](https://github.com/war-apps/nerv-task-by-gentle-ai) brings
+  the `/task:*` commands and the `task:dispatcher` agent the orchestrator
+  emits its task events to;
+- [nerv-release](https://github.com/war-apps/nerv-release-by-gentle-ai)
+  brings the `/release:*` commands, its versioner, builder and deployer
+  agents, and the version, build and deploy engines.
 
-1. `.ai-workflow.yml` moves to `.ai-workflow/config.yaml` (a `ship:`
-   section already moved there by hand is converted in place).
-2. `ship:` is renamed `release:`, where it was, with its comments.
-3. The keys move to the release extension's provider slots:
+What nerv no longer has, and what replaces it:
 
-| 5.0.0-alpha.1 | Now |
+| Removed from nerv | Replacement |
 |---|---|
-| `ship.branches`, `release_rules`, `note_keywords`, `tag_format`, `repository_url`, `changelog` | `release.providers.conventional-commits.<key>` (the version engine's keys) |
-| `ship.projects[].tag_format`, `changelog` | Unchanged: still project keys. |
-| `build: { mode: compose, ... }` | `build: docker-compose` |
-| `build: { mode: script, ... }` | `build: bash` |
-| `build.file`, `build.test_service` | `release.projects[].providers.docker-compose.file`, `.test_service` |
-| `build.shared_host` | `release.projects[].providers.bash.shared_host` |
-| `build.images`, `build.version_files`, `build.coverage` | `release.projects[].images`, `.version_files`, `.coverage` |
-| everything else (`stages`, `hooks`, `depends_on`, `scopes`, ...) | Unchanged. |
+| `nerv release` | `nerv-release build` |
+| `nerv release setup --import` | `nerv-release setup --import` |
+| `nerv deploy` | `nerv-release deploy` |
+| `nerv version next` | `nerv-release version next` (`nerv version` still prints nerv's own versions) |
+| the hidden `nerv provider` command | none: providers belong to the tools (it is now an unknown command) |
+| `nerv install --with <extensions>` (extension and provider selection) | `nerv install --tools nerv-task,nerv-release` (`--with` is an unknown flag, exit 2) |
+| `nerv configure --repo-provider-config <provider>.<key>=<value>` | `nerv-task init` and `nerv-task configure`, which write nerv-task's `task.yaml` |
+| `nerv configure --init-repo` copying `defaults.tasks` into a new project | `nerv-task init` |
+| the wizard's "Task providers" section | `nerv-task configure` |
+| `nerv doctor`'s release, deploy, tasks and project-extension checks | the tools' own commands; `nerv doctor` still reports a pending move to `task.yaml` or `release.yaml` |
+| the `task@nerv` plugin (`/task:*`, `task:dispatcher`) and `task-teamwork@nerv` | nerv-task |
+| the `release@nerv` plugin (`/release:*`) and its 6 providers: `release-conventional-commits@nerv`, `release-docker-compose@nerv`, `release-bash@nerv`, `release-github@nerv`, `release-ssh-compose@nerv`, `release-script@nerv` | nerv-release |
+| the 5.2.0 `deploy@nerv`, `deploy-github@nerv`, `deploy-ssh-compose@nerv` and `deploy-bash@nerv` | nerv-release |
 
-For example:
+Run with this nerv, `nerv release`, `nerv release setup`, `nerv deploy`
+and `nerv version next` print one line naming their replacement and exit 2.
 
-```yaml
-# 5.0.0-alpha.1, .ai-workflow.yml
-ship:
-  tag_format: "v${version}"
-  projects:
-    - { name: api, path: ., build: { mode: compose, file: docker-compose.yml, images: ["ghcr.io/acme/app:${version}"] } }
+**Plugins left behind.** `nerv install` and `nerv upgrade` disable the
+plugins above when they find them in Claude Code's `settings.json`
+(enabled or not) or in its plugin cache: they are removed from
+`settings.json` (backed up first) and uninstalled with
+`claude plugin uninstall` (a failure is only a warning). When the tool
+that replaces them is installed, or chosen in the same run, each one gets
+a note:
 
-# now, .ai-workflow/config.yaml
-release:
-  providers:
-    conventional-commits:
-      tag_format: "v${version}"
-  projects:
-    - name: api
-      path: .
-      build: docker-compose
-      images: ["ghcr.io/acme/app:${version}"]
-      providers:
-        docker-compose:
-          file: docker-compose.yml
+```
+Removed task@nerv from settings.json (replaced by nerv-task)
 ```
 
-A `release:` section with the engine keys at its top or a `build:`
-mapping (the same shape under the new name) is moved the same way. A file
-with both `ship:` and `release:` is refused: merge them by hand.
+Otherwise one warning per tool names the plugins, the commands lost and
+how to get them back:
 
-The user configuration moves with `nerv migrate --user`: the user
-`config.yml` becomes `config.yaml` in the same folder. It holds no `ship:`
-keys (the section was project scope only).
+```
+Warning: disabled task@nerv, task-teamwork@nerv: nerv no longer ships them, so /task:* is unavailable until you install nerv-task: nerv install --tools nerv-task
+```
 
-Artifacts written by `nerv ship` (schema `nerv.ship-artifact/v1`) are not
-converted: `nerv deploy` refuses them with `this artifact was made by nerv
-5.0.0-alpha.1 (nerv ship); rebuild it with nerv release`. Run `nerv
-release` again for the version you want to deploy.
+**Settings.** nerv reads no `tasks:`, `release:` or `deploy:` section any
+more. `nerv migrate` moves them to the tools' files (see
+[To the nerv-task and nerv-release tools](#to-the-nerv-task-and-nerv-release-tools)).
 
-## From 5.2.0: deploy merged into release
+The orchestrator is unchanged: it still emits its task events when the
+`task:dispatcher` agent is available, which nerv-task now provides.
 
-Up to 5.2.0 deploying was its own `deploy` extension, with the
-`deploy-github`, `deploy-ssh-compose` and `deploy-bash` providers and the
-`/deploy:run`, `/deploy:setup` and `/deploy:ship` commands. They are now part
-of the `release` extension:
+## Older versions
 
-| 5.2.0 | Now |
-|---|---|
-| the `deploy` plugin | part of `release`: `/release:deploy`, `/release:deploy-setup`, `/release:ship`, the `release:deployer` agent and the `release:deploy` skill |
-| `deploy-github`, `deploy-ssh-compose` | `release-github`, `release-ssh-compose`, installed with `release` |
-| `deploy-bash`, `deploy.targets[].provider: bash` | `release-script`, `provider: script` (`release-bash` is the bash build provider) |
-| `.ai-workflow/providers/deploy-<name>/` with `extension: deploy` | `.ai-workflow/providers/release-<name>/` with `extension: release` |
-| the deploy request envelope's `"extension": "deploy"` | `"extension": "release"` |
-
-The `deploy:` section, `defaults.deploy`, the user keys under
-`deploy.providers.<provider>` and `nerv deploy` keep their names.
-
-- `nerv install` removes `deploy@nerv`, `deploy-github@nerv`,
-  `deploy-ssh-compose@nerv` and `deploy-bash@nerv` from `settings.json` and
-  uninstalls them from Claude Code's plugin cache, and refuses `--with
-  deploy` with `deploy was merged into the release extension: install
-  release, which brings every deploy provider`.
-- `nerv migrate` rewrites every `provider: bash` of `deploy.targets` to
-  `provider: script`, comments kept (with `--user`, also in
-  `defaults.deploy`), and moves each project deploy provider to
-  `release-<name>`, its `extension:` rewritten. A `release-<name>` folder
-  that already exists, or a project deploy provider named `bash`, is
-  refused: rename it by hand.
-- Until then `nerv deploy` refuses a `provider: bash` target before any git
-  write, with `the bash deploy target is now named script (release-script):
-  set provider: script, or run nerv migrate (nothing was written)`.
+The conversions from 5.0.0-alpha.1 (`ship:`, `nerv ship`) and 5.2.0 (the
+separate `deploy` extension, `provider: bash` deploy targets,
+`deploy-<name>` project providers) are refused since 7.0 (see
+[Older release and deploy sections](#older-release-and-deploy-sections));
+[nerv 6.6's migration guide](https://github.com/war-apps/nerv-by-gentle-ai/blob/v6.6.0/docs/migration.md) describes how that version converts
+them. The `deploy@nerv` plugins of 5.2.0 are disabled with the other
+extension plugins (see [From 6.6](#from-66-extensions-moved-to-tools)).
 
 ## Safety
 
@@ -294,13 +221,10 @@ The `deploy:` section, `defaults.deploy`, the user keys under
     3. Move .nerv/nerv.yaml to .nerv/nerv.yaml.migrated: a copy of the old configuration, so an older nerv does not read it
 
   How the configuration changes:
-    - release: converted from the 4.2.0 section
+    - tasks.provider: teamwork (the 4.2.0 default): the nerv-task tool
     ...
 
-  Check by hand:
-    - deploy.host: the repository has no origin, so no git host is written: set deploy.host when it has one
-
-  Next, install the extensions it uses: nerv install --with task,task-teamwork,release
+  Next, install the tools it uses: nerv install --tools nerv-task
 
   nerv migrate: dry run: 3 change(s), nothing was written
   ```
@@ -315,15 +239,8 @@ The `deploy:` section, `defaults.deploy`, the user keys under
   - the old file and its replacement both exist with different content (nerv migrate does not merge them);
   - an ODD document of the same name already exists, and `nerv migrate` did not write it;
   - a change's lock is still held on this machine, without `--force`;
-  - the file has both a `ship:` section (5.0.0-alpha.1) and a `release:` section;
-  - a `ship:` key has no place: an unknown `build.mode` or `build:` key, or a key its new place already holds;
-  - the migrated `.ai-workflow/config.yaml` does not load with today's `release:` and `deploy:` readers.
+  - an older release or deploy section is found (see [Older release and deploy sections](#older-release-and-deploy-sections)).
 
 Exit codes: 0 for migrated, nothing to migrate, or a dry run; 1 for a
 refusal (including running outside a git repository without `--user`); 2
 for a usage or environment error.
-
-## Known limits
-
-- The deploy side is checked at the configuration level: the migrated targets load with `deployconfig` and each key and value fits the `release-ssh-compose` manifest. A full `nerv deploy --dry-run` needs an artifact, so the tests do not run one.
-- `manifest.json` of an artifact is not hashed by its own integrity check. It is a local file, a known limit of the artifact format, not of the migration.

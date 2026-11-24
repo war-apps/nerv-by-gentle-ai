@@ -6,6 +6,7 @@ import (
 
 	"github.com/war-apps/nerv-by-gentle-ai/internal/config"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/paths"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/workflowconfig"
 )
 
 // releaseSections are the sections nerv-release reads from its own
@@ -21,27 +22,23 @@ var releaseDefaultsSections = []string{"defaults.release", "defaults.deploy"}
 // the ssh-compose deploy provider's machine-local settings. nerv-release
 // reads them from the global release.yaml only; they never move from a
 // repository into any release.yaml.
-var releasePersonalKeys = []string{
-	"deploy.providers.ssh-compose.infisical_domain",
-	"deploy.providers.ssh-compose.ssh_auth",
-	"deploy.providers.ssh-compose.ssh_key_file",
-	"deploy.providers.ssh-compose.ssh_known_hosts",
-	"deploy.providers.ssh-compose.ssh_connect_timeout",
-}
+var releasePersonalKeys = slices.DeleteFunc(slices.Clone(workflowconfig.PersonalProviderKeys),
+	func(k string) bool { return !strings.HasPrefix(k, "deploy.") })
 
 func isReleasePersonal(path string) bool { return slices.Contains(releasePersonalKeys, path) }
 
 // moveRepoReleaseYAML moves doc's release: and deploy: sections into the
 // repository's own release.yaml (o.ReleaseYAMLRepo), key by key, each keeping its "release."/"deploy."
 // prefix. A personal key (releasePersonalKeys) is never moved: it stays
-// in doc and is reported. A key already set in release.yaml is kept in
-// doc and reported as a conflict. A no-op when o.ReleaseYAMLRepo is "".
+// in doc and is reported, with or without nerv-release. A key already set
+// in release.yaml is kept in doc and reported as a conflict. Otherwise a
+// no-op when o.ReleaseYAMLRepo is "".
 func moveRepoReleaseYAML(p *Plan, o Options, doc *config.Document) error {
-	if o.ReleaseYAMLRepo == "" {
-		return nil
-	}
 	for _, path := range presentReleasePersonal(doc) {
 		p.warn("%s: %s: a personal setting in the project file, kept: nerv-release reads it from your global release.yaml only; set it there and remove it here", paths.ProjectConfigFile, path)
+	}
+	if o.ReleaseYAMLRepo == "" {
+		return nil
 	}
 	existing, exists, err := readOptional(o.ReleaseYAMLRepo)
 	if err != nil {

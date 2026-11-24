@@ -37,12 +37,6 @@ Otherwise, exactly one mode flag is required:
 
 With --init-repo:
   --repo-base <branch>      Base branch override
-  --repo-provider-config <provider>.<key>=<value>
-                            Task provider setting for this repo, written to
-                             tasks.providers.<provider>.<key> (repeatable);
-                             the key (repo scope only) and value are checked
-                             against the provider's provider.yaml (shipped,
-                             or the project's in .ai-workflow/providers/)
 
 Other flags:
   --json                    Print the result as JSON (ignored by --print, which always does)
@@ -71,8 +65,6 @@ func runConfigure(args []string, stdout, stderr io.Writer, opts options) int {
 	fs.Var(&setModelArgs, "set-model", "")
 	initRepo := fs.String("init-repo", "", "")
 	repoBase := fs.String("repo-base", "", "")
-	var repoProviderConfig stringList
-	fs.Var(&repoProviderConfig, "repo-provider-config", "")
 	jsonOut := fs.Bool("json", false, "")
 	configOverride := fs.String("config", "", "")
 	answersFile := fs.String("answers", "", "")
@@ -103,11 +95,6 @@ func runConfigure(args []string, stdout, stderr io.Writer, opts options) int {
 		fmt.Fprint(stderr, configureUsage)
 		return 2
 	}
-	if len(repoProviderConfig) > 0 && *initRepo == "" {
-		fmt.Fprintln(stderr, "nerv configure: --repo-provider-config requires --init-repo")
-		fmt.Fprint(stderr, configureUsage)
-		return 2
-	}
 
 	home, err := configure.ResolveHome(opts.Home)
 	if err != nil {
@@ -121,7 +108,7 @@ func runConfigure(args []string, stdout, stderr io.Writer, opts options) int {
 			return 1
 		}
 	}
-	deps := configure.Deps{Home: home, FS: opts.PluginFS, ExtensionsFS: opts.ExtensionsFS, Runner: opts.Runner, Now: opts.Now, LookPath: opts.LookPath, Getenv: opts.Getenv}
+	deps := configure.Deps{Home: home, FS: opts.PluginFS, Runner: opts.Runner, Now: opts.Now, LookPath: opts.LookPath, Getenv: opts.Getenv}
 
 	switch {
 	case *printMode:
@@ -142,12 +129,7 @@ func runConfigure(args []string, stdout, stderr io.Writer, opts options) int {
 		return emitMutation(stdout, result, err, *jsonOut)
 
 	case *initRepo != "":
-		req := configure.InitRepoRequest{
-			Path:           *initRepo,
-			Base:           *repoBase,
-			ProviderConfig: repoProviderConfig,
-			UserConfig:     paths.Config,
-		}
+		req := configure.InitRepoRequest{Path: *initRepo, Base: *repoBase}
 		result, err := configure.InitRepo(deps, req)
 		return emitMutation(stdout, result, err, *jsonOut)
 

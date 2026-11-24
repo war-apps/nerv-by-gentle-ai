@@ -105,9 +105,8 @@ changes confirmed — never more.
      user the path is not a git repository and skip this section instead
      of asking further.
 
-   Task settings are not a section of this command: when the task extension
-   is installed, `nerv configure` asks for its providers' settings, read
-   from each provider's `provider.yaml`.
+   Task settings are not a section of this command: the nerv-task tool
+   owns them (`nerv-task configure`, or `/task:setup` for a repository).
 
 4. **Apply.** `--set` and `--set-model` are repeatable flags — pass every
    changed key of a batch as its own `--set`/`--set-model` occurrence on one
@@ -123,11 +122,8 @@ changes confirmed — never more.
    - **repo**: `nerv configure --init-repo <path> --repo-base <base> --json`.
      This never overwrites an existing `.ai-workflow/config.yaml`; if one is already
      present, the result carries a `warnings` entry saying so — report it
-     and move on without asking again. A new file gets the user config's
-     `defaults.tasks` as its `tasks:` section (personal keys left out);
-     each copied value is a `changes` entry whose `to` ends with
-     `(from defaults.tasks)` — list those in the summary as copied from
-     the user's defaults.
+     and move on without asking again. A new file gets no `tasks:`
+     section: task settings belong to the nerv-task tool.
 
    Read each call's JSON result (`changed`, `changes`, `written`,
    `warnings`, `backup`, `config_path`) and hold it for the final summary. A section with no

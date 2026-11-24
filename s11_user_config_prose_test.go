@@ -9,7 +9,7 @@ import (
 // S11 / L8: the user config is os.UserConfigDir()/ai-workflow/config.yaml.
 // Prose that tells an agent to read it must name the real resolution.
 func TestS11_ProseResolvesUserConfigPerPlatform(t *testing.T) {
-	for name, fsys := range map[string]fs.FS{"plugin": PluginFS(), "plugins": ExtensionsFS()} {
+	for name, fsys := range map[string]fs.FS{"plugin": PluginFS()} {
 		_ = fs.WalkDir(fsys, ".", func(path string, d fs.DirEntry, err error) error {
 			if err != nil || d.IsDir() || !strings.HasSuffix(path, ".md") {
 				return err

@@ -7,7 +7,6 @@ import (
 	"strings"
 	"testing"
 
-	nerv "github.com/war-apps/nerv-by-gentle-ai"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/paths"
 	"github.com/war-apps/nerv-kit-by-gentle-ai/runner/runnertest"
 )
@@ -19,7 +18,6 @@ import (
 // real XDG_CONFIG_HOME or %AppData%.
 func toolsInstalledOpts(home, top string, tools ...string) options {
 	opts := testOptions(home)
-	opts.ExtensionsFS = nerv.ExtensionsFS()
 	opts.GOOS = "linux"
 	opts.LookPath = func(name string) (string, error) {
 		if slices.Contains(tools, name) {
