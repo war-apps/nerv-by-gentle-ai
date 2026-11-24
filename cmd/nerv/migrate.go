@@ -84,7 +84,7 @@ Moves a repository (and, with --user, your user configuration) from nerv
 It lists its steps, with or without --dry-run: each file it creates,
 updates, moves or deletes, and what for; then how the configuration
 changes, what to check by hand, and the nerv install line for the
-extensions the repository uses. Every file
+tools the repository uses. Every file
 it changes or removes is backed up first (the repository's under
 .nerv/backups/migrate-<timestamp>/, the user config's next to it). When a
 step fails, every change already made is rolled back. A run interrupted

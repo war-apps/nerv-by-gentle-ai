@@ -52,14 +52,6 @@ func TestPlugin_MentionsOpenSpecOnlyToSayItIsNoLongerUsed(t *testing.T) {
 	}
 }
 
-// The extension plugins never mention OpenSpec: their runtime files live in
-// the ODD run folder too.
-func TestExtensions_NeverMentionOpenSpec(t *testing.T) {
-	if hits := openspecHits(t, ExtensionsFS()); len(hits) != 0 {
-		t.Errorf("plugins/ still mentions openspec:\n%v", hits)
-	}
-}
-
 // The orchestrator names the ODD document as the FULL tracking surface.
 func TestOrchestrator_NamesTheODDDocument(t *testing.T) {
 	assertContainsAll(t, orchestratorCore, readPluginText(t, orchestratorCore), "odd/tasks/{feature}.md")

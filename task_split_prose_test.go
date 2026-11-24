@@ -71,14 +71,3 @@ func TestOrchestrator_EmitsEveryTaskEvent(t *testing.T) {
 		t.Errorf("%s still logs tracker_event; the entry is task_event", path)
 	}
 }
-
-// The task contract keeps the testing move tied to the work unit's
-// verification in the DIRECT and LIGHT tiers.
-func TestTaskContract_TestingMoveFollowsWorkUnitVerification(t *testing.T) {
-	const path = "task/skills/task/SKILL.md"
-	data, err := fs.ReadFile(ExtensionsFS(), path)
-	if err != nil {
-		t.Fatalf("reading %s: %v", path, err)
-	}
-	assertContainsAll(t, path, string(data), "the work unit's check (LIGHT, DIRECT) starts", "**It never calls `complete`.**")
-}

@@ -91,7 +91,7 @@ func migrateTasks(p *Plan, doc *config.Document, where string) error {
 	}
 	if v, ok := doc.Scalar("tasks.provider"); ok && slices.Contains(RemovedProviders, v) {
 		doc.Remove("tasks.provider")
-		p.warn("%s: tasks.provider: %s was removed from nerv (dropped; with no provider the task extension uses the only installed one)", where, v)
+		p.warn("%s: tasks.provider: %s was removed from nerv (dropped; with no provider nerv-task uses the only installed one)", where, v)
 	}
 	for _, name := range RemovedProviders {
 		if doc.Remove("tasks.providers." + name) {

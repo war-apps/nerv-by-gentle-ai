@@ -12,8 +12,8 @@ import (
 // declared them (nerv-task owns the contract now).
 var taskResults = []string{"ok", "skipped", "blocked", "failed", "needs_input"}
 
-// Every place that lists the dispatcher's result values names exactly
-// taskResults.
+// Every place in the orchestrator that lists the dispatcher's result values
+// names exactly taskResults.
 func TestTaskEnvelope_ResultListsMatchContract(t *testing.T) {
 	want := strings.Join(taskResults, " | ")
 	listRe := regexp.MustCompile(`ok \| skipped \| blocked \| failed[^\n]*`)
@@ -22,7 +22,6 @@ func TestTaskEnvelope_ResultListsMatchContract(t *testing.T) {
 		path string
 	}{
 		{PluginFS(), "skills/_shared/nerv-artifacts.md"},
-		{ExtensionsFS(), "task/skills/task/SKILL.md"},
 	} {
 		data, err := fs.ReadFile(src.fsys, src.path)
 		if err != nil {

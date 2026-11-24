@@ -234,7 +234,7 @@ func planRepo(p *Plan, o Options, user *userState) error {
 	}
 	if o.Home != "" {
 		if entries, err := os.ReadDir(legacyCommandsDir(o.Home)); err == nil && len(entries) > 0 {
-			p.warn("%s: old /task:* copies shadow the task extension's commands; nerv install reports them and removes them when you confirm", legacyCommandsDir(o.Home))
+			p.warn("%s: old /task:* copies shadow the /task:* commands of the nerv-task tool; nerv install reports them and removes them when you confirm", legacyCommandsDir(o.Home))
 		}
 	}
 	return nil
