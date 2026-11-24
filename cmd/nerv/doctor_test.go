@@ -182,6 +182,31 @@ func TestDoctor_NoExtensionChecks(t *testing.T) {
 	lacks(t, "the report", out, "]  release ", "]  deploy ", "]  tasks ", "project extensions", "nerv install --with", "/release:")
 }
 
+// The extension plugins nerv no longer ships, enabled in the repository's
+// own Claude Code settings (nerv install and upgrade clean only the user
+// settings), are reported with the files and the step that removes them.
+func TestDoctor_ProjectSettingsOrphansAreReported(t *testing.T) {
+	w := newDoctorWorld(t)
+	w.write(filepath.Join(w.top, ".claude", "settings.json"), `{"enabledPlugins":{"task@nerv":true,"other@elsewhere":true}}`)
+	w.write(filepath.Join(w.top, ".claude", "settings.local.json"), `{"enabledPlugins":{"release@nerv":false,"release-github@nerv":true}}`)
+	code, out, _ := w.doctor()
+	if code != 0 {
+		t.Fatalf("exit %d\n%s", code, out)
+	}
+	contains(t, "the report", out,
+		"  [!!]  old plugins  .claude/settings.json: task@nerv; .claude/settings.local.json: release@nerv, release-github@nerv (nerv no longer ships them)\n",
+		"Remove them from enabledPlugins in those files; nerv-task and nerv-release replace them (nerv install --tools nerv-task,nerv-release)")
+	lacks(t, "the report", out, "other@elsewhere")
+}
+
+// Without old plugins in the repository's settings there is no such row.
+func TestDoctor_NoProjectSettingsOrphansNoRow(t *testing.T) {
+	w := newDoctorWorld(t)
+	w.write(filepath.Join(w.top, ".claude", "settings.json"), `{"enabledPlugins":{"nerv@nerv":true}}`)
+	_, out, _ := w.doctor()
+	lacks(t, "the report", out, "old plugins")
+}
+
 // A 4.2.0 repository: nerv migrate is the step, listed once although two
 // checks name it, and the checks that read the configuration are skipped.
 func TestDoctor_OldConfigurationPointsToMigrate(t *testing.T) {

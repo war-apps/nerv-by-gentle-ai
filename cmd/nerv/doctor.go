@@ -16,6 +16,7 @@ import (
 	"github.com/war-apps/nerv-by-gentle-ai/internal/configstore"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/configure"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/doctor"
+	"github.com/war-apps/nerv-by-gentle-ai/internal/ecosystem"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/gentleai"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/install"
 	"github.com/war-apps/nerv-by-gentle-ai/internal/migrate"
@@ -31,7 +32,8 @@ const doctorUsage = `Usage: nerv doctor [--json] [--cwd <dir>]
 Check that everything NERV needs is in order, on this machine (gentle-ai,
 Claude Code, engram, the NERV plugin and its skills, the user
 configuration) and in the repository (its configuration, a pending
-nerv migrate, the origin remote and the base branch). It changes
+nerv migrate, old nerv plugins its .claude settings still enable, the
+origin remote and the base branch). It changes
 nothing: it lists what it found, then the steps to take and the optional
 ones.
 
@@ -260,6 +262,7 @@ func (d *doctorRun) repository(cwd string) {
 	project, ok := d.projectConfig(top)
 	origin := originURL(d.ctx, d.opts, top)
 	d.migration(top)
+	d.projectOrphans(top)
 	if !ok {
 		return
 	}
@@ -307,6 +310,40 @@ func (d *doctorRun) projectConfig(top string) (*config.Document, bool) {
 
 // migration checks whether nerv migrate has steps to take in the
 // repository.
+// projectOrphans reports the extension plugins nerv no longer ships that
+// the repository's own Claude Code settings still name: nerv install and
+// nerv upgrade clean the user settings only.
+func (d *doctorRun) projectOrphans(top string) {
+	var names, tools []string
+	for _, t := range ecosystem.Catalogue() {
+		for _, name := range t.Replaces {
+			names = append(names, name+"@"+install.MarketplaceName)
+		}
+		tools = append(tools, t.Name)
+	}
+	var found []string
+	for _, rel := range []string{".claude/settings.json", ".claude/settings.local.json"} {
+		s, err := claude.LoadSettings(filepath.Join(top, filepath.FromSlash(rel)))
+		if err != nil {
+			continue
+		}
+		var ids []string
+		for _, id := range names {
+			if s.RemovePlugin(id) {
+				ids = append(ids, id)
+			}
+		}
+		if len(ids) > 0 {
+			found = append(found, rel+": "+strings.Join(ids, ", "))
+		}
+	}
+	if len(found) == 0 {
+		return
+	}
+	d.add("old plugins", doctor.Warn, strings.Join(found, "; ")+" (nerv no longer ships them)",
+		"Remove them from enabledPlugins in those files; "+strings.Join(tools, " and ")+" replace them (nerv install --tools "+strings.Join(tools, ",")+")")
+}
+
 func (d *doctorRun) migration(top string) {
 	o := migrate.Options{RepoRoot: top, Home: d.home, Now: d.opts.Now()}
 	setToolFileTargets(d.ctx, d.opts, d.home, &o)

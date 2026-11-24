@@ -238,8 +238,12 @@ Checks that everything NERV needs is in order and changes nothing:
 - in the repository: `.ai-workflow/config.yaml` with `enabled: true`, a
   pending `nerv migrate` (naming `.ai-workflow/task.yaml` or
   `.ai-workflow/release.yaml` when it moves settings there, for an
-  installed nerv-task or nerv-release), the origin remote and the base
-  branch. Task, release and deploy settings are the tools' own to check.
+  installed nerv-task or nerv-release), the extension plugins nerv no
+  longer ships that the repository's `.claude/settings.json` or
+  `.claude/settings.local.json` still enable (an `old plugins` warning:
+  `nerv install` and `nerv upgrade` clean only your user settings), the
+  origin remote and the base branch. Task, release and deploy settings are
+  the tools' own to check.
 
 Each check prints `[ok]`, `[!!]` (should be changed), `[xx]` (NERV cannot
 work until it is fixed) or `[--]` (optional, not set up). Then come the
@@ -311,8 +315,9 @@ After that install (whether or not it actually ran anything), it offers
 the NERV-ecosystem tools the same way `nerv install` does — every
 catalogue tool's state shown and confirmed one by one on a terminal,
 `--tools <names>` / `--no-tools` controlling the step the same way — but
-running `<tool> upgrade` for each confirmed or named tool instead of its
-install script. Then it disables the extension plugins nerv no longer
+running `<tool> upgrade` for each confirmed or named tool that is
+installed instead of its install script (a tool that is not installed is
+asked as "Install" and gets its install script). Then it disables the extension plugins nerv no longer
 ships, the way `nerv install` does (see "nerv install" below), after its
 tools step, so it knows which tools are installed. A failed individual tool upgrade is only a warning and
 never stops the others; naming an unknown tool in `--tools` refuses and
