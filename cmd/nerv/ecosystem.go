@@ -31,8 +31,9 @@ func ecosystemToolsFlagsUsage(verb string) string {
 // flag, the ones confirmed from a one-by-one [y/N] prompt showing each
 // tool's state and, best-effort, its latest release. Without a terminal
 // and neither flag, it only prints a hint naming --tools/--no-tools. It
-// returns the tools this run installed or upgraded (S6: a tool chosen
-// here counts as installed when the plugins it replaces are disabled).
+// returns the tools this run installed or upgraded successfully (S6: a
+// tool chosen here counts as installed when the plugins it replaces are
+// disabled; one whose action failed does not).
 func offerEcosystemTools(ctx context.Context, stdout io.Writer, opts options, home, action, toolsFlag string, noTools bool) ([]ecosystem.Tool, error) {
 	catalogue := ecosystem.Catalogue()
 	if len(catalogue) == 0 {
@@ -91,17 +92,20 @@ func offerEcosystemTools(ctx context.Context, stdout io.Writer, opts options, ho
 	if goos == "" {
 		goos = runtime.GOOS
 	}
+	var done []ecosystem.Tool
 	for _, t := range selected {
-		runEcosystemAction(ctx, stdout, opts, action, t, states[t.Name].Path, goos)
+		if runEcosystemAction(ctx, stdout, opts, action, t, states[t.Name].Path, goos) {
+			done = append(done, t)
+		}
 	}
-	return selected, nil
+	return done, nil
 }
 
 // runEcosystemAction runs action ("install" or "upgrade") for t through
-// opts.Runner and reports the result; a failed or non-zero run is a
-// warning, never a refusal (the tool's own script already explains
-// itself on its output).
-func runEcosystemAction(ctx context.Context, stdout io.Writer, opts options, action string, t ecosystem.Tool, path, goos string) {
+// opts.Runner, reports the result and whether it succeeded; a failed or
+// non-zero run is a warning, never a refusal (the tool's own script
+// already explains itself on its output).
+func runEcosystemAction(ctx context.Context, stdout io.Writer, opts options, action string, t ecosystem.Tool, path, goos string) bool {
 	fmt.Fprintf(stdout, "\n=== %s %s ===\n", strings.ToUpper(action[:1])+action[1:], t.Name)
 	var out, errOut string
 	var code int
@@ -120,9 +124,12 @@ func runEcosystemAction(ctx context.Context, stdout io.Writer, opts options, act
 	switch {
 	case err != nil:
 		fmt.Fprintf(stdout, "Warning: %s %s: %v\n", action, t.Name, err)
+		return false
 	case code != 0:
 		fmt.Fprintf(stdout, "Warning: %s %s exited %d\n", action, t.Name, code)
+		return false
 	}
+	return true
 }
 
 // ecosystemLatest resolves t's latest stable release, through

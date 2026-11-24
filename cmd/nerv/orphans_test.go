@@ -207,6 +207,35 @@ func TestOrphans_InstallToolInstalledOrChosen_RemovesItsFamilyWithANote(t *testi
 	assertOrphansGone(t, home, r)
 }
 
+// A tool chosen in this run whose install fails is not installed: its
+// family is disabled with the warning naming the install command, not
+// the "replaced by" note.
+func TestOrphans_InstallChosenToolThatFails_WarnsWithTheInstallCommand(t *testing.T) {
+	home := t.TempDir()
+	seedOrphans(t, home)
+	opts := testOptions(home)
+	r := baseInstallRunner()
+	r.Responses["sh -c curl -fsSL https://raw.githubusercontent.com/war-apps/nerv-task-by-gentle-ai/main/scripts/install.sh | sh"] = runnertest.Response{ExitCode: 6}
+	opts.Runner = r
+	opts.GOOS = "linux"
+	opts.LookPath = func(string) (string, error) { return "", errNotFoundForTest }
+	var stdout, stderr bytes.Buffer
+
+	code := run([]string{"install", "--no-skills", "--no-configure", "--tools", "nerv-task"}, &stdout, &stderr, opts)
+
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0; stdout:\n%s\nstderr:\n%s", code, stdout.String(), stderr.String())
+	}
+	out := stdout.String()
+	if !strings.Contains(out, "Warning: install nerv-task exited 6\n") || !strings.Contains(out, taskOrphanWarning) {
+		t.Errorf("stdout lacks the failed install or the orphan warning:\n%s", out)
+	}
+	if strings.Contains(out, "replaced by nerv-task") {
+		t.Errorf("a failed install counted as installed:\n%s", out)
+	}
+	assertOrphansGone(t, home, r)
+}
+
 // nerv upgrade disables the orphans after its own tools step, and tells
 // the install it runs to leave them to it.
 func TestOrphans_UpgradeDisablesThemAfterItsToolsStep(t *testing.T) {
