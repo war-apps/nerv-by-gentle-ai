@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [7.0.1] - 2026-11-24
+
+The README now lists every `nerv install` step in order, what
+`nerv uninstall` removes and keeps, the CLI commands, `nerv version` and
+`nerv doctor` to check an install, and refreshed technology badges.
+
+### Fixed
+- version: print the version usage for --help (724d503)
+
 ## [7.0.0] - 2026-11-24
 
 nerv no longer ships extensions: tasks and releases are the nerv-task and

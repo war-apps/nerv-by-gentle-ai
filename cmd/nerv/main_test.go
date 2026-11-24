@@ -135,3 +135,18 @@ func mustPluginFS(t *testing.T) fs.FS {
 	t.Helper()
 	return nerv.PluginFS()
 }
+
+// nerv version --help (and -h) prints the command's own usage on stdout
+// and exits 0, like every other command.
+func TestRun_VersionHelp(t *testing.T) {
+	for _, flag := range []string{"--help", "-h"} {
+		var stdout, stderr bytes.Buffer
+		code := run([]string{"version", flag}, &stdout, &stderr, testOptions(t.TempDir()))
+		if code != 0 || stderr.Len() != 0 {
+			t.Fatalf("%s: exit %d, stderr %q", flag, code, stderr.String())
+		}
+		if !strings.HasPrefix(stdout.String(), "Usage: nerv version [--json]\n") || strings.Contains(stdout.String(), "Commands:") {
+			t.Errorf("%s: stdout is not the version usage:\n%s", flag, stdout.String())
+		}
+	}
+}
