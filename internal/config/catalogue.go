@@ -139,3 +139,39 @@ func FormatProjectFile(v ProjectValues) string {
 
 	return strings.Join(lines, "\n") + "\n"
 }
+
+// keyHelp is what each managed key does and what its values change, in
+// lines the wizard prints before asking for it.
+var keyHelp = map[string]string{
+	"git.base_branch": "The branch a task's worktree and branch start from, proposed when a\n" +
+		"task starts (editable there). A repository's own config can override it.",
+	"git.worktree": "Whether starting a task creates a separate git worktree:\n" +
+		"ask = ask each time, always = always create one,\n" +
+		"never = always work in the current checkout.",
+	"git.worktree_pattern": "Where task worktrees are created. Placeholders: {repo} {slug}\n" +
+		"{branch} {prefix} {id}.",
+	"git.branch_pattern": "The branch name proposed for a task. {prefix} and {id} come from the\n" +
+		"task reference (tw-123 gives tw and 123), {slug} from its title.",
+	"git.commit_ref_pattern": "The task reference appended to every commit subject, e.g.\n" +
+		"({PREFIX}-{id}) gives (TW-123).",
+	"skills.testing": "Skills loaded by the roles that plan and write tests and run the\n" +
+		"quality gate (Ritsuko, Kaworu, Maya). Names from .atl/skill-registry.md.",
+	"skills.code": "Skills loaded by the pilots that write the code (Shinji, Asuka, Rei,\n" +
+		"Toji): your languages and frameworks.",
+	"skills.best-practices": "Skills Balthasar uses to vote each plan task and audit readability\n" +
+		"(principles such as SOLID, KISS, DRY).",
+	"skills.architecture": "Skills Melchior uses to vote structure and security (architecture\n" +
+		"styles, diagrams).",
+	"skills.audit": "Skills loaded by the audit passes of the FULL pipeline (security,\n" +
+		"code quality).",
+	"critical_paths": "Paths whose changes always take the FULL pipeline (plan, MAGI vote,\n" +
+		"audit) and whose tasks are marked critical. Keep it to what you cannot\n" +
+		"afford to break: every match costs a full review.",
+	"artifacts.commit": "When the ODD document (odd/tasks/<feature>.md) and its run folder are\n" +
+		"committed: with-change = in each work-unit commit, at-close = once when\n" +
+		"the feature closes, never = left untracked.",
+}
+
+// KeyHelp returns what key does, for the wizard to print before asking
+// for it ("" for an unknown key).
+func KeyHelp(key string) string { return keyHelp[key] }

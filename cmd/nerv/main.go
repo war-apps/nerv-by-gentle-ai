@@ -86,6 +86,9 @@ type options struct {
 	// real golang.org/x/term check, which a unit test cannot exercise
 	// directly (it depends on a real OS file descriptor/console).
 	IsTerminal func() bool
+	// EnableColor reports whether stdout shows ANSI colors (turning them on
+	// on a Windows console). Nil means plain output; tests leave it nil.
+	EnableColor func() bool
 	// SignalContext derives the context a long-running command runs under,
 	// cancelled on SIGINT, SIGTERM and (on Unix) SIGHUP, with a stop function
 	// and the signal received (nil if none). Tests inject a controllable one.
@@ -127,6 +130,7 @@ func defaultOptions() options {
 		Getenv:        os.Getenv,
 		Stdin:         os.Stdin,
 		IsTerminal:    stdinIsTerminal,
+		EnableColor:   stdoutColor,
 		SignalContext: signalContext,
 	}
 }

@@ -43,6 +43,9 @@ type Options struct {
 	SkipModels   bool
 	SkipRepos    bool
 	NoRefresh    bool
+	// Color styles the output (bold headers and labels, grey help) for
+	// a terminal that shows ANSI colors; false prints plain text.
+	Color bool
 }
 
 // Summary is Run's report of what happened, used to decide whether to
@@ -63,14 +66,14 @@ type Summary struct {
 // Summary.Changed is true, rather than unconditionally — nothing worth
 // restarting for happened otherwise.
 func Run(deps Deps, in io.Reader, out io.Writer, opts Options) (Summary, error) {
-	s := newSession(in, out)
+	s := newSession(in, out, opts.Color)
 	summary := Summary{}
 	ctx := context.Background()
 
 	fmt.Fprintln(out, "=== NERV Setup Wizard ===")
 	fmt.Fprintln(out)
 
-	printPrerequisites(ctx, deps, out)
+	printPrerequisites(ctx, deps, out, s.st)
 
 	if !opts.SkipSkills {
 		if err := offerSkillsInstall(ctx, deps, opts.Paths, s, out); err != nil {
@@ -125,8 +128,8 @@ func Run(deps Deps, in io.Reader, out io.Writer, opts Options) (Summary, error) 
 // case (found, but no parseable version at all) is folded into the "NOT
 // FOUND" line rather than echoing raw output, since that text isn't
 // available here.
-func printPrerequisites(ctx context.Context, deps Deps, out io.Writer) {
-	fmt.Fprintln(out, "--- Prerequisites ---")
+func printPrerequisites(ctx context.Context, deps Deps, out io.Writer, st style) {
+	fmt.Fprintln(out, st.heading("--- Prerequisites ---"))
 
 	prereq := gentleai.Prerequisites(ctx, deps.Runner, deps.LookPath)
 	switch {
@@ -155,6 +158,9 @@ func toolLine(found bool, yes, no string) string {
 // itself runs after registering settings.json.
 func runApplyAndRefreshSection(ctx context.Context, deps Deps, opts Options, s *session, out io.Writer) error {
 	fmt.Fprintln(out)
+	s.help("Writes the model and effort of each role into Claude Code's cached\n" +
+		"NERV agents and reloads the plugin, so the changes above take effect.\n" +
+		"Restart Claude Code afterwards.")
 	apply, err := s.yesNo("Apply models to the plugin cache and refresh it now?", true)
 	if err != nil {
 		return err

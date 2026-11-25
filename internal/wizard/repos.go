@@ -25,12 +25,14 @@ import (
 // the base-branch question at all before it has
 // anything to hand InitRepo.
 func runReposSection(deps Deps, s *session, out io.Writer, baseBranch string) (bool, error) {
-	fmt.Fprintln(out)
-	fmt.Fprintln(out, "--- Repositories ---")
+	s.heading("--- Repositories ---")
 
 	anyChanged := false
 
 	for {
+		s.help("Writes .ai-workflow/config.yaml in a repository, which turns NERV on\n" +
+			"there (enabled: true). Give its path; Enter skips. You can also run\n" +
+			"nerv configure --init-repo <path> or /nerv:init later.")
 		repoPath := s.prompt("Initialize a repository for NERV now? (path, or Enter to skip)")
 		if repoPath == "" {
 			return anyChanged, nil

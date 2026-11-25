@@ -18,7 +18,7 @@ import (
 
 func TestAsk_BlankLine_KeepsCurrent(t *testing.T) {
 	var out bytes.Buffer
-	s := newSession(strings.NewReader("\n"), &out)
+	s := newSession(strings.NewReader("\n"), &out, false)
 
 	got, err := s.ask("Base branch", "develop")
 	if err != nil {
@@ -31,7 +31,7 @@ func TestAsk_BlankLine_KeepsCurrent(t *testing.T) {
 
 func TestAsk_EOF_ReturnsErrInputClosed(t *testing.T) {
 	var out bytes.Buffer
-	s := newSession(strings.NewReader(""), &out)
+	s := newSession(strings.NewReader(""), &out, false)
 
 	got, err := s.ask("Base branch", "develop")
 	if !errors.Is(err, ErrInputClosed) {
@@ -44,7 +44,7 @@ func TestAsk_EOF_ReturnsErrInputClosed(t *testing.T) {
 
 func TestChoose_BlankLine_KeepsCurrent(t *testing.T) {
 	var out bytes.Buffer
-	s := newSession(strings.NewReader("\n"), &out)
+	s := newSession(strings.NewReader("\n"), &out, false)
 
 	got, err := s.choose("Worktree policy", []string{"ask", "always", "never"}, "ask")
 	if err != nil {
@@ -57,7 +57,7 @@ func TestChoose_BlankLine_KeepsCurrent(t *testing.T) {
 
 func TestChoose_EOF_ReturnsErrInputClosed(t *testing.T) {
 	var out bytes.Buffer
-	s := newSession(strings.NewReader(""), &out)
+	s := newSession(strings.NewReader(""), &out, false)
 
 	_, err := s.choose("Worktree policy", []string{"ask", "always", "never"}, "ask")
 	if !errors.Is(err, ErrInputClosed) {
@@ -68,7 +68,7 @@ func TestChoose_EOF_ReturnsErrInputClosed(t *testing.T) {
 func TestChoose_EOFDuringReprompt_ReturnsErrInputClosed(t *testing.T) {
 	var out bytes.Buffer
 	// One invalid answer, then the reader runs out before a valid one.
-	s := newSession(strings.NewReader("bogus\n"), &out)
+	s := newSession(strings.NewReader("bogus\n"), &out, false)
 
 	_, err := s.choose("Worktree policy", []string{"ask", "always", "never"}, "ask")
 	if !errors.Is(err, ErrInputClosed) {
@@ -78,7 +78,7 @@ func TestChoose_EOFDuringReprompt_ReturnsErrInputClosed(t *testing.T) {
 
 func TestMenuChoice_BlankLine_NotChosenNoError(t *testing.T) {
 	var out bytes.Buffer
-	s := newSession(strings.NewReader("\n"), &out)
+	s := newSession(strings.NewReader("\n"), &out, false)
 
 	value, chosen, err := s.menuChoice("Model:", []string{"1", "2"})
 	if err != nil {
@@ -94,7 +94,7 @@ func TestMenuChoice_BlankLine_NotChosenNoError(t *testing.T) {
 
 func TestMenuChoice_EOF_ReturnsErrInputClosed(t *testing.T) {
 	var out bytes.Buffer
-	s := newSession(strings.NewReader(""), &out)
+	s := newSession(strings.NewReader(""), &out, false)
 
 	_, chosen, err := s.menuChoice("Model:", []string{"1", "2"})
 	if !errors.Is(err, ErrInputClosed) {
@@ -107,7 +107,7 @@ func TestMenuChoice_EOF_ReturnsErrInputClosed(t *testing.T) {
 
 func TestYesNo_BlankLine_ReturnsDefault(t *testing.T) {
 	var out bytes.Buffer
-	s := newSession(strings.NewReader("\n"), &out)
+	s := newSession(strings.NewReader("\n"), &out, false)
 
 	got, err := s.yesNo("Apply now?", true)
 	if err != nil {
@@ -120,7 +120,7 @@ func TestYesNo_BlankLine_ReturnsDefault(t *testing.T) {
 
 func TestYesNo_EOF_ReturnsErrInputClosed(t *testing.T) {
 	var out bytes.Buffer
-	s := newSession(strings.NewReader(""), &out)
+	s := newSession(strings.NewReader(""), &out, false)
 
 	got, err := s.yesNo("Apply now?", true)
 	if !errors.Is(err, ErrInputClosed) {
@@ -137,7 +137,7 @@ func TestYesNo_EOF_ReturnsErrInputClosed(t *testing.T) {
 // models section's role-selection loop.
 func TestPrompt_EOF_StillFallsBackToDefault(t *testing.T) {
 	var out bytes.Buffer
-	s := newSession(strings.NewReader(""), &out)
+	s := newSession(strings.NewReader(""), &out, false)
 
 	if got := s.prompt("Repo path:"); got != "" {
 		t.Errorf("prompt() = %q, want empty on EOF", got)

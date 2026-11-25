@@ -39,12 +39,34 @@ var ErrInputClosed = errors.New("input ended before the wizard finished; nothing
 type session struct {
 	in  *bufio.Scanner
 	out io.Writer
+	st  style
 }
 
-func newSession(in io.Reader, out io.Writer) *session {
+func newSession(in io.Reader, out io.Writer, color bool) *session {
 	scanner := bufio.NewScanner(in)
 	scanner.Buffer(make([]byte, 0, 4096), 1<<20)
-	return &session{in: scanner, out: out}
+	return &session{in: scanner, out: out, st: style{on: color}}
+}
+
+// help prints text, one indented line per line, after a blank line that
+// sets the question it explains apart from the previous one.
+func (s *session) help(text string) {
+	fmt.Fprintln(s.out)
+	for _, line := range strings.Split(strings.TrimRight(text, "\n"), "\n") {
+		fmt.Fprintln(s.out, "  "+s.st.muted(line))
+	}
+}
+
+// heading prints a section header after a blank line.
+func (s *session) heading(text string) {
+	fmt.Fprintln(s.out)
+	fmt.Fprintln(s.out, s.st.heading(text))
+}
+
+// subheading prints a group header inside a section after a blank line.
+func (s *session) subheading(text string) {
+	fmt.Fprintln(s.out)
+	fmt.Fprintln(s.out, s.st.subheading(text))
 }
 
 // readLine returns the next line of input and eof=false, or eof=true once
@@ -73,7 +95,7 @@ func (s *session) readLineOr(def string) string {
 // next trimmed line of input, or "" once exhausted. Used for prompts with
 // no "keep current" meaning of their own (repo paths, custom model ids).
 func (s *session) prompt(label string) string {
-	fmt.Fprintf(s.out, "%s ", label)
+	fmt.Fprintf(s.out, "%s ", s.st.label(label))
 	return strings.TrimSpace(s.readLineOr(""))
 }
 
@@ -83,7 +105,7 @@ func (s *session) prompt(label string) string {
 // section's role-selection loop, where blank means "ask again" but
 // exhaustion must still terminate the loop).
 func (s *session) promptExhausted(label, defaultWhenExhausted string) string {
-	fmt.Fprintf(s.out, "%s ", label)
+	fmt.Fprintf(s.out, "%s ", s.st.label(label))
 	return strings.TrimSpace(s.readLineOr(defaultWhenExhausted))
 }
 
@@ -95,7 +117,7 @@ func (s *session) promptExhausted(label, defaultWhenExhausted string) string {
 // sub-loop). A blank line (not exhaustion) still returns "", nil: the
 // caller decides what blank means.
 func (s *session) promptRequired(label string) (string, error) {
-	fmt.Fprintf(s.out, "%s ", label)
+	fmt.Fprintf(s.out, "%s ", s.st.label(label))
 	line, eof := s.readLine()
 	if eof {
 		return "", ErrInputClosed
@@ -107,7 +129,7 @@ func (s *session) promptRequired(label string) (string, error) {
 // Mirrors Get-NervAnswerOrDefault. Returns ErrInputClosed if the reader is
 // genuinely exhausted rather than silently keeping current.
 func (s *session) ask(label, current string) (string, error) {
-	fmt.Fprintf(s.out, "%s [%s]: ", label, current)
+	fmt.Fprintf(s.out, "%s %s: ", s.st.label(label), s.st.muted("["+current+"]"))
 	line, eof := s.readLine()
 	if eof {
 		return "", ErrInputClosed
@@ -129,7 +151,7 @@ func (s *session) ask(label, current string) (string, error) {
 // current.
 func (s *session) choose(label string, allowed []string, current string) (string, error) {
 	for attempt := 0; attempt < maxInvalidAttempts; attempt++ {
-		fmt.Fprintf(s.out, "%s (%s) [%s]: ", label, strings.Join(allowed, "|"), current)
+		fmt.Fprintf(s.out, "%s %s: ", s.st.label(label), s.st.muted("("+strings.Join(allowed, "|")+") ["+current+"]"))
 		line, eof := s.readLine()
 		if eof {
 			return "", ErrInputClosed
@@ -141,7 +163,7 @@ func (s *session) choose(label string, allowed []string, current string) (string
 		if slices.Contains(allowed, ans) {
 			return ans, nil
 		}
-		fmt.Fprintf(s.out, "Invalid input. Allowed: %s.\n", strings.Join(allowed, ", "))
+		fmt.Fprintln(s.out, s.st.warn("Invalid input. Allowed: "+strings.Join(allowed, ", ")+"."))
 	}
 	return current, nil
 }
@@ -154,7 +176,7 @@ func (s *session) choose(label string, allowed []string, current string) (string
 // silently keeping current.
 func (s *session) menuChoice(label string, allowed []string) (value string, chosen bool, err error) {
 	for attempt := 0; attempt < maxInvalidAttempts; attempt++ {
-		fmt.Fprintf(s.out, "%s ", label)
+		fmt.Fprintf(s.out, "%s ", s.st.label(label))
 		line, eof := s.readLine()
 		if eof {
 			return "", false, ErrInputClosed
@@ -166,7 +188,7 @@ func (s *session) menuChoice(label string, allowed []string) (value string, chos
 		if slices.Contains(allowed, ans) {
 			return ans, true, nil
 		}
-		fmt.Fprintf(s.out, "Invalid input. Allowed: %s, or Enter to keep current.\n", strings.Join(allowed, ", "))
+		fmt.Fprintln(s.out, s.st.warn("Invalid input. Allowed: "+strings.Join(allowed, ", ")+", or Enter to keep current."))
 	}
 	return "", false, nil
 }
@@ -184,7 +206,7 @@ func (s *session) yesNo(label string, defaultYes bool) (bool, error) {
 	if defaultYes {
 		hint = "Y/n"
 	}
-	fmt.Fprintf(s.out, "%s [%s]: ", label, hint)
+	fmt.Fprintf(s.out, "%s %s: ", s.st.label(label), s.st.muted("["+hint+"]"))
 	line, eof := s.readLine()
 	if eof {
 		return false, ErrInputClosed

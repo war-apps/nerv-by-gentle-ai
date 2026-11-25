@@ -137,6 +137,7 @@ func runConfigure(args []string, stdout, stderr io.Writer, opts options) int {
 		wizOpts := wizard.Options{
 			Paths:        paths,
 			SettingsPath: opts.Settings,
+			Color:        colorOutput(opts),
 			SkipSkills:   *skipSkills,
 			SkipModels:   *skipModels,
 			SkipRepos:    *skipRepos,
