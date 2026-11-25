@@ -16,19 +16,25 @@ import (
 // (workflowconfig.Personal's frozen ones: the scope: user provider keys,
 // the timer store) stay where they are. A section whose defaults are
 // already set is reported and left alone.
-func moveUserDefaults(p *Plan, u *userState) error {
+func moveUserDefaults(p *Plan, o Options, u *userState) error {
 	// The task conversions first, so a removed provider is dropped rather
 	// than moved into a seed; on a converted file they change nothing.
 	if err := migrateTasks(p, u.doc, "user config"); err != nil {
 		return err
 	}
-	// Both the seeds and a deploy: block that is about to move under them.
-	if err := refuseScriptTargets(u.doc, "deploy", "user config"); err != nil {
+	// Both the seeds and a deploy: block that is about to move under them:
+	// with nerv-release they reach the global release.yaml as they are
+	// (moveUserReleaseYAML), for nerv-release migrate --user to convert.
+	legacy := &legacyHandOff{target: o.ReleaseYAMLHome}
+	if err := legacy.takeReleaseYAML(); err != nil {
 		return err
 	}
-	if err := refuseScriptTargets(u.doc, "defaults", "user config"); err != nil {
-		return err
+	for _, key := range []string{"deploy", workflowconfig.DefaultsKey} {
+		if err := takeScriptTargets(legacy, u.doc, key, "user config"); err != nil {
+			return err
+		}
 	}
+	legacy.finish(p, &p.LegacyReleaseUser)
 	var personal workflowconfig.Personal
 	runTime, err := workflowconfig.RunTimeUserKeys(u.doc, personal)
 	if err != nil {
