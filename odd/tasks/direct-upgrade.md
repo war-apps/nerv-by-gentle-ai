@@ -17,7 +17,7 @@ Repositories: nerv-release (`feat/migrate-command`, release 1.1.0), then nerv (`
 |---|---|---|---|---|
 | R1 | S2, S3, S5 | delegated writer (context backstop; parallel with N1) | done: `nerv-release migrate [--cwd] [--user] [--dry-run]`, internal/legacymigrate (port of 6.6 release.go/ship.go/deploy.go/script.go), hints point to it; parent fixed the deployrun bash hint and two agent prompts | nerv-release 6c576f8 |
 | R2 | S2 | pending | pending | |
-| N1 | S1, S2, S4, S5 | delegated writer (parallel with R1) + parent fixes | done: legacy sections move to release.yaml (as text when new there) and nerv-release migrate runs after the apply (--user with nerv migrate --user; also for any moved section); without nerv-release the refusal names the install command | (this commit) |
+| N1 | S1, S2, S4, S5 | delegated writer (parallel with R1) + parent fixes | done: legacy sections move to release.yaml (as text when new there) and nerv-release migrate runs after the apply (--user with nerv migrate --user; also for any moved section); without nerv-release the refusal names the install command | nerv 5a9a198 |
 | N2 | S1 | pending | pending | |
 | N3 | S1 | pending | pending | |
 
