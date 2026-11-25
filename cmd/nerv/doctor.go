@@ -351,7 +351,7 @@ func (d *doctorRun) migration(top string) {
 	switch {
 	case err != nil:
 		d.add("migration", doctor.Fail, "nerv migrate cannot run: "+err.Error(), "Fix what nerv migrate reports, then run it")
-	case !plan.Empty():
+	case !plan.Empty() || plan.LegacyReleaseRepo:
 		detail := fmt.Sprintf("nerv migrate has %d step(s) to take", len(plan.Changes))
 		// S3: a pending task.yaml/release.yaml move is named.
 		for i, m := range pendingToolFileMoves(plan, o) {
@@ -362,6 +362,10 @@ func (d *doctorRun) migration(top string) {
 			}
 			rel, _ := filepath.Rel(top, m.Path)
 			detail += filepath.ToSlash(rel) + " (" + m.Tool + " is installed)"
+		}
+		// S5: an older nerv's sections are handed to nerv-release migrate.
+		if plan.LegacyReleaseRepo {
+			detail += ", then nerv-release migrate converts an older nerv's release and deploy configuration"
 		}
 		d.add("migration", doctor.Warn, detail, stepMigrate)
 	default:

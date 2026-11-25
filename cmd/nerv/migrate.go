@@ -8,6 +8,7 @@ import (
 	"io"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 
 	"github.com/war-apps/nerv-by-gentle-ai/internal/configure"
@@ -44,10 +45,15 @@ Moves a repository (and, with --user, your user configuration) from nerv
     removed jira and github-projects providers are dropped;
   - an older nerv's release and deploy configuration (a 4.2.0 release:
     or pipeline: section, the 5.0.0-alpha.1 ship: section, a 5.x deploy
-    target with provider: bash or a deploy-<name> project provider) is no
-    longer converted: nerv migrate refuses, naming the file and the
-    section to rewrite by hand for nerv-release (or run nerv migrate with
-    nerv 6.6 first);
+    target with provider: bash, or a deploy-<name> project provider) is
+    converted by nerv-release: when nerv-release is installed, nerv
+    migrate moves those sections, as they are, to
+    .ai-workflow/release.yaml (the user config's to the global
+    release.yaml, with --user), leaves a deploy-<name> provider where it
+    is, and, once its steps are written, runs nerv-release migrate --cwd
+    <repository> (and nerv-release migrate --user), which converts them;
+    without nerv-release, nerv migrate refuses, naming the file, the
+    section and nerv install --tools nerv-release;
   - when nerv-task is installed, tasks: moves to nerv-task's own files
     instead: the project file's tasks: to .ai-workflow/task.yaml (repo
     keys), and, with --user, the user config's personal tasks: keys and
@@ -91,9 +97,13 @@ Flags:
   --force        Move a change whose orchestrator lock is still held
   --cwd <dir>    A directory inside the repository (default ".")
 
+A dry run does not run nerv-release migrate: it says it would.
+
 Exit codes: 0 migrated, nothing to migrate, or a dry run; 1 refused (not a
 repository, both the old and the new file exist, an older release or
-deploy section, a lock still held); 2 usage or environment error.
+deploy section without nerv-release, nerv-release migrate refusing the
+sections moved to release.yaml, a lock still held); 2 usage or
+environment error (nerv-release migrate failing or not starting too).
 `
 
 func runMigrate(args []string, stdout, stderr io.Writer, opts options) int {
@@ -138,11 +148,11 @@ const taskYAMLTool = "task"
 // (release.yaml), used here only to compute where those files live.
 const releaseYAMLTool = "release"
 
-// catalogueToolInstalled reports whether the ecosystem catalogue tool
-// named name (S12) is installed on this machine: on PATH, or in its
-// default install directory (internal/ecosystem's own detection). A name
-// the catalogue does not list is never installed.
-func catalogueToolInstalled(ctx context.Context, opts options, home, name string) bool {
+// catalogueToolPath is where the ecosystem catalogue tool named name
+// (S12) is installed on this machine: on PATH, or in its default install
+// directory (internal/ecosystem's own detection); "" when it is not. A
+// name the catalogue does not list is never installed.
+func catalogueToolPath(ctx context.Context, opts options, home, name string) string {
 	goos := opts.GOOS
 	if goos == "" {
 		goos = runtime.GOOS
@@ -151,9 +161,9 @@ func catalogueToolInstalled(ctx context.Context, opts options, home, name string
 		if t.Name != name {
 			continue
 		}
-		return ecosystem.Detect(ctx, t, opts.Runner, opts.LookPath, goos, home, opts.Getenv).Installed
+		return ecosystem.Detect(ctx, t, opts.Runner, opts.LookPath, goos, home, opts.Getenv).Path
 	}
-	return false
+	return ""
 }
 
 // setToolFileTargets points o at the own files of every catalogue tool
@@ -162,7 +172,9 @@ func catalogueToolInstalled(ctx context.Context, opts options, home, name string
 // the global ones. A tool not installed leaves its targets "", so its
 // sections stay in config.yaml, unchanged. nerv migrate,
 // nerv doctor and the install/upgrade offer all build their options here.
-func setToolFileTargets(ctx context.Context, opts options, home string, o *migrate.Options) {
+// It returns where nerv-release is installed ("" when it is not), for
+// nerv migrate to run nerv-release migrate.
+func setToolFileTargets(ctx context.Context, opts options, home string, o *migrate.Options) (nervRelease string) {
 	// The global files sit next to the user config.yaml nerv migrates, in
 	// the directory paths.Resolve already chose: the real environment
 	// (XDG_CONFIG_HOME, %AppData%) applies to the real home only, never to
@@ -170,7 +182,7 @@ func setToolFileTargets(ctx context.Context, opts options, home string, o *migra
 	global := func(tool string) string {
 		return filepath.Join(filepath.Dir(paths.Resolve(home).UserConfig), tool+".yaml")
 	}
-	if catalogueToolInstalled(ctx, opts, home, "nerv-task") {
+	if catalogueToolPath(ctx, opts, home, "nerv-task") != "" {
 		if o.RepoRoot != "" {
 			o.TaskYAMLRepo = aiworkflow.ProjectConfigPath(o.RepoRoot, taskYAMLTool)
 		}
@@ -178,13 +190,81 @@ func setToolFileTargets(ctx context.Context, opts options, home string, o *migra
 			o.TaskYAMLHome = global(taskYAMLTool)
 		}
 	}
-	if catalogueToolInstalled(ctx, opts, home, "nerv-release") {
+	nervRelease = catalogueToolPath(ctx, opts, home, "nerv-release")
+	if nervRelease != "" {
 		if o.RepoRoot != "" {
 			o.ReleaseYAMLRepo = aiworkflow.ProjectConfigPath(o.RepoRoot, releaseYAMLTool)
 		}
 		if o.User {
 			o.ReleaseYAMLHome = global(releaseYAMLTool)
 		}
+	}
+	return nervRelease
+}
+
+// releaseMigrateRun is one nerv-release migrate run: its arguments, and
+// the release.yaml that holds the sections it converts.
+type releaseMigrateRun struct {
+	args  []string
+	where string
+}
+
+// releaseMigrateRuns are the nerv-release migrate runs plan hands an
+// older nerv's release and deploy configuration to (S5): the
+// repository's (--cwd <top>), with --user when nerv migrate runs with
+// --user (it then also moves a converted pipeline:'s personal keys to the
+// global release.yaml and converts that file, in the same run); or the
+// user configuration's alone (--user, with --cwd <top> inside a
+// repository).
+func releaseMigrateRuns(plan *migrate.Plan, o migrate.Options) []releaseMigrateRun {
+	var runs []releaseMigrateRun
+	// A section moved to a release.yaml runs it too: nerv does not tell
+	// every older shape apart (a release: whose engine keys sit at its
+	// top), and a current section leaves it nothing to do.
+	writes := func(path string) bool {
+		return path != "" && slices.ContainsFunc(plan.Changes, func(c migrate.Change) bool { return c.Path == path })
+	}
+	if plan.LegacyReleaseRepo || writes(o.ReleaseYAMLRepo) {
+		args := []string{"migrate", "--cwd", o.RepoRoot}
+		if o.User {
+			args = append(args, "--user")
+		}
+		return append(runs, releaseMigrateRun{args, o.ReleaseYAMLRepo})
+	}
+	if plan.LegacyReleaseUser || writes(o.ReleaseYAMLHome) {
+		args := []string{"migrate"}
+		if o.RepoRoot != "" {
+			args = append(args, "--cwd", o.RepoRoot)
+		}
+		runs = append(runs, releaseMigrateRun{append(args, "--user"), o.ReleaseYAMLHome})
+	}
+	return runs
+}
+
+// line is the run as a user types it.
+func (r releaseMigrateRun) line() string { return "nerv-release " + strings.Join(r.args, " ") }
+
+// runReleaseMigrate runs nerv-release (at binary) for r, printing its
+// output, and maps its exit code (S5): 1, nerv-release migrate refusing
+// the sections nerv migrate moved to r.where, is a refusal (exit 1); any
+// other failure, or a run that could not start, is exit 2.
+func runReleaseMigrate(ctx context.Context, opts options, binary string, r releaseMigrateRun, stdout, stderr io.Writer) error {
+	fmt.Fprintf(stdout, "\nnerv migrate: running %s\n", r.line())
+	out, errOut, code, err := opts.Runner.Run(ctx, binary, r.args...)
+	fmt.Fprint(stdout, out)
+	fmt.Fprint(stderr, errOut)
+	switch {
+	case err != nil:
+		fmt.Fprintf(stderr, "nerv migrate: %s could not run: %v\n", r.line(), err)
+		return &exitError{2}
+	case code == 0:
+		return nil
+	case code == 1:
+		fmt.Fprintf(stderr, "nerv migrate: the older release and deploy sections are in %s, moved as they were, but nerv-release migrate refused to convert them: fix what it reports, then run %s\n", r.where, r.line())
+		return &exitError{1}
+	default:
+		fmt.Fprintf(stderr, "nerv migrate: %s failed (exit %d)\n", r.line(), code)
+		return &exitError{2}
 	}
 }
 
@@ -234,18 +314,22 @@ func migrateRun(ctx context.Context, cwd string, dryRun, user, install, force bo
 		top = "" // --user outside a repository: the user configuration only.
 	}
 	o := migrate.Options{RepoRoot: top, Home: home, User: user, Now: opts.Now(), Force: force}
-	setToolFileTargets(ctx, opts, home, &o)
+	nervRelease := setToolFileTargets(ctx, opts, home, &o)
 	plan, err := migrate.Compute(o)
 	if err != nil {
 		return err
 	}
+	handOff := releaseMigrateRuns(plan, o)
 	switch {
-	case plan.Empty():
+	case plan.Empty() && (!dryRun || len(handOff) == 0):
 		fmt.Fprint(stdout, migrate.Render(plan))
 		fmt.Fprintln(stdout, "nerv migrate: nothing to migrate")
 	case dryRun:
 		fmt.Fprintln(stdout, "nerv migrate --dry-run: these are the steps nerv migrate would take; nothing is written:")
 		fmt.Fprint(stdout, migrate.Render(plan))
+		for _, r := range handOff {
+			fmt.Fprintf(stdout, "\nnerv migrate would then run %s, which converts them\n", r.line())
+		}
 		fmt.Fprintf(stdout, "\nnerv migrate: dry run: %d change(s), nothing was written\n", len(plan.Changes))
 		return nil
 	default:
@@ -262,6 +346,11 @@ func migrateRun(ctx context.Context, cwd string, dryRun, user, install, force bo
 			return err
 		}
 		fmt.Fprintf(stdout, "\nnerv migrate: %d change(s) written\n", len(plan.Changes))
+	}
+	for _, r := range handOff {
+		if err := runReleaseMigrate(ctx, opts, nervRelease, r, stdout, stderr); err != nil {
+			return err
+		}
 	}
 	if install && len(plan.Tools) > 0 && !dryRun {
 		args := []string{"--tools", strings.Join(plan.Tools, ","), "--no-configure"}

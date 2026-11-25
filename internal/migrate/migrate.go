@@ -2,10 +2,11 @@
 // 5.0.0-alpha.1) to this version: the old configuration files
 // (.nerv/nerv.yaml or .ai-workflow.yml, and ~/.claude/nerv/nerv.yaml or the
 // user config.yml) become .ai-workflow/config.yaml and the user
-// config.yaml, the 4.2.0 release: and pipeline: sections become today's
-// release: and deploy:, the semantic-release configuration is imported, the in-flight
-// openspec changes become ODD feature documents, and the plugins the
-// repository used are named for nerv install.
+// config.yaml, an older nerv's release and deploy sections are handed to
+// nerv-release (moved as they are to its release.yaml, for nerv-release
+// migrate to convert), the in-flight openspec changes become ODD feature
+// documents, and the plugins the repository used are named for nerv
+// install.
 //
 // Plan reads and computes every change without writing anything; Apply
 // writes them, each file atomically, after a timestamped backup of every
@@ -113,6 +114,14 @@ type Plan struct {
 	// Tools are the NERV-ecosystem tools that replace the extensions the
 	// old configuration used, in install order.
 	Tools []string
+	// LegacyReleaseRepo and LegacyReleaseUser report that an older nerv's
+	// release and deploy configuration of the repository (its sections,
+	// moved as they were to the repository release.yaml, or a 5.x
+	// deploy-<name> project provider) or of the user configuration
+	// (moved to the global release.yaml) is left for nerv-release
+	// migrate to convert (S5): nerv migrate runs it once the plan is
+	// applied. Set only when nerv-release is installed.
+	LegacyReleaseRepo, LegacyReleaseUser bool
 }
 
 // Empty reports whether the plan changes nothing.
@@ -156,7 +165,7 @@ func Compute(o Options) (*Plan, error) {
 		}
 	}
 	if user != nil {
-		if err := moveUserDefaults(p, user); err != nil {
+		if err := moveUserDefaults(p, o, user); err != nil {
 			return nil, err
 		}
 		if err := moveUserTaskYAML(p, o, user); err != nil {

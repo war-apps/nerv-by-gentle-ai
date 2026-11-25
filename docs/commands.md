@@ -166,9 +166,15 @@ Moves a repository from nerv 4.2.0 or 5.0.0-alpha.1 to this version, once:
 
 - `.nerv/nerv.yaml` (4.2.0) or `.ai-workflow.yml` (5.0.0-alpha.1) becomes `.ai-workflow/config.yaml`;
 - an older nerv's release or deploy configuration (a 4.2.0 `release:` or
-  `pipeline:` section, the 5.0.0-alpha.1 `ship:` section) is no longer
-  converted: it is refused, naming the section to rewrite by hand for
-  nerv-release (see [migration.md](migration.md#older-release-and-deploy-sections));
+  `pipeline:` section, the 5.0.0-alpha.1 `ship:` section, a 5.x
+  `provider: bash` deploy target or `deploy-<name>` project provider) is
+  converted by nerv-release: when it is installed, `nerv migrate` moves
+  those sections, as they are, to `release.yaml` and then runs
+  `nerv-release migrate --cwd <repository>` (`--user` for the user
+  config's), which converts them (not on `--dry-run`; its refusal is exit
+  1, any other failure exit 2); without it, they are refused, naming
+  `nerv install --tools nerv-release` (see
+  [migration.md](migration.md#older-release-and-deploy-sections));
 - the in-flight `openspec/changes` become ODD feature documents;
 - a project file without `tasks.provider` gets the user's
   (`defaults.tasks.provider`, or the older user `tasks.provider`), since

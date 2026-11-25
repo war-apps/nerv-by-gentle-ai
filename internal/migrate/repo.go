@@ -146,6 +146,7 @@ func planRepo(p *Plan, o Options, user *userState) error {
 		rewriteHeader(doc)
 		prevText = []byte(doc.String())
 	}
+	legacy := &legacyHandOff{target: o.ReleaseYAMLRepo}
 	tdd, err := planODD(p, o)
 	if err != nil {
 		return err
@@ -153,7 +154,7 @@ func planRepo(p *Plan, o Options, user *userState) error {
 	var doc *config.Document
 	switch {
 	case oldExists:
-		doc, err = translateConfig(p, o, oldData)
+		doc, err = translateConfig(p, o, legacy, oldData)
 		if err != nil {
 			return err
 		}
@@ -168,9 +169,11 @@ func planRepo(p *Plan, o Options, user *userState) error {
 			where = paths.PreviousProjectConfigFile
 		}
 		if doc.KeyExists(alphaSection) {
-			return refuseLegacySection(where, alphaSection, "5.0.0-alpha.1", "")
+			if err := legacy.take(where+" "+alphaSection+":", refuseLegacySection(where, alphaSection, "5.0.0-alpha.1", "")); err != nil {
+				return err
+			}
 		}
-		if err := refuseLegacyRelease(doc, where); err != nil {
+		if err := takeLegacyRelease(legacy, doc, where); err != nil {
 			return err
 		}
 	}
@@ -186,7 +189,7 @@ func planRepo(p *Plan, o Options, user *userState) error {
 			// moveRepoTaskYAML move it right back out on every run.
 			seedTaskProvider(p, o, doc)
 		}
-		if err := refuseScriptTargets(doc, "deploy", paths.ProjectConfigFile); err != nil {
+		if err := takeScriptTargets(legacy, doc, "deploy", paths.ProjectConfigFile); err != nil {
 			return err
 		}
 		if err := personalKeys(p, doc, paths.ProjectConfigFile, user, o.TaskYAMLHome); err != nil {
@@ -223,9 +226,10 @@ func planRepo(p *Plan, o Options, user *userState) error {
 	} else if tdd != nil {
 		p.warn("odd.tdd: the repository has no %s to record strict_tdd in; run nerv configure --init, then nerv migrate again", paths.ProjectConfigFile)
 	}
-	if err := refuseProjectDeployProviders(root); err != nil {
+	if err := takeProjectDeployProviders(legacy, root); err != nil {
 		return err
 	}
+	legacy.finish(p, &p.LegacyReleaseRepo)
 	ignore := filepath.Join(paths.RuntimeDir(root), ".gitignore")
 	if _, err := os.Lstat(ignore); errors.Is(err, fs.ErrNotExist) {
 		if _, err := os.Stat(paths.RuntimeDir(root)); err == nil || len(p.Changes) > 0 {
@@ -241,14 +245,17 @@ func planRepo(p *Plan, o Options, user *userState) error {
 }
 
 // translateConfig turns a 4.2.0 project nerv.yaml into .ai-workflow/config.yaml.
-// Its pipeline: and release: sections are refused: they targeted the
-// release and deploy engines, which left nerv for nerv-release.
-func translateConfig(p *Plan, o Options, data []byte) (*config.Document, error) {
+// Its pipeline: and release: sections targeted the release and deploy
+// engines, which left nerv for nerv-release: they are handed to
+// nerv-release migrate (legacy), or refused without nerv-release.
+func translateConfig(p *Plan, o Options, legacy *legacyHandOff, data []byte) (*config.Document, error) {
 	where := paths.ProjectConfigFile
 	doc := config.Parse(string(data))
 	for _, section := range []string{"pipeline", "release"} {
 		if doc.KeyExists(section) {
-			return nil, refuseLegacySection(".nerv/nerv.yaml", section, "4.2.0", "")
+			if err := legacy.take(".nerv/nerv.yaml "+section+": (4.2.0)", refuseLegacySection(".nerv/nerv.yaml", section, "4.2.0", "")); err != nil {
+				return nil, err
+			}
 		}
 	}
 	rewriteHeader(doc)

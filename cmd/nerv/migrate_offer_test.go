@@ -314,6 +314,25 @@ func TestDoctor_SeesAPendingToolFileMove(t *testing.T) {
 			t.Error("nerv doctor changed the repository")
 		}
 	})
+	t.Run("repository legacy section", func(t *testing.T) {
+		w := newDoctorWorld(t)
+		w.opts = withCatalogueTools(w.opts, "nerv-release")
+		w.write(filepath.Join(w.top, ".ai-workflow", "config.yaml"), "enabled: true\nship:\n  projects: []\n")
+
+		_, out, _ := w.doctor()
+		contains(t, "the report", out,
+			"including moving settings to .ai-workflow/release.yaml (nerv-release is installed), then nerv-release migrate converts an older nerv's release and deploy configuration\n")
+	})
+	t.Run("repository legacy deploy provider only", func(t *testing.T) {
+		w := newDoctorWorld(t)
+		w.opts = withCatalogueTools(w.opts, "nerv-release")
+		w.write(filepath.Join(w.top, ".ai-workflow", "config.yaml"), "enabled: true\n")
+		w.write(filepath.Join(w.top, ".ai-workflow", "providers", "deploy-k8s", "provider.yaml"), "name: k8s\nextension: deploy\n")
+
+		_, out, _ := w.doctor()
+		contains(t, "the report", out,
+			"  [!!]  migration    nerv migrate has 0 step(s) to take, then nerv-release migrate converts an older nerv's release and deploy configuration\n")
+	})
 	t.Run("repository task.yaml", func(t *testing.T) {
 		w := newDoctorWorld(t)
 		w.opts = withCatalogueTools(w.opts, "nerv-task")

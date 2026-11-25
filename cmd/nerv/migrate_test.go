@@ -211,7 +211,7 @@ func TestMigrate_RefusesTheAlpha1ShipSection(t *testing.T) {
 		t.Fatal(err)
 	}
 	code, out, errOut := runMigrateCLI(t, opts)
-	if code != 1 || !strings.Contains(errOut, ".ai-workflow.yml: ship: is a nerv 5.0.0-alpha.1 section") || !strings.Contains(errOut, "by hand") {
+	if code != 1 || !strings.Contains(errOut, ".ai-workflow.yml: ship: is a nerv 5.0.0-alpha.1 section") || !strings.Contains(errOut, "nerv install --tools nerv-release") || strings.Contains(errOut, "nerv 6.6") {
 		t.Errorf("exit %d\n%s\n%s", code, out, errOut)
 	}
 	if got := mustReadFile(t, filepath.Join(top, ".ai-workflow.yml")); got != ship {

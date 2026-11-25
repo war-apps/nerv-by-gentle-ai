@@ -22,11 +22,9 @@ reported the same way, and the repository is treated as unconfigured.
 
 ### Older release and deploy sections
 
-Since 7.0, `nerv migrate` no longer converts the release and deploy
-configuration of an older nerv: those engines left nerv for
-[nerv-release](https://github.com/war-apps/nerv-release-by-gentle-ai). It
-refuses (exit 1, nothing written) and names the file and the section to move
-by hand:
+The release and deploy engines left nerv for
+[nerv-release](https://github.com/war-apps/nerv-release-by-gentle-ai), and so
+did the conversion of an older nerv's release and deploy configuration:
 
 - a 4.2.0 `pipeline:` or `release:` section in `.nerv/nerv.yaml`, and a
   4.2.0 `release:` already moved into `.ai-workflow.yml` or
@@ -37,9 +35,34 @@ by hand:
 - a 5.x project deploy provider, `.ai-workflow/providers/deploy-<name>/` with
   `extension: deploy` (move it to `release-<name>/` with `extension: release`).
 
-Rewrite the section by hand as nerv-release's `release:` and `deploy:`
-sections, or run `nerv migrate` with nerv 6.6 first, which still converts
-them as [its migration guide](https://github.com/war-apps/nerv-by-gentle-ai/blob/v6.6.0/docs/migration.md) describes, and then this version's.
+**With nerv-release installed**, `nerv migrate` hands them to
+`nerv-release migrate`, in one run:
+
+1. it moves each section, as it is, to nerv-release's own file: the
+   repository's to `.ai-workflow/release.yaml` (`pipeline:` and `ship:`
+   keep their names), the user config's `deploy:` and `defaults.deploy:`
+   (with `--user`) to the global `release.yaml`, with the same guarantees
+   as the rest of the migration (a key already set there is kept and
+   reported, backups, a second run moves nothing). A personal ssh-compose
+   key in the project file still stays there and is reported. A
+   `deploy-<name>` project provider stays where it is. A note says which
+   sections were left for `nerv-release migrate`;
+2. once its steps are written, it runs `nerv-release migrate --cwd
+   <repository>` (and `nerv-release migrate --cwd <repository> --user` for
+   the user config's), printing its output. nerv-release converts the
+   sections inside `release.yaml` and renames the provider to
+   `release-<name>`.
+
+`--dry-run` does not run `nerv-release migrate`; it says it would. When
+`nerv-release migrate` refuses (exit 1), `nerv migrate` exits 1 too: the
+sections are already in `release.yaml`, as they were; fix what it reports
+and run `nerv-release migrate` again. Any other failure of it is exit 2.
+
+**Without nerv-release**, `nerv migrate` refuses (exit 1, nothing written),
+naming the file, the section and the command that installs nerv-release:
+`nerv install --tools nerv-release`, then `nerv migrate` again. You can
+also rewrite the section by hand as nerv-release's `release:` and `deploy:`
+sections.
 
 ## What it changes
 
@@ -55,7 +78,7 @@ them as [its migration guide](https://github.com/war-apps/nerv-by-gentle-ai/blob
 | a project file without `tasks.provider`, when the user file has one | The project gets `tasks.provider` from `defaults.tasks.provider`, or else from the old user `tasks.provider`. |
 | `tasks.provider: jira` or `github-projects`, `tasks.providers.jira` / `.github-projects` | Dropped and reported: those providers were removed. |
 | `tasks.providers.teamwork.task_ref_prefix` | Dropped: the provider's manifest fixes the prefix. |
-| `ship:` (5.0.0-alpha.1), `release:` (4.2.0), `pipeline:` | Refused since 7.0 (see [Older release and deploy sections](#older-release-and-deploy-sections)); nerv 6.6 converts them as [its migration guide](https://github.com/war-apps/nerv-by-gentle-ai/blob/v6.6.0/docs/migration.md) describes. |
+| `ship:` (5.0.0-alpha.1), `release:` (4.2.0), `pipeline:`, `provider: bash`, `deploy-<name>` providers | With nerv-release installed, moved as they are to `release.yaml` and converted there by `nerv-release migrate`, which `nerv migrate` runs; refused without it (see [Older release and deploy sections](#older-release-and-deploy-sections)). |
 | `openspec/changes/<change>/`, in flight, FULL | `odd/tasks/<change>.md`, with its run files in `odd/<change>/nerv/` and its lock in `.nerv/locks/<change>.lock` (see [ODD](#odd)) |
 | `openspec/changes/<change>/`, in flight, DIRECT or LIGHT | `.nerv/runs/<change>/`, with no ODD document, and its lock in `.nerv/locks/<change>.lock` (see [ODD](#odd)) |
 | `openspec/changes/archive/`, `openspec/specs/` | They stay where they are, read-only. |
@@ -204,10 +227,10 @@ The orchestrator is unchanged: it still emits its task events when the
 
 The conversions from 5.0.0-alpha.1 (`ship:`, `nerv ship`) and 5.2.0 (the
 separate `deploy` extension, `provider: bash` deploy targets,
-`deploy-<name>` project providers) are refused since 7.0 (see
-[Older release and deploy sections](#older-release-and-deploy-sections));
-[nerv 6.6's migration guide](https://github.com/war-apps/nerv-by-gentle-ai/blob/v6.6.0/docs/migration.md) describes how that version converts
-them. The `deploy@nerv` plugins of 5.2.0 are disabled with the other
+`deploy-<name>` project providers) are nerv-release's: `nerv migrate`
+hands them to `nerv-release migrate` when nerv-release is installed, and
+refuses them otherwise (see
+[Older release and deploy sections](#older-release-and-deploy-sections)). The `deploy@nerv` plugins of 5.2.0 are disabled with the other
 extension plugins (see [From 6.6](#from-66-extensions-moved-to-tools)).
 
 ## Safety
