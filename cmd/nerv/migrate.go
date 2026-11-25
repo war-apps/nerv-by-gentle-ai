@@ -52,6 +52,8 @@ Moves a repository (and, with --user, your user configuration) from nerv
     release.yaml, with --user), leaves a deploy-<name> provider where it
     is, and, once its steps are written, runs nerv-release migrate --cwd
     <repository> (and nerv-release migrate --user), which converts them;
+    a later run runs nerv-release migrate again while release.yaml
+    still holds an older section (when it failed or refused before);
     without nerv-release, nerv migrate refuses, naming the file, the
     section and nerv install --tools nerv-release;
   - when nerv-task is installed, tasks: moves to nerv-task's own files
@@ -255,7 +257,7 @@ func runReleaseMigrate(ctx context.Context, opts options, binary string, r relea
 	fmt.Fprint(stderr, errOut)
 	switch {
 	case err != nil:
-		fmt.Fprintf(stderr, "nerv migrate: %s could not run: %v\n", r.line(), err)
+		fmt.Fprintf(stderr, "nerv migrate: %s could not run: %v: fix what it reports, then run %s\n", r.line(), err, r.line())
 		return &exitError{2}
 	case code == 0:
 		return nil
@@ -263,7 +265,7 @@ func runReleaseMigrate(ctx context.Context, opts options, binary string, r relea
 		fmt.Fprintf(stderr, "nerv migrate: the older release and deploy sections are in %s, moved as they were, but nerv-release migrate refused to convert them: fix what it reports, then run %s\n", r.where, r.line())
 		return &exitError{1}
 	default:
-		fmt.Fprintf(stderr, "nerv migrate: %s failed (exit %d)\n", r.line(), code)
+		fmt.Fprintf(stderr, "nerv migrate: %s failed (exit %d): fix what it reports, then run %s\n", r.line(), code, r.line())
 		return &exitError{2}
 	}
 }
@@ -321,9 +323,15 @@ func migrateRun(ctx context.Context, cwd string, dryRun, user, install, force bo
 	}
 	handOff := releaseMigrateRuns(plan, o)
 	switch {
-	case plan.Empty() && (!dryRun || len(handOff) == 0):
+	case plan.Empty() && len(handOff) == 0:
 		fmt.Fprint(stdout, migrate.Render(plan))
 		fmt.Fprintln(stdout, "nerv migrate: nothing to migrate")
+	case plan.Empty() && !dryRun:
+		// An earlier run's sections still wait in release.yaml (its
+		// nerv-release migrate failed or refused): nerv has nothing of
+		// its own to write, and nerv-release migrate runs again below.
+		fmt.Fprint(stdout, migrate.Render(plan))
+		fmt.Fprintln(stdout, "nerv migrate: nothing of its own to write")
 	case dryRun:
 		fmt.Fprintln(stdout, "nerv migrate --dry-run: these are the steps nerv migrate would take; nothing is written:")
 		fmt.Fprint(stdout, migrate.Render(plan))

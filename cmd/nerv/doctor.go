@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/war-apps/nerv-by-gentle-ai/internal/claude"
@@ -238,8 +239,14 @@ func (d *doctorRun) toolConfig() {
 	if err != nil {
 		return
 	}
-	for _, m := range pendingToolFileMoves(plan, o) {
+	moves := pendingToolFileMoves(plan, o)
+	for _, m := range moves {
 		d.add("tool config", doctor.Warn, m.Tool+" is installed, but your user config.yaml still has its settings: nerv migrate --user moves them to "+m.Path, stepMigrateUser)
+	}
+	// S5: the global release.yaml still holds an older nerv's sections an
+	// earlier run moved there (its nerv-release migrate failed or refused).
+	if plan.LegacyReleaseUser && !slices.ContainsFunc(moves, func(m toolFileMove) bool { return m.Path == o.ReleaseYAMLHome }) {
+		d.add("tool config", doctor.Warn, "nerv-release is installed, but your global release.yaml still holds an older nerv's release and deploy configuration: nerv migrate --user runs nerv-release migrate --user, which converts it", stepMigrateUser)
 	}
 }
 

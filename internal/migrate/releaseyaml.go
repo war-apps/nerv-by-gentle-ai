@@ -51,6 +51,9 @@ func moveRepoReleaseYAML(p *Plan, o Options, doc *config.Document) error {
 	for _, section := range append(slices.Clone(releaseSections), legacyReleaseSections...) {
 		// An older section the release.yaml does not have yet moves as its
 		// own text, so nerv-release migrate converts it as written.
+		if section == "release" && releaseDoc.KeyExists(section) && movesAsText(doc, section) {
+			return refuse("%s: release: is a nerv 4.2.0 section and %s already has a release: section: nerv migrate does not merge them; move what the 4.2.0 one still needs into it by hand and remove it, or remove the release: section of %s and run nerv migrate again", paths.ProjectConfigFile, o.ReleaseYAMLRepo, o.ReleaseYAMLRepo)
+		}
 		if block, found := doc.Block(section); found && !releaseDoc.KeyExists(section) && movesAsText(doc, section) {
 			releaseDoc.SetBlock(section, strings.TrimRight(block, "\n"))
 			doc.Remove(section)

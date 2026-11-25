@@ -333,6 +333,25 @@ func TestDoctor_SeesAPendingToolFileMove(t *testing.T) {
 		contains(t, "the report", out,
 			"  [!!]  migration    nerv migrate has 0 step(s) to take, then nerv-release migrate converts an older nerv's release and deploy configuration\n")
 	})
+	t.Run("repository release.yaml left unconverted", func(t *testing.T) {
+		w := newDoctorWorld(t)
+		w.opts = withCatalogueTools(w.opts, "nerv-release")
+		w.write(filepath.Join(w.top, ".ai-workflow", "config.yaml"), "enabled: true\n")
+		w.write(filepath.Join(w.top, ".ai-workflow", "release.yaml"), "ship:\n  projects: []\n")
+
+		_, out, _ := w.doctor()
+		contains(t, "the report", out,
+			"  [!!]  migration    nerv migrate has 0 step(s) to take, then nerv-release migrate converts an older nerv's release and deploy configuration\n")
+	})
+	t.Run("global release.yaml left unconverted", func(t *testing.T) {
+		w := newDoctorWorld(t)
+		w.opts = withCatalogueTools(w.opts, "nerv-release")
+		w.write(filepath.Join(filepath.Dir(paths.Resolve(w.home).UserConfig), "release.yaml"), "defaults:\n  deploy:\n    targets:\n      - { name: staging, provider: bash }\n")
+
+		_, out, _ := w.doctor()
+		contains(t, "the report", out,
+			"  [!!]  tool config  nerv-release is installed, but your global release.yaml still holds an older nerv's release and deploy configuration: nerv migrate --user runs nerv-release migrate --user, which converts it\n")
+	})
 	t.Run("repository task.yaml", func(t *testing.T) {
 		w := newDoctorWorld(t)
 		w.opts = withCatalogueTools(w.opts, "nerv-task")

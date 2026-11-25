@@ -56,7 +56,12 @@ did the conversion of an older nerv's release and deploy configuration:
 `--dry-run` does not run `nerv-release migrate`; it says it would. When
 `nerv-release migrate` refuses (exit 1), `nerv migrate` exits 1 too: the
 sections are already in `release.yaml`, as they were; fix what it reports
-and run `nerv-release migrate` again. Any other failure of it is exit 2.
+and run `nerv-release migrate` again. Any other failure of it is exit 2;
+both messages name the command to run again. A later `nerv migrate` also
+looks in the repository's and (with `--user`) the global `release.yaml`:
+while they still hold an older section, it says so and runs
+`nerv-release migrate` again, even with nothing of its own to write, and
+`nerv doctor` reports it as a pending step.
 
 **Without nerv-release**, `nerv migrate` refuses (exit 1, nothing written),
 naming the file, the section and the command that installs nerv-release:

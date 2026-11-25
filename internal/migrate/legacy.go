@@ -40,6 +40,9 @@ type legacyHandOff struct {
 	// target is the release.yaml the sections go to ("" refuses them).
 	target string
 	found  []string
+	// left are the older shapes target itself still holds, moved there
+	// by an earlier run whose nerv-release migrate failed or refused.
+	left []string
 }
 
 // take records what (such as ".nerv/nerv.yaml pipeline:"), or returns
@@ -171,9 +174,47 @@ func takeProjectDeployProviders(h *legacyHandOff, root string) error {
 	return nil
 }
 
+// takeReleaseYAML records the older nerv's shapes the release.yaml h
+// hands off to (h.target) still holds: an earlier nerv migrate moved them
+// there, and its nerv-release migrate failed or refused, so they are
+// handed to nerv-release migrate again even when nerv has nothing to
+// write. The shapes are those that move as text (movesAsText): 4.2.0's
+// pipeline:, 5.0.0-alpha.1's ship:, a 4.2.0 release:, and a provider:
+// bash target under deploy: or defaults: (the global file's seeds). A
+// no-op without nerv-release, or when the file does not exist yet.
+func (h *legacyHandOff) takeReleaseYAML() error {
+	if h.target == "" {
+		return nil
+	}
+	data, exists, err := readOptional(h.target)
+	if err != nil || !exists {
+		return err
+	}
+	doc := config.Parse(string(data))
+	for _, section := range legacyReleaseSections {
+		if doc.KeyExists(section) {
+			h.left = append(h.left, section+":")
+		}
+	}
+	if movesAsText(doc, "release") {
+		h.left = append(h.left, "release: (4.2.0)")
+	}
+	for _, key := range []string{"deploy", "defaults"} {
+		if block, found := doc.Block(key); found && bashTarget.MatchString(block) {
+			h.left = append(h.left, key+": (provider: bash)")
+		}
+	}
+	return nil
+}
+
 // finish records the hand-off on p, setting flag (p.LegacyReleaseRepo or
-// p.LegacyReleaseUser), when anything was found.
+// p.LegacyReleaseUser), when anything was found, or is still left in
+// the target release.yaml.
 func (h *legacyHandOff) finish(p *Plan, flag *bool) {
+	if len(h.left) > 0 {
+		*flag = true
+		p.note("%s still holds an older nerv's release and deploy configuration (%s): nerv-release migrate converts it, and nerv migrate runs it", h.target, strings.Join(h.left, ", "))
+	}
 	if len(h.found) == 0 {
 		return
 	}

@@ -26,6 +26,9 @@ func moveUserDefaults(p *Plan, o Options, u *userState) error {
 	// with nerv-release they reach the global release.yaml as they are
 	// (moveUserReleaseYAML), for nerv-release migrate --user to convert.
 	legacy := &legacyHandOff{target: o.ReleaseYAMLHome}
+	if err := legacy.takeReleaseYAML(); err != nil {
+		return err
+	}
 	for _, key := range []string{"deploy", workflowconfig.DefaultsKey} {
 		if err := takeScriptTargets(legacy, u.doc, key, "user config"); err != nil {
 			return err

@@ -172,7 +172,8 @@ Moves a repository from nerv 4.2.0 or 5.0.0-alpha.1 to this version, once:
   those sections, as they are, to `release.yaml` and then runs
   `nerv-release migrate --cwd <repository>` (`--user` for the user
   config's), which converts them (not on `--dry-run`; its refusal is exit
-  1, any other failure exit 2); without it, they are refused, naming
+  1, any other failure exit 2; a later run runs it again while
+  `release.yaml` still holds an older section); without it, they are refused, naming
   `nerv install --tools nerv-release` (see
   [migration.md](migration.md#older-release-and-deploy-sections));
 - the in-flight `openspec/changes` become ODD feature documents;

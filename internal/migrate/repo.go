@@ -147,6 +147,9 @@ func planRepo(p *Plan, o Options, user *userState) error {
 		prevText = []byte(doc.String())
 	}
 	legacy := &legacyHandOff{target: o.ReleaseYAMLRepo}
+	if err := legacy.takeReleaseYAML(); err != nil {
+		return err
+	}
 	tdd, err := planODD(p, o)
 	if err != nil {
 		return err

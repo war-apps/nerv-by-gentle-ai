@@ -124,8 +124,10 @@ func TestLegacy_SectionsMoveToReleaseYAMLWithNervRelease(t *testing.T) {
 			if len(backups) == 0 {
 				t.Error("no backup was made")
 			}
-			if again := w.plan(o); !again.Empty() || again.LegacyReleaseRepo {
-				t.Errorf("a second run plans %d change(s), hand-off %v", len(again.Changes), again.LegacyReleaseRepo)
+			// nerv-release migrate did not run here: a second run writes
+			// nothing, and hands release.yaml's sections off again.
+			if again := w.plan(o); !again.Empty() || !again.LegacyReleaseRepo {
+				t.Errorf("a second run plans %d change(s), hand-off %v, want none and true", len(again.Changes), again.LegacyReleaseRepo)
 			}
 		})
 	}
@@ -220,5 +222,79 @@ func TestLegacy_SectionsMoveAsTheirOwnText(t *testing.T) {
 		if !strings.Contains(got, want) {
 			t.Errorf("release.yaml lacks the section as written:\n%s\nwant it to contain:\n%s", got, want)
 		}
+	}
+}
+
+// legacyReleaseYAMLWorld is a repository already in today's shape (its
+// config.yaml migrated, nothing older left in it) whose nerv-release
+// files are about to be written by the test, with both release.yaml
+// targets set: a nerv migrate that moved an older nerv's sections to
+// release.yaml before nerv-release migrate failed or refused.
+func legacyReleaseYAMLWorld(t *testing.T) (world, migrate.Options) {
+	t.Helper()
+	w := legacyWorld(t, paths.ProjectConfigFile, "enabled: true\n")
+	o := w.options(true)
+	o.ReleaseYAMLRepo = filepath.Join(w.root, ".ai-workflow", "release.yaml")
+	o.ReleaseYAMLHome = filepath.Join(w.home, "release.yaml")
+	w.migrate(o)
+	return w, o
+}
+
+// B1 (S5): an older nerv's sections nerv migrate moved to release.yaml
+// on an earlier run, left unconverted because nerv-release migrate
+// failed or refused, are handed to nerv-release migrate again: the
+// repository's and the global release.yaml are inspected, with nothing
+// for nerv itself to write.
+func TestLegacy_UnconvertedReleaseYAMLIsHandedOffAgain(t *testing.T) {
+	w, o := legacyReleaseYAMLWorld(t)
+	w.write(o.ReleaseYAMLRepo, "pipeline:\n  images:\n    - name: ghcr.io/acme/app\n"+
+		"ship:\n  projects: []\n"+
+		"release:\n  semantic_release:\n    version: 24.2.3\n"+
+		"deploy:\n  targets:\n    - { name: staging, provider: bash }\n")
+	w.write(o.ReleaseYAMLHome, "defaults:\n  deploy:\n    targets:\n      - name: staging\n        provider: bash\n")
+	p := w.plan(o)
+	if !p.Empty() {
+		t.Errorf("Compute planned %d change(s), want none: %+v", len(p.Changes), p.Changes)
+	}
+	if !p.LegacyReleaseRepo || !p.LegacyReleaseUser {
+		t.Errorf("LegacyReleaseRepo, LegacyReleaseUser = %v, %v, want true, true", p.LegacyReleaseRepo, p.LegacyReleaseUser)
+	}
+	for _, want := range []string{o.ReleaseYAMLRepo, o.ReleaseYAMLHome} {
+		if !slices.ContainsFunc(p.Notes, func(n string) bool {
+			return strings.Contains(n, want+" still holds") && strings.Contains(n, "nerv-release migrate converts")
+		}) {
+			t.Errorf("no note says %s still holds them for nerv-release migrate: %q", want, p.Notes)
+		}
+	}
+	for _, want := range []string{"pipeline:", "ship:", "release: (4.2.0)", "deploy: (provider: bash)", "defaults: (provider: bash)"} {
+		if !anyContains(p.Notes, want) {
+			t.Errorf("no note names %s: %q", want, p.Notes)
+		}
+	}
+}
+
+// A release.yaml in today's shape is not handed off again.
+func TestLegacy_TodaysReleaseYAMLIsNotHandedOff(t *testing.T) {
+	w, o := legacyReleaseYAMLWorld(t)
+	w.write(o.ReleaseYAMLRepo, "release:\n  projects:\n    - { name: api, path: api, build: bash }\ndeploy:\n  host: github\n  targets:\n    - { name: staging, provider: script }\n")
+	w.write(o.ReleaseYAMLHome, "defaults:\n  deploy:\n    targets:\n      - { name: staging, provider: script }\n")
+	p := w.plan(o)
+	if !p.Empty() || p.LegacyReleaseRepo || p.LegacyReleaseUser || anyContains(p.Notes, "nerv-release migrate") {
+		t.Errorf("today's release.yaml was handed off: %d change(s), %v, %v, %q", len(p.Changes), p.LegacyReleaseRepo, p.LegacyReleaseUser, p.Notes)
+	}
+}
+
+// A 4.2.0 release: is never merged into a release: the repository's
+// release.yaml already has: nerv migrate refuses, naming both, and writes
+// nothing (nerv 6.6 did not merge two release: sections either).
+func TestLegacy_A420ReleaseIsNotMergedIntoAnExistingOne(t *testing.T) {
+	w := legacyWorld(t, ".nerv/nerv.yaml", "enabled: true\nrelease:\n  semantic_release:\n    version: 24.2.3\n  projects:\n    - { name: lib, path: lib, presets: [dotnet] }\n")
+	o := w.options(false)
+	o.ReleaseYAMLRepo = filepath.Join(w.root, ".ai-workflow", "release.yaml")
+	existing := "release:\n  projects:\n    - { name: existing, path: . }\n"
+	w.write(".ai-workflow/release.yaml", existing)
+	refused(t, o, "release:", "4.2.0", o.ReleaseYAMLRepo, "does not merge")
+	if got := w.read(".ai-workflow/release.yaml"); got != existing {
+		t.Errorf("release.yaml changed:\n%s", got)
 	}
 }

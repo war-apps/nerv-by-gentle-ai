@@ -234,3 +234,34 @@ func TestMigrate_UserRunsOneNervReleaseMigrateForBothScopes(t *testing.T) {
 		t.Errorf("nerv-release calls = %q, want %q", got, want)
 	}
 }
+
+// B1 (S5): when nerv-release migrate failed (exit 2) after nerv migrate
+// moved the older sections to release.yaml, a second nerv migrate has
+// nothing of its own to write but runs nerv-release migrate again on the
+// sections release.yaml still holds; the failure names what to rerun.
+func TestMigrate_RerunAfterAFailedNervReleaseMigrateRunsItAgain(t *testing.T) {
+	_, top, opts := legacyRepo(t, legacyShip, true)
+	scriptReleaseMigrate(opts, runnertest.Response{ExitCode: 2}, "--cwd", top, "--user")
+	code, out, errOut := runMigrateCLI(t, opts, "--user")
+	if want := "nerv-release migrate --cwd " + top + " --user failed (exit 2): fix what it reports, then run nerv-release migrate --cwd " + top + " --user"; code != 2 || !strings.Contains(errOut, want) {
+		t.Fatalf("exit %d, want 2 naming %q\n%s\n%s", code, want, out, errOut)
+	}
+
+	scriptReleaseMigrate(opts, runnertest.Response{Stdout: "nerv-release migrate: ship: converted\n"}, "--cwd", top, "--user")
+	code, out, errOut = runMigrateCLI(t, opts, "--user")
+	if code != 0 {
+		t.Fatalf("rerun: exit %d\n%s\n%s", code, out, errOut)
+	}
+	want := []string{"migrate --cwd " + top + " --user", "migrate --cwd " + top + " --user"}
+	if got := releaseMigrateCalls(opts); !slices.Equal(got, want) {
+		t.Errorf("nerv-release calls = %q, want %q", got, want)
+	}
+	for _, want := range []string{"still holds", "nerv-release migrate: ship: converted"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("rerun stdout lacks %q:\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, "nothing to migrate") {
+		t.Errorf("rerun says nothing to migrate:\n%s", out)
+	}
+}
