@@ -16,10 +16,10 @@ Repositories: nerv-release (`feat/migrate-command`, release 1.1.0), then nerv (`
 | ID | Specs | Route | Status | Commit |
 |---|---|---|---|---|
 | R1 | S2, S3, S5 | delegated writer (context backstop; parallel with N1) | done: `nerv-release migrate [--cwd] [--user] [--dry-run]`, internal/legacymigrate (port of 6.6 release.go/ship.go/deploy.go/script.go), hints point to it; parent fixed the deployrun bash hint and two agent prompts | nerv-release 6c576f8 |
-| R2 | S2 | pending | pending | |
+| R2 | S2 | pending | pending: nerv-release 1.1.0 (needs the user: push, PRs, release) | |
 | N1 | S1, S2, S4, S5 | delegated writer (parallel with R1) + parent fixes | done: legacy sections move to release.yaml (as text when new there) and nerv-release migrate runs after the apply (--user with nerv migrate --user; also for any moved section); without nerv-release the refusal names the install command | nerv 5a9a198 |
-| N2 | S1 | pending | pending | |
-| N3 | S1 | pending | pending | |
+| N2 | S1 | inline | done: the install/upgrade migrate offer runs nerv-release migrate --user after moving older user sections (a failure is a warning); RED/GREEN TestInstall_MigrateOfferRunsNervReleaseMigrateForOlderSections, ...FailureIsAWarning | nerv feec02c |
+| N3 | S1 | inline | docs done (migration.md "Upgrading from any earlier version", hand-off details); releases pending (nerv-release 1.1.0 first, then nerv 7.1.0: push, PRs, release need the user) | nerv feec02c |
 
 R1: `nerv-release migrate` (port of the 6.6 conversions to release.yaml). R2: nerv-release 1.1.0 release. N1: nerv migrate hands the legacy sections to `nerv-release migrate`. N2: nerv upgrade/install chain (offer nerv-release when legacy sections are found, then migrate). N3: docs and nerv 7.1.0 release.
 
