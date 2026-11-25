@@ -197,7 +197,7 @@ func disableOrphans(ctx context.Context, stdout io.Writer, opts options, home st
 // code: a plan that cannot be computed or applied is a warning.
 func offerToolMigration(ctx context.Context, stdout io.Writer, opts options, home string) {
 	o := migrate.Options{Home: home, User: true, Now: opts.Now()}
-	setToolFileTargets(ctx, opts, home, &o)
+	nervRelease := setToolFileTargets(ctx, opts, home, &o)
 	if o.TaskYAMLHome == "" && o.ReleaseYAMLHome == "" {
 		return
 	}
@@ -207,7 +207,7 @@ func offerToolMigration(ctx context.Context, stdout io.Writer, opts options, hom
 		return
 	}
 	moves := pendingToolFileMoves(plan, o)
-	if len(moves) == 0 {
+	if len(moves) == 0 && !plan.LegacyReleaseUser {
 		return
 	}
 	var tools []string
@@ -246,4 +246,12 @@ func offerToolMigration(ctx context.Context, stdout io.Writer, opts options, hom
 		return
 	}
 	fmt.Fprintf(stdout, "nerv migrate: %d change(s) written\n", len(plan.Changes))
+	// An older nerv's sections moved to the global release.yaml as they
+	// were: nerv-release migrate --user converts them (S1, S5). A failure
+	// is a warning, as the offer itself never changes the exit code.
+	for _, r := range releaseMigrateRuns(plan, o) {
+		if err := runReleaseMigrate(ctx, opts, nervRelease, r, stdout, stdout); err != nil {
+			fmt.Fprintf(stdout, "Warning: %v\n", err)
+		}
+	}
 }

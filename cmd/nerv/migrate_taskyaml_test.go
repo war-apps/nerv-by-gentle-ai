@@ -113,8 +113,8 @@ func TestCatalogueToolInstalled_PerTool(t *testing.T) {
 		{"not-a-tool", false},
 	}
 	for _, tt := range tests {
-		if got := catalogueToolInstalled(context.Background(), opts, home, tt.name); got != tt.want {
-			t.Errorf("catalogueToolInstalled(%q) = %v, want %v", tt.name, got, tt.want)
+		if got := catalogueToolPath(context.Background(), opts, home, tt.name) != ""; got != tt.want {
+			t.Errorf("catalogueToolPath(%q) != \"\" = %v, want %v", tt.name, got, tt.want)
 		}
 	}
 }

@@ -51,7 +51,8 @@ func worktreePatternField(deps Deps, s *session, out io.Writer, current string) 
 		options = append(options, worktreePatternOption{label: "herdr", pattern: herdr.Pattern(detection.WorktreesDir)})
 	}
 
-	fmt.Fprintf(out, "Worktree path pattern [current: %s]\n", current)
+	s.help(config.KeyHelp("git.worktree_pattern"))
+	fmt.Fprintf(out, "%s %s\n", s.st.label("Worktree path pattern"), s.st.muted("[current: "+current+"]"))
 	allowed := make([]string, 0, len(options)+1)
 	for i, opt := range options {
 		fmt.Fprintf(out, "  %d) %-8s%-30s e.g. %s\n", i+1, opt.label, opt.pattern, renderWorktreeExample(opt.pattern))

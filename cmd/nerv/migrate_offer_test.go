@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/war-apps/nerv-by-gentle-ai/internal/paths"
+	"github.com/war-apps/nerv-kit-by-gentle-ai/runner/runnertest"
 )
 
 // releaseUserConfig is a user config.yaml whose personal deploy key and
@@ -314,6 +315,44 @@ func TestDoctor_SeesAPendingToolFileMove(t *testing.T) {
 			t.Error("nerv doctor changed the repository")
 		}
 	})
+	t.Run("repository legacy section", func(t *testing.T) {
+		w := newDoctorWorld(t)
+		w.opts = withCatalogueTools(w.opts, "nerv-release")
+		w.write(filepath.Join(w.top, ".ai-workflow", "config.yaml"), "enabled: true\nship:\n  projects: []\n")
+
+		_, out, _ := w.doctor()
+		contains(t, "the report", out,
+			"including moving settings to .ai-workflow/release.yaml (nerv-release is installed), then nerv-release migrate converts an older nerv's release and deploy configuration\n")
+	})
+	t.Run("repository legacy deploy provider only", func(t *testing.T) {
+		w := newDoctorWorld(t)
+		w.opts = withCatalogueTools(w.opts, "nerv-release")
+		w.write(filepath.Join(w.top, ".ai-workflow", "config.yaml"), "enabled: true\n")
+		w.write(filepath.Join(w.top, ".ai-workflow", "providers", "deploy-k8s", "provider.yaml"), "name: k8s\nextension: deploy\n")
+
+		_, out, _ := w.doctor()
+		contains(t, "the report", out,
+			"  [!!]  migration    nerv migrate has 0 step(s) to take, then nerv-release migrate converts an older nerv's release and deploy configuration\n")
+	})
+	t.Run("repository release.yaml left unconverted", func(t *testing.T) {
+		w := newDoctorWorld(t)
+		w.opts = withCatalogueTools(w.opts, "nerv-release")
+		w.write(filepath.Join(w.top, ".ai-workflow", "config.yaml"), "enabled: true\n")
+		w.write(filepath.Join(w.top, ".ai-workflow", "release.yaml"), "ship:\n  projects: []\n")
+
+		_, out, _ := w.doctor()
+		contains(t, "the report", out,
+			"  [!!]  migration    nerv migrate has 0 step(s) to take, then nerv-release migrate converts an older nerv's release and deploy configuration\n")
+	})
+	t.Run("global release.yaml left unconverted", func(t *testing.T) {
+		w := newDoctorWorld(t)
+		w.opts = withCatalogueTools(w.opts, "nerv-release")
+		w.write(filepath.Join(filepath.Dir(paths.Resolve(w.home).UserConfig), "release.yaml"), "defaults:\n  deploy:\n    targets:\n      - { name: staging, provider: bash }\n")
+
+		_, out, _ := w.doctor()
+		contains(t, "the report", out,
+			"  [!!]  tool config  nerv-release is installed, but your global release.yaml still holds an older nerv's release and deploy configuration: nerv migrate --user runs nerv-release migrate --user, which converts it\n")
+	})
 	t.Run("repository task.yaml", func(t *testing.T) {
 		w := newDoctorWorld(t)
 		w.opts = withCatalogueTools(w.opts, "nerv-task")
@@ -331,4 +370,42 @@ func TestDoctor_SeesAPendingToolFileMove(t *testing.T) {
 		contains(t, "the report", out, "  [ok]  migration    nothing to migrate\n")
 		lacks(t, "the report", out, "tool config", "nerv migrate --user")
 	})
+}
+
+// S1: nerv install (the way a 4.2.0 or 5.0 user reaches 7.x, through the
+// install script) also converts an older nerv's user sections: on "y" the
+// user config's 5.x bash deploy target moves to the global release.yaml
+// and nerv-release migrate --user converts it.
+func TestInstall_MigrateOfferRunsNervReleaseMigrateForOlderSections(t *testing.T) {
+	home, _ := migrateOfferHome(t, "deploy:\n  targets:\n    - { name: staging, provider: bash }\n")
+	opts := withCatalogueTools(testOptions(home), "nerv-release")
+	opts.Runner = baseInstallRunner()
+	opts.IsTerminal = func() bool { return true }
+	opts.Stdin = strings.NewReader("y\n")
+
+	code, out := runInstallCLI(t, opts, "--no-tools", "--no-skills", "--no-configure")
+	if code != 0 {
+		t.Fatalf("exit %d\n%s", code, out)
+	}
+	if got, want := releaseMigrateCalls(opts), []string{"migrate --user"}; !slices.Equal(got, want) {
+		t.Errorf("nerv-release calls = %q, want %q\n%s", got, want, out)
+	}
+	contains(t, "the output", out, "nerv migrate: running nerv-release migrate --user")
+}
+
+// A failing nerv-release migrate during install is a warning: install's
+// own exit code does not change.
+func TestInstall_MigrateOfferNervReleaseFailureIsAWarning(t *testing.T) {
+	home, _ := migrateOfferHome(t, "deploy:\n  targets:\n    - { name: staging, provider: bash }\n")
+	opts := withCatalogueTools(testOptions(home), "nerv-release")
+	opts.Runner = baseInstallRunner()
+	opts.IsTerminal = func() bool { return true }
+	opts.Stdin = strings.NewReader("y\n")
+	scriptReleaseMigrate(opts, runnertest.Response{ExitCode: 2, Stderr: "boom\n"}, "--user")
+
+	code, out := runInstallCLI(t, opts, "--no-tools", "--no-skills", "--no-configure")
+	if code != 0 {
+		t.Fatalf("exit %d\n%s", code, out)
+	}
+	contains(t, "the output", out, "Warning: ", "then run nerv-release migrate --user")
 }

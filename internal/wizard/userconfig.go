@@ -38,8 +38,7 @@ type userConfigResult struct {
 // are not core's: the Task providers section asks them from the provider
 // manifests.
 func runUserConfigSection(deps Deps, paths configure.Paths, s *session, out io.Writer) (userConfigResult, error) {
-	fmt.Fprintln(out)
-	fmt.Fprintln(out, "--- User config ---")
+	s.heading("--- User config ---")
 
 	doc, exists, err := (configure.Store{}).Load(paths.Config)
 	if err != nil {
@@ -67,6 +66,7 @@ func runUserConfigSection(deps Deps, paths configure.Paths, s *session, out io.W
 		if sectionErr != nil {
 			return
 		}
+		s.help(config.KeyHelp(key))
 		v, err := s.ask(label, current(key))
 		if err != nil {
 			sectionErr = err
@@ -78,6 +78,7 @@ func runUserConfigSection(deps Deps, paths configure.Paths, s *session, out io.W
 		if sectionErr != nil {
 			return
 		}
+		s.help(config.KeyHelp(key))
 		v, err := s.choose(label, allowed(key), current(key))
 		if err != nil {
 			sectionErr = err
@@ -86,8 +87,7 @@ func runUserConfigSection(deps Deps, paths configure.Paths, s *session, out io.W
 		answers[key] = v
 	}
 
-	fmt.Fprintln(out)
-	fmt.Fprintln(out, "-- git --")
+	s.subheading("-- git --")
 	askField("Base branch", "git.base_branch")
 	chooseField("Worktree policy", "git.worktree")
 	if sectionErr == nil {
@@ -102,8 +102,7 @@ func runUserConfigSection(deps Deps, paths configure.Paths, s *session, out io.W
 	askField("Commit ref pattern", "git.commit_ref_pattern")
 
 	if sectionErr == nil {
-		fmt.Fprintln(out)
-		fmt.Fprintln(out, "-- skills (comma-separated) --")
+		s.subheading("-- skills (comma-separated) --")
 		for _, cat := range skillsCategories {
 			askField(cat, "skills."+cat)
 		}
@@ -146,7 +145,7 @@ func runUserConfigSection(deps Deps, paths configure.Paths, s *session, out io.W
 		return result, nil
 	}
 
-	fmt.Fprintln(out, "--- Summary ---")
+	fmt.Fprintln(out, s.st.heading("--- Summary ---"))
 	for _, c := range changeLog {
 		fmt.Fprintf(out, "  %s\n", c)
 	}

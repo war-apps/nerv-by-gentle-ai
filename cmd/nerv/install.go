@@ -180,7 +180,7 @@ func runInstall(args []string, stdout, stderr io.Writer, opts options) int {
 
 	wizDeps := configure.Deps{Home: home, FS: opts.PluginFS, Runner: opts.Runner, Now: opts.Now, LookPath: opts.LookPath, Getenv: opts.Getenv}
 	wizPaths := configure.ResolvePaths(home, "")
-	wizOpts := wizard.Options{Paths: wizPaths, SettingsPath: opts.Settings}
+	wizOpts := wizard.Options{Paths: wizPaths, SettingsPath: opts.Settings, Color: colorOutput(opts)}
 	if _, err := wizard.Run(wizDeps, opts.Stdin, stdout, wizOpts); err != nil {
 		fmt.Fprintf(stdout, "nerv: %v\n", err)
 		if errors.Is(err, wizard.ErrInputClosed) {

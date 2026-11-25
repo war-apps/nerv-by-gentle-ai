@@ -17,9 +17,10 @@ import (
 // the wizard. A declined offer points the user at `nerv skills --dry-run`
 // to preview the same install later.
 func offerSkillsInstall(ctx context.Context, deps Deps, paths configure.Paths, s *session, out io.Writer) error {
-	fmt.Fprintln(out)
-	fmt.Fprintln(out, "--- Required skills ---")
+	s.heading("--- Required skills ---")
 
+	s.help("The skills the roles load (testing, code, audit...). Only the\n" +
+		"missing ones are installed; nothing already installed changes.")
 	install, err := s.yesNo("Install the skills the plugin references (missing ones only, via npx skills add -g and gentle-ai sync)?", true)
 	if err != nil {
 		return err

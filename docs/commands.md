@@ -142,6 +142,12 @@ nerv configure --set-model aoba=opus/high
 nerv configure --init-repo . --repo-base develop
 ```
 
+Each question of the wizard is preceded by a short help saying what the
+setting does and what each value changes. On a terminal that shows ANSI
+colors the section headers and questions are bold and the help is grey;
+set `NO_COLOR` (or `TERM=dumb`) for plain text, which is also what piped
+or `--answers` output gets.
+
 The wizard asks nothing about tasks: task settings belong to nerv-task
 (`nerv-task configure`, `nerv-task init`). Its former "Task providers"
 section and `--repo-provider-config` were removed in 7.0, after the
@@ -166,9 +172,16 @@ Moves a repository from nerv 4.2.0 or 5.0.0-alpha.1 to this version, once:
 
 - `.nerv/nerv.yaml` (4.2.0) or `.ai-workflow.yml` (5.0.0-alpha.1) becomes `.ai-workflow/config.yaml`;
 - an older nerv's release or deploy configuration (a 4.2.0 `release:` or
-  `pipeline:` section, the 5.0.0-alpha.1 `ship:` section) is no longer
-  converted: it is refused, naming the section to rewrite by hand for
-  nerv-release (see [migration.md](migration.md#older-release-and-deploy-sections));
+  `pipeline:` section, the 5.0.0-alpha.1 `ship:` section, a 5.x
+  `provider: bash` deploy target or `deploy-<name>` project provider) is
+  converted by nerv-release: when it is installed, `nerv migrate` moves
+  those sections, as they are, to `release.yaml` and then runs
+  `nerv-release migrate --cwd <repository>` (`--user` for the user
+  config's), which converts them (not on `--dry-run`; its refusal is exit
+  1, any other failure exit 2; a later run runs it again while
+  `release.yaml` still holds an older section); without it, they are refused, naming
+  `nerv install --tools nerv-release` (see
+  [migration.md](migration.md#older-release-and-deploy-sections));
 - the in-flight `openspec/changes` become ODD feature documents;
 - a project file without `tasks.provider` gets the user's
   (`defaults.tasks.provider`, or the older user `tasks.provider`), since
