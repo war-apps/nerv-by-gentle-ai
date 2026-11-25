@@ -1,4 +1,4 @@
-# Migrating from nerv 4.2.0, 5.0.0-alpha.1 or 5.2.0
+# Migrating from an earlier nerv
 
 `nerv migrate` moves a repository, and your user configuration, from nerv
 4.2.0, 5.0.0-alpha.1 or 5.2.0 (the separate deploy extension) to this
@@ -13,6 +13,23 @@ nerv migrate --user             # also migrate your user configuration
 nerv migrate --install          # then install the tools the repository uses
 nerv migrate --force            # also move a change whose lock is still held
 ```
+
+### Upgrading from any earlier version
+
+Any nerv from 4.2.0 on reaches this version in one step, without passing
+through an intermediate release:
+
+1. Install this version. From 5.1.0 on, `nerv upgrade` does it (on Windows
+   from 6.4.0); a 4.2.0 or 5.0 install has no `nerv upgrade`, so re-run the
+   install script of the README. Either way, `nerv install` (which the
+   upgrade and the script run) offers the NERV-ecosystem tools: accept
+   nerv-task and nerv-release if you used tasks or releases. It then
+   disables the old extension plugins and, on a terminal, offers
+   `nerv migrate --user` for your user configuration; with nerv-release
+   installed that also converts its older release and deploy settings
+   (`nerv-release migrate --user`).
+2. In each repository, run `nerv migrate --dry-run`, then `nerv migrate`.
+3. Run `nerv doctor` to see anything still pending.
 
 Until it runs, nerv reads neither old file: every command refuses while a
 5.0.0-alpha.1 `.ai-workflow.yml` (or user `config.yml`) is still there,
@@ -43,15 +60,23 @@ did the conversion of an older nerv's release and deploy configuration:
    keep their names), the user config's `deploy:` and `defaults.deploy:`
    (with `--user`) to the global `release.yaml`, with the same guarantees
    as the rest of the migration (a key already set there is kept and
-   reported, backups, a second run moves nothing). A personal ssh-compose
-   key in the project file still stays there and is reported. A
-   `deploy-<name>` project provider stays where it is. A note says which
-   sections were left for `nerv-release migrate`;
+   reported, backups, a second run moves nothing). A section that file
+   does not have yet moves as its own text, comments and layout kept; a
+   4.2.0 `release:` is refused, writing nothing, when the repository's
+   `release.yaml` already has a `release:` section (nerv migrate does not
+   merge two). A personal ssh-compose key in the project file still stays
+   there and is reported. A `deploy-<name>` project provider stays where
+   it is. A note says which sections were left for `nerv-release migrate`;
 2. once its steps are written, it runs `nerv-release migrate --cwd
-   <repository>` (and `nerv-release migrate --cwd <repository> --user` for
-   the user config's), printing its output. nerv-release converts the
-   sections inside `release.yaml` and renames the provider to
-   `release-<name>`.
+   <repository>` (with `--user` when you ran `nerv migrate --user`, which
+   then also converts the global file in the same run; `nerv-release
+   migrate --user` alone for the user config outside a repository),
+   printing its output. nerv-release converts the sections inside
+   `release.yaml` and renames the provider to `release-<name>`. The
+   personal ssh-compose keys of a converted `pipeline:` never reach your
+   global `release.yaml`: a repository never sets your personal settings.
+   Each is reported with the `nerv-release configure --set` command that
+   sets it, for you to run if you trust the repository.
 
 `--dry-run` does not run `nerv-release migrate`; it says it would. When
 `nerv-release migrate` refuses (exit 1), `nerv migrate` exits 1 too: the
