@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [7.1.0] - 2026-11-25
+
+Any nerv from 4.2.0 on now reaches this version in one step: with
+nerv-release 1.1.0 or later installed, `nerv migrate` hands an older
+nerv's release and deploy configuration to `nerv-release migrate`, which
+converts it, instead of refusing it (see docs/migration.md, "Upgrading
+from any earlier version"). The setup wizard explains each question, in
+color on a terminal.
+
+### Added
+- configure: explain each wizard question and color the wizard (04e9fae)
+- migrate: hand an older nerv's release and deploy sections to nerv-release (5a9a198)
+- install: convert an older nerv's user release settings in the migrate offer (feec02c)
+
+### Fixed
+- migrate: rerun nerv-release migrate on unconverted release.yaml and never merge two release sections (e71087b)
+
 ## [7.0.1] - 2026-11-24
 
 The README now lists every `nerv install` step in order, what
